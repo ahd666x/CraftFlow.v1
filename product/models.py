@@ -302,7 +302,22 @@ class OrderItem(models.Model):
     def is_fully_shipped(self):
         shipped, total = self.shipping_progress
         return total > 0 and shipped == total
-    
+
+    @property
+    def is_painting_complete(self):
+        """آیا تمام تسک‌های نقاشی این آیتم به done رسیده‌اند؟"""
+        if not hasattr(self, 'paint_tasks'):
+            return False
+        paint_tasks = self.paint_tasks.all()
+        if not paint_tasks.exists():
+            return True
+        return paint_tasks.filter(status='done').count() == paint_tasks.count()
+
+    @property
+    def is_ready_for_delivery(self):
+        """آیا این آیتم برای تحویل آماده است؟ (نقاشی کامل + بسته‌بندی کامل)"""
+        return self.is_painting_complete and self.is_fully_packed
+
     @property
     def line_total(self):
         return self.unit_price * self.quantity
@@ -763,6 +778,36 @@ class ProductionEvent(models.Model):
         return f"{self.get_event_type_display()} - تسک {self.task_id} - {self.created_at}"
 
 
+class ProductionDefect(models.Model):
+    """A damaged part reported at a production station, before rework is issued."""
+    STATUS_CHOICES = [
+        ('reported', 'ثبت شده'),
+        ('material_requested', 'در انتظار مواد جایگزین'),
+        ('rework_issued', 'مواد جایگزین تحویل شد'),
+        ('closed', 'بسته شده'),
+    ]
+    task = models.ForeignKey(ProductionTask, on_delete=models.PROTECT, related_name='defects', verbose_name='مرحله/تسک')
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='defects', verbose_name='سفارش')
+    order_item = models.ForeignKey(OrderItem, null=True, blank=True, on_delete=models.SET_NULL,
+                                   related_name='defects', verbose_name='آیتم سفارش')
+    part = models.ForeignKey(Part, null=True, blank=True, on_delete=models.SET_NULL,
+                             related_name='defects', verbose_name='قطعه آسیب‌دیده')
+    quantity = models.PositiveIntegerField(default=1, verbose_name='تعداد خراب')
+    description = models.TextField(verbose_name='شرح خرابی و اقدام لازم')
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default='reported', verbose_name='وضعیت')
+    reported_by = models.ForeignKey(User, null=True, on_delete=models.SET_NULL,
+                                    related_name='reported_defects', verbose_name='ثبت‌کننده')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='زمان ثبت')
+
+    class Meta:
+        verbose_name = 'خرابی تولید'
+        verbose_name_plural = 'خرابی‌های تولید'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'خرابی {self.quantity} عددی - سفارش {self.order_id}'
+
+
 class PackagingUnit(models.Model):
     order_item = models.ForeignKey(OrderItem, on_delete=models.CASCADE, related_name='packaging_units')
     unit_number = models.PositiveIntegerField(verbose_name="شماره واحد")
@@ -806,6 +851,7 @@ class ShipmentLog(models.Model):
     plate_number = models.CharField(max_length=50, verbose_name="پلاک")
     shipped_at = models.DateTimeField(auto_now_add=True, verbose_name="زمان ارسال")
     shipped_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, verbose_name="ارسال‌کننده")
+    delivery_notes = models.TextField(blank=True, verbose_name="یادداشت‌های تحویل")
 
     class Meta:
         verbose_name = "بارگیری"

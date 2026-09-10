@@ -217,6 +217,9 @@
             <a href="{% url 'painting_schedule' %}" class="nav-link {% if request.resolver_match.url_name == 'painting_schedule' %}active{% endif %}">
                 <i class="bi bi-calendar-week"></i> برنامه روزانه
             </a>
+            <a href="{% url 'product_defects' %}" class="nav-link {% if request.resolver_match.url_name == 'product_defects' %}active{% endif %}">
+                <i class="bi bi-exclamation-octagon"></i> خرابی‌ها
+            </a>
             <a href="{% url 'painting_processes' %}" class="nav-link {% if request.resolver_match.url_name == 'painting_processes' %}active{% endif %}">
                 <i class="bi bi-diagram-3"></i> روندها
             </a>

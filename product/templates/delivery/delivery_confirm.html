@@ -1,0 +1,36 @@
+﻿{% extends 'base.html' %}
+{% block content %}
+<div class="container">
+  <h2>🚚 ثبت تحویل - آیتم #{{ item.id }}</h2>
+  <p><strong>محصول:</strong> {{ item.product.name }}</p>
+  <p><strong>سفارش:</strong> #{{ item.order.id }} - {{ item.order.customer.name }}</p>
+  <p><strong>واحدها:</strong> {{ item.packaging_units.filter.is_packed|yesno:"بسته‌بندی شده,نیاز به بسته‌بندی" }} از {{ item.packaging_units.count }}</p>
+
+  <form method="post">
+    {% csrf_token %}
+    
+    <div class="mb-3">
+      <label class="form-label">مسیول تحویل:</label>
+      <select name="delivery_person" class="form-select" required>
+        <option value="">-- انتخاب کنید --</option>
+        {% for user in users %}
+          <option value="{{ user.id }}">{{ user.get_full_name|default:user.username }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label">پلاک خودرو:</label>
+      <input type="text" name="plate" class="form-control" placeholder="مثال: ۱۲س۳۴۵۶۷">
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label">یادداشت‌های تحویل:</label>
+      <textarea name="notes" class="form-control" rows="3" placeholder="وضعیت تحویل، آسیب، کسر و..."></textarea>
+    </div>
+
+    <button type="submit" class="btn btn-success">✅ ثبت تحویل</button>
+    <a href="{% url 'delivery_list' %}{% if selected_representative %}?representative={{ selected_representative }}{% endif %}" class="btn btn-secondary">بازگشت</a>
+  </form>
+</div>
+{% endblock %}

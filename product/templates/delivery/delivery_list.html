@@ -1,0 +1,61 @@
+﻿{% extends 'base.html' %}
+{% block content %}
+<div class="container">
+  <h2>📦 لیست اقلام آماده تحویل</h2>
+  
+  <form method="get" class="mb-3">
+    <label>نماینده:</label>
+    <select name="representative" onchange="this.form.submit()">
+      <option value="">همه</option>
+      {% for rep in representatives %}
+        <option value="{{ rep.id }}" {% if selected_representative == rep.id|stringformat:"s" %}selected{% endif %}>
+          {{ rep.get_full_name|default:rep.username }}
+        </option>
+      {% endfor %}
+    </select>
+  </form>
+
+  <table class="table table-bordered">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>سفارش</th>
+        <th>محصول</th>
+        <th>مشتری</th>
+        <th>نماینده</th>
+        <th>نقاشی</th>
+        <th>بسته‌بندی</th>
+        <th>عملیات</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in ready_items %}
+        <tr>
+          <td>{{ forloop.counter }}</td>
+          <td>#{{ row.order.id }}</td>
+          <td>{{ row.product.name }}</td>
+          <td>{{ row.customer.name }}</td>
+          <td>{{ row.representative.get_full_name|default:row.representative.username }}</td>
+          <td>
+            {{ row.paint_done }}/{{ row.paint_total }}
+            {% if row.paint_done == row.paint_total %}
+              <span class="badge bg-success">✅ کامل</span>
+            {% endif %}
+          </td>
+          <td>
+            {{ row.packed }}/{{ row.total_units }}
+            {% if row.packed == row.total_units %}
+              <span class="badge bg-success">✅ کامل</span>
+            {% endif %}
+          </td>
+          <td>
+            <a href="{% url 'delivery_confirm' row.item.id %}{% if selected_representative %}?representative={{ selected_representative }}{% endif %}" class="btn btn-sm btn-primary">ثبت تحویل</a>
+          </td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="8" class="text-center">هیچ آیتم آماده تحویلی وجود ندارد.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

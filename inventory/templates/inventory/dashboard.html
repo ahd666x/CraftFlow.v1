@@ -35,12 +35,17 @@
     <div class="col-md-3">
         <div class="card text-white bg-primary h-100">
             <div class="card-body">
-                <h6 class="card-title">حرکات اخیر</h6>
-                <p class="display-6 mb-0">{{ recent_movements|length }}</p>
-                <small>آخرین تراکنش‌ها</small>
+                <h6 class="card-title">درخواست تحویل تولید</h6>
+                <p class="display-6 mb-0">{{ pending_issues|default:0 }}</p>
+                <small>در انتظار اقدام انبار</small>
             </div>
         </div>
     </div>
+</div>
+
+<div class="alert alert-primary d-flex justify-content-between align-items-center mb-4">
+    <div><strong>مسیر روزانه انبار:</strong> نیاز برنامه تولید را بررسی کنید، تحویل را ثبت کنید و خروج انبار خودکار ثبت می‌شود.</div>
+    <a class="btn btn-primary btn-sm" href="{% url 'inventory:production_issue_queue' %}">باز کردن صف تحویل</a>
 </div>
 
 <div class="row g-3 mb-4">

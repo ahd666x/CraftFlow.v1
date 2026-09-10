@@ -106,6 +106,46 @@ class StockMovement(models.Model):
         ordering = ['-created_at']
 
 
+class MaterialIssue(models.Model):
+    """A traceable request and hand-over of material from warehouse to production."""
+    STATUS_CHOICES = [
+        ('requested', 'در انتظار تحویل'),
+        ('partial', 'تحویل ناقص'),
+        ('issued', 'تحویل شده'),
+        ('cancelled', 'لغو شده'),
+    ]
+    PURPOSE_CHOICES = [
+        ('production', 'برنامه تولید'),
+        ('rework', 'جبران خرابی / ساخت مجدد'),
+    ]
+
+    task = models.ForeignKey('product.ProductionTask', null=True, blank=True,
+                             on_delete=models.SET_NULL, related_name='material_issues', verbose_name='تسک تولید')
+    defect = models.ForeignKey('product.ProductionDefect', null=True, blank=True,
+                               on_delete=models.SET_NULL, related_name='material_issues', verbose_name='گزارش خرابی')
+    raw_material = models.ForeignKey(RawMaterial, on_delete=models.PROTECT,
+                                     related_name='issues', verbose_name='ماده اولیه')
+    requested_quantity = models.DecimalField(max_digits=12, decimal_places=2, verbose_name='مقدار مورد نیاز')
+    issued_quantity = models.DecimalField(max_digits=12, decimal_places=2, default=0, verbose_name='مقدار تحویل شده')
+    purpose = models.CharField(max_length=20, choices=PURPOSE_CHOICES, default='production', verbose_name='علت درخواست')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='requested', verbose_name='وضعیت')
+    note = models.CharField(max_length=255, blank=True, verbose_name='یادداشت')
+    requested_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL,
+                                     related_name='requested_material_issues', verbose_name='درخواست کننده')
+    issued_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL,
+                                  related_name='issued_material_issues', verbose_name='تحویل دهنده')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='زمان درخواست')
+    issued_at = models.DateTimeField(null=True, blank=True, verbose_name='زمان تحویل')
+
+    class Meta:
+        verbose_name = 'درخواست تحویل مواد'
+        verbose_name_plural = 'درخواست‌های تحویل مواد'
+        ordering = ['status', '-created_at']
+
+    def __str__(self):
+        return f'{self.raw_material} - {self.requested_quantity} ({self.get_status_display()})'
+
+
 class PurchaseOrder(models.Model):
     STATUS_CHOICES = [
         ('draft', 'پیش‌نویس'),

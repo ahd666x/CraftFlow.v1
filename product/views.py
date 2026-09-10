@@ -57,6 +57,7 @@ import math
 from django.db import models
 
 import traceback  # ← اضافه کنید
+from decimal import Decimal
 
 # تمام توابع مورد نیاز از utils را وارد کنید
 from .utils import (
@@ -71,6 +72,79 @@ from .utils import (
     log_production_event,
 )
 logger = logging.getLogger(__name__)
+
+
+@login_required
+@admin_or_manager_required
+def production_defects(request):
+    """Single place to report damaged pieces and request replacement material."""
+    from inventory.models import RawMaterial, MaterialIssue
+
+    tasks = ProductionTask.objects.filter(status__in=['pending', 'waiting', 'done']).select_related(
+        'order', 'order_item__product', 'part'
+    ).order_by('-id')[:300]
+    if request.method == 'POST':
+        task = get_object_or_404(ProductionTask, pk=request.POST.get('task_id'))
+        quantity = int(request.POST.get('quantity', 0) or 0)
+        description = request.POST.get('description', '').strip()
+        if quantity < 1 or not description:
+            messages.error(request, 'مرحله، تعداد خراب و شرح خرابی الزامی است.')
+        else:
+            defect = ProductionDefect.objects.create(
+                task=task, order=task.order, order_item=task.order_item, part=task.part,
+                quantity=quantity, description=description, reported_by=request.user,
+            )
+            raw_id, replacement_quantity = request.POST.get('raw_material_id'), request.POST.get('replacement_quantity')
+            if raw_id and replacement_quantity:
+                try:
+                    replacement_quantity = Decimal(replacement_quantity)
+                    if replacement_quantity > 0:
+                        MaterialIssue.objects.create(
+                            task=task, defect=defect, raw_material_id=raw_id,
+                            requested_quantity=replacement_quantity, purpose='rework',
+                            requested_by=request.user, note=f'ساخت مجدد برای خرابی #{defect.id}'
+                        )
+                        defect.status = 'material_requested'
+                        defect.save(update_fields=['status'])
+                except (ValueError, ArithmeticError):
+                    messages.warning(request, 'خرابی ثبت شد، اما مقدار مواد جایگزین معتبر نبود.')
+            messages.success(request, 'خرابی ثبت شد. در صورت انتخاب ماده، درخواست آن در صف انبار قرار گرفت.')
+            return redirect('product_defects')
+
+    defects = ProductionDefect.objects.select_related('task', 'order', 'order_item__product', 'part', 'reported_by').prefetch_related(
+        'material_issues__raw_material'
+    )
+    return render(request, 'production_defects.html', {
+        'tasks': tasks, 'defects': defects, 'raw_materials': RawMaterial.objects.filter(is_active=True).order_by('name'),
+    })
+
+
+@login_required
+@staff_or_representative_required
+def report_fulfillment_status(request):
+    """Representative-centric view of complete, partial and unsent packed items."""
+    representative_id = request.GET.get('representative', '')
+    items = OrderItem.objects.select_related('order__user', 'order__customer', 'product').annotate(
+        total_units=Count('packaging_units', distinct=True),
+        packed_units=Count('packaging_units', filter=Q(packaging_units__is_packed=True), distinct=True),
+        shipped_units=Count('packaging_units', filter=Q(packaging_units__is_shipped=True), distinct=True),
+    ).order_by('order__user__username', 'order_id', 'product__name')
+    if representative_id:
+        items = items.filter(order__user_id=representative_id)
+    if not request.user.is_staff:
+        items = items.filter(order__user=request.user)
+
+    for item in items:
+        if item.total_units and item.shipped_units == item.total_units:
+            item.fulfillment_status, item.fulfillment_badge = 'ارسال کامل', 'success'
+        elif item.packed_units == item.total_units and item.total_units:
+            item.fulfillment_status, item.fulfillment_badge = 'بسته‌بندی کامل؛ آماده ارسال', 'primary'
+        else:
+            item.fulfillment_status, item.fulfillment_badge = 'ناقص در بسته‌بندی / ارسال', 'warning'
+    representatives = User.objects.filter(order__items__isnull=False).distinct().order_by('username') if request.user.is_staff else []
+    return render(request, 'reports/fulfillment_status.html', {
+        'items': items, 'representatives': representatives, 'selected_representative': representative_id,
+    })
 
 
 
@@ -3529,6 +3603,121 @@ def report_ready_to_ship(request):
         'representative_name': representative_name,
     }
     return render(request, 'reports/ready_to_ship.html', context)
+
+
+@login_required
+@admin_or_manager_required
+def delivery_list(request):
+    """لیست اقلام آماده تحویل بر اساس تکمیل نقاشی + بسته‌بندی"""
+    items = OrderItem.objects.filter(
+        paint_tasks__isnull=False
+    ).distinct().select_related(
+        'order__customer',
+        'order__user',
+        'product__category'
+    ).prefetch_related(
+        'paint_tasks__painting_stage',
+        'packaging_units',
+        'ordercolor'
+    )
+
+    ready_items = []
+    for item in items:
+        if item.is_ready_for_delivery:
+            ready_items.append({
+                'item': item,
+                'order': item.order,
+                'product': item.product,
+                'paint_done': item.paint_tasks.filter(status='done').count(),
+                'paint_total': item.paint_tasks.count(),
+                'packed': item.packaging_units.filter(is_packed=True).count(),
+                'total_units': item.packaging_units.count(),
+                'customer': item.order.customer,
+                'representative': item.order.user,
+            })
+
+    representative_ids = {r['representative'].id for r in ready_items if r['representative']}
+    representatives = User.objects.filter(id__in=representative_ids).distinct().order_by('username')
+
+    selected_representative = request.GET.get('representative')
+    if selected_representative:
+        ready_items = [r for r in ready_items if r['representative'] and r['representative'].id == int(selected_representative)]
+
+    context = {
+        'ready_items': ready_items,
+        'representatives': representatives,
+        'selected_representative': selected_representative or '',
+    }
+    return render(request, 'delivery/delivery_list.html', context)
+
+
+@login_required
+@admin_or_manager_required
+def delivery_confirm(request, item_id):
+    """ثبت تحویل یک آیتم با تعیین مسیول و یادداشت"""
+    item = get_object_or_404(OrderItem, pk=item_id)
+
+    if not item.is_ready_for_delivery:
+        messages.error(request, 'این آیتم هنوز برای تحویل آماده نیست.')
+        return redirect('delivery_list')
+
+    if request.method == 'POST':
+        delivery_person_id = request.POST.get('delivery_person')
+        notes = request.POST.get('notes', '').strip()
+        plate = request.POST.get('plate', '').strip()
+
+        if not delivery_person_id:
+            messages.error(request, 'لطفاً مسیول تحویل را انتخاب کنید.')
+            users = User.objects.filter(is_staff=True).order_by('username')
+            context = {
+                'item': item,
+                'users': users,
+                'selected_representative': request.POST.get('representative', ''),
+            }
+            return render(request, 'delivery/delivery_confirm.html', context)
+
+        delivery_person = get_object_or_404(User, pk=delivery_person_id)
+
+        units = item.packaging_units.filter(is_packed=True, is_shipped=False)
+        with transaction.atomic():
+            for unit in units:
+                unit.is_shipped = True
+                unit.shipped_at = timezone.now()
+                unit.shipped_by = delivery_person
+                unit.save()
+
+                ShipmentLog.objects.create(
+                    packaging_unit=unit,
+                    plate_number=plate,
+                    shipped_by=delivery_person,
+                    delivery_notes=notes,
+                )
+
+            try:
+                from .utils import log_production_event
+                task = item.paint_tasks.filter(status='done').first()
+                log_production_event(
+                    task=task,
+                    event_type='done',
+                    user=delivery_person,
+                    new_status='shipped',
+                    quantity=item.quantity,
+                )
+            except Exception:
+                pass
+
+        messages.success(request, f'✅ تحویل {units.count()} واحد از آیتم {item.id} ثبت شد.')
+        selected_representative = request.POST.get('representative', '')
+        if selected_representative:
+            return redirect(f"{reverse('delivery_list')}?representative={selected_representative}")
+        return redirect('delivery_list')
+
+    users = User.objects.filter(is_staff=True).order_by('username')
+    context = {
+        'item': item,
+        'users': users,
+    }
+    return render(request, 'delivery/delivery_confirm.html', context)
 
 
 

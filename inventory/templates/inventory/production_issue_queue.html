@@ -1,0 +1,36 @@
+{% extends "inventory/base.html" %}
+{% block title %}صف تحویل مواد به تولید{% endblock %}
+
+{% block inventory_content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+  <div><h1 class="h3 mb-1">صف تحویل مواد به تولید</h1><p class="text-muted mb-0">برنامه تولید ← درخواست مواد ← تأیید تحویل انبار</p></div>
+  <a href="{% url 'product_defects' %}" class="btn btn-outline-danger"><i class="bi bi-exclamation-octagon"></i> ثبت و پیگیری خرابی‌ها</a>
+</div>
+
+<div class="card-modern">
+  <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="bi bi-calendar2-check"></i> نیازهای جدید از فرمول ساخت</span>
+    <form method="get" class="d-flex gap-2 align-items-center"><label class="small text-muted">مرحله</label><select class="form-select form-select-sm" name="station" onchange="this.form.submit()"><option value="">همه مراحل</option>{% for value,label in stations %}<option value="{{ value }}" {% if station == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></form>
+  </div>
+  <div class="card-body p-0"><div class="table-responsive"><table class="table align-middle mb-0">
+    <thead class="table-light"><tr><th>سفارش / کالا</th><th>مرحله</th><th>ماده اولیه</th><th>نیاز فرمول</th><th></th></tr></thead>
+    <tbody>{% for row in requirements %}<tr>
+      <td><strong>#{{ row.task.order_id }}</strong> — {{ row.task.order_item.product.name|default:row.task.part }}</td>
+      <td>{{ row.task.get_station_name_display }}</td><td>{{ row.raw_material.name }}</td><td>{{ row.quantity }} {{ row.raw_material.get_unit_display }}</td>
+      <td><form method="post">{% csrf_token %}<input type="hidden" name="action" value="request"><input type="hidden" name="task_id" value="{{ row.task.id }}"><input type="hidden" name="raw_material_id" value="{{ row.raw_material.id }}"><input type="hidden" name="quantity" value="{{ row.quantity }}"><button class="btn btn-sm btn-primary">افزودن به صف</button></form></td>
+    </tr>{% empty %}<tr><td colspan="5" class="text-center text-muted py-4">نیاز جدیدی با فرمول متصل به انبار پیدا نشد.</td></tr>{% endfor %}</tbody>
+  </table></div></div>
+</div>
+
+<div class="card-modern">
+  <div class="card-header"><i class="bi bi-box-arrow-left"></i> درخواست‌های منتظر تحویل انبار</div>
+  <div class="card-body p-0"><div class="table-responsive"><table class="table align-middle mb-0">
+    <thead class="table-light"><tr><th>منشأ</th><th>ماده اولیه</th><th>مقدار درخواستی</th><th>موجودی</th><th>علت</th><th>ثبت تحویل</th></tr></thead>
+    <tbody>{% for issue in issues %}<tr>
+      <td>{% if issue.defect %}<span class="badge bg-danger">خرابی سفارش #{{ issue.defect.order_id }}</span><div class="small text-muted">{{ issue.defect.part|default:"قطعه ثبت‌نشده" }}</div>{% else %}<strong>سفارش #{{ issue.task.order_id }}</strong><div class="small text-muted">{{ issue.task.order_item.product.name|default:issue.task.part }}</div>{% endif %}</td>
+      <td>{{ issue.raw_material.name }}</td><td>{{ issue.issued_quantity }} از {{ issue.requested_quantity }} {{ issue.raw_material.get_unit_display }}</td><td>{{ issue.raw_material.current_stock }}</td><td>{{ issue.get_purpose_display }}</td>
+      <td><form class="d-flex gap-1" method="post" action="{% url 'inventory:issue_material' issue.id %}">{% csrf_token %}<input class="form-control form-control-sm" style="max-width:100px" name="quantity" type="number" min="0.01" max="{{ issue.requested_quantity|add:'-'|add:issue.issued_quantity }}" step="0.01" value="{{ issue.requested_quantity|add:'-'|add:issue.issued_quantity }}"><button class="btn btn-sm btn-success">ثبت تحویل</button></form></td>
+    </tr>{% empty %}<tr><td colspan="6" class="text-center text-muted py-4">درخواستی در انتظار تحویل نیست.</td></tr>{% endfor %}</tbody>
+  </table></div></div>
+</div>
+{% endblock %}

@@ -10,12 +10,14 @@ from django.http import JsonResponse, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, render, redirect
 from django.template.loader import render_to_string
 from django.db.transaction import atomic
+from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 
 from product.decorators import admin_or_manager_required
 from .models import (
     Supplier, RawMaterialCategory, RawMaterial,
     StockMovement, PurchaseOrder, PurchaseOrderItem
+    , MaterialIssue
 )
 from .forms import (
     SupplierForm, RawMaterialCategoryForm, RawMaterialForm,
@@ -57,6 +59,7 @@ def inventory_dashboard(request):
     ).order_by('-created_at')[:10]
 
     pending_orders = PurchaseOrder.objects.filter(status__in=['draft', 'ordered']).count()
+    pending_issues = MaterialIssue.objects.filter(status='requested').count()
 
     context = {
         **_inventory_context('dashboard'),
@@ -65,8 +68,109 @@ def inventory_dashboard(request):
         'low_stock': low_stock,
         'recent_movements': recent_movements,
         'pending_orders': pending_orders,
+        'pending_issues': pending_issues,
     }
     return render(request, 'inventory/dashboard.html', context)
+
+
+# ============================================================
+# Production material hand-over
+# ============================================================
+
+def _task_material_requirements(task):
+    """Return BOM-derived material rows for one task, including painting tasks."""
+    rows = []
+    if task.part_id and task.part.material.raw_material_id:
+        material = task.part.material
+        return [(material.raw_material, Decimal(task.quantity) * material.consumption_per_unit)]
+
+    if not task.order_item_id:
+        return rows
+    bom = task.order_item.product.bom.select_related('part__material__raw_material')
+    if task.color_part:
+        bom = bom.filter(color_part=task.color_part)
+    for entry in bom:
+        raw = entry.part.material.raw_material
+        if raw:
+            rows.append((raw, Decimal(task.quantity) * entry.quantity * entry.part.material.consumption_per_unit))
+    return rows
+
+
+@login_required
+@admin_or_manager_required
+def production_issue_queue(request):
+    """A warehouse-first queue: one line is one material required by one production task."""
+    from product.models import ProductionTask
+
+    if request.method == 'POST' and request.POST.get('action') == 'request':
+        task = get_object_or_404(ProductionTask, pk=request.POST.get('task_id'))
+        raw = get_object_or_404(RawMaterial, pk=request.POST.get('raw_material_id'))
+        quantity = Decimal(request.POST.get('quantity', '0'))
+        if quantity <= 0:
+            messages.error(request, 'مقدار درخواست باید بزرگ‌تر از صفر باشد.')
+        else:
+            issue, created = MaterialIssue.objects.get_or_create(
+                task=task, raw_material=raw, purpose='production', status='requested',
+                defaults={'requested_quantity': quantity, 'requested_by': request.user,
+                          'note': f'نیاز برنامه تولید: سفارش {task.order_id}'}
+            )
+            messages.success(request, 'درخواست تحویل مواد ثبت شد.' if created else 'این درخواست پیش‌تر در صف انبار ثبت شده است.')
+        return redirect('inventory:production_issue_queue')
+
+    station = request.GET.get('station', 'paint')
+    tasks = ProductionTask.objects.filter(status__in=['pending', 'waiting']).select_related(
+        'order', 'order_item__product', 'part__material__raw_material'
+    ).order_by('scheduled_start', 'order_id')
+    if station:
+        tasks = tasks.filter(station_name=station)
+
+    existing = {(issue.task_id, issue.raw_material_id) for issue in MaterialIssue.objects.exclude(status='cancelled')}
+    requirements = []
+    for task in tasks:
+        for raw, quantity in _task_material_requirements(task):
+            if (task.id, raw.id) not in existing:
+                requirements.append({'task': task, 'raw_material': raw, 'quantity': quantity})
+
+    issues = MaterialIssue.objects.filter(status__in=['requested', 'partial']).select_related(
+        'raw_material', 'task__order', 'task__order_item__product', 'defect__order', 'defect__part'
+    )
+    return render(request, 'inventory/production_issue_queue.html', {
+        **_inventory_context('production_queue'), 'requirements': requirements, 'issues': issues,
+        'station': station, 'stations': ProductionTask.STATION_CHOICES,
+    })
+
+
+@login_required
+@admin_or_manager_required
+@require_http_methods(['POST'])
+def issue_material(request, issue_id):
+    """Confirm hand-over and create the inventory consumption record in the same transaction."""
+    with atomic():
+        issue = get_object_or_404(MaterialIssue.objects.select_for_update().select_related('raw_material'), pk=issue_id)
+        quantity = Decimal(request.POST.get('quantity', str(issue.requested_quantity)))
+        remaining = issue.requested_quantity - issue.issued_quantity
+        if issue.status not in ['requested', 'partial']:
+            messages.error(request, 'این درخواست قبلاً تعیین تکلیف شده است.')
+        elif quantity <= 0 or quantity > remaining:
+            messages.error(request, 'مقدار تحویل باید بین صفر و مانده درخواست باشد.')
+        elif issue.raw_material.current_stock < quantity:
+            messages.error(request, f'موجودی کافی نیست. موجودی فعلی: {issue.raw_material.current_stock}')
+        else:
+            StockMovement.objects.create(
+                raw_material=issue.raw_material, movement_type='consumption', quantity=quantity,
+                reference_task=issue.task, created_by=request.user,
+                note=f'تحویل انبار #{issue.id} — {issue.get_purpose_display()}'
+            )
+            issue.issued_quantity += quantity
+            issue.status = 'issued' if issue.issued_quantity >= issue.requested_quantity else 'partial'
+            issue.issued_by = request.user
+            issue.issued_at = timezone.now()
+            issue.save(update_fields=['issued_quantity', 'status', 'issued_by', 'issued_at'])
+            if issue.defect_id and issue.status == 'issued':
+                issue.defect.status = 'rework_issued'
+                issue.defect.save(update_fields=['status'])
+            messages.success(request, 'تحویل مواد و خروج انبار ثبت شد.')
+    return redirect('inventory:production_issue_queue')
 
 
 # ============================================================

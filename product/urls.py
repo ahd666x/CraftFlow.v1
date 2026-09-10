@@ -58,6 +58,7 @@ urlpatterns = [
 
     path('reports/shipped/', views.report_shipped, name='report_shipped'),
     path('reports/ready-to-ship/', views.report_ready_to_ship, name='report_ready_to_ship'),
+    path('reports/fulfillment-status/', views.report_fulfillment_status, name='report_fulfillment_status'),
     # path('reports/shipped/print/', views.delivery_note_print, name='delivery_note_print'),
 
     
@@ -67,6 +68,7 @@ urlpatterns = [
     path('reports/production-unified/', views.report_production_unified, name='report_production_unified'),
     path('reports/workers/', views.report_workers, name='report_workers'),
     path('reports/delayed/', views.delayed_orders, name='report_delayed'),
+    path('production/defects/', views.production_defects, name='product_defects'),
 
     path('upload/', views.upload_form, name='upload_form'),
 
@@ -186,8 +188,8 @@ urlpatterns = [
     path('customer/shipments/', views.customer_shipments, name='customer_shipments'),
     path('customer/shipments/<str:plate>/<str:date>/', views.customer_shipment_detail, name='customer_shipment_detail'),
 
+    path('delivery/', views.delivery_list, name='delivery_list'),
+    path('delivery/confirm/<int:item_id>/', views.delivery_confirm, name='delivery_confirm'),
 
 ]
-
-
 
