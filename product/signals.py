@@ -1,27 +1,27 @@
 # signals.py
 import logging
 from io import BytesIO
+
 from django.conf import settings
 from django.core.files.base import ContentFile
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.urls import reverse
 import qrcode
-from .models import OrderItem , PackagingUnit
-#تست
+
+from .models import OrderItem, PackagingUnit
+
 logger = logging.getLogger(__name__)
 
 barcodurl = 'https://selvichoob.ir'
-#11
+
 
 @receiver(post_save, sender=OrderItem)
 def generate_qr_code(sender, instance, created, **kwargs):
     """تولید QR فقط در زمان ایجاد آیتم و فقط حاوی لینک اسکن"""
     if created and not instance.qr_code:
         try:
-            # ساخت URL اسکن
             relative_url = reverse('scan_qr', args=[instance.id])
-            # دریافت base URL از settings (در صورت وجود) وگرنه مقدار پیش‌فرض
             base_url = getattr(settings, 'SCAN_BASE_URL', barcodurl)
             full_url = f"{base_url.rstrip('/')}{relative_url}"
 
@@ -41,54 +41,15 @@ def generate_qr_code(sender, instance, created, **kwargs):
             logger.error(f"QR generation failed: {e}")
 
 
-
-
-@receiver(post_save, sender=OrderItem)
-def create_packaging_units(sender, instance, created, **kwargs):
-    if created and instance.quantity > 0:
-        base_url = getattr(settings, 'SCAN_BASE_URL', barcodurl)
-        for i in range(1, instance.quantity + 1):
-            qr_data = f"{base_url.rstrip('/')}{reverse('scan_packaging_unit', args=[0])}"  # placeholder
-            # چون id هنوز مشخص نیست، بهتر است بعد از ذخیره اولیه یک بار دیگر save کنیم یا از post_save با if created استفاده کنیم.
-            # راه بهتر: بعد از ایجاد OrderItem (در همان سیگنال) مستقیماً PackagingUnit را می‌سازیم.
-            # اما برای سادگی، می‌توانیم سیگنال جداگانه‌ای روی PackagingUnit بگذاریم.
-
-
-
-
-
-
-from django.db.models.signals import post_save
-from django.dispatch import receiver
-from django.conf import settings
-from django.urls import reverse
-from django.core.files.base import ContentFile
-import qrcode
-from io import BytesIO
-
-from django.db.models.signals import post_save
-from django.dispatch import receiver
-from django.conf import settings
-from django.urls import reverse
-from django.core.files.base import ContentFile
-import qrcode
-from io import BytesIO
-from .models import OrderItem, PackagingUnit
-
-
-
-
-
 @receiver(post_save, sender=OrderItem)
 def generate_packaging_qr_codes(sender, instance, created, **kwargs):
     if created and instance.quantity > 0:
-        base_url = getattr(settings, 'SCAN_BASE_URL',barcodurl )
+        base_url = getattr(settings, 'SCAN_BASE_URL', barcodurl)
         for i in range(1, instance.quantity + 1):
             unit = PackagingUnit.objects.create(
                 order_item=instance,
                 unit_number=i
             )
-            # آدرس اسکن با پارامتر next برای بازگشت به صفحه آیتم
             scan_url = reverse('scan_packaging_unit', args=[unit.id])
             full_url = f"{base_url.rstrip('/')}{scan_url}?next={reverse('item_detail', args=[instance.id])}"
             qr = qrcode.make(full_url, box_size=10, border=4)
@@ -96,9 +57,3 @@ def generate_packaging_qr_codes(sender, instance, created, **kwargs):
             qr.save(buffer, format='PNG')
             filename = f"pack_qr_order_{instance.order.id}_item_{instance.id}_unit_{i}.png"
             unit.qr_code.save(filename, ContentFile(buffer.getvalue()), save=True)
-
-
-
-
-
-

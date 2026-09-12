@@ -1,0 +1,39 @@
+{% load static %}
+{# Standard modal component — reusable across all panels #}
+{# Usage: {% include 'components/_modal.html' with id="myModal" title="عنوان" size="lg" closable=true %} #}
+<div class="modal fade" id="{{ id }}" tabindex="-1"
+    {% if not static_backdrop %}{% else %}data-bs-backdrop="static"{% endif %}>
+    <div class="modal-dialog{% if size == 'lg' %} modal-lg{% elif size == 'xl' %} modal-xl{% elif size == 'sm' %} modal-sm{% endif %}">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="{{ id }}-title">{{ title }}</h5>
+                {% if closable %}
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="بستن"></button>
+                {% endif %}
+            </div>
+            {% block modal_body %}
+            <div class="modal-body" id="{{ id }}-body">
+                {% block modal_body_content %}{% endblock %}
+            </div>
+            {% endblock %}
+            {% if footer %}
+            <div class="modal-footer" id="{{ id }}-footer">
+                {{ footer|safe }}
+            </div>
+            {% else %}
+            {% block modal_footer %}
+            {% if submit_text or cancel_text %}
+            <div class="modal-footer">
+                {% if cancel_text %}
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ cancel_text }}</button>
+                {% endif %}
+                {% if submit_text %}
+                <button type="submit" class="btn btn-primary">{{ submit_text }}</button>
+                {% endif %}
+            </div>
+            {% endif %}
+            {% endblock %}
+            {% endif %}
+        </div>
+    </div>
+</div>

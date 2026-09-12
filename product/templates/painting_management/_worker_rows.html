@@ -11,8 +11,8 @@
         {% endfor %}
     </td>
     <td>
-        {% if worker.skill_costs %}
-        <code class="small">{{ worker.skill_costs|format_costs }}</code>
+        {% if worker.skill_priority %}
+        <code class="small">{{ worker.skill_priority|format_costs }}</code>
         {% else %}
         <span class="text-muted">-</span>
         {% endif %}

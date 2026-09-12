@@ -1,0 +1,260 @@
+/* ======================================================================
+   design-system.css — سلوی چوب (CraftFlow)
+   Design tokens, status badges, and shared component classes.
+   Extends selvi-ui.css — included in _base_shell.html.
+   ====================================================================== */
+
+/* ── Status badge color variables (standardized) ────────────────────── */
+:root {
+    /* Order lifecycle statuses */
+    --status-draft-color:       #6b728b; /* gray */
+    --status-draft-bg:          #f3f4f6;
+    --status-planned-color:     #0891b2; /* teal */
+    --status-planned-bg:        #cffafe;
+    --status-producing-color:  #92400e; /* amber */
+    --status-producing-bg:     #fef3c7;
+    --status-completed-color:   #15803d; /* green */
+    --status-completed-bg:      #dcfce7;
+    --status-shipped-color:     #1d4ed8; /* blue */
+    --status-shipped-bg:        #dbeafe;
+
+    /* Task statuses */
+    --status-pending-color:     #92400e; /* amber */
+    --status-pending-bg:        #fef3c7;
+    --status-waiting-color:     #7c3aed; /* violet */
+    --status-waiting-bg:       #ede9fe;
+    --status-done-color:        #15803d; /* green */
+    --status-done-bg:           #dcfce7;
+
+    /* Packing / fulfillment */
+    --status-packed-color:      #1d4ed8; /* blue */
+    --status-packed-bg:         #dbeafe;
+    --status-shipping-color:    #0891b2; /* teal */
+    --status-shipping-bg:       #cffafe;
+    --status-ready-color:       #15803d; /* green */
+    --status-ready-bg:          #dcfce7;
+
+    /* Inventory / stock */
+    --status-low-stock-color:   #dc2626; /* red */
+    --status-low-stock-bg:      #fee2e2;
+    --status-out-of-stock-color: #7f1d1d;
+    --status-out-of-stock-bg:   #fecaca;
+
+    /* Worker states */
+    --status-active-color:      #15803d;
+    --status-active-bg:         #dcfce7;
+    --status-inactive-color:    #6b728b;
+    --status-inactive-bg:       #f3f4f6;
+
+    /* Severity levels */
+    --severity-error-color:     #dc2626;
+    --severity-error-bg:        #fee2e2;
+    --severity-warning-color:   #92400e;
+    --severity-warning-bg:      #fef3c7;
+    --severity-info-color:      #0891b2;
+    --severity-info-bg:         #cffafe;
+    --severity-success-color:   #15803d;
+    --severity-success-bg:      #dcfce7;
+}
+
+/* ── Standardized badge classes ── */
+.badge-status {
+    font-size: 0.75rem;
+    font-weight: 500;
+    padding: 0.35rem 0.7rem;
+    border-radius: 9999px;
+    white-space: nowrap;
+}
+.badge-status.draft       { background: var(--status-draft-bg);      color: var(--status-draft-color); }
+.badge-status.planned     { background: var(--status-planned-bg);    color: var(--status-planned-color); }
+.badge-status.producing   { background: var(--status-producing-bg);  color: var(--status-producing-color); }
+.badge-status.completed   { background: var(--status-completed-bg);  color: var(--status-completed-color); }
+.badge-status.shipped     { background: var(--status-shipped-bg);      color: var(--status-shipped-color); }
+.badge-status.packing    { background: var(--status-packed-bg);      color: var(--status-packed-color); }
+.badge-status.in-transit { background: var(--status-shipping-bg);     color: var(--status-shipping-color); }
+.badge-status.ready      { background: var(--status-ready-bg);        color: var(--status-ready-color); }
+.badge-status.pending     { background: var(--status-pending-bg);     color: var(--status-pending-color); }
+.badge-status.waiting     { background: var(--status-waiting-bg);     color: var(--status-waiting-color); }
+.badge-status.done        { background: var(--status-done-bg);        color: var(--status-done-color); }
+
+/* Legacy CSS used by admin_tasks_management.html */
+.status-badge {
+    font-size: 0.72rem;
+    padding: 0.2rem 0.6rem;
+    border-radius: 20px;
+    white-space: nowrap;
+    font-weight: 500;
+}
+.status-badge.waiting { background: var(--status-waiting-bg); color: var(--status-waiting-color); }
+.status-badge.pending { background: var(--status-pending-bg); color: var(--status-pending-color); }
+.status-badge.done    { background: var(--status-done-bg);    color: var(--status-done-color); }
+
+/* ── Spacing tokens ── */
+:root {
+    --space-3xl: 3rem;
+    --space-2xl: 2rem;
+    --space-xl:  1.5rem;
+    --space-lg:  1.25rem;
+    --space-md:  1rem;
+    --space-sm:  0.75rem;
+    --space-xs:  0.5rem;
+    --space-2xs: 0.25rem;
+}
+
+/* ── Border radius tokens ── */
+:root {
+    --radius-sm:    4px;
+    --radius-md:    8px;
+    --radius-lg:    12px;
+    --radius-xl:    16px;
+    --radius-2xl:   18px;
+    --radius-pill:  9999px;
+}
+
+/* ── Shadow tokens ── */
+:root {
+    --shadow-xs:    0 1px 2px rgba(0,0,0,0.05);
+    --shadow-sm:    0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06);
+    --shadow-md:    0 4px 6px rgba(0,0,0,0.1);
+    --shadow-lg:    0 10px 15px rgba(0,0,0,0.1);
+    --shadow-xl:    0 20px 25px rgba(0,0,0,0.15);
+    --shadow-card:  0 4px 24px rgba(0,0,0,0.04);
+    --shadow-nav:   0 2px 12px rgba(15,23,42,0.04);
+}
+
+/* ── Consolidated card-modern (shared across painting & inventory) ── */
+.card-modern {
+    background: var(--surface-bg, #fff);
+    border-radius: var(--radius-2xl, 18px);
+    border: none;
+    box-shadow: var(--shadow-card, 0 4px 24px rgba(0,0,0,0.04));
+    transition: all 0.25s ease;
+    margin-bottom: 1.5rem;
+}
+.card-modern .card-header {
+    background: transparent;
+    border-bottom: 1px solid var(--brand-border, #e2e8f0);
+    padding: 16px 20px;
+    font-weight: 600;
+    font-size: 1rem;
+}
+.card-modern .card-body {
+    padding: 20px;
+}
+
+/* ── Empty state ── */
+.empty-state {
+    text-align: center;
+    padding: 3rem 1.5rem;
+    color: var(--brand-text-muted, #64748b);
+}
+.empty-state .empty-icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    opacity: 0.4;
+}
+.empty-state p {
+    font-size: 0.9rem;
+    margin-bottom: 0;
+}
+
+/* ── Toast notifications ── */
+#toast-container {
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    z-index: 1080;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+.toast {
+    min-width: 250px;
+    border-radius: var(--radius-lg, 12px);
+    border: none;
+    box-shadow: var(--shadow-lg, 0 10px 15px rgba(0,0,0,0.1));
+}
+.toast.align-items-center {
+    min-height: 48px;
+}
+
+/* ── Loading spinner overlay ── */
+.loading-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(255,255,255,0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1070;
+    backdrop-filter: blur(2px);
+}
+.loading-spinner {
+    display: inline-block;
+    width: 2rem;
+    height: 2rem;
+    border: 3px solid rgba(0,0,0,0.1);
+    border-top-color: var(--brand-accent, #3b82f6);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ── Form errors ── */
+.form-control.is-invalid {
+    border-color: var(--severity-error-color, #dc2626);
+}
+.field-error {
+    color: var(--severity-error-color, #dc2626);
+    font-size: 0.8rem;
+    margin-top: 0.25rem;
+}
+
+/* ── Breadcrumb ── */
+.breadcrumb-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 0;
+    font-size: 0.85rem;
+    color: var(--brand-text-muted, #64748b);
+    margin-bottom: 1rem;
+}
+.breadcrumb-bar a {
+    color: var(--brand-accent, #3b82f6);
+    text-decoration: none;
+    font-weight: 500;
+}
+.breadcrumb-bar a:hover {
+    text-decoration: underline;
+}
+.breadcrumb-bar .breadcrumb-separator {
+    color: var(--brand-border, #e2e8f0);
+}
+.breadcrumb-bar .breadcrumb-current {
+    color: var(--brand-text, #1e293b);
+    font-weight: 600;
+}
+
+/* ── BOM table styles (used in product_create.html) ── */
+.bom-table th, .bom-table td { vertical-align: middle; }
+.part-cell { display: flex; align-items: center; gap: 5px; }
+.part-name { font-size: 0.9rem; }
+
+/* ── Panel body styling (shared by painting & inventory) ── */
+.painting-panel,
+.inventory-panel {
+    background: #f1f5f9;
+    font-family: 'Vazirmatn', 'Segoe UI', Tahoma, sans-serif;
+    padding: 20px 30px;
+}
+
+/* ── Button color standardization ── */
+.btn-primary, .btn-success, .btn-danger, .btn-warning, .btn-info, .btn-secondary {
+    border-radius: var(--radius-lg, 12px);
+    font-weight: 500;
+    font-size: 0.875rem;
+    transition: all 0.2s ease;
+}

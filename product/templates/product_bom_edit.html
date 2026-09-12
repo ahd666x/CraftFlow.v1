@@ -5,34 +5,39 @@
 
 {% block extra_css %}
 <style>
-    .form-control-sm, .form-select-sm { font-size: 0.8rem; }
-    .table th, .table td { vertical-align: middle; }
-    .errorlist { color: #dc3545; list-style: none; padding: 0; margin: 0; }
+    .bom-table th, .bom-table td { vertical-align: middle; }
+    .part-cell { display: flex; align-items: center; gap: 5px; }
+    .part-name { font-size: 0.9rem; }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="container-fluid py-4">
-    <h2 class="mb-4"><i class="bi bi-diagram-3"></i> ویرایش  «{{ product }}»</h2>
+    <h2 class="mb-4">
+        <i class="bi bi-diagram-3"></i>
+        ویرایش فرمول ساخت «{{ product }}»
+    </h2>
 
     {% if messages %}
         {% for msg in messages %}
-            <div class="alert alert-{{ msg.tags }}">{{ msg }}</div>
+            <div class="alert alert-{{ msg.tags }} alert-dismissible fade show" role="alert">
+                {{ msg }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
         {% endfor %}
     {% endif %}
 
     <form method="post" id="main-form">
         {% csrf_token %}
 
-        <!-- ========== بخش قطعات (Part) ========== -->
-        <div class="card mb-4 shadow-sm">
+        <div class="card card-modern mb-4">
             <div class="card-header bg-dark text-white">
                 <h5 class="mb-0">۱. اطلاعات قطعات</h5>
             </div>
             <div class="card-body p-0">
                 {{ part_formset.management_form }}
                 <div class="table-responsive">
-                    <table class="table table-bordered table-sm mb-0">
+                    <table class="table table-bordered table-sm mb-0 bom-table">
                         <thead class="table-secondary">
                             <tr>
                                 <th>نام قطعه</th>
@@ -55,7 +60,7 @@
                         <tbody>
                             {% for part_form in part_formset %}
                                 {% if part_form.errors %}
-                                <tr><td colspan="13" class="errorlist">{{ part_form.errors }}</td></tr>
+                                    <tr><td colspan="15" class="errorlist">{{ part_form.errors }}</td></tr>
                                 {% endif %}
                                 <tr>
                                     {{ part_form.id }}
@@ -63,8 +68,8 @@
                                     <td>{{ part_form.material }}</td>
                                     <td>{{ part_form.length }}</td>
                                     <td>{{ part_form.width }}</td>
-                                    <td >{{ part_form.grain }}</td>
-                                    <td >{{ part_form.pname }}</td>
+                                    <td>{{ part_form.grain }}</td>
+                                    <td>{{ part_form.pname }}</td>
                                     <td class="text-center">{{ part_form.turn }}</td>
                                     <td>{{ part_form.f26 }}</td>
                                     <td>{{ part_form.f18 }}</td>
@@ -76,7 +81,7 @@
                                     <td>{{ part_form.base_part }}</td>
                                 </tr>
                             {% empty %}
-                                <tr><td colspan="13" class="text-center text-muted">هیچ قطعه‌ای تعریف نشده است.</td></tr>
+                                <tr><td colspan="15" class="text-center text-muted">هیچ قطعه‌ای تعریف نشده است.</td></tr>
                             {% endfor %}
                         </tbody>
                     </table>
@@ -84,22 +89,21 @@
             </div>
         </div>
 
-        <!-- ========== بخش BOM ========== -->
-        <div class="card mb-4 shadow-sm">
+        <div class="card card-modern mb-4">
             <div class="card-header bg-primary text-white">
-                <h5 class="mb-0">۲. تنظیمات BOM</h5>
+                <h5 class="mb-0">۲. تنظیمات BOM (فرمول ساخت)</h5>
             </div>
             <div class="card-body p-0">
                 {{ bom_formset.management_form }}
                 <div class="table-responsive">
-                    <table class="table table-bordered table-sm mb-0" id="bom-table">
+                    <table class="table table-bordered table-sm mb-0 bom-table" id="bom-table" data-url-create-part="{% url 'ajax_create_part' %}">
                         <thead class="table-secondary">
                             <tr>
                                 <th>قطعه (انتخاب)</th>
                                 <th>تعداد</th>
                                 <th>بخش رنگی</th>
                                 <th>تغییر متریال</th>
-                                <!-- <th>نگاشت رنگ (JSON)</th> -->
+                                <th>نگاشت رنگ به متریال</th>
                                 <th>تأثیر اندازه</th>
                                 <th>قانون تغییر اندازه</th>
                                 <th>حذف</th>
@@ -108,15 +112,33 @@
                         <tbody id="bom-rows">
                             {% for bom_form in bom_formset %}
                                 {% if bom_form.errors %}
-                                <tr><td colspan="8" class="errorlist">{{ bom_form.errors }}</td></tr>
+                                    <tr><td colspan="8" class="errorlist">{{ bom_form.errors }}</td></tr>
                                 {% endif %}
-                                <tr>
+                                <tr class="bom-row" data-part-id="{{ bom_form.instance.part_id|default:'' }}">
                                     {{ bom_form.id }}
-                                    <td>{{ bom_form.part }}</td>
+                                    <td class="part-cell">
+                                        <span class="part-name">
+                                            {% if bom_form.instance.pk and bom_form.instance.part %}
+                                                {{ bom_form.instance.part }}
+                                            {% else %}
+                                                قطعه‌ای انتخاب نشده
+                                            {% endif %}
+                                        </span>
+                                        {% if bom_form.instance.pk and bom_form.instance.part %}
+                                            <button type="button" class="btn btn-sm btn-outline-warning edit-part-btn" title="ویرایش قطعه">
+                                                <i class="bi bi-pencil"></i>
+                                            </button>
+                                        {% else %}
+                                            <button type="button" class="btn btn-sm btn-outline-success add-part-btn" title="ایجاد قطعه جدید">
+                                                <i class="bi bi-plus"></i>
+                                            </button>
+                                        {% endif %}
+                                        {{ bom_form.part }}
+                                    </td>
                                     <td>{{ bom_form.quantity }}</td>
                                     <td>{{ bom_form.color_part }}</td>
                                     <td class="text-center">{{ bom_form.allow_material_override }}</td>
-                                    <!-- <td>{{ bom_form.color_material_map }}</td> -->
+                                    <td>{{ bom_form.color_material_map }}</td>
                                     <td class="text-center">{{ bom_form.size_affected }}</td>
                                     <td>{{ bom_form.size_adjustment_rule }}</td>
                                     <td class="text-center">
@@ -146,43 +168,12 @@
     </form>
 </div>
 
-<script>
-document.getElementById('add-bom-row').addEventListener('click', function() {
-    const totalForms = document.getElementById('id_bom-TOTAL_FORMS');
-    const currentCount = parseInt(totalForms.value);
-    const tbody = document.getElementById('bom-rows');
-    // یک ردیف جدید بر اساس آخرین ردیف موجود کپی کن
-    const rows = tbody.querySelectorAll('tr:not(.errorlist)'); // ردیف‌های دارای فرم
-    let templateRow;
-    if (rows.length > 0) {
-        templateRow = rows[rows.length - 1].cloneNode(true);
-    } else {
-        // اگر هیچ ردیفی نبود، یک ردیف خالی دستی بسازیم
-        templateRow = document.createElement('tr');
-        templateRow.innerHTML = `
-            <td><select name="bom-${currentCount}-part" class="form-select form-select-sm" id="id_bom-${currentCount}-part"><option value="">---------</option></select></td>
-            <td><input type="number" name="bom-${currentCount}-quantity" value="1" class="form-control form-control-sm" id="id_bom-${currentCount}-quantity"></td>
-            <td><input type="text" name="bom-${currentCount}-color_part" class="form-control form-control-sm" id="id_bom-${currentCount}-color_part"></td>
-            <td class="text-center"><input type="checkbox" name="bom-${currentCount}-allow_material_override" id="id_bom-${currentCount}-allow_material_override"></td>
-            <td><textarea name="bom-${currentCount}-color_material_map" rows="2" class="form-control form-control-sm" id="id_bom-${currentCount}-color_material_map"></textarea></td>
-            <td class="text-center"><input type="checkbox" name="bom-${currentCount}-size_affected" id="id_bom-${currentCount}-size_affected"></td>
-            <td><input type="text" name="bom-${currentCount}-size_adjustment_rule" class="form-control form-control-sm" id="id_bom-${currentCount}-size_adjustment_rule"></td>
-            <td></td>
-        `;
-    }
-    // به‌روزرسانی name و id با ایندکس جدید
-    templateRow.querySelectorAll('input, select, textarea').forEach(el => {
-        el.name = el.name.replace(/bom-\d+/, `bom-${currentCount}`);
-        el.id = el.id.replace(/id_bom-\d+/, `id_bom-${currentCount}`);
-        // پاک کردن مقادیر (به‌جز select)
-        if (el.type === 'checkbox') el.checked = false;
-        else if (el.tagName === 'SELECT') el.selectedIndex = 0;
-        else el.value = '';
-    });
-    // حذف ستون حذف در صورت وجود
-    templateRow.querySelector('td:last-child').innerHTML = '';
-    tbody.appendChild(templateRow);
-    totalForms.value = currentCount + 1;
-});
-</script>
+{% include 'components/_modal.html' with id="partModal" title="ایجاد قطعه جدید" size="lg" closable=true %}
+{% block extra_js %}
+    <script>
+        // Pre-populate color_material_map textarea as JSON for editing
+        // (kept inline because it depends on Django form rendering)
+    </script>
+    <script src="{% static 'selvi/js/bom-editor.js' %}"></script>
+{% endblock %}
 {% endblock %}

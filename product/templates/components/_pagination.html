@@ -1,0 +1,48 @@
+{% load static %}
+{# Simple pagination component — reusable across panels #}
+{# Usage: {% include 'components/_pagination.html' with page_obj=workers param_name='page' %} #}
+{% if page_obj and page_obj.has_other_pages %}
+<nav aria-label="نقشه صفحات">
+    <ul class="pagination justify-content-center">
+        {% if page_obj.has_previous %}
+        <li class="page-item">
+            <a class="page-link"
+               href="?{{ param_name }}={{ page_obj.previous_page_number }}{% if request.GET.urlencode %}{% if request.GET.urlencode != '' %}&{{ request.GET.urlencode }}{% endif %}{% endif %}"
+               aria-label="صفحه قبلی">
+                <span aria-hidden="true">&laquo;</span>
+            </a>
+        </li>
+        {% else %}
+        <li class="page-item disabled">
+            <span class="page-link" aria-hidden="true">&laquo;</span>
+        </li>
+        {% endif %}
+
+        {% for num in page_obj.paginator.page_range %}
+            {% if page_obj.number == num %}
+            <li class="page-item active" aria-current="page">
+                <span class="page-link">{{ num }}</span>
+            </li>
+            {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+            <li class="page-item">
+                <a class="page-link" href="?{{ param_name }}={{ num }}{% if request.GET.tag %>&tag={{ request.GET.tag }}{% endif %}">{{ num }}</a>
+            </li>
+            {% endif %}
+        {% endfor %}
+
+        {% if page_obj.has_next %}
+        <li class="page-item">
+            <a class="page-link"
+               href="?{{ param_name }}={{ page_obj.next_page_number }}{% if request.GET.urlencode %}{% if request.GET.urlencode != '' %}&{{ request.GET.urlencode }}{% endif %}{% endif %}"
+               aria-label="صفحه بعدی">
+                <span aria-hidden="true">&raquo;</span>
+            </a>
+        </li>
+        {% else %}
+        <li class="page-item disabled">
+            <span class="page-link" aria-hidden="true">&raquo;</span>
+        </li>
+        {% endif %}
+    </ul>
+</nav>
+{% endif %}

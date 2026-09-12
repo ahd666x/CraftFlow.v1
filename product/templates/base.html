@@ -1,137 +1,83 @@
+{% extends "_base_shell.html" %}
 {% load static %}
-<!DOCTYPE html>
-<html lang="fa" dir="rtl">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}سلوی چوب{% endblock %}</title>
 
-    <!-- Bootstrap RTL -->
-    <link rel="stylesheet" href="{% static 'selvi/css/bootstrap.rtl.min.css' %}">
-    <!-- Bootstrap Icons -->
-    <link rel="stylesheet" href="{% static 'selvi/css/bootstrap-icons.css' %}">
-    <!-- jQuery -->
-    <script src="{% static 'selvi/js/jquery-3.6.4.min.js' %}"></script>
+{% block body_class %}admin-panel{% endblock %}
 
-    <style>
-        :root {
-            --primary: #0f172a;
-            --accent: #3b82f6;
-        }
-        body {
-            direction: rtl;
-            font-family: 'Segoe UI', 'Vazir', Tahoma, sans-serif;
-            background: #f4f6fb;
-            margin: 0;
-            padding: 0;
-            color: #1e293b;
-        }
-        .navbar-custom {
-            background: #fff;
-            border-bottom: 1px solid #e9eef2;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.01);
-            padding: 0.5rem 1rem;
-        }
-        .navbar-brand {
-            font-weight: 700;
-            font-size: 1.3rem;
-            color: var(--primary) !important;
-            letter-spacing: -0.5px;
-        }
-        .nav-link {
-            font-weight: 500;
-            color: #4b5563 !important;
-            transition: 0.2s;
-            padding: 0.5rem 0.8rem;
-        }
-        .nav-link:hover {
-            color: var(--accent) !important;
-        }
-        .user-badge {
-            background: #f1f5f9;
-            border-radius: 30px;
-            padding: 0.25rem 1rem;
-            font-size: 0.9rem;
-            color: #334155;
-        }
-        .main-content {
-            padding: 1.8rem;
-        }
-        .alert {
-            border-radius: 12px;
-            font-size: 0.9rem;
-        }
-    </style>
-    {% block extra_css %}{% endblock %}
-</head>
-<body>
-    <!-- نوار ناوبری واکنش‌گرا -->
-    <nav class="navbar navbar-expand-lg navbar-custom">
-        <div class="container-fluid">
-            <a class="navbar-brand" href="{% url 'dashboard' %}">
-                <i ></i>سلوی چوب
-            </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNavbar" 
-                    aria-controls="mainNavbar" aria-expanded="false" aria-label="تغییر ناوبری">
-                <span class="navbar-toggler-icon"></span>
-            </button>
+{% block extra_css %}
+<style>
+    :root {
+        --primary: #0f172a;
+        --accent: #3b82f6;
+        --brand-accent: #3b82f6;
+        --brand-accent-hover: #2563eb;
+    }
+    body.admin-panel {
+        font-family: 'Vazirmatn', 'Segoe UI', Tahoma, sans-serif;
+        background: #f4f6fb;
+    }
+    .main-content {
+        padding: 1.8rem;
+    }
+</style>
+{% endblock %}
 
-            <div class="collapse navbar-collapse" id="mainNavbar">
-                <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-                    {% comment %} <li class="nav-item"><a class="nav-link" href="{% url 'dashboard' %}"><i class="bi bi-speedometer2 me-1"></i> داشبورد</a></li> {% endcomment %}
-                    <li class="nav-item"><a class="nav-link" href="{% url 'order_list' %}"><i class="bi bi-cart-check me-1"></i> سفارشات</a></li>
-                    <li class="nav-item"><a class="nav-link" href="{% url 'order_item_list' %}"><i class="bi bi-boxes me-1"></i> آیتم‌ها</a></li>
-                    <li class="nav-item"><a class="nav-link" href="{% url 'scan_part' %}"><i class="bi bi-upc-scan me-1"></i> اسکن</a></li>
-                    <li class="nav-item"><a class="nav-link" href="{% url 'admin_product_list' %}"><i class="bi bi-grid me-1"></i> محصولات</a></li>
-                    <li class="nav-item"><a class="nav-link" href="{% url 'painting_schedule' %}"><i class="bi bi-brush me-1"></i> نقاشی</a></li>
-                    <li class="nav-item"><a class="nav-link" href="{% url 'inventory:dashboard' %}"><i class="bi bi-archive me-1"></i> انبار</a></li>
-                    <li class="nav-item"><a class="nav-link" href="{% url 'report_production_unified' %}"><i class="bi bi-graph-up me-1"></i> گزارش یکپارچه</a></li>
-                    <li class="nav-item"><a class="nav-link" href="{% url 'report_fulfillment_status' %}"><i class="bi bi-truck me-1"></i> وضعیت ارسال</a></li>
-                </ul>
+{% block nav %}
+<nav class="navbar navbar-expand-lg navbar-custom">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="{% url 'dashboard' %}">
+            <i class="bi bi-box-seam me-1"></i>سلوی چوب
+        </a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNavbar"
+                aria-controls="mainNavbar" aria-expanded="false" aria-label="تغییر ناوبری">
+            <span class="navbar-toggler-icon"></span>
+        </button>
 
-                <ul class="navbar-nav ms-auto align-items-lg-center">
-                    {% if user.is_authenticated %}
-                        <li class="nav-item">
-                            <span class="user-badge d-inline-block mb-2 mb-lg-0 me-lg-3">
-                                <i class="bi bi-person-circle me-1"></i>{{ user.username }}
-                            </span>
-                        </li>
-                        {% if user.is_staff %}
-                        <li class="nav-item">
-                            <a href="{% url 'admin:index' %}" class="btn btn-sm btn-outline-secondary me-2 mb-2 mb-lg-0">پنل ادمین</a>
-                        </li>
-                        {% endif %}
-                        <li class="nav-item">
-                            <form action="{% url 'logout' %}" method="post" class="m-0">
-                                {% csrf_token %}
-                                <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-box-arrow-left"></i> خروج</button>
-                            </form>
-                        </li>
-                    {% else %}
-                        <li class="nav-item">
-                            <a href="{% url 'login' %}" class="btn btn-sm btn-primary">ورود</a>
-                        </li>
+        <div class="collapse navbar-collapse" id="mainNavbar">
+            <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                <li class="nav-item"><a class="nav-link {% if request.resolver_match.url_name == 'dashboard' %}active fw-bold{% endif %}" href="{% url 'dashboard' %}"><i class="bi bi-speedometer2 me-1"></i> داشبورد اصلی</a></li>
+                <li class="nav-item"><a class="nav-link {% if request.resolver_match.url_name == 'order_list' %}active fw-bold{% endif %}" href="{% url 'order_list' %}"><i class="bi bi-cart-check me-1"></i> سفارشات</a></li>
+                <li class="nav-item"><a class="nav-link {% if request.resolver_match.url_name == 'order_item_list' %}active fw-bold{% endif %}" href="{% url 'order_item_list' %}"><i class="bi bi-boxes me-1"></i> آیتم‌ها</a></li>
+                <li class="nav-item"><a class="nav-link {% if request.resolver_match.url_name == 'scan_part' %}active fw-bold{% endif %}" href="{% url 'scan_part' %}"><i class="bi bi-upc-scan me-1"></i> اسکن</a></li>
+                <li class="nav-item"><a class="nav-link {% if request.resolver_match.url_name == 'admin_product_list' %}active fw-bold{% endif %}" href="{% url 'admin_product_list' %}"><i class="bi bi-grid me-1"></i> محصولات</a></li>
+                <li class="nav-item"><a class="nav-link {% if request.resolver_match.url_name == 'painting_schedule' %}active fw-bold{% endif %}" href="{% url 'painting_schedule' %}"><i class="bi bi-brush me-1"></i> نقاشی</a></li>
+                <li class="nav-item"><a class="nav-link {% if request.resolver_match.namespace == 'inventory' %}active fw-bold{% endif %}" href="{% url 'inventory:dashboard' %}"><i class="bi bi-archive me-1"></i> انبار</a></li>
+                <li class="nav-item"><a class="nav-link {% if request.resolver_match.url_name == 'report_production_unified' %}active fw-bold{% endif %}" href="{% url 'report_production_unified' %}"><i class="bi bi-graph-up me-1"></i> گزارش یکپارچه</a></li>
+                <li class="nav-item"><a class="nav-link {% if request.resolver_match.url_name == 'report_fulfillment_status' %}active fw-bold{% endif %}" href="{% url 'report_fulfillment_status' %}"><i class="bi bi-truck me-1"></i> وضعیت ارسال</a></li>
+            </ul>
+
+            <ul class="navbar-nav ms-auto align-items-lg-center">
+                {% if user.is_authenticated %}
+                    <li class="nav-item">
+                        <span class="user-badge d-inline-block mb-2 mb-lg-0 me-lg-3">
+                            <i class="bi bi-person-circle me-1"></i>{{ user.username }}
+                        </span>
+                    </li>
+                    {% if user.is_staff %}
+                    <li class="nav-item">
+                        <a href="{% url 'admin:index' %}" class="btn btn-sm btn-outline-secondary me-2 mb-2 mb-lg-0">پنل ادمین</a>
+                    </li>
                     {% endif %}
-                </ul>
-            </div>
+                    <li class="nav-item">
+                        <form action="{% url 'logout' %}" method="post" class="m-0">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-box-arrow-left"></i> خروج</button>
+                        </form>
+                    </li>
+                {% else %}
+                    <li class="nav-item">
+                        <a href="{% url 'login' %}" class="btn btn-sm btn-primary">ورود</a>
+                    </li>
+                {% endif %}
+            </ul>
         </div>
-    </nav>
-
-    <!-- محتوای اصلی -->
-    <div class="main-content">
-        {% if messages %}
-            {% for message in messages %}
-                <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
-                    {{ message }}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                </div>
-            {% endfor %}
-        {% endif %}
-        {% block content %}{% endblock %}
     </div>
+</nav>
+{% endblock %}
 
-    <!-- Bootstrap JS -->
-    <script src="{% static 'selvi/js/bootstrap.bundle.min.js' %}"></script>
-    {% block extra_js %}{% endblock %}
-</body>
-</html>
+{% block before_content %}
+<div class="main-content">
+{% endblock %}
+
+{% block after_content %}
+</div>
+{% endblock %}

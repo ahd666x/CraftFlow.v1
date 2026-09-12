@@ -1,0 +1,354 @@
+/* ======================================================================
+   selvi-ui.css — Shared CSS variables & base components for all panels
+   Project: سلوی چوب (CraftFlow)
+   All assets (Bootstrap, Icons, Vazirmatn) are served from static/selvi/
+   ====================================================================== */
+
+/* ── CSS Variables (override per-panel via :root in child templates) ── */
+:root {
+    /* Brand colors */
+    --brand-accent:      #3b82f6;   /* default blue — panels override */
+    --brand-accent-hover: #2563eb;
+    --brand-primary:     #0f172a;   /* slate-900 */
+    --brand-text:        #1e293b;   /* slate-700 */
+    --brand-text-muted:  #64748b;   /* slate-400 */
+    --brand-border:      #e2e8f0;   /* slate-200 */
+    --brand-bg:          #f8fafc;   /* slate-50 */
+
+    /* Backgrounds / surfaces */
+    --body-bg:           #f4f6fb;
+    --surface-bg:        #ffffff;
+    --surface-hover:     #f1f5f9;
+
+    /* Typography */
+    --font-family:       'Vazirmatn', 'Segoe UI', Tahoma, sans-serif;
+    --font-size-base:    1rem;
+    --font-size-sm:      0.875rem;
+
+    /* Spacing & radii */
+    --border-radius:     12px;
+    --border-radius-lg:  18px;
+    --card-shadow:       0 4px 24px rgba(0,0,0,0.04);
+    --card-shadow-sm:    0 2px 8px rgba(0,0,0,0.03);
+    --nav-shadow:        0 2px 12px rgba(15,23,42,0.04);
+
+    /* Panel-specific backgrounds (overridden by panels) */
+    --panel-bg:          #f4f6fb;
+}
+
+/* ── Base reset & typography ── */
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+    font-family: var(--font-family);
+    font-size: var(--font-size-base);
+    line-height: 1.6;
+    background: var(--body-bg);
+    color: var(--brand-text);
+    direction: rtl;
+}
+
+/* ── Shared alert styles ── */
+.alert {
+    border-radius: var(--border-radius);
+    font-size: var(--font-size-sm);
+}
+.alert-dismissible .btn-close {
+    cursor: pointer;
+}
+
+/* ── Shared card styles ── */
+.card {
+    border-radius: var(--border-radius);
+    border: 1px solid var(--brand-border);
+    box-shadow: var(--card-shadow);
+}
+.card-header {
+    border-radius: var(--border-radius) var(--border-radius) 0 0 !important;
+}
+.card-modern {
+    background: var(--surface-bg);
+    border-radius: var(--border-radius-lg);
+    border: none;
+    box-shadow: var(--card-shadow);
+    transition: all 0.25s ease;
+    margin-bottom: 1.5rem;
+}
+.card-modern .card-header {
+    background: transparent;
+    border-bottom: 1px solid var(--brand-border);
+    padding: 16px 20px;
+    font-weight: 600;
+    font-size: 1rem;
+}
+.card-modern .card-body {
+    padding: 20px;
+}
+
+/* ── Shared button styles ── */
+.btn {
+    border-radius: var(--border-radius);
+    font-weight: 500;
+    font-size: var(--font-size-sm);
+    transition: all 0.2s ease;
+}
+.btn-outline-secondary {
+    border-radius: var(--border-radius);
+}
+.btn-modern {
+    background: var(--brand-accent);
+    color: #fff;
+    border: none;
+    border-radius: var(--border-radius);
+    padding: 8px 18px;
+    font-weight: 600;
+    font-size: 0.85rem;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    text-decoration: none;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+    white-space: nowrap;
+}
+.btn-modern:hover {
+    transform: translateY(-2px);
+    color: #fff;
+    background: var(--brand-accent-hover);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+}
+.btn-modern-outline {
+    background: transparent;
+    color: var(--brand-text);
+    border: 1px solid var(--brand-border);
+    border-radius: var(--border-radius);
+    padding: 8px 18px;
+    font-weight: 500;
+    font-size: 0.85rem;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    text-decoration: none;
+    white-space: nowrap;
+}
+.btn-modern-outline:hover {
+    background: var(--surface-hover);
+    border-color: var(--brand-accent);
+    color: var(--brand-primary);
+}
+
+/* ── Shared header-nav (used by painting & inventory panels) ── */
+.header-nav {
+    background: rgba(255,255,255,0.9);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.6);
+    border-bottom: 4px solid var(--brand-accent);
+    border-radius: var(--border-radius-lg);
+    padding: 8px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    box-shadow: var(--nav-shadow);
+    margin-bottom: 1.5rem;
+}
+.header-nav .brand-link {
+    text-decoration: none;
+    color: var(--brand-primary);
+    font-weight: 700;
+    font-size: 1.2rem;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+}
+.header-nav .brand-link:hover {
+    color: var(--brand-text);
+}
+.header-nav .nav-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+}
+.header-nav .nav-links .nav-link {
+    font-size: 0.85rem;
+    padding: 8px 16px;
+    border-radius: 12px;
+    color: var(--brand-text-muted);
+    font-weight: 500;
+    transition: all 0.2s ease;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: transparent;
+    border: none;
+    white-space: nowrap;
+}
+.header-nav .nav-links .nav-link i {
+    font-size: 1rem;
+}
+.header-nav .nav-links .nav-link:hover {
+    background: rgba(59,130,246,0.08);
+    color: var(--brand-accent);
+}
+.header-nav .nav-links .nav-link.active {
+    background: var(--brand-accent);
+    color: #fff !important;
+    font-weight: 600;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+}
+.header-nav .actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+/* ── Main admin navbar (base.html) ── */
+.navbar-custom {
+    background: var(--surface-bg);
+    border-bottom: 1px solid var(--brand-border);
+    box-shadow: var(--nav-shadow);
+    padding: 0.5rem 1rem;
+}
+.navbar-brand {
+    font-weight: 700;
+    font-size: 1.3rem;
+    color: var(--brand-primary) !important;
+    letter-spacing: -0.5px;
+}
+.nav-link {
+    font-weight: 500;
+    color: var(--brand-text-muted) !important;
+    transition: 0.2s;
+    padding: 0.5rem 0.8rem;
+}
+.nav-link:hover {
+    color: var(--brand-accent) !important;
+}
+.user-badge {
+    background: var(--surface-hover);
+    border-radius: 30px;
+    padding: 0.25rem 1rem;
+    font-size: 0.9rem;
+    color: var(--brand-text);
+}
+.main-content {
+    padding: 1.8rem;
+}
+
+/* ── Main admin navbar accent (blue) ── */
+.navbar-accent-blue .nav-link:hover,
+.navbar-accent-blue .navbar-brand { color: #3b82f6 !important; }
+
+/* ── Shop navbar ── */
+.shop-navbar {
+    background: var(--surface-bg);
+    box-shadow: 0 2px 10px rgba(0,0,0,0.03);
+    padding: 0.8rem 0;
+    border-bottom: 1px solid var(--brand-border);
+}
+.shop-footer {
+    background: var(--surface-bg);
+    margin-top: 3rem;
+    padding: 2rem 0;
+    color: var(--brand-text-muted);
+    border-top: 1px solid var(--brand-border);
+}
+
+/* ── Fade-in animation ── */
+.fade-in {
+    animation: fadeIn 0.4s ease;
+}
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Breadcrumb ── */
+.breadcrumb-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 0;
+    font-size: 0.85rem;
+    color: var(--brand-text-muted);
+    margin-bottom: 1rem;
+}
+.breadcrumb-bar a {
+    color: var(--brand-accent);
+    text-decoration: none;
+    font-weight: 500;
+}
+.breadcrumb-bar a:hover {
+    text-decoration: underline;
+}
+.breadcrumb-bar .breadcrumb-separator {
+    color: var(--brand-border);
+}
+.breadcrumb-bar .breadcrumb-current {
+    color: var(--brand-text);
+    font-weight: 600;
+}
+
+/* ── Universal quick-switch links (cross-panel nav) ── */
+.quick-switch {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    align-items: center;
+    font-size: 0.8rem;
+}
+.quick-switch a {
+    color: var(--brand-accent);
+    text-decoration: none;
+    padding: 2px 8px;
+    border-radius: 6px;
+    transition: all 0.2s;
+}
+.quick-switch a:hover {
+    background: rgba(59,130,246,0.1);
+    color: var(--brand-accent-hover);
+}
+
+/* ── Responsive ── */
+@media (max-width: 992px) {
+    .header-nav {
+        flex-direction: column;
+        align-items: stretch;
+        padding: 12px;
+    }
+    .header-nav .brand-link { text-align: center; }
+    .header-nav .nav-links { justify-content: center; }
+    .main-content { padding: 1rem; }
+}
+@media (max-width: 768px) {
+    body { padding: 12px; }
+    .header-nav .nav-links .nav-link {
+        font-size: 0.75rem;
+        padding: 6px 12px;
+    }
+    .header-nav .actions .btn-modern,
+    .header-nav .actions .btn-modern-outline {
+        font-size: 0.75rem;
+        padding: 6px 12px;
+    }
+}
+@media (max-width: 480px) {
+    .header-nav .nav-links { gap: 2px; }
+    .header-nav .nav-links .nav-link {
+        font-size: 0.7rem;
+        padding: 4px 8px;
+    }
+    .header-nav .actions { gap: 4px; }
+    .header-nav .actions .btn-modern,
+    .header-nav .actions .btn-modern-outline {
+        font-size: 0.7rem;
+        padding: 4px 10px;
+    }
+}

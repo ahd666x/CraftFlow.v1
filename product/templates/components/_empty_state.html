@@ -1,0 +1,10 @@
+{% load static %}
+<div class="empty-state" id="empty-state">
+    <div class="empty-icon">
+        <i class="bi bi-inbox-fill"></i>
+    </div>
+    {% block empty_message %}
+        <p class="mb-2">هیچ داده‌ای یافت نشد.</p>
+        {% block empty_subtext %}{% endblock %}
+    {% endblock %}
+</div>

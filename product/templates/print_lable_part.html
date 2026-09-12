@@ -1,32 +1,29 @@
+{% load static %}
 <!DOCTYPE html>
 <html lang="fa" dir="rtl">
 <head>
     <meta charset="UTF-8">
+    <title>لیبل قطعه - سفارش #{{ item.order.id }}/{{ item.id }}</title>
     <style>
         @page {
             size: A4;
-            margin: 5mm;   /* حاشیه کلی صفحه */
+            margin: 5mm;
         }
-
         body {
-            font-family: 'Tahoma', 'Arial', sans-serif;
+            font-family: 'Vazirmatn', 'Tahoma', 'Arial', sans-serif;
             font-size: 10pt;
             background: white;
             direction: rtl;
             margin: 0;
             padding: 0;
         }
-
-        /* گرید لیبل‌ها */
         .label-grid {
             display: grid;
-            grid-template-columns: repeat(2, 95mm);    /* دو ستون با عرض 95mm */
-            grid-template-rows: repeat(4, 60mm);       /* چهار ردیف با ارتفاع 60mm */
-            gap: 2mm;                                  /* فاصله بین لیبل‌ها */
+            grid-template-columns: repeat(2, 95mm);
+            grid-template-rows: repeat(4, 60mm);
+            gap: 2mm;
             justify-content: center;
         }
-
-        /* هر لیبل */
         .label {
             width: 95mm;
             height: 60mm;
@@ -38,9 +35,8 @@
             font-weight: bold;
             background: white;
             box-sizing: border-box;
-            page-break-inside: avoid;      /* جلوگیری از شکستن لیبل در هنگام پرینت */
+            page-break-inside: avoid;
         }
-
         .header {
             display: flex;
             justify-content: space-between;
@@ -48,18 +44,15 @@
             font-size: 9pt;
             line-height: 1.2;
         }
-
         .header-right, .header-left {
             flex: 1;
             text-align: right;
         }
-
         .header h5, .header div {
             margin: 0;
             font-weight: bold;
             margin-bottom: 0.5mm;
         }
-
         .product-title {
             text-align: center;
             font-size: 12pt;
@@ -69,39 +62,22 @@
             border-bottom: 1px solid #ccc;
             padding: 1mm 0;
         }
-
         .qr-container {
             text-align: center;
             margin-top: auto;
         }
-
         .qr-code {
             width: 22mm !important;
             height: 22mm !important;
             image-rendering: -webkit-optimize-contrast;
         }
-
-        .unit-number {
-            font-size: 9pt;
-            text-align: center;
-            color: #333;
-            margin-bottom: 1mm;
-        }
-
-        /* استایل وضعیت بسته‌بندی (اختیاری، می‌توانید حذف کنید) */
-        .packed-status {
-            font-size: 7pt;
-            text-align: center;
-            margin-bottom: 1mm;
-        }
-
         @media print {
             body {
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
             }
             .label {
-                border: 2px solid #000;   /* حاشیه واقعی در پرینت */
+                border: 2px solid #000;
             }
         }
     </style>
@@ -110,16 +86,63 @@
 <body onload="window.print()">
 
 <div class="label-grid">
-
-    <div class="label">
-        <!-- هدر دو ستونه -->
-        <div class="header">
-            <div class="header-right">
-                <h5>{{item}}</h5>
-
+    {% if item.packaging_units.all %}
+        {% for unit in item.packaging_units.all %}
+        <div class="label">
+            <div class="header">
+                <div class="header-right">
+                    <h5>نماینده : {{ item.order.user }}</h5>
+                    <div>تاریخ : {{ item.order.created_at|date:"Y/m/d" }}</div>
+                    <div>شماره سفارش : {{ item.order.id }}/{{ item.id }}/{{ unit.unit_number }}</div>
+                </div>
+                <div class="header-left">
+                    <h5>رنگ : {{ item.color }}</h5>
+                    <div>اندازه : {{ item.size }}</div>
+                    <div>مشتری : {{ item.order.customer }}</div>
+                </div>
             </div>
 
+            <div class="product-title">
+                <span style="font-size: 14pt;">{{ item.product.category.name }} {{ item.product.name }}</span>
+            </div>
 
+            <div class="qr-container">
+                {% if unit.qr_code %}
+                    <img src="{{ unit.qr_code.url }}" class="qr-code" alt="QR">
+                {% else %}
+                    <div style="width:22mm;height:22mm;border:1px dashed #999;margin:auto;font-size:8pt;">
+                        QR Code
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <div class="label">
+            <div class="header">
+                <div class="header-right">
+                    <h5>نماینده : {{ item.order.user }}</h5>
+                    <div>تاریخ : {{ item.order.created_at|date:"Y/m/d" }}</div>
+                    <div>شماره سفارش : {{ item.order.id }}/{{ item.id }}</div>
+                </div>
+                <div class="header-left">
+                    <h5>رنگ : {{ item.color }}</h5>
+                    <div>اندازه : {{ item.size }}</div>
+                    <div>مشتری : {{ item.order.customer }}</div>
+                </div>
+            </div>
+
+            <div class="product-title">
+                <span style="font-size: 14pt;">{{ item.product.category.name }} {{ item.product.name }}</span>
+            </div>
+
+            <div class="qr-container">
+                <div style="width:22mm;height:22mm;border:1px dashed #999;margin:auto;font-size:8pt;">
+                    QR Code
+                </div>
+            </div>
+        </div>
+    {% endif %}
 </div>
 
 </body>

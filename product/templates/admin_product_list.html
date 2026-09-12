@@ -89,6 +89,7 @@
                         <th>دسته‌بندی</th>
                         <th>سایز پیش‌فرض</th>
                         <th>رنگ‌های پیش‌فرض</th>
+                        <th class="text-center">عملیات</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -112,6 +113,11 @@
                                     —
                                 {% endif %}
                             </div>
+                        </td>
+                        <td class="text-center">
+                            <a href="{% url 'product_bom_edit' product.id %}" class="btn btn-sm btn-outline-primary" title="ویرایش فرمول ساخت (BOM)">
+                                <i class="bi bi-diagram-3"></i> BOM
+                            </a>
                         </td>
                     </tr>
                     {% endfor %}

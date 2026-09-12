@@ -1,0 +1,57 @@
+{# _base_shell.html — Shared skeleton for all panels. Override: title, extra_css, body_class, nav, content, extra_js. Assets local. #}
+{% load static %}
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token }}">
+    <title>{% block title %}سلوی چوب{% endblock %}</title>
+
+    {# Bootstrap 5.3 RTL (local) #}
+    <link rel="stylesheet" href="{% static 'selvi/css/bootstrap.rtl.min.css' %}">
+    {# Bootstrap Icons 1.11.3 (local) #}
+    <link rel="stylesheet" href="{% static 'selvi/css/bootstrap-icons.css' %}">
+    {# Vazirmatn font (local) #}
+    <link rel="stylesheet" href="{% static 'selvi/css/vazirmatn.css' %}">
+    {# Shared UI variables & components #}
+    <link rel="stylesheet" href="{% static 'selvi/css/selvi-ui.css' %}">
+    {# Design system: status badges, cards, shadows, spacing tokens #}
+    <link rel="stylesheet" href="{% static 'selvi/css/design-system.css' %}">
+    {# Shared print styles #}
+    <link rel="stylesheet" href="{% static 'selvi/css/print-base.css' %}">
+    {# jQuery — loaded early so inline scripts on child pages can use it #}
+    <script src="{% static 'selvi/js/jquery-3.6.4.min.js' %}"></script>
+    {# CSRF & AJAX helpers (App.postJSON, showToast, showLoading) #}
+    <script src="{% static 'selvi/js/csrf.js' %}"></script>
+
+    {% block extra_css %}{% endblock %}
+</head>
+<body{% block body_class %}{% endblock %}>
+
+    {# ── Panel-specific navigation ── #}
+    {% block nav %}{% endblock %}
+
+    {# ── Flash messages (shared across all panels) ── #}
+    {% block messages %}
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        {% endfor %}
+    {% endif %}
+    {% endblock %}
+
+    {# ── Main content area ── #}
+    {% block content %}{% endblock %}
+
+    {# ── Footer (optional) ── #}
+    {% block footer %}{% endblock %}
+
+    {# Bootstrap Bundle JS (local, at end of body) #}
+    <script src="{% static 'selvi/js/bootstrap.bundle.min.js' %}"></script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

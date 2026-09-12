@@ -6,16 +6,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ورود به سلوی چوب</title>
 
-    <!-- Bootstrap RTL CSS (محلی) -->
+    <!-- Bootstrap RTL CSS (local) -->
     <link rel="stylesheet" href="{% static 'selvi/css/bootstrap.rtl.min.css' %}">
-    
-    <!-- Bootstrap Icons CSS (محلی) -->
+    <!-- Bootstrap Icons CSS (local) -->
     <link rel="stylesheet" href="{% static 'selvi/css/bootstrap-icons.css' %}">
+    <!-- Vazirmatn font (local) -->
+    <link rel="stylesheet" href="{% static 'selvi/css/vazirmatn.css' %}">
 
     <style>
         body {
             background: #f0f2f5;
-            font-family: 'Vazir', Tahoma, sans-serif;
+            font-family: 'Vazirmatn', 'Segoe UI', Tahoma, sans-serif;
             direction: rtl;
         }
         .login-card {
@@ -60,7 +61,6 @@
         <div class="card-header">
             <i class="bi bi-box-seam" style="font-size: 2.5rem;"></i>
             <h3 class="mt-2 mb-0">ورود به سلوی چوب</h3>
-            <!-- <p class="mb-0 mt-2 opacity-75">پنل مدیریت تولید و فروش</p> -->
         </div>
         <div class="card-body p-4">
             {% if form.errors %}
@@ -110,20 +110,28 @@
             <hr class="my-4">
 
             <div class="text-center">
-                <a href="{% url 'customer_order_list' %}" class="text-decoration-none">
-                    <i class="bi bi-shop"></i> بازگشت به فروشگاه
-                </a>
+                {% if next %}
+                    {% if 'admin' in next or 'dashboard' in next or 'orders' in next or 'painting' in next or 'inventory' in next or 'scan' in next or 'report' in next or 'product' in next %}
+                        <a href="{% url 'dashboard' %}" class="text-decoration-none">
+                            <i class="bi bi-house"></i> صفحه اصلی
+                        </a>
+                    {% else %}
+                        <a href="{% url 'customer_order_list' %}" class="text-decoration-none">
+                            <i class="bi bi-shop"></i> بازگشت به فروشگاه
+                        </a>
+                    {% endif %}
+                {% else %}
+                    <a href="{% url 'customer_order_list' %}" class="text-decoration-none">
+                        <i class="bi bi-shop"></i> بازگشت به فروشگاه
+                    </a>
+                {% endif %}
             </div>
-        </div>
-        <div class="card-footer text-center text-muted py-3">
         </div>
     </div>
 </div>
 
-<!-- Bootstrap JS Bundle (محلی) -->
+<!-- Bootstrap JS Bundle (local) -->
 <script src="{% static 'selvi/js/bootstrap.bundle.min.js' %}"></script>
 
 </body>
 </html>
-
-

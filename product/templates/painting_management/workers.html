@@ -5,8 +5,8 @@
 {% block title %}مدیریت کارگران نقاشی{% endblock %}
 
 {% block extra_css %}
-<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
-<link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
+<link rel="stylesheet" href="{% static 'selvi/css/select2.min.css' %}" />
+<link rel="stylesheet" href="{% static 'selvi/css/select2-bootstrap-5-theme.min.css' %}" />
 <style>
     .worker-table th { white-space: nowrap; font-size: 0.85rem; }
     .worker-table td { vertical-align: middle; font-size: 0.9rem; }
@@ -108,8 +108,8 @@
                         {% endfor %}
                     </td>
                     <td>
-                        {% if worker.skill_costs %}
-                        <code class="small">{{ worker.skill_costs|format_costs }}</code>
+                        {% if worker.skill_priority %}
+                        <code class="small">{{ worker.skill_priority|format_costs }}</code>
                         {% else %}
                         <span class="text-muted">-</span>
                         {% endif %}
@@ -269,7 +269,7 @@
                             {% endfor %}
                         </div>
                         <div class="form-text">عدد بزرگ‌تر = اولویت بالاتر</div>
-                        <input type="hidden" name="skill_costs" id="id_skill_costs" value="{}">
+                        <input type="hidden" name="skill_priority" id="id_skill_priority" value="{}">
                     </div>
                     <div class="mb-3 form-check">
                         <input type="checkbox" name="is_available" id="id_is_available" class="form-check-input" checked>
@@ -361,7 +361,7 @@
 {% endblock %}
 
 {% block painting_js %}
-<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script src="{% static 'selvi/js/select2.min.js' %}"></script>
 <script>
 (function() {
     'use strict';
@@ -536,7 +536,7 @@
                 }).join(' ') :
                 '<span class="text-muted">-</span>';
 
-            var costs = workerData.skill_costs || {};
+            var costs = workerData.skill_priority || {};
             cells[3].innerHTML = Object.keys(costs).length ?
                 '<code class="small">' + JSON.stringify(costs) + '</code>' :
                 '<span class="text-muted">-</span>';
@@ -570,7 +570,7 @@
             var username = Utils.safeJson(workerData.username, '');
             var stageLabel = Utils.safeJson(workerData.stage_label, '');
             var skills = workerData.skills || [];
-            var costs = workerData.skill_costs || {};
+            var costs = workerData.skill_priority || {};
             var isActive = workerData.is_available === true;
 
             tr.innerHTML =
@@ -681,7 +681,7 @@
                 var val = parseInt(inp.value) || 0;
                 if (val > 0) costs[skill] = val;
             });
-            document.getElementById('id_skill_costs').value = JSON.stringify(costs);
+            document.getElementById('id_skill_priority').value = JSON.stringify(costs);
         },
 
         openCreate: function() {
@@ -744,7 +744,7 @@
                     cb.checked = skills.indexOf(cb.value) !== -1;
                 });
 
-                var costs = data.skill_costs || {};
+                var costs = data.skill_priority || {};
                 document.querySelectorAll('.cost-input').forEach(function(inp) {
                     var skill = inp.name.replace('cost_', '');
                     inp.value = costs[skill] || 0;
@@ -776,7 +776,7 @@
                 stage: formData.get('stage') || 'paint',
                 is_available: formData.get('is_available') === 'on',
                 skills: Utils.safeJson(formData.get('skills'), []),
-                skill_costs: Utils.safeJson(formData.get('skill_costs'), {})
+                skill_priority: Utils.safeJson(formData.get('skill_priority'), {})
             };
 
             if (!data.user_id) {
