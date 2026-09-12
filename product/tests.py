@@ -200,7 +200,7 @@ class PaintingMaterialRequirementTests(TestCase):
     def test_consume_material_for_paint_task_creates_stock_movements(self):
         """
         وقتی تسک نقاشی done می‌شود، یک StockMovement مصرفی برای هر
-        PaintingMaterialRequirement ساخته می‌شود و idempotent است.
+        PaintingMaterialRequirement ساخته می‌شود.
         """
         item = self._make_order_item(quantity=2)
         task = self._make_paint_task(item, self.stage_paint, quantity=2)
@@ -217,7 +217,9 @@ class PaintingMaterialRequirementTests(TestCase):
         self.assertAlmostEqual(float(by_raw[self.paint_raw.id].quantity), 0.6, places=3)
         self.assertIn(self.thinner_raw.id, by_raw)
         self.assertAlmostEqual(float(by_raw[self.thinner_raw.id].quantity), 0.1, places=3)
-        """فراخوانی مجدد با همان تسک نباید StockMovement جدید بسازد."""
+
+    def test_consume_material_for_paint_task_is_idempotent(self):
+        """فراخوانی مجدد consume_material_for_paint_task با همان تسک نباید رکورد تکراری بسازد."""
         item = self._make_order_item(quantity=2)
         task = self._make_paint_task(item, self.stage_paint, quantity=2)
 
@@ -325,4 +327,292 @@ class PaintingMaterialRequirementTests(TestCase):
         self.assertIn(self.paint_raw.id, raw_mats)
         # ماده تخته (board_raw) نباید در مصرف نقاشی باشد
         self.assertNotIn(self.board_raw.id, raw_mats)
+
+    # --- تست‌های Override محصولی ---
+
+    def test_default_requirement_used_when_no_override_exists(self):
+        """
+        وقتی فقط رکورد پیش‌فرض (product=None) وجود دارد، همان برای همه محصولات
+        استفاده می‌شود.
+        """
+        from product.utils import get_painting_material_requirements_for_task
+
+        item = self._make_order_item(quantity=2)
+        task = self._make_paint_task(item, self.stage_sealer, quantity=2)
+
+        reqs = get_painting_material_requirements_for_task(task)
+        self.assertEqual(len(reqs), 1)
+        self.assertEqual(reqs[0].raw_material, self.paint_raw)
+        self.assertEqual(reqs[0].consumption_per_unit, Decimal('0.100'))
+        self.assertIsNone(reqs[0].product)
+
+    def test_product_override_takes_precedence_over_default(self):
+        """
+        اگر هم پیش‌فرض و هم override برای یک محصول وجود داشته باشد،
+        override اولویت دارد.
+        پیش‌فرض: 0.100، Override برای product: 0.250
+        """
+        from product.utils import get_painting_material_requirements_for_task
+        from product.models import PaintingMaterialRequirement
+
+        # Override برای محصول فعلی (self.product)
+        PaintingMaterialRequirement.objects.create(
+            painting_stage=self.stage_sealer,
+            raw_material=self.paint_raw,
+            product=self.product,
+            consumption_per_unit=Decimal('0.250'),
+        )
+
+        item = self._make_order_item(quantity=2)
+        task = self._make_paint_task(item, self.stage_sealer, quantity=2)
+
+        reqs = get_painting_material_requirements_for_task(task)
+        self.assertEqual(len(reqs), 1)
+        self.assertEqual(reqs[0].raw_material, self.paint_raw)
+        self.assertEqual(reqs[0].consumption_per_unit, Decimal('0.250'))
+        self.assertEqual(reqs[0].product, self.product)
+
+    def test_other_products_still_use_default_when_override_exists_for_one_product(self):
+        """
+        Override فقط برای محصول تعریف‌شده اعمال می‌شود؛ سایر محصولات
+        همچنان پیش‌فرض را می‌گیرند.
+        """
+        from product.utils import get_painting_material_requirements_for_task
+        from product.models import PaintingMaterialRequirement, Product
+
+        # Override برای محصول self.product
+        PaintingMaterialRequirement.objects.create(
+            painting_stage=self.stage_sealer,
+            raw_material=self.paint_raw,
+            product=self.product,
+            consumption_per_unit=Decimal('0.250'),
+        )
+
+        # محصول دیگر بدون override
+        other_product = Product.objects.create(
+            category=self.category, name='میز B',
+            default_size='80x40', base_price=4000,
+        )
+        item = OrderItem.objects.create(
+            order=self.order, product=other_product, quantity=2,
+        )
+        Color.objects.create(part='بدنه', code='8', orderitem=item)
+        task = self._make_paint_task(item, self.stage_sealer, quantity=2)
+
+        reqs = get_painting_material_requirements_for_task(task)
+        self.assertEqual(len(reqs), 1)
+        self.assertEqual(reqs[0].raw_material, self.paint_raw)
+        self.assertEqual(reqs[0].consumption_per_unit, Decimal('0.100'))  # پیش‌فرض
+        self.assertIsNone(reqs[0].product)
+
+    def test_unique_constraints_prevent_duplicate_default_and_override(self):
+        """
+        دو پیش‌فرض تکراری (product=None) برای همان stage+raw_material اجازه نمی‌شود.
+        دو override تکراری برای همان stage+raw_material+product اجازه نمی‌شود.
+        """
+        from product.models import PaintingMaterialRequirement
+        from django.db import IntegrityError, transaction
+
+        # پیش‌فرض اول (از setUpTestData وجود دارد)
+        # تلاش برای ساخت پیش‌فرض دوم باید خطا بدهد
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                PaintingMaterialRequirement.objects.create(
+                    painting_stage=self.stage_sealer,
+                    raw_material=self.paint_raw,
+                    product=None,
+                    consumption_per_unit=Decimal('0.200'),
+                )
+
+        # Override برای محصول (ماده khác: thinner_raw)
+        override1 = PaintingMaterialRequirement.objects.create(
+            painting_stage=self.stage_sealer,
+            raw_material=self.thinner_raw,
+            product=self.product,
+            consumption_per_unit=Decimal('0.050'),
+        )
+        # تلاش برای ساخت override تکراری باید خطا بدهد
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                PaintingMaterialRequirement.objects.create(
+                    painting_stage=self.stage_sealer,
+                    raw_material=self.thinner_raw,
+                    product=self.product,
+                    consumption_per_unit=Decimal('0.100'),
+                )
+
+    def test_consume_material_for_paint_task_respects_override(self):
+        """
+        وقتی تسک نقاشی done می‌شود، اگر override وجود داشته باشد،
+        StockMovement با مقدار override ساخته می‌شود نه پیش‌فرض.
+        پیش‌فرض: 0.100، Override: 0.250
+        """
+        from product.utils import consume_material_for_paint_task
+        from product.models import PaintingMaterialRequirement
+        from inventory.models import StockMovement
+
+        # Override برای محصول
+        PaintingMaterialRequirement.objects.create(
+            painting_stage=self.stage_sealer,
+            raw_material=self.paint_raw,
+            product=self.product,
+            consumption_per_unit=Decimal('0.250'),
+        )
+
+        item = self._make_order_item(quantity=4)  # quantity = 4
+        task = self._make_paint_task(item, self.stage_sealer, quantity=4)
+        task.status = 'done'
+        task.save()
+
+        movements = StockMovement.objects.filter(
+            reference_task=task, movement_type='consumption'
+        )
+        self.assertEqual(movements.count(), 1)
+        movement = movements.first()
+        self.assertEqual(movement.raw_material, self.paint_raw)
+        # 4 * 0.250 = 1.0 (override)، نه 4 * 0.100 = 0.4 (پیش‌فرض)
+        self.assertAlmostEqual(float(movement.quantity), 1.0, places=3)
+
+
+# ============================================================
+# تست‌های Override بر اساس بخش رنگی (color_part)
+# ============================================================
+
+    def test_colorpart_override_more_specific_than_product_override(self):
+        """
+        یک override کل‌محصول (product=X, color_part=None، مقدار ۰.۲) و یک override
+        اختصاصی بخش رنگی (product=X, color_part='بدنه'، مقدار ۰.۵) روی همان stage+material
+        بساز. یک تسک با color_part='بدنه' برای محصول X بساز و بررسی کن مقدار ۰.۵ (نه ۰.۲)
+        اعمال می‌شود.
+        """
+        from product.utils import get_painting_material_requirements_for_task
+        from product.models import PaintingMaterialRequirement
+
+        # Override کل محصول
+        PaintingMaterialRequirement.objects.create(
+            painting_stage=self.stage_sealer,
+            raw_material=self.paint_raw,
+            product=self.product,
+            color_part=None,
+            consumption_per_unit=Decimal('0.200'),
+        )
+
+        # Override اختصاصی بخش رنگی 'بدنه'
+        PaintingMaterialRequirement.objects.create(
+            painting_stage=self.stage_sealer,
+            raw_material=self.paint_raw,
+            product=self.product,
+            color_part='بدنه',
+            consumption_per_unit=Decimal('0.500'),
+        )
+
+        item = self._make_order_item(quantity=2)
+        task = self._make_paint_task(item, self.stage_sealer, quantity=2, color_part='بدنه')
+
+        reqs = get_painting_material_requirements_for_task(task)
+        self.assertEqual(len(reqs), 1)
+        self.assertEqual(reqs[0].raw_material, self.paint_raw)
+        self.assertEqual(reqs[0].consumption_per_unit, Decimal('0.500'))
+        self.assertEqual(reqs[0].product, self.product)
+        self.assertEqual(reqs[0].color_part, 'بدنه')
+
+    def test_other_colorpart_falls_back_to_product_override(self):
+        """
+        با همان دیتاست بالا، یک تسک با color_part='درب' (که override اختصاصی ندارد) برای
+        همان محصول X بساز و بررسی کن مقدار ۰.۲ (override کل محصول) اعمال می‌شود، نه ۰.۵
+        و نه پیش‌فرض مرحله.
+        """
+        from product.utils import get_painting_material_requirements_for_task
+        from product.models import PaintingMaterialRequirement
+
+        # Override کل محصول
+        PaintingMaterialRequirement.objects.create(
+            painting_stage=self.stage_sealer,
+            raw_material=self.paint_raw,
+            product=self.product,
+            color_part=None,
+            consumption_per_unit=Decimal('0.200'),
+        )
+
+        # Override اختصاصی بخش رنگی 'بدنه'
+        PaintingMaterialRequirement.objects.create(
+            painting_stage=self.stage_sealer,
+            raw_material=self.paint_raw,
+            product=self.product,
+            color_part='بدنه',
+            consumption_per_unit=Decimal('0.500'),
+        )
+
+        item = self._make_order_item(quantity=2)
+        task = self._make_paint_task(item, self.stage_sealer, quantity=2, color_part='درب')
+
+        reqs = get_painting_material_requirements_for_task(task)
+        self.assertEqual(len(reqs), 1)
+        self.assertEqual(reqs[0].raw_material, self.paint_raw)
+        self.assertEqual(reqs[0].consumption_per_unit, Decimal('0.200'))  # override کل محصول
+        self.assertEqual(reqs[0].product, self.product)
+        self.assertIsNone(reqs[0].color_part)
+
+    def test_clean_rejects_colorpart_without_product(self):
+        """
+        بررسی کن ساخت یک PaintingMaterialRequirement با color_part='بدنه' و product=None
+        هنگام full_clean() خطای ValidationError می‌دهد.
+        """
+        from product.models import PaintingMaterialRequirement
+        from django.core.exceptions import ValidationError
+
+        req = PaintingMaterialRequirement(
+            painting_stage=self.stage_sealer,
+            raw_material=self.paint_raw,
+            product=None,
+            color_part='بدنه',
+            consumption_per_unit=Decimal('0.100'),
+        )
+        with self.assertRaises(ValidationError):
+            req.full_clean()
+
+    def test_unique_constraint_colorpart_override(self):
+        """
+        بررسی کن دو override تکراری برای همان (stage, material, product, color_part)
+        IntegrityError می‌دهد (داخل transaction.atomic()).
+        """
+        from product.models import PaintingMaterialRequirement
+        from django.db import IntegrityError, transaction
+
+        # اولین override
+        PaintingMaterialRequirement.objects.create(
+            painting_stage=self.stage_sealer,
+            raw_material=self.paint_raw,
+            product=self.product,
+            color_part='بدنه',
+            consumption_per_unit=Decimal('0.300'),
+        )
+
+        # تلاش برای ساخت override تکراری باید خطا بدهد
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                PaintingMaterialRequirement.objects.create(
+                    painting_stage=self.stage_sealer,
+                    raw_material=self.paint_raw,
+                    product=self.product,
+                    color_part='بدنه',
+                    consumption_per_unit=Decimal('0.400'),
+                )
+
+    def test_default_fallback_when_no_override_at_all(self):
+        """
+        وقتی هیچ override (نه کل محصول نه بخش رنگی) وجود نداشته باشد،
+        پیش‌فرض مرحله استفاده می‌شود.
+        """
+        from product.utils import get_painting_material_requirements_for_task
+
+        item = self._make_order_item(quantity=2)
+        task = self._make_paint_task(item, self.stage_sealer, quantity=2, color_part='بدنه')
+
+        reqs = get_painting_material_requirements_for_task(task)
+        self.assertEqual(len(reqs), 1)
+        self.assertEqual(reqs[0].raw_material, self.paint_raw)
+        self.assertEqual(reqs[0].consumption_per_unit, Decimal('0.100'))  # پیش‌فرض
+        self.assertIsNone(reqs[0].product)
+        self.assertIsNone(reqs[0].color_part)
 

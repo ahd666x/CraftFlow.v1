@@ -8,6 +8,8 @@
 <style>
     .loading-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.7); z-index: 9999; display: none; justify-content: center; align-items: center; }
     .loading-overlay.show { display: flex; }
+    .badge-override { background-color: #fd7e14; color: white; }
+    .badge-default { background-color: #198754; color: white; }
 </style>
 {% endblock %}
 
@@ -153,14 +155,25 @@
                         <!-- ردیف‌ها از طریق JS بارگذاری می‌شوند -->
                         <div class="text-center text-muted py-3" id="materialLoading">در حال بارگذاری...</div>
                     </div>
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-6">
+                            <select name="new_raw_material_id" id="newRawMaterial" class="form-select select2-raw-material" style="width: 100%"></select>
+                        </div>
+                        <div class="col-md-3">
+                            <input type="number" name="new_consumption" id="newConsumption" class="form-control" step="0.001" min="0" placeholder="مقدار مصرف">
+                        </div>
+                        <div class="col-md-3">
+                            <select name="new_product_id" id="newProduct" class="form-select select2-product" style="width: 100%">
+                                <option value="">همه محصولات (پیش‌فرض)</option>
+                            </select>
+                        </div>
+                    </div>
                     <div class="input-group">
-                        <select name="new_raw_material_id" id="newRawMaterial" class="form-select select2-raw-material" style="width: 100%"></select>
-                        <input type="number" name="new_consumption" id="newConsumption" class="form-control" step="0.001" min="0" placeholder="مقدار مصرف">
                         <button type="button" class="btn btn-outline-primary" id="addMaterialBtn">
                             <i class="bi bi-plus"></i> افزودن
                         </button>
                     </div>
-                    <div class="form-text mt-1">ماده اولیه و مقدار مصرف به ازای هر واحد محصول را انتخاب کنید.</div>
+                    <div class="form-text mt-1">ماده اولیه و مقدار مصرف به ازای هر واحد محصول را انتخاب کنید. برای Override اختصاصی، یک محصول انتخاب کنید.</div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">بستن</button>
@@ -182,6 +195,7 @@
 $(function () {
     var MATERIALS_API_BASE = "{% url 'painting_stage_materials_api' 0 %}".replace('/0/', '');
     var RAW_MATERIAL_SEARCH_URL = "{% url 'painting_raw_materials_search' %}";
+    var PRODUCT_SEARCH_URL = "{% url 'search_products_api' %}";
     var MATERIAL_DELETE_BASE = "{% url 'painting_material_requirement_delete' 0 %}".replace('/0/', '');
 
     var materialModalEl = document.getElementById('materialModal');
@@ -218,6 +232,34 @@ $(function () {
                 cache: false
             }
         });
+
+        var $prod = $('#newProduct');
+        if ($prod.data('select2')) {
+            $prod.select2('destroy');
+        }
+        $prod.select2({
+            theme: 'bootstrap-5',
+            width: '100%',
+            placeholder: 'جستجوی محصول... (اختیاری)',
+            allowClear: true,
+            ajax: {
+                url: PRODUCT_SEARCH_URL,
+                dataType: 'json',
+                delay: 250,
+                data: function (params) {
+                    return { q: params.term || '' };
+                },
+                processResults: function (data) {
+                    // Add "All products" option at the beginning
+                    var results = [{id: '', text: 'همه محصولات (پیش‌فرض)'}];
+                    if (data.results) {
+                        results = results.concat(data.results);
+                    }
+                    return { results: results };
+                },
+                cache: false
+            }
+        });
     }
 
     function renderMaterialList(requirements) {
@@ -227,13 +269,16 @@ $(function () {
             $list.html('<div class="text-center text-muted py-3"><i class="bi bi-info-circle"></i> هیچ ماده اولیه‌ای تعریف نشده است.</div>');
             return;
         }
-        var html = '<table class="table table-sm table-bordered"><thead class="table-light"><tr><th>ماده اولیه</th><th>واحد</th><th>مقدار مصرف/واحد</th><th>عملیات</th></tr></thead><tbody>';
+        var html = '<table class="table table-sm table-bordered"><thead class="table-light"><tr><th>ماده اولیه</th><th>واحد</th><th>مقدار مصرف/واحد</th><th>نوع</th><th>عملیات</th></tr></thead><tbody>';
         for (var i = 0; i < requirements.length; i++) {
             var req = requirements[i];
+            var badgeClass = req.is_override ? 'badge-override' : 'badge-default';
+            var badgeText = req.is_override ? ('Override: ' + req.product_name) : 'پیش‌فرض';
             html += '<tr data-id="' + req.id + '">' +
                 '<td>' + req.raw_material_name + '</td>' +
                 '<td>' + (req.unit || '') + '</td>' +
                 '<td>' + req.consumption_per_unit + '</td>' +
+                '<td><span class="badge ' + badgeClass + '">' + badgeText + '</span></td>' +
                 '<td class="text-center">' +
                     '<button type="button" class="btn btn-sm btn-outline-danger btn-remove-material" data-id="' + req.id + '">' +
                         '<i class="bi bi-trash"></i>' +
@@ -287,6 +332,7 @@ $(function () {
     $('#addMaterialBtn').on('click', function () {
         var rawMaterialId = $('#newRawMaterial').val();
         var consumption = $('#newConsumption').val();
+        var productId = $('#newProduct').val() || null;
         if (!rawMaterialId) {
             alert('لطفاً ماده اولیه را انتخاب کنید');
             return;
@@ -298,11 +344,13 @@ $(function () {
             contentType: 'application/json',
             data: JSON.stringify({
                 raw_material_id: parseInt(rawMaterialId),
-                consumption_per_unit: floatVal(consumption)
+                consumption_per_unit: floatVal(consumption),
+                product_id: productId ? parseInt(productId) : null
             }),
             success: function (data) {
                 if (data.success) {
                     $('#newRawMaterial').val(null).trigger('change');
+                    $('#newProduct').val(null).trigger('change');
                     $('#newConsumption').val('');
                     loadMaterials(currentStageId);
                 } else {

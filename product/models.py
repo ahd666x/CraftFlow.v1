@@ -923,6 +923,28 @@ class PaintingMaterialRequirement(models.Model):
         related_name='painting_requirements',
         verbose_name="ماده اولیه"
     )
+    product = models.ForeignKey(
+        'Product',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='painting_material_overrides',
+        verbose_name="محصول (برای Override اختصاصی — خالی = پیش‌فرض همه محصولات)",
+        help_text="اگر خالی باشد، این فرمول برای همه محصولاتی که از این مرحله عبور "
+                   "می‌کنند اعمال می‌شود. اگر محصول مشخصی انتخاب شود، فقط برای همان "
+                   "محصول این نرخ مصرف جایگزین نرخ پیش‌فرض مرحله می‌شود."
+    )
+    color_part = models.CharField(
+        max_length=20,
+        choices=Color.PART_CHOICES,
+        blank=True,
+        null=True,
+        verbose_name="بخش رنگی (برای Override اختصاصی به یک بخش خاص محصول)",
+        help_text="اگر خالی باشد و product هم خالی باشد → پیش‌فرض سطح مرحله برای همه. "
+                   "اگر product پر و color_part خالی باشد → override برای کل محصول در "
+                   "همه بخش‌های رنگی آن. اگر هر دو پر باشند → override فقط برای همین "
+                   "بخش رنگی خاص همین محصول."
+    )
     consumption_per_unit = models.DecimalField(
         max_digits=10,
         decimal_places=3,
@@ -934,11 +956,42 @@ class PaintingMaterialRequirement(models.Model):
     class Meta:
         verbose_name = "فرمول مصرف مواد نقاشی"
         verbose_name_plural = "فرمول‌های مصرف مواد نقاشی"
-        unique_together = ('painting_stage', 'raw_material')
+        constraints = [
+            # پیش‌فرض سطح مرحله (بدون محصول و بدون بخش رنگی)
+            models.UniqueConstraint(
+                fields=['painting_stage', 'raw_material'],
+                condition=models.Q(product__isnull=True, color_part__isnull=True),
+                name='unique_default_requirement_per_stage_material'
+            ),
+            # override کل محصول (همه بخش‌های رنگی آن محصول)
+            models.UniqueConstraint(
+                fields=['painting_stage', 'raw_material', 'product'],
+                condition=models.Q(product__isnull=False, color_part__isnull=True),
+                name='unique_product_override_per_stage_material'
+            ),
+            # override اختصاصی به یک بخش رنگی خاص از یک محصول خاص
+            models.UniqueConstraint(
+                fields=['painting_stage', 'raw_material', 'product', 'color_part'],
+                condition=models.Q(product__isnull=False, color_part__isnull=False),
+                name='unique_product_colorpart_override_per_stage_material'
+            ),
+        ]
         ordering = ['painting_stage__process__name', 'painting_stage__order', 'raw_material__name']
 
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if self.color_part and not self.product_id:
+            raise ValidationError(
+                "بخش رنگی فقط زمانی معنی دارد که یک محصول مشخص هم انتخاب شده باشد."
+            )
+
     def __str__(self):
-        return f"{self.painting_stage} ← {self.raw_material} ({self.consumption_per_unit})"
+        base = f"{self.painting_stage} ← {self.raw_material} ({self.consumption_per_unit})"
+        if self.product_id:
+            if self.color_part:
+                return f"{base} [Override: {self.product} / {self.color_part}]"
+            return f"{base} [Override: {self.product}]"
+        return base
 
 
 class PaintingAssignmentRule(models.Model):

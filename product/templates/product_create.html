@@ -3,7 +3,27 @@
 
 {% block title %}{% if product %}ویرایش{% else %}ایجاد{% endif %} محصول جدید{% endblock %}
 
-{% block extra_css %}{% endblock %}
+{% block extra_css %}
+<style>
+    .colorpart-tab { display: none; }
+    .colorpart-tab.active { display: block; }
+    .colorpart-nav .nav-link { 
+        font-size: 0.85rem; 
+        padding: 0.5rem 1rem; 
+    }
+    .colorpart-nav .nav-link.active { 
+        background-color: #0d6efd; 
+        color: white; 
+    }
+    .source-badge { font-size: 0.7rem; padding: 0.2rem 0.4rem; }
+    .source-default { background-color: #6c757d; color: white; }
+    .source-product-override { background-color: #fd7e14; color: white; }
+    .source-colorpart-override { background-color: #0d6efd; color: white; }
+    .material-row .form-select, .material-row .form-control { font-size: 0.85rem; }
+    .stage-filter-info { font-size: 0.75rem; color: #6c757d; }
+    .accordion-button:not(.collapsed) { background-color: #e7f1ff; color: #0d6efd; }
+</style>
+{% endblock %}
 
 {% block content %}
 <div class="container-fluid py-4">
@@ -52,6 +72,102 @@
                         {% endif %}
                     {% endfor %}
                 </div>
+            </div>
+        </div>
+
+        <!-- کارت مواد اولیه نقاشی (بر اساس بخش رنگی) -->
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-info text-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-palette"></i> مواد اولیه نقاشی (بر اساس بخش رنگی)</h5>
+                <small class="opacity-75">مقادیر پیش‌فرض از صفحه مراحل نقاشی ارث‌برده شده‌اند. تغییر این مقادیر Override اختصاصی برای این محصول + بخش رنگی می‌سازد.</small>
+            </div>
+            <div class="card-body">
+                {% if product %}
+                    {% with default_colors=product.default_colors %}
+                        {% if default_colors %}
+                            {% if default_colors|length > 0 %}
+                                <div class="mb-3">
+                                    <ul class="nav nav-pills colorpart-nav" id="colorpartTabs" role="tablist">
+                                        {% for part_name, color_code in default_colors.items %}
+                                            {% if color_code and color_code != 'nan' %}
+                                            <li class="nav-item" role="presentation">
+                                                <button class="nav-link {% if forloop.first %}active{% endif %}" 
+                                                        id="tab-{{ part_name }}" 
+                                                        data-bs-toggle="pill" 
+                                                        data-bs-target="#panel-{{ part_name }}" 
+                                                        type="button" 
+                                                        role="tab" 
+                                                        aria-controls="panel-{{ part_name }}" 
+                                                        aria-selected="{% if forloop.first %}true{% else %}false{% endif %}">
+                                                    {{ part_name }} <span class="badge bg-light text-dark ms-1">{{ color_code }}</span>
+                                                </button>
+                                            </li>
+                                            {% endif %}
+                                        {% endfor %}
+                                    </ul>
+                                </div>
+
+                                <div class="tab-content" id="colorpartTabContent">
+                                    {% for part_name, color_code in default_colors.items %}
+                                        {% if color_code and color_code != 'nan' %}
+                                        <div class="tab-pane fade {% if forloop.first %}show active{% endif %} colorpart-tab" 
+                                             id="panel-{{ part_name }}" 
+                                             role="tabpanel" 
+                                             aria-labelledby="tab-{{ part_name }}" 
+                                             data-color-part="{{ part_name }}" 
+                                             data-product-id="{{ product.id }}">
+                                            
+                                            <div class="mb-2">
+                                                <span class="badge bg-secondary source-badge source-default">پیش‌فرض مرحله</span>
+                                                <span class="badge bg-warning text-dark source-badge source-product-override">Override کل محصول</span>
+                                                <span class="badge bg-primary source-badge source-colorpart-override">Override این بخش</span>
+                                            </div>
+
+                                            <div class="table-responsive">
+                                                <table class="table table-sm table-bordered align-middle" id="materials-table-{{ part_name }}">
+                                                    <thead class="table-light">
+                                                        <tr>
+                                                            <th>مرحله نقاشی</th>
+                                                            <th>ماده اولیه</th>
+                                                            <th>واحد</th>
+                                                            <th>مصرف به ازای واحد</th>
+                                                            <th>منبع</th>
+                                                            <th class="text-center">عملیات</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody class="materials-tbody">
+                                                        <!-- Loaded via AJAX -->
+                                                    </tbody>
+                                                </table>
+                                            </div>
+
+                                            <div class="mt-2">
+                                                <button type="button" class="btn btn-sm btn-outline-primary add-material-row" 
+                                                        data-color-part="{{ part_name }}" 
+                                                        data-product-id="{{ product.id }}">
+                                                    <i class="bi bi-plus"></i> افزودن ماده اولیه
+                                                </button>
+                                            </div>
+                                        </div>
+                                        {% endif %}
+                                    {% endfor %}
+                                </div>
+                            {% else %}
+                                <div class="alert alert-info">
+                                    <i class="bi bi-info-circle"></i> هیچ رنگ پیش‌فرضی برای این محصول تعریف نشده. ابتدا در بخش «رنگ‌های پیش‌فرض محصول» رنگ‌ها را وارد کنید.
+                                </div>
+                            {% endif %}
+                        {% else %}
+                            <div class="alert alert-info">
+                                <i class="bi bi-info-circle"></i> هیچ رنگ پیش‌فرضی برای این محصول تعریف نشده. ابتدا در بخش «رنگ‌های پیش‌فرض محصول» رنگ‌ها را وارد کنید.
+                            </div>
+                        {% endif %}
+                    {% endwith %}
+                {% else %}
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i> ابتدا محصول را ذخیره کنید تا بخش‌های رنگی قابل مدیریت شوند.
+                    </div>
+                {% endif %}
             </div>
         </div>
 
@@ -224,4 +340,339 @@
 
 {% block extra_js %}
     <script src="{% static 'selvi/js/bom-editor.js' %}"></script>
+    <script>
+    // ================================================================
+    // مدیریت مواد اولیه نقاشی برای بخش‌های رنگی
+    // ================================================================
+    const PAINTING_MATERIALS_API = "{% url 'product_color_part_materials_api' %}";
+    const RAW_MATERIALS_SEARCH_API = "{% url 'painting_raw_materials_search' %}";
+
+    let rawMaterialsCache = [];
+    let availableStagesCache = {};
+
+    // Load raw materials for Select2
+    async function loadRawMaterials() {
+        try {
+            const response = await fetch(RAW_MATERIALS_SEARCH_API + '?q=');
+            const data = await response.json();
+            rawMaterialsCache = data.results || [];
+        } catch (e) {
+            console.error('Failed to load raw materials:', e);
+        }
+    }
+
+    function getRawMaterialOptions(selectedId = null) {
+        let html = '<option value="">-- انتخاب ماده --</option>';
+        rawMaterialsCache.forEach(m => {
+            const sel = m.id == selectedId ? 'selected' : '';
+            html += `<option value="${m.id}" ${sel}>${m.text}</option>`;
+        });
+        return html;
+    }
+
+    function getStageOptions(stages, selectedId = null) {
+        let html = '<option value="">-- انتخاب مرحله --</option>';
+        stages.forEach(s => {
+            const sel = s.id == selectedId ? 'selected' : '';
+            html += `<option value="${s.id}" ${sel}>${s.name} (${s.process_name || ''})</option>`;
+        });
+        return html;
+    }
+
+    function getSourceBadge(source) {
+        const badges = {
+            'default': '<span class="badge source-badge source-default">پیش‌فرض مرحله</span>',
+            'product_override': '<span class="badge source-badge source-product-override">Override کل محصول</span>',
+            'colorpart_override': '<span class="badge source-badge source-colorpart-override">Override این بخش</span>',
+        };
+        return badges[source] || '';
+    }
+
+    function renderMaterialRow(req, stages) {
+        const canEdit = req.source !== 'default';
+        const stageOptions = getStageOptions(stages, req.painting_stage_id);
+        const materialOptions = getRawMaterialOptions(req.raw_material_id);
+
+        return `
+            <tr class="material-row" data-req-id="${req.id}" data-source="${req.source}">
+                <td>
+                    ${canEdit ? `
+                        <select class="form-select form-select-sm stage-select" data-field="painting_stage_id">
+                            ${stageOptions}
+                        </select>
+                    ` : `
+                        <span>${req.painting_stage_name}</span>
+                        <input type="hidden" name="painting_stage_id" value="${req.painting_stage_id}">
+                    `}
+                </td>
+                <td>
+                    ${canEdit ? `
+                        <select class="form-select form-select-sm material-select" data-field="raw_material_id">
+                            ${materialOptions}
+                        </select>
+                    ` : `
+                        <span>${req.raw_material_name}</span>
+                        <input type="hidden" name="raw_material_id" value="${req.raw_material_id}">
+                    `}
+                </td>
+                <td><span>${req.unit}</span></td>
+                <td>
+                    ${canEdit ? `
+                        <input type="number" step="0.001" class="form-control form-control-sm consumption-input" 
+                               value="${req.consumption_per_unit}" data-field="consumption_per_unit">
+                    ` : `
+                        <span>${req.consumption_per_unit}</span>
+                    `}
+                </td>
+                <td>${getSourceBadge(req.source)}</td>
+                <td class="text-center">
+                    ${canEdit ? `
+                        <button type="button" class="btn btn-sm btn-outline-danger delete-material-btn" 
+                                data-req-id="${req.id}" title="حذف Override (بازگشت به مقدار ارثی)">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    ` : ''}
+                </td>
+            </tr>
+        `;
+    }
+
+    async function loadMaterialsForColorPart(productId, colorPart, tabPanel) {
+        const tbody = tabPanel.querySelector('.materials-tbody');
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">در حال بارگذاری...</td></tr>';
+
+        try {
+            const url = new URL(PAINTING_MATERIALS_API, window.location.origin);
+            url.searchParams.append('product_id', productId);
+            url.searchParams.append('color_part', colorPart);
+
+            const response = await fetch(url);
+            const data = await response.json();
+
+            if (!data.success) {
+                throw new Error(data.error || 'خطا در بارگذاری');
+            }
+
+            availableStagesCache[colorPart] = data.available_stages || [];
+            const stages = data.available_stages || [];
+
+            if (data.requirements.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">هیچ ماده‌ای تعریف نشده. روی «افزودن ماده اولیه» کلیک کنید.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = data.requirements.map(req => renderMaterialRow(req, stages)).join('');
+            attachRowEvents(tabPanel, productId, colorPart);
+        } catch (e) {
+            console.error('Failed to load materials:', e);
+            tbody.innerHTML = `<tr><td colspan="6" class="text-center text-danger py-3">خطا: ${e.message}</td></tr>`;
+        }
+    }
+
+    function attachRowEvents(tabPanel, productId, colorPart) {
+        // Save on change (debounced)
+        tabPanel.querySelectorAll('.stage-select, .material-select, .consumption-input').forEach(el => {
+            el.addEventListener('change', debounce(() => saveMaterialRow(el.closest('tr'), productId, colorPart), 500));
+        });
+
+        // Delete button
+        tabPanel.querySelectorAll('.delete-material-btn').forEach(btn => {
+            btn.addEventListener('click', () => deleteMaterialRow(btn, productId, colorPart));
+        });
+    }
+
+    async function saveMaterialRow(row, productId, colorPart) {
+        const stageId = row.querySelector('[data-field="painting_stage_id"]').value;
+        const materialId = row.querySelector('[data-field="raw_material_id"]').value;
+        const consumption = row.querySelector('[data-field="consumption_per_unit"]').value;
+
+        if (!stageId || !materialId) {
+            showToast('مرحله و ماده اولیه الزامی هستند', 'warning');
+            return;
+        }
+
+        try {
+            const response = await fetch(PAINTING_MATERIALS_API, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken'),
+                },
+                body: JSON.stringify({
+                    product_id: productId,
+                    color_part: colorPart,
+                    painting_stage_id: stageId,
+                    raw_material_id: materialId,
+                    consumption_per_unit: consumption,
+                }),
+            });
+
+            const data = await response.json();
+            if (!data.success) {
+                throw new Error(data.error || 'خطا در ذخیره');
+            }
+
+            row.dataset.reqId = data.id;
+            row.querySelector('[data-field="consumption_per_unit"]').value = data.consumption_per_unit;
+            showToast(`${data.action} شد: ${data.raw_material_name} برای ${data.stage_name}`, 'success');
+        } catch (e) {
+            console.error('Save failed:', e);
+            showToast('خطا در ذخیره: ' + e.message, 'danger');
+        }
+    }
+
+    async function deleteMaterialRow(btn, productId, colorPart) {
+        const reqId = btn.dataset.reqId;
+        if (!reqId) return;
+
+        if (!confirm('این Override حذف شود؟ مقدار به سطح بالاتر (Override کل محصول یا پیش‌فرض مرحله) بازمی‌گردد.')) {
+            return;
+        }
+
+        try {
+            const response = await fetch(PAINTING_MATERIALS_API + '?id=' + reqId, {
+                method: 'DELETE',
+                headers: {
+                    'X-CSRFToken': getCookie('csrftoken'),
+                },
+            });
+
+            const data = await response.json();
+            if (!data.success) {
+                throw new Error(data.error || 'خطا در حذف');
+            }
+
+            // Reload the tab to show fallback values
+            const tabPanel = btn.closest('.tab-pane');
+            await loadMaterialsForColorPart(productId, colorPart, tabPanel);
+            showToast(data.message, 'success');
+        } catch (e) {
+            console.error('Delete failed:', e);
+            showToast('خطا در حذف: ' + e.message, 'danger');
+        }
+    }
+
+    async function addMaterialRow(btn, productId, colorPart) {
+        const tabPanel = btn.closest('.tab-pane');
+        const stages = availableStagesCache[colorPart] || [];
+
+        if (stages.length === 0) {
+            showToast('هیچ مرحله نقاشی مناسبی برای این بخش رنگی یافت نشد. ابتدا رنگ پیش‌فرض را بررسی کنید.', 'warning');
+            return;
+        }
+
+        const tbody = tabPanel.querySelector('.materials-tbody');
+        const emptyRow = tbody.querySelector('td[colspan="6"]');
+        if (emptyRow) emptyRow.parentElement.remove();
+
+        const newRowHtml = renderMaterialRow({
+            id: 'new',
+            painting_stage_id: '',
+            painting_stage_name: '',
+            raw_material_id: '',
+            raw_material_name: '',
+            unit: '',
+            consumption_per_unit: '0',
+            source: 'colorpart_override',
+        }, stages);
+
+        tbody.insertAdjacentHTML('beforeend', newRowHtml);
+        const newRow = tbody.lastElementChild;
+        attachRowEvents(tabPanel, productId, colorPart);
+
+        // Focus first select
+        newRow.querySelector('.stage-select').focus();
+    }
+
+    function debounce(fn, delay) {
+        let timer;
+        return (...args) => {
+            clearTimeout(timer);
+            timer = setTimeout(() => fn.apply(this, args), delay);
+        };
+    }
+
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+
+    function showToast(message, type = 'info') {
+        // Simple toast using Bootstrap if available, else alert
+        if (typeof bootstrap !== 'undefined' && bootstrap.Toast) {
+            const toastEl = document.createElement('div');
+            toastEl.className = `toast align-items-center text-white bg-${type} border-0`;
+            toastEl.setAttribute('role', 'alert');
+            toastEl.innerHTML = `
+                <div class="d-flex">
+                    <div class="toast-body">${message}</div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+                </div>
+            `;
+            let container = document.getElementById('toast-container');
+            if (!container) {
+                container = document.createElement('div');
+                container.id = 'toast-container';
+                container.className = 'toast-container position-fixed bottom-0 end-0 p-3';
+                document.body.appendChild(container);
+            }
+            container.appendChild(toastEl);
+            const toast = new bootstrap.Toast(toastEl);
+            toast.show();
+            toastEl.addEventListener('hidden.bs.toast', () => toastEl.remove());
+        } else {
+            alert(message);
+        }
+    }
+
+    // Initialize when DOM ready
+    document.addEventListener('DOMContentLoaded', async () => {
+        await loadRawMaterials();
+
+        // Load materials for first active tab on page load
+        const activeTab = document.querySelector('.colorpart-tab.active');
+        if (activeTab) {
+            const productId = activeTab.dataset.productId;
+            const colorPart = activeTab.dataset.colorPart;
+            if (productId && colorPart) {
+                await loadMaterialsForColorPart(productId, colorPart, activeTab);
+            }
+        }
+
+        // Load on tab switch
+        document.querySelectorAll('[data-bs-toggle="pill"]').forEach(btn => {
+            btn.addEventListener('shown.bs.tab', async (e) => {
+                const targetId = e.target.getAttribute('data-bs-target');
+                const tabPanel = document.querySelector(targetId);
+                if (tabPanel && !tabPanel.dataset.loaded) {
+                    const productId = tabPanel.dataset.productId;
+                    const colorPart = tabPanel.dataset.colorPart;
+                    if (productId && colorPart) {
+                        await loadMaterialsForColorPart(productId, colorPart, tabPanel);
+                        tabPanel.dataset.loaded = 'true';
+                    }
+                }
+            });
+        });
+
+        // Add material row buttons
+        document.querySelectorAll('.add-material-row').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const productId = btn.dataset.productId;
+                const colorPart = btn.dataset.colorPart;
+                addMaterialRow(btn, productId, colorPart);
+            });
+        });
+    });
+    </script>
 {% endblock %}

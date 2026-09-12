@@ -90,9 +90,8 @@ def _task_material_requirements(task):
     if task.station_name == 'paint':
         if not task.painting_stage_id:
             return rows
-        requirements = PaintingMaterialRequirement.objects.filter(
-            painting_stage_id=task.painting_stage_id
-        ).select_related('raw_material')
+        from product.utils import get_painting_material_requirements_for_task
+        requirements = get_painting_material_requirements_for_task(task)
         for req in requirements:
             rows.append((req.raw_material, Decimal(task.quantity) * req.consumption_per_unit))
         return rows
