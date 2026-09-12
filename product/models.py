@@ -637,8 +637,11 @@ class ProductionTask(models.Model):
                 logger.exception("خطا در ثبت ProductionEvent (نادیده گرفته شد تا جریان اصلی مختل نشود)")
 
             try:
-                from .utils import consume_material_for_task
-                consume_material_for_task(self)
+                from .utils import consume_material_for_task, consume_material_for_paint_task
+                if self.station_name == 'paint':
+                    consume_material_for_paint_task(self)
+                else:
+                    consume_material_for_task(self)
             except Exception:
                 import logging
                 logger = logging.getLogger(__name__)
@@ -896,6 +899,46 @@ class PaintingStage(models.Model):
 
     def __str__(self):
         return f"{self.process.name} - مرحله {self.order}: {self.name}"
+
+
+class PaintingMaterialRequirement(models.Model):
+    """
+    فرمول مصرف مواد اولیه برای یک مرحله نقاشی مشخص.
+    مثال: مرحله «آستر» از روند «رنگ زیر» به ازای هر واحد محصول ۰.۰۵ لیتر
+    «آستر پلی‌استر» مصرف می‌کند.
+
+    ⚠️ این مدل عمداً از ProductBOM/Part جدا نگه داشته شده است،
+    چون مواد اولیه نقاشی (رنگ، تینر، آستر و ...) به PaintingStage وابسته‌اند
+    نه به قطعات فیزیکی برش‌خورده. هیچگاه این دو مدل را با هم ادغام نکنید.
+    """
+    painting_stage = models.ForeignKey(
+        PaintingStage,
+        on_delete=models.CASCADE,
+        related_name='material_requirements',
+        verbose_name="مرحله نقاشی"
+    )
+    raw_material = models.ForeignKey(
+        'inventory.RawMaterial',
+        on_delete=models.PROTECT,
+        related_name='painting_requirements',
+        verbose_name="ماده اولیه"
+    )
+    consumption_per_unit = models.DecimalField(
+        max_digits=10,
+        decimal_places=3,
+        default=0,
+        verbose_name="مقدار مصرف به ازای هر واحد محصول",
+        help_text="مثال: ۰.۰۵ لیتر رنگ به ازای هر عدد محصول در این مرحله"
+    )
+
+    class Meta:
+        verbose_name = "فرمول مصرف مواد نقاشی"
+        verbose_name_plural = "فرمول‌های مصرف مواد نقاشی"
+        unique_together = ('painting_stage', 'raw_material')
+        ordering = ['painting_stage__process__name', 'painting_stage__order', 'raw_material__name']
+
+    def __str__(self):
+        return f"{self.painting_stage} ← {self.raw_material} ({self.consumption_per_unit})"
 
 
 class PaintingAssignmentRule(models.Model):

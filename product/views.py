@@ -70,6 +70,7 @@ from .utils import (
     assign_task_to_worker,
     get_unique_color_codes_for_item,
     log_production_event,
+    auto_create_material_issues,
 )
 logger = logging.getLogger(__name__)
 
@@ -2466,6 +2467,7 @@ def order_detail(request, order_id):
         'station_choices': STATION_CHOICES,
         'has_any_tasks': order.tasks.exists(),
         'has_paint_tasks': order.tasks.filter(station_name='paint').exists(),
+        'colspan': 10 + len(STATION_CHOICES),
     }
     return render(request, 'orders/order_detail.html', context)
 
@@ -3374,30 +3376,7 @@ def customer_edit_order_item(request, item_id):
 
 
 # -------------------------------------------------------------------
-# مشتری: حذف یک آیتم
-# -------------------------------------------------------------------
-@login_required
-def customer_delete_order_item(request, item_id):
-    item = get_object_or_404(OrderItem, pk=item_id)
-    if item.order.user != request.user:
-        messages.error(request, "شما اجازه حذف این آیتم را ندارید.")
-        return redirect('customer_order_list')
-    if not (item.order.status == 'draft' and item.order.created_at == jdatetime.date.today()):
-        messages.error(request, "فقط سفارش‌های پیش‌نویس امروز قابل ویرایش هستند.")
-        return redirect('customer_order_detail', order_id=item.order.id)
-
-    if request.method == 'POST':
-        order_id = item.order.id
-        item.delete()
-        messages.success(request, "آیتم با موفقیت حذف شد.")
-        return redirect('customer_order_detail', order_id=order_id)
-
-    return redirect('customer_order_detail', order_id=item.order.id)
-
-
-
-# -------------------------------------------------------------------
-#     حذف آیتم سفارش 
+# مشتری: حذف یک آیتم سفارش
 # -------------------------------------------------------------------
 @login_required
 def customer_delete_order_item(request, item_id):
@@ -3410,7 +3389,7 @@ def customer_delete_order_item(request, item_id):
 
     # فقط پیش‌نویس‌های امروز
     if item.order.status != 'draft' or item.order.created_at != jdatetime.date.today():
-        messages.error(request, "فقط سفارش‌های پیش‌نویس امروز قابل تغییر هستند.")
+        messages.error(request, "فقط سفارش‌های پیش‌نویس امروز قابل حذف هستند.")
         return redirect('customer_order_list')
 
     order_id = item.order.id
@@ -4144,7 +4123,14 @@ def assign_painting_process(request, item_id):
                 global_base += painting_process.stages.count()
 
             if new_tasks:
-                ProductionTask.objects.bulk_create(new_tasks)
+                created_tasks = ProductionTask.objects.bulk_create(new_tasks)
+                # خودکارسازی درخواست مواد اولیه از فرمول ساخت (BOM)
+                result = auto_create_material_issues(created_tasks, requested_by=request.user)
+                if result['created']:
+                    messages.info(
+                        request,
+                        f"🧾 {result['created']} درخواست مواد از انبار برای تسک‌های نقاشی ثبت شد."
+                    )
                 messages.success(
                     request,
                     f"✅ {len(new_tasks)} تسک نقاشی برای آیتم {item.id} ایجاد شد."
@@ -4437,7 +4423,7 @@ def painting_stages_view(request, process_id=None):
     stages = PaintingStage.objects.all()
     if process:
         stages = stages.filter(process=process)
-    stages = stages.select_related('process').order_by('process__name', 'order')
+    stages = stages.select_related('process').prefetch_related('material_requirements').order_by('process__name', 'order')
 
     # جستجو
     search = request.GET.get('search')
@@ -4474,8 +4460,125 @@ def painting_stage_detail_api(request, stage_id):
         'name': stage.name,
         'duration_minutes': stage.duration_minutes,
         'drying_time_minutes': stage.drying_time_minutes,
-        'required_skill': stage.required_skill,
+         'required_skill': stage.required_skill,
     })
+
+
+@login_required
+@admin_or_manager_required
+def painting_stage_materials_api(request, stage_id):
+    """API مدیریت مواد اولیه مصرفی یک مرحله نقاشی.
+
+    GET  – لیست مواد مصرفی جاری (برای Select2 + رندر جدول)
+    POST – اضافه کردن یا بروزرسانی یک ماده (raw_material_id + consumption)
+    PUT  – جایگزینی کامل لیست مواد برای این مرحله
+    """
+    from .models import PaintingStage, PaintingMaterialRequirement
+
+    stage = get_object_or_404(PaintingStage, pk=stage_id)
+
+    if request.method == 'GET':
+        requirements = PaintingMaterialRequirement.objects.select_related('raw_material').filter(
+            painting_stage=stage
+        )
+        results = [
+            {
+                'id': req.id,
+                'raw_material_id': req.raw_material_id,
+                'raw_material_name': str(req.raw_material),
+                'unit': req.raw_material.get_unit_display,
+                'consumption_per_unit': str(req.consumption_per_unit),
+            }
+            for req in requirements
+        ]
+        return JsonResponse({
+            'success': True,
+            'stage_id': stage.id,
+            'stage_name': stage.name,
+            'requirements': results,
+        })
+
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+        except (json.JSONDecodeError, TypeError):
+            return JsonResponse({'success': False, 'error': 'داده ارسالی معتبر نیست'})
+        raw_material_id = data.get('raw_material_id')
+        consumption = data.get('consumption_per_unit', 0)
+        if not raw_material_id:
+            return JsonResponse({'success': False, 'error': 'ماده اولیه انتخاب نشده'})
+        try:
+            consumption = float(consumption)
+        except (TypeError, ValueError):
+            return JsonResponse({'success': False, 'error': 'مقدار مصرف نامعتبر'})
+        req_obj, created = PaintingMaterialRequirement.objects.update_or_create(
+            painting_stage=stage,
+            raw_material_id=raw_material_id,
+            defaults={'consumption_per_unit': consumption},
+        )
+        action = 'ایجاد' if created else 'به‌روزرسانی'
+        return JsonResponse({
+            'success': True,
+            'action': action,
+            'consumption_per_unit': str(req_obj.consumption_per_unit),
+            'raw_material_name': str(req_obj.raw_material),
+        })
+
+    if request.method == 'PUT':
+        try:
+            data = json.loads(request.body)
+        except (json.JSONDecodeError, TypeError):
+            return JsonResponse({'success': False, 'error': 'داده ارسالی معتبر نیست'})
+        items = data.get('items', [])
+        with transaction.atomic():
+            PaintingMaterialRequirement.objects.filter(painting_stage=stage).delete()
+            for item in items:
+                raw_material_id = item.get('raw_material_id') if isinstance(item, dict) else item
+                consumption = item.get('consumption_per_unit', 0) if isinstance(item, dict) else 0
+                if not raw_material_id:
+                    continue
+                try:
+                    consumption = float(consumption)
+                except (TypeError, ValueError):
+                    consumption = 0
+                PaintingMaterialRequirement.objects.create(
+                    painting_stage=stage,
+                    raw_material_id=raw_material_id,
+                    consumption_per_unit=consumption,
+                )
+        return JsonResponse({'success': True, 'count': len(items)})
+
+    return JsonResponse({'success': False, 'error': 'روش غیرمجاز'})
+
+
+@login_required
+@admin_or_manager_required
+def painting_material_requirement_delete(request, req_id):
+    """حذف یک ردیف ماده اولیه از مرحله نقاشی."""
+    from .models import PaintingMaterialRequirement
+    req_obj = get_object_or_404(PaintingMaterialRequirement, pk=req_id)
+    req_obj.delete()
+    return JsonResponse({'success': True, 'id': req_id})
+
+
+@login_required
+@admin_or_manager_required
+def search_raw_materials_api(request):
+    """API جستجوی مواد اولیه برای Select2 در پنل نقاشی."""
+    from inventory.models import RawMaterial
+    q = request.GET.get('q', '').strip()
+    materials = RawMaterial.objects.select_related('category').filter(is_active=True)
+    if q:
+        materials = materials.filter(
+            Q(name__icontains=q) | Q(code__icontains=q) | Q(category__name__icontains=q)
+        )
+    materials = materials.order_by('category__name', 'name')[:20]
+    results = [{
+        'id': m.id,
+        'text': f"{m.name} ({m.category.name})",
+        'unit': m.get_unit_display(),
+    } for m in materials]
+    return JsonResponse({'results': results})
 
 
 @login_required

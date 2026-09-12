@@ -11,6 +11,7 @@ from .forms import OrderItemForm
 from .models import ShipmentLog
 from .models import PaintingProcess, PaintingStage
 from .models import PaintingAssignmentRule
+from .models import PaintingMaterialRequirement
 
 # @admin.register(PackagingUnit)
 # class PackagingUnitAdmin(admin.ModelAdmin):
@@ -416,6 +417,15 @@ class PaintingProcessAdmin(admin.ModelAdmin):
     )
 
 
+class PaintingStageMaterialRequirementInline(admin.TabularInline):
+    model = PaintingMaterialRequirement
+    fields = ('raw_material', 'consumption_per_unit')
+    autocomplete_fields = ['raw_material']
+    extra = 1
+    verbose_name = "ماده اولیه مصرفی"
+    verbose_name_plural = "مواد اولیه مصرفی"
+
+
 @admin.register(PaintingStage)
 class PaintingStageAdmin(admin.ModelAdmin):
     list_display = ['process', 'order', 'name', 'duration_minutes', 'drying_time_minutes', 'required_skill']
@@ -426,6 +436,7 @@ class PaintingStageAdmin(admin.ModelAdmin):
             'fields': ('process', 'order', 'name', 'duration_minutes', 'drying_time_minutes', 'required_skill')
         }),
     )
+    inlines = [PaintingStageMaterialRequirementInline]
 
 
 @admin.register(PaintingAssignmentRule)

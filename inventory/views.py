@@ -23,6 +23,7 @@ from .forms import (
     SupplierForm, RawMaterialCategoryForm, RawMaterialForm,
     StockMovementForm, PurchaseOrderForm, PurchaseOrderItemForm
 )
+from product.models import PaintingMaterialRequirement
 
 
 # ============================================================
@@ -78,9 +79,25 @@ def inventory_dashboard(request):
 # ============================================================
 
 def _task_material_requirements(task):
-    """Return BOM-derived material rows for one task, including painting tasks."""
+    """Return material consumption rows for one production task.
+
+    For paint tasks the requirements come from PaintingMaterialRequirement
+    (keyed on PaintingStage, NOT on Part/BOM). For all other stations the
+    requirement is derived from the Part's Material/RawMaterial.
+    """
     rows = []
-    if task.part_id and task.part.material.raw_material_id:
+
+    if task.station_name == 'paint':
+        if not task.painting_stage_id:
+            return rows
+        requirements = PaintingMaterialRequirement.objects.filter(
+            painting_stage_id=task.painting_stage_id
+        ).select_related('raw_material')
+        for req in requirements:
+            rows.append((req.raw_material, Decimal(task.quantity) * req.consumption_per_unit))
+        return rows
+
+    if task.part_id and task.part.material and task.part.material.raw_material_id:
         material = task.part.material
         return [(material.raw_material, Decimal(task.quantity) * material.consumption_per_unit)]
 
@@ -119,7 +136,7 @@ def production_issue_queue(request):
 
     station = request.GET.get('station', 'paint')
     tasks = ProductionTask.objects.filter(status__in=['pending', 'waiting']).select_related(
-        'order', 'order_item__product', 'part__material__raw_material'
+        'order', 'order_item__product', 'part__material__raw_material', 'painting_stage'
     ).order_by('scheduled_start', 'order_id')
     if station:
         tasks = tasks.filter(station_name=station)

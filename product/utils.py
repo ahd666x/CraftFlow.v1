@@ -6,6 +6,7 @@ import logging
 import traceback
 from datetime import datetime, time, timedelta
 from collections import defaultdict, deque
+from decimal import Decimal
 
 import jdatetime
 from django.db import transaction
@@ -85,6 +86,56 @@ def consume_material_for_task(task):
     except Exception:
         logger.exception("خطا در مصرف خودکار مواد اولیه برای تسک %s", task.pk)
         return None
+
+
+def consume_material_for_paint_task(task):
+    """
+    برای یک تسک نقاشی (station_name='paint') که painting_stage دارد،
+    مواد اولیه مربوط به آن مرحله را از طریق PaintingMaterialRequirement
+    مصرف می‌کند. یک تسک نقاشی ممکن است چند ماده اولیه هم‌زمان مصرف کند
+    (مثلاً هم رنگ هم تینر)، بنابراین چک idempotency برای هر ماده به‌صورت
+    جداگانه (per-task + per-raw_material) انجام می‌شود.
+
+    این تابع فقط برای ایستگاه paint فعال می‌شود؛ برای بقیه ایستگاه‌ها
+    از consume_material_for_task فعلی استفاده می‌شود.
+    """
+    if task.station_name != 'paint' or not task.painting_stage_id:
+        return []
+
+    from .models import PaintingMaterialRequirement
+    from inventory.models import StockMovement
+
+    created = []
+    requirements = PaintingMaterialRequirement.objects.filter(
+        painting_stage_id=task.painting_stage_id
+    ).select_related('raw_material')
+
+    qty = Decimal(task.quantity or 0)
+
+    for req in requirements:
+        if StockMovement.objects.filter(
+            reference_task=task,
+            movement_type='consumption',
+            raw_material=req.raw_material,
+        ).exists():
+            continue
+
+        consumption = qty * req.consumption_per_unit
+        if consumption <= 0:
+            continue
+
+        created.append(
+            StockMovement.objects.create(
+                raw_material=req.raw_material,
+                movement_type='consumption',
+                quantity=consumption,
+                reference_task=task,
+                note=f'مصرف خودکار نقاشی - تسک #{task.id} ({task.painting_stage.name})',
+                created_by=task.scanned_by,
+            )
+        )
+
+    return created
 
 # ===================================================================
 #   کش‌های سراسری
@@ -1857,3 +1908,77 @@ post_save.connect(_invalidate_on_change, sender=PaintingProcess)
 post_delete.connect(_invalidate_on_change, sender=PaintingProcess)
 post_save.connect(_invalidate_on_change, sender=WorkerProfile)
 post_delete.connect(_invalidate_on_change, sender=WorkerProfile)
+
+
+# ===================================================================
+#   خودکارسازی درخواست مواد اولیه از BOM
+#   وقتی تسک‌های نقاشی برنامه‌ریزی می‌شوند، درخواست مواد انباری
+#   به‌صورت خودکار ساخته می‌شود تا کارگران انبار بتوانند تحویل دهند.
+# ===================================================================
+
+def auto_create_material_issues(tasks, requested_by=None, purpose='production'):
+    """
+    برای لیست تسک‌های تولید، درخواست تحویل مواد (MaterialIssue) را
+    بر اساس فرمول ساخت (BOM) به‌صورت خودکات ایجاد می‌کند.
+
+    برای هر تسک، مواد مورد نیاز از طریق _task_material_requirements
+    محاسبه می‌شود و یک MaterialIssue با وضعیت 'requested' ساخته می‌شود
+    (مگر اینکه یک درخواست فعال قبلی برای همان تسک + ماده وجود داشته باشد).
+
+    Args:
+        tasks: لیست ProductionTask اشیا
+        requested_by: کاربر درخواست‌کننده (اختیاری)
+        purpose: 'production' یا 'rework'
+
+    Returns:
+        dict شامرایندکات: {'created': N, 'skipped': M, 'total_raw': K}
+    """
+    from inventory.models import MaterialIssue
+
+    created_count = 0
+    skipped_count = 0
+
+    # دریافت تمام درخواست‌های فعال (غیر لغو‌شده) برای جلوگیری از تکرار
+    existing = set(
+        MaterialIssue.objects
+        .exclude(status='cancelled')
+        .values_list('task_id', 'raw_material_id')
+    )
+
+    for task in tasks:
+        if not task.order_item_id:
+            continue
+
+        # محاسبه مواد مورد نیاز از BOM
+        # استفاده از منطق مشابه _task_material_requirements در inventory/views.py
+        try:
+            from inventory.views import _task_material_requirements
+            rows = _task_material_requirements(task)
+        except Exception:
+            rows = []
+
+        for raw_material, quantity in rows:
+            if not raw_material or quantity is None or quantity <= 0:
+                continue
+
+            if (getattr(task, 'id', None), raw_material.id) in existing:
+                skipped_count += 1
+                continue
+
+            MaterialIssue.objects.create(
+                task=task,
+                raw_material=raw_material,
+                requested_quantity=quantity,
+                purpose=purpose,
+                status='requested',
+                requested_by=requested_by,
+                note='درخواست خودکار از برنامه‌ریزی تولید' if purpose == 'production' else 'درخواست خودکات از برنامه‌ریزی نقاشی',
+            )
+            existing.add((getattr(task, 'id', None), raw_material.id))
+            created_count += 1
+
+    return {
+        'created': created_count,
+        'skipped': skipped_count,
+        'total_raw': len(existing),
+    }

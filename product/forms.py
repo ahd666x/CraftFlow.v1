@@ -1,6 +1,6 @@
 # forms.py
 from django import forms
-from .models import Order, OrderItem, Color, ProductCategory, PaintingProcess, PaintingStage, WorkerProfile, Customer
+from .models import Order, OrderItem, Color, ProductCategory, PaintingProcess, PaintingStage, PaintingMaterialRequirement, WorkerProfile, Customer
 from django.contrib.auth.models import User
 
 import ast
@@ -534,6 +534,22 @@ class PaintingStageForm(forms.ModelForm):
             'duration_minutes': forms.NumberInput(attrs={'class': 'form-control', 'min': 1}),
             'drying_time_minutes': forms.NumberInput(attrs={'class': 'form-control', 'min': 0}),
             'required_skill': forms.Select(attrs={'class': 'form-select'}),
+        }
+
+
+class PaintingMaterialRequirementForm(forms.ModelForm):
+    class Meta:
+        model = PaintingMaterialRequirement
+        fields = ['painting_stage', 'raw_material', 'consumption_per_unit']
+        widgets = {
+            'painting_stage': forms.Select(attrs={'class': 'form-select'}),
+            'raw_material': forms.Select(attrs={'class': 'form-select select2-raw-material'}),
+            'consumption_per_unit': forms.NumberInput(attrs={'class': 'form-control', 'min': 0, 'step': '0.001'}),
+        }
+        labels = {
+            'painting_stage': 'مرحله نقاشی',
+            'raw_material': 'ماده اولیه',
+            'consumption_per_unit': 'مقدار مصرف',
         }
 
 
