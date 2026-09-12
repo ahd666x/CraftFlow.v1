@@ -1499,7 +1499,15 @@ def create_and_schedule_items_for_date(item_ids, target_date=None):
                 skipped.append({'item_id': item.id, 'reason': 'no_process_match'})
 
         if new_tasks:
-            ProductionTask.objects.bulk_create(new_tasks)
+            created_tasks = ProductionTask.objects.bulk_create(new_tasks)
+            # خودکارسازی درخواست مواد از انبار بر اساس فرمول ساخت (BOM)
+            # برای برنامه‌ریزی آیتم‌های نقاشی
+            req_result = auto_create_material_issues(created_tasks, purpose='production')
+            if req_result['created']:
+                logger.info(
+                    f"create_and_schedule_items_for_date: {req_result['created']} "
+                    f"درخواست مواد از انبار برای تسک‌های نقاشی جدید ایجاد شد."
+                )
 
         # زمان‌بندی همه تسک‌ها
         all_item_ids = list(

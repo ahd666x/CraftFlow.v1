@@ -1,44 +1,384 @@
 {% extends "inventory/base.html" %}
+{% load static %}
 {% block title %}صف تحویل مواد به تولید{% endblock %}
 
 {% block inventory_content %}
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
-  <div><h1 class="h3 mb-1">صف تحویل مواد به تولید</h1><p class="text-muted mb-0">برنامه تولید ← درخواست مواد ← تأیید تحویل انبار</p></div>
-  <a href="{% url 'product_defects' %}" class="btn btn-outline-danger"><i class="bi bi-exclamation-octagon"></i> ثبت و پیگیری خرابی‌ها</a>
-</div>
-
-<div class="card-modern">
-  <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-    <span><i class="bi bi-calendar2-check"></i> نیازهای جدید از فرمول ساخت</span>
-    <form method="get" class="d-flex gap-2 align-items-center"><label class="small text-muted">مرحله</label><select class="form-select form-select-sm" name="station" onchange="this.form.submit()"><option value="">همه مراحل</option>{% for value,label in stations %}<option value="{{ value }}" {% if station == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></form>
+  <div>
+    <h1 class="h3 mb-1">صف تحویل مواد به تولید</h1>
+    <p class="text-muted mb-0">برنامه تولید ← درخواست مواد ← تأیید تحویل انبار</p>
   </div>
-  <div class="card-body p-0"><div class="table-responsive"><table class="table align-middle mb-0">
-    <thead class="table-light"><tr><th>سفارش / کالا</th><th>مرحله</th><th>ماده اولیه</th><th>نیاز فرمول</th><th></th></tr></thead>
-    <tbody>{% for row in requirements %}<tr>
-<td><strong>#{{ row.task.order_id }}</strong> — {{ row.task.order_item.product.name|default:row.task.part }}</td>
-      <td>
-        {% if row.task.station_name == 'paint' %}
-            {{ row.task.get_station_name_display }} — {{ row.task.painting_stage.name|default:'مرحله ناشناس' }}
-        {% else %}
-            {{ row.task.get_station_name_display }}
-        {% endif %}
-      </td>
-      <td>{{ row.raw_material.name }}</td>
-      <td>{{ row.quantity }} {{ row.raw_material.get_unit_display }}</td>
-      <td><form method="post">{% csrf_token %}<input type="hidden" name="action" value="request"><input type="hidden" name="task_id" value="{{ row.task.id }}"><input type="hidden" name="raw_material_id" value="{{ row.raw_material.id }}"><input type="hidden" name="quantity" value="{{ row.quantity }}"><button class="btn btn-sm btn-primary">افزودن به صف</button></form></td>
-    </tr>{% empty %}<tr><td colspan="5" class="text-center text-muted py-4">نیاز جدیدی با فرمول متصل به انبار پیدا نشد.</td></tr>{% endfor %}</tbody>
-  </table></div></div>
+  <a href="{% url 'product_defects' %}" class="btn btn-outline-danger">
+    <i class="bi bi-exclamation-octagon"></i> ثبت و پیگیری خرابی‌ها
+  </a>
 </div>
 
-<div class="card-modern">
-  <div class="card-header"><i class="bi bi-box-arrow-left"></i> درخواست‌های منتظر تحویل انبار</div>
-  <div class="card-body p-0"><div class="table-responsive"><table class="table align-middle mb-0">
-    <thead class="table-light"><tr><th>منشأ</th><th>ماده اولیه</th><th>مقدار درخواستی</th><th>موجودی</th><th>علت</th><th>ثبت تحویل</th></tr></thead>
-    <tbody>{% for issue in issues %}<tr>
-      <td>{% if issue.defect %}<span class="badge bg-danger">خرابی سفارش #{{ issue.defect.order_id }}</span><div class="small text-muted">{{ issue.defect.part|default:"قطعه ثبت‌نشده" }}</div>{% else %}<strong>سفارش #{{ issue.task.order_id }}</strong><div class="small text-muted">{{ issue.task.order_item.product.name|default:issue.task.part }}</div>{% endif %}</td>
-      <td>{{ issue.raw_material.name }}</td><td>{{ issue.issued_quantity }} از {{ issue.requested_quantity }} {{ issue.raw_material.get_unit_display }}</td><td>{{ issue.raw_material.current_stock }}</td><td>{{ issue.get_purpose_display }}</td>
-      <td><form class="d-flex gap-1" method="post" action="{% url 'inventory:issue_material' issue.id %}">{% csrf_token %}<input class="form-control form-control-sm" style="max-width:100px" name="quantity" type="number" min="0.01" max="{{ issue.requested_quantity|add:'-'|add:issue.issued_quantity }}" step="0.01" value="{{ issue.requested_quantity|add:'-'|add:issue.issued_quantity }}"><button class="btn btn-sm btn-success">ثبت تحویل</button></form></td>
-    </tr>{% empty %}<tr><td colspan="6" class="text-center text-muted py-4">درخواستی در انتظار تحویل نیست.</td></tr>{% endfor %}</tbody>
-  </table></div></div>
+<div class="row g-3 mb-3">
+  <div class="col-12 col-md-6">
+    <form method="get" class="d-flex gap-2 flex-wrap" id="filterForm">
+      <div class="d-flex gap-2 flex-grow-1">
+        <select name="station" class="form-select form-select-sm" id="stationFilter">
+          <option value="">همه مراحل</option>
+          {% for value,label in stations %}
+            <option value="{{ value }}" {% if station == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+        <select name="status" class="form-select form-select-sm" id="statusFilter" style="max-width:180px">
+          <option value="">همه وضعیت‌ها</option>
+          <option value="requested" {% if request.GET.status == 'requested' %}selected{% endif %}>درخواست‌شده</option>
+          <option value="partial" {% if request.GET.status == 'partial' %}selected{% endif %}>تخلیه‌ی بخشی</option>
+          <option value="issued" {% if request.GET.status == 'issued' %}selected{% endif %}>تخلیه‌شده</option>
+          <option value="cancelled" {% if request.GET.status == 'cancelled' %}selected{% endif %}>لغو‌شده</option>
+        </select>
+        <input type="text" name="q" class="form-control form-control-sm" placeholder="جستجو: سفارش، کالا، ماده..." value="{{ request.GET.q|default:'' }}" style="max-width:280px">
+        <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-funnel"></i> اعمال</button>
+        <a href="{% url 'inventory:production_issue_queue' %}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-x-circle"></i> پاک</a>
+      </div>
+    </form>
+  </div>
+  <div class="col-12 col-md-6">
+    <div class="d-flex flex-wrap gap-2 justify-content-md-end">
+      <span class="badge bg-info text-dark align-self-center">
+        <i class="bi bi-lightning-charge"></i> {{ issues|length }} درخواست در صف
+      </span>
+      {% if requirements %}
+        <span class="badge bg-warning text-dark align-self-center">
+          <i class="bi bi-plus-circle"></i> {{ requirements|length }} نیاز جدید از فرمول
+        </span>
+      {% endif %}
+    </div>
+  </div>
 </div>
+
+<div class="card-modern mb-4" id="newRequirementsCard">
+  <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="bi bi-calendar2-check"></i> نیازهای جدید از فرمول ساخت (BOM)</span>
+    <form method="get" class="d-flex gap-2 align-items-center">
+      <label class="small text-muted">مرحله</label>
+      <select class="form-select form-select-sm" name="station" onchange="this.form.submit()">
+        <option value="">همه مراحل</option>
+        {% for value,label in stations %}
+          <option value="{{ value }}" {% if station == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </form>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0" id="requirementsTable">
+        <thead class="table-light">
+          <tr>
+            <th style="width:35%">سفارش / کالا / قطعه</th>
+            <th style="width:15%">ایستگاه / مرحله</th>
+            <th style="width:20%">ماده اولیه</th>
+            <th style="width:12%">مقدار (فرمول)</th>
+            <th style="width:10%">موجودی انبار</th>
+            <th style="width:8%">اقدام</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in requirements %}
+          <tr data-task="{{ row.task.id }}" data-material="{{ row.raw_material.id }}">
+            <td>
+              <strong>#{{ row.task.order_id }}</strong>
+              <div class="small text-muted">
+                {% if row.task.order_item %}
+                  {{ row.task.order_item.product.name }}
+                  {% if row.task.part %} — {{ row.task.part.name }}{% endif %}
+                {% else %}
+                  {{ row.task.part|default:"بدون قطعه" }}
+                {% endif %}
+              </div>
+            </td>
+            <td>
+              <span class="badge bg-secondary">{{ row.task.get_station_name_display }}</span>
+              {% if row.task.station_name == 'paint' and row.task.painting_stage %}
+                <div class="small text-muted mt-1">{{ row.task.painting_stage.name }}</div>
+              {% endif %}
+            </td>
+            <td>
+              <strong>{{ row.raw_material.name }}</strong>
+              {% if row.raw_material.code %}
+                <div class="small text-muted">{{ row.raw_material.code }}</div>
+              {% endif %}
+            </td>
+            <td>
+              <span class="fw-bold text-primary">{{ row.quantity|floatformat:2 }}</span>
+              <span class="text-muted small"> {{ row.raw_material.get_unit_display }}</span>
+            </td>
+            <td>
+              <span class="{% if row.raw_material.current_stock < row.quantity %}text-danger fw-bold{% else %}text-success{% endif %}">
+                {{ row.raw_material.current_stock|floatformat:2 }} {{ row.raw_material.get_unit_display }}
+              </span>
+              {% if row.raw_material.current_stock < row.quantity %}
+                <i class="bi bi-exclamation-triangle-fill text-danger ms-1" title="موجودی کمتر از نیاز"></i>
+              {% endif %}
+            </td>
+            <td>
+              <form method="post" class="d-inline request-form">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="request">
+                <input type="hidden" name="task_id" value="{{ row.task.id }}">
+                <input type="hidden" name="raw_material_id" value="{{ row.raw_material.id }}">
+                <input type="hidden" name="quantity" value="{{ row.quantity }}">
+                <button type="submit" class="btn btn-sm btn-primary btn-add-to-queue"
+                  {% if row.raw_material.current_stock < row.quantity %}title="موجودی انبار کمتر از مقدار مورد نیاز است"{% endif %}>
+                  <i class="bi bi-plus-lg"></i> اضافه
+                </button>
+              </form>
+            </td          </tr>
+          {% empty %}
+            <tr>
+              <td colspan="6" class="text-center text-muted py-5">
+                <i class="bi bi-check-circle-fill text-success fs-1"></i>
+                <div class="mt-2">نیاز جدیدی با فرمول متصل به انبار پیدا نشد.</div>
+                <div class="small">تسک‌های فعال برای این مرحله بررسی شده‌اند و مواد مورد نیازشان قبلاً در صف انبار ثبت شده است.</div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="card-modern" id="issuesCard">
+  <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="bi bi-box-arrow-left"></i> درخواست‌های انبار</span>
+    <div class="d-flex gap-2">
+      <button type="button" class="btn btn-sm btn-outline-primary" id="refreshBtn" title="بروزرسانی خودکار">
+        <i class="bi bi-arrow-clockwise"></i> تازه‌سازی
+      </button>
+      <span class="badge bg-secondary align-self-center" id="issueCount">{{ issues|length }} آیتم</span>
+    </div>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0" id="issuesTable">
+        <thead class="table-light">
+          <tr>
+            <th style="width:30%">منشأ / سفارش</th>
+            <th style="width:18%">ماده اولیه</th>
+            <th style="width:12%">مقدار</th>
+            <th style="width:10%">موجودی</th>
+            <th style="width:10%">وضعیت</th>
+            <th style="width:10%">اولویت</th>
+            <th style="width:10%">انتظار (روز)</th>
+            <th style="width:10%">اقدام</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for issue in issues %}
+          <tr data-issue="{{ issue.id }}" class="{% if issue.status == 'requested' and issue.raw_material.current_stock < issue.requested_quantity %}table-danger{% elif issue.status == 'partial' %}table-warning{% endif %}">
+            <td>
+              {% if issue.defect %}
+                <span class="badge bg-danger"><i class="bi bi-exclamation-octagon"></i> خرابی</span>
+                <div class="small text-muted mt-1">سفارش #{{ issue.defect.order_id }}</div>
+                <div class="small">{{ issue.defect.part|default:"قطعه ثبت‌نشده" }}</div>
+              {% else %}
+                <strong>سفارش #{{ issue.task.order_id }}</strong>
+                <div class="small text-muted">
+                  {% if issue.task.order_item %}
+                    {{ issue.task.order_item.product.name }}
+                    {% if issue.task.part %} — {{ issue.task.part.name }}{% endif %}
+                  {% else %}
+                    {{ issue.task.part|default:"بدون قطعه" }}
+                  {% endif %}
+                </div>
+                <div class="small text-muted">
+                  <i class="bi bi-person-badge"></i> {{ issue.task.get_station_name_display }}
+                  {% if issue.task.painting_stage %} — {{ issue.task.painting_stage.name }}{% endif %}
+                </div>
+              {% endif %}
+            </td>
+            <td>
+              <strong>{{ issue.raw_material.name }}</strong>
+              {% if issue.raw_material.code %}
+                <div class="small text-muted">{{ issue.raw_material.code }}</div>
+              {% endif %}
+            </td>
+            <td>
+              <div class="d-flex align-items-center gap-2">
+                <span class="fw-bold">{{ issue.issued_quantity|floatformat:2 }} / {{ issue.requested_quantity|floatformat:2 }}</span>
+                <span class="text-muted small">{{ issue.raw_material.get_unit_display }}</span>
+              </div>
+              <div class="progress" style="height:4px; max-width:120px" role="progressbar" aria-valuenow="{{ issue.issued_quantity|floatformat:0 }}" aria-valuemin="0" aria-valuemax="{{ issue.requested_quantity|floatformat:0 }}">
+                <div class="progress-bar {% if issue.status == 'issued' %}bg-success{% elif issue.status == 'partial' %}bg-warning{% else %}bg-primary{% endif %}"
+                  style="width: {% if issue.requested_quantity > 0 %}{{ issue.issued_quantity|div:issue.requested_quantity|mul:100|floatformat:0 }}{% else %}0{% endif %}%"></div>
+              </div>
+            </td>
+            <td>
+              <span class="{% if issue.raw_material.current_stock < (issue.requested_quantity - issue.issued_quantity) %}text-danger fw-bold{% else %}text-success{% endif %}">
+                {{ issue.raw_material.current_stock|floatformat:2 }} {{ issue.raw_material.get_unit_display }}
+              </span>
+            </td>
+            <td>
+              <span class="badge
+                {% if issue.status == 'requested' %}bg-primary
+                {% elif issue.status == 'partial' %}bg-warning text-dark
+                {% elif issue.status == 'issued' %}bg-success
+                {% elif issue.status == 'cancelled' %}bg-secondary
+                {% endif %}">
+                {{ issue.get_status_display }}
+              </span>
+            </td>
+            <td>
+              {% with remaining=issue.requested_quantity|add:'-'|add:issue.issued_quantity %}
+                {% if issue.raw_material.current_stock < remaining and issue.status != 'issued' %}
+                  <span class="badge bg-danger"><i class="bi bi-exclamation-triangle"></i> بحرانی</span>
+                {% elif issue.status == 'requested' %}
+                  <span class="badge bg-info text-dark">عادی</span>
+                {% else %}
+                  <span class="badge bg-secondary">—</span>
+                {% endif %}
+              {% endwith %}
+            </td>
+            <td>
+              {% if issue.requested_at %}
+                {% with days_waited=issue.requested_at|timesince %}
+                  <span class="{% if issue.status == 'requested' and issue.raw_material.current_stock < (issue.requested_quantity - issue.issued_quantity) %}text-danger fw-bold{% endif %}">
+                    {{ days_waited }}
+                  </span>
+                {% endwith %}
+              {% else %}—{% endif %}
+            </td>
+            <td>
+              {% if issue.status in 'requested,partial' %}
+                <form method="post" action="{% url 'inventory:issue_material' issue.id %}" class="d-flex gap-1 issue-form">
+                  {% csrf_token %}
+                  <input type="number" name="quantity" class="form-control form-control-sm issue-qty-input"
+                    min="0.01"
+                    max="{{ issue.requested_quantity|add:'-'|add:issue.issued_quantity }}"
+                    step="0.01"
+                    value="{{ issue.requested_quantity|add:'-'|add:issue.issued_quantity }}"
+                    style="max-width:90px"
+                    title="مقدار تحویل">
+                  <button type="submit" class="btn btn-sm btn-success" title="ثبت تحویل">
+                    <i class="bi bi-check-lg"></i>
+                  </button>
+                  {% comment %} Cancel button requires backend view - enable when implemented {% endcomment %}
+                  {# {% if issue.status == 'requested' %}
+                    <button type="button" class="btn btn-sm btn-outline-danger btn-cancel-issue"
+                      data-issue="{{ issue.id }}" title="لغو درخواست">
+                      <i class="bi bi-x-lg"></i>
+                    </button>
+                  {% endif %} #}
+                </form>
+              {% else %}
+                <span class="text-muted small">
+                  {% if issue.issued_by %}<i class="bi bi-person"></i> {{ issue.issued_by.get_short_name|default:issue.issued_by.username }}{% endif %}
+                  {% if issue.issued_at %}<br><i class="bi bi-clock"></i> {{ issue.issued_at|date:"Y/m/d H:i" }}{% endif %}
+                </span>
+              {% endif %}
+            </td          </tr>
+          {% empty %}
+            <tr>
+              <td colspan="8" class="text-center text-muted py-5">
+                <i class="bi bi-inbox-fill fs-1"></i>
+                <div class="mt-2">درخواستی در انتظار تحویل نیست.</div>
+              </td>
+            </tr          </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{% if issues.has_other_pages or requirements|length > 20 %}
+<nav aria-label="صفحه‌بندی" class="mt-3">
+  <ul class="pagination justify-content-center">
+    {% if issues.has_previous %}
+      <li class="page-item"><a class="page-link" href="?page={{ issues.previous_page_number }}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}{% if request.GET.station %}&station={{ request.GET.station }}{% endif %}{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}">قبلی</a></li>
+    {% else %}
+      <li class="page-item disabled"><span class="page-link">قبلی</span></li>
+    {% endif %}
+    {% for num in issues.paginator.page_range %}
+      {% if issues.number == num %}
+        <li class="page-item active"><span class="page-link">{{ num }}</span></li>
+      {% elif num > issues.number|add:'-3' and num < issues.number|add:'3' %}
+        <li class="page-item"><a class="page-link" href="?page={{ num }}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}{% if request.GET.station %}&station={{ request.GET.station }}{% endif %}{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}">{{ num }}</a></li>
+      {% endif %}
+    {% endfor %}
+    {% if issues.has_next %}
+      <li class="page-item"><a class="page-link" href="?page={{ issues.next_page_number }}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}{% if request.GET.station %}&station={{ request.GET.station }}{% endif %}{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}">بعدی</a></li>
+    {% else %}
+      <li class="page-item disabled"><span class="page-link">بعدی</span></li>
+    {% endif %}
+  </ul>
+</nav>
+{% endif %}
+{% endblock %}
+
+{% block inventory_js %}
+<script>
+(function() {
+  'use strict';
+
+  // Auto-refresh every 60 seconds
+  let refreshInterval = null;
+  const REFRESH_MS = 60000;
+
+  function startAutoRefresh() {
+    refreshInterval = setInterval(() => {
+      fetch(window.location.href, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+        .then(r => r.text())
+        .then(html => {
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(html, 'text/html');
+          const newTable = doc.querySelector('#issuesTable tbody');
+          const newCount = doc.querySelector('#issueCount');
+          if (newTable) document.querySelector('#issuesTable tbody').innerHTML = newTable.innerHTML;
+          if (newCount) document.querySelector('#issueCount').textContent = newCount.textContent;
+        })
+        .catch(console.error);
+    }, REFRESH_MS);
+  }
+
+  function stopAutoRefresh() {
+    if (refreshInterval) clearInterval(refreshInterval);
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    document.hidden ? stopAutoRefresh() : startAutoRefresh();
+  });
+
+  // Refresh button
+  document.getElementById('refreshBtn')?.addEventListener('click', () => {
+    window.location.reload();
+  });
+
+  // Confirm cancel - requires backend view
+  // document.querySelectorAll('.btn-cancel-issue').forEach(btn => {
+  //   btn.addEventListener('click', (e) => {
+  //     e.preventDefault();
+  //     if (confirm('آیا مطمئن هستید که می‌خواهید این درخواست را لغو کنید؟')) {
+  //       const issueId = btn.dataset.issue;
+  //       fetch(`{% url 'inventory:cancel_material_issue' 0 %}`.replace('0', issueId), {
+  //         method: 'POST',
+  //         headers: { 'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value, 'X-Requested-With': 'XMLHttpRequest' }
+  //       }).then(r => {
+  //         if (r.ok) window.location.reload();
+  //         else alert('خطا در لغو درخواست');
+  //       });
+  //     }
+  //   });
+  // });
+
+  // Keyboard shortcut: Enter to submit quantity
+  document.querySelectorAll('.issue-qty-input').forEach(input => {
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        input.closest('form').submit();
+      }
+    });
+  });
+
+  // Highlight row on hover for better UX
+  document.querySelectorAll('#issuesTable tbody tr[data-issue]').forEach(row => {
+    row.style.cursor = 'pointer';
+  });
+
+  startAutoRefresh();
+})();
+</script>
 {% endblock %}

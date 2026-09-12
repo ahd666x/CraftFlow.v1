@@ -5005,7 +5005,14 @@ def painting_assign_process(request):
                     global_base += painting_process.stages.count()
 
                 if new_tasks:
-                    ProductionTask.objects.bulk_create(new_tasks)
+                    created_tasks = ProductionTask.objects.bulk_create(new_tasks)
+                    # خودکارسازی درخواست مواد اولیه از فرمول ساخت (BOM)
+                    result = auto_create_material_issues(created_tasks, requested_by=request.user)
+                    if result['created']:
+                        messages.info(
+                            request,
+                            f"🧾 {result['created']} درخواست مواد از انبار برای تسک‌های نقاشی ثبت شد."
+                        )
 
                 return JsonResponse({'success': True, 'message': 'روند نقاشی با موفقیت اعمال شد.'})
         except Exception as e:
