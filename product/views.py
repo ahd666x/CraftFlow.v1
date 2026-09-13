@@ -78,30 +78,34 @@ logger = logging.getLogger(__name__)
 @login_required
 @admin_or_manager_required
 def production_defects(request):
-    """Single place to report damaged pieces and request replacement material."""
     from inventory.models import RawMaterial, MaterialIssue
 
-    tasks = ProductionTask.objects.filter(status__in=['pending', 'waiting', 'done']).select_related(
-        'order', 'order_item__product', 'part'
-    ).order_by('-id')[:300]
     if request.method == 'POST':
-        task = get_object_or_404(ProductionTask, pk=request.POST.get('task_id'))
+        item = get_object_or_404(OrderItem, pk=request.POST.get('order_item_id'))
+        color_part = request.POST.get('color_part', '').strip()
         quantity = int(request.POST.get('quantity', 0) or 0)
         description = request.POST.get('description', '').strip()
-        if quantity < 1 or not description:
-            messages.error(request, 'مرحله، تعداد خراب و شرح خرابی الزامی است.')
+
+        if quantity < 1 or not description or not color_part:
+            messages.error(request, 'بخش رنگی، تعداد خراب و شرح خرابی الزامی است.')
         else:
+            related_task = ProductionTask.objects.filter(
+                order_item=item, station_name='paint', color_part=color_part
+            ).order_by('-step_order').first()
+
             defect = ProductionDefect.objects.create(
-                task=task, order=task.order, order_item=task.order_item, part=task.part,
-                quantity=quantity, description=description, reported_by=request.user,
+                task=related_task, order=item.order, order_item=item,
+                color_part=color_part, quantity=quantity,
+                description=description, reported_by=request.user,
             )
-            raw_id, replacement_quantity = request.POST.get('raw_material_id'), request.POST.get('replacement_quantity')
+            raw_id = request.POST.get('raw_material_id')
+            replacement_quantity = request.POST.get('replacement_quantity')
             if raw_id and replacement_quantity:
                 try:
                     replacement_quantity = Decimal(replacement_quantity)
                     if replacement_quantity > 0:
                         MaterialIssue.objects.create(
-                            task=task, defect=defect, raw_material_id=raw_id,
+                            task=related_task, defect=defect, raw_material_id=raw_id,
                             requested_quantity=replacement_quantity, purpose='rework',
                             requested_by=request.user, note=f'ساخت مجدد برای خرابی #{defect.id}'
                         )
@@ -109,15 +113,43 @@ def production_defects(request):
                         defect.save(update_fields=['status'])
                 except (ValueError, ArithmeticError):
                     messages.warning(request, 'خرابی ثبت شد، اما مقدار مواد جایگزین معتبر نبود.')
-            messages.success(request, 'خرابی ثبت شد. در صورت انتخاب ماده، درخواست آن در صف انبار قرار گرفت.')
+            messages.success(request, 'خرابی ثبت شد.')
             return redirect('product_defects')
 
-    defects = ProductionDefect.objects.select_related('task', 'order', 'order_item__product', 'part', 'reported_by').prefetch_related(
-        'material_issues__raw_material'
-    )
+    orders = Order.objects.filter(status__in=['planned', 'producing']).select_related('customer').order_by('-id')[:200]
+    defects = ProductionDefect.objects.select_related(
+        'order', 'order_item__product', 'reported_by', 'task__painting_stage__process'
+    ).prefetch_related('material_issues__raw_material')
+
     return render(request, 'production_defects.html', {
-        'tasks': tasks, 'defects': defects, 'raw_materials': RawMaterial.objects.filter(is_active=True).order_by('name'),
+        'orders': orders,
+        'defects': defects,
+        'raw_materials': RawMaterial.objects.filter(is_active=True).order_by('name'),
+        'color_parts': Color.PART_CHOICES,
     })
+
+
+@login_required
+@admin_or_manager_required
+def ajax_order_items_for_defect(request, order_id):
+    """آیتم‌های یک سفارش برای dropdown دوم فرم ثبت خرابی."""
+    order = get_object_or_404(Order, pk=order_id)
+    items = order.items.select_related('product__category').all()
+    data = [{'id': i.id, 'text': f"{i.product.category.name} {i.product.name} (×{i.quantity})"} for i in items]
+    return JsonResponse({'results': data})
+
+
+@login_required
+@admin_or_manager_required
+def ajax_item_color_parts_for_defect(request, item_id):
+    """بخش‌های رنگی موجود روی یک آیتم (از ordercolor یا default_colors محصول)."""
+    item = get_object_or_404(OrderItem, pk=item_id)
+    parts = list(item.ordercolor.values_list('part', flat=True))
+    if not parts:
+        parts = list(_parse_default_colors(item.product).keys())
+    label_map = dict(Color.PART_CHOICES)
+    data = [{'value': p, 'text': label_map.get(p, p)} for p in parts]
+    return JsonResponse({'results': data})
 
 
 @login_required
@@ -2276,8 +2308,6 @@ def report_production_unified(request):
 def report_workers(request):
     data = ProductionLog.objects.values('user__username').annotate(count=Count('id'))
     return render(request, 'reports/workers.html', {'data': data})
-
-
 @login_required
 @admin_or_manager_required
 @staff_or_representative_required
@@ -2287,7 +2317,122 @@ def delayed_orders(request):
     return render(request, 'reports/delayed.html', {'orders': orders})
 
 
+@login_required
+@admin_or_manager_required
+def report_material_consumption(request):
+    from inventory.models import StockMovement, MaterialIssue
+    from .models import ProductionDefect, PaintingProcess
 
+    date_from = request.GET.get('date_from')
+    date_to = request.GET.get('date_to')
+    process_id = request.GET.get('process')
+    rokeshi_filter = request.GET.get('rokeshi')
+
+    ROKESHI_CODES = {'8', '9', '10', '11'}
+
+    movements = StockMovement.objects.filter(
+        movement_type='consumption',
+        reference_task__isnull=False,
+    ).select_related(
+        'raw_material',
+        'reference_task__painting_stage__process',
+        'reference_task__order_item__product__category',
+        'reference_task__order_item',
+    )
+
+    if date_from:
+        movements = movements.filter(created_at__date__gte=date_from)
+    if date_to:
+        movements = movements.filter(created_at__date__lte=date_to)
+    if process_id:
+        movements = movements.filter(reference_task__painting_stage__process_id=process_id)
+
+    rows = {}
+
+    def _row_key(item, process):
+        return (item.product_id, process.id if process else None)
+
+    def _get_row(item, process):
+        key = _row_key(item, process)
+        return rows.setdefault(key, {
+            'product': item.product, 'process': process,
+            'materials': {}, 'defect_count': 0, 'defect_materials': {},
+        })
+
+    def _is_rokeshi(item, color_part):
+        if not color_part:
+            return False
+        color_obj = item.ordercolor.filter(part=color_part).first()
+        code = color_obj.code if color_obj else None
+        if not code or code == 'nan':
+            from .utils import _parse_default_colors
+            code = _parse_default_colors(item.product).get(color_part)
+        return str(code) in ROKESHI_CODES
+
+    for mv in movements:
+        task = mv.reference_task
+        item = task.order_item
+        if not item:
+            continue
+        stage = task.painting_stage
+        process = stage.process if stage else None
+
+        if task.station_name == 'paint' and rokeshi_filter:
+            is_rok = _is_rokeshi(item, task.color_part)
+            if rokeshi_filter == 'rokeshi' and not is_rok:
+                continue
+            if rokeshi_filter == 'poshshi' and is_rok:
+                continue
+
+        row = _get_row(item, process)
+        m = row['materials'].setdefault(
+            mv.raw_material_id, {'raw_material': mv.raw_material, 'qty': Decimal('0')}
+        )
+        m['qty'] += mv.quantity
+
+    defects = ProductionDefect.objects.select_related(
+        'order_item__product', 'task__painting_stage__process'
+    ).prefetch_related('material_issues__raw_material')
+    if date_from:
+        defects = defects.filter(created_at__date__gte=date_from)
+    if date_to:
+        defects = defects.filter(created_at__date__lte=date_to)
+    if process_id:
+        defects = defects.filter(task__painting_stage__process_id=process_id)
+
+    for d in defects:
+        item = d.order_item
+        if not item:
+            continue
+        process = d.task.painting_stage.process if (d.task and d.task.painting_stage) else None
+
+        color_part = getattr(d, 'color_part', '') or (d.task.color_part if d.task else '')
+        if rokeshi_filter and process:
+            is_rok = _is_rokeshi(item, color_part)
+            if rokeshi_filter == 'rokeshi' and not is_rok:
+                continue
+            if rokeshi_filter == 'poshshi' and is_rok:
+                continue
+
+        row = _get_row(item, process)
+        row['defect_count'] += d.quantity
+        for issue in d.material_issues.all():
+            if issue.issued_quantity <= 0:
+                continue
+            dm = row['defect_materials'].setdefault(
+                issue.raw_material_id, {'raw_material': issue.raw_material, 'qty': Decimal('0')}
+            )
+            dm['qty'] += issue.issued_quantity
+
+    report_rows = sorted(rows.values(), key=lambda r: (r['product'].name, r['process'].name if r['process'] else ''))
+
+    context = {
+        'report_rows': report_rows,
+        'processes': PaintingProcess.objects.filter(is_active=True).order_by('name'),
+        'date_from': date_from or '', 'date_to': date_to or '',
+        'selected_process': process_id or '', 'rokeshi_filter': rokeshi_filter or '',
+    }
+    return render(request, 'reports/material_consumption.html', context)
 
 
 # -------------------------------------------------------------------

@@ -142,7 +142,21 @@ def production_issue_queue(request):
 
     existing = {(issue.task_id, issue.raw_material_id) for issue in MaterialIssue.objects.exclude(status='cancelled')}
     requirements = []
+    # کلید یکتاسازی برای نیازهای نقاشی: یک روند فقط یک‌بار در نظر گرفته شود،
+    # حتی اگر چند PaintingStage/ProductionTask از همان روند در صف باشند.
+    seen_paint_groups = set()
+    representative_paint_task = {}
+
     for task in tasks:
+        if task.station_name == 'paint':
+            if not task.painting_stage_id:
+                continue
+            group_key = (task.order_item_id, task.color_part, task.painting_stage.process_id)
+            if group_key in seen_paint_groups:
+                continue
+            seen_paint_groups.add(group_key)
+            representative_paint_task[group_key] = task
+
         for raw, quantity in _task_material_requirements(task):
             if (task.id, raw.id) not in existing:
                 requirements.append({'task': task, 'raw_material': raw, 'quantity': quantity})

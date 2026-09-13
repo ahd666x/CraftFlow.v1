@@ -2,27 +2,77 @@
 {% block title %}ثبت و پیگیری خرابی تولید{% endblock %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
-  <div><h1 class="h3 mb-1">خرابی و ساخت مجدد</h1><p class="text-muted mb-0">خرابی در هر مرحله ثبت می‌شود؛ مواد جایگزین مستقیماً به صف انبار می‌رود.</p></div>
+  <div><h1 class="h3 mb-1">خرابی و ساخت مجدد</h1><p class="text-muted mb-0">خرابی بر اساس سفارش، آیتم و بخش رنگی ثبت می‌شود؛ مواد جایگزین مستقیماً به صف انبار می‌رود.</p></div>
   <a class="btn btn-outline-primary" href="{% url 'inventory:production_issue_queue' %}"><i class="bi bi-box-seam"></i> صف تحویل انبار</a>
 </div>
 <div class="card shadow-sm border-0 mb-4"><div class="card-body p-4">
   <h2 class="h5 mb-3">ثبت خرابی جدید</h2>
   <form method="post" class="row g-3">{% csrf_token %}
-    <div class="col-md-6"><label class="form-label">مرحله‌ای که خرابی در آن دیده شد</label><select required name="task_id" class="form-select"><option value="">انتخاب کنید…</option>{% for task in tasks %}<option value="{{ task.id }}">سفارش #{{ task.order_id }} — {{ task.get_station_name_display }} — {{ task.order_item.product.name|default:task.part }}</option>{% endfor %}</select></div>
+    <div class="col-md-4">
+      <label class="form-label">سفارش</label>
+      <select name="order_id" id="id_order" class="form-select" required>
+        <option value="">انتخاب کنید…</option>
+        {% for o in orders %}
+        <option value="{{ o.id }}">#{{ o.id }} - {{ o.customer.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-4">
+      <label class="form-label">آیتم (کالا)</label>
+      <select name="order_item_id" id="id_order_item" class="form-select" required disabled>
+        <option value="">ابتدا سفارش را انتخاب کنید</option>
+      </select>
+    </div>
+    <div class="col-md-4">
+      <label class="form-label">بخش رنگی</label>
+      <select name="color_part" id="id_color_part" class="form-select" required disabled>
+        <option value="">ابتدا آیتم را انتخاب کنید</option>
+      </select>
+    </div>
     <div class="col-md-2"><label class="form-label">تعداد خراب</label><input required class="form-control" name="quantity" type="number" min="1" value="1"></div>
-    <div class="col-md-4"><label class="form-label">قطعه</label><input class="form-control" disabled value="از تسک انتخاب‌شده خوانده می‌شود"></div>
-    <div class="col-md-6"><label class="form-label">ماده اولیه جایگزین <span class="text-muted">(اختیاری)</span></label><select name="raw_material_id" class="form-select"><option value="">فعلاً فقط ثبت خرابی</option>{% for raw in raw_materials %}<option value="{{ raw.id }}">{{ raw.name }} — موجودی: {{ raw.current_stock }} {{ raw.get_unit_display }}</option>{% endfor %}</select></div>
-    <div class="col-md-2"><label class="form-label">مقدار برای ساخت مجدد</label><input class="form-control" name="replacement_quantity" type="number" min="0.01" step="0.01" placeholder="مثلاً 2"></div>
-    <div class="col-md-4"><label class="form-label">شرح خرابی و اقدام لازم</label><input required class="form-control" name="description" placeholder="مثلاً آسیب در رنگ، نیاز به ساخت مجدد درب"></div>
+    <div class="col-md-6"><label class="form-label">ماده اولیه جایگزین (اختیاری)</label>
+      <select name="raw_material_id" class="form-select"><option value="">فعلاً فقط ثبت خرابی</option>
+        {% for raw in raw_materials %}<option value="{{ raw.id }}">{{ raw.name }} — موجودی: {{ raw.current_stock }} {{ raw.get_unit_display }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2"><label class="form-label">مقدار برای ساخت مجدد</label><input class="form-control" name="replacement_quantity" type="number" min="0.01" step="0.01"></div>
+    <div class="col-12"><label class="form-label">شرح خرابی و اقدام لازم</label><input required class="form-control" name="description" placeholder="مثلاً: خط‌وخش روی درب هنگام مونتاژ"></div>
     <div class="col-12"><button class="btn btn-danger"><i class="bi bi-exclamation-triangle"></i> ثبت خرابی و درخواست مواد</button></div>
   </form>
 </div></div>
 <div class="card shadow-sm border-0"><div class="card-header bg-white"><h2 class="h5 mb-0">سابقه خرابی‌ها</h2></div><div class="table-responsive"><table class="table align-middle mb-0">
-  <thead class="table-light"><tr><th>زمان</th><th>سفارش / کالا</th><th>مرحله</th><th>قطعه</th><th>خرابی</th><th>مواد جایگزین</th><th>وضعیت</th></tr></thead>
+  <thead class="table-light"><tr><th>زمان</th><th>سفارش / کالا</th><th>روند نقاشی</th><th>بخش رنگی</th><th>خرابی</th><th>مواد جایگزین</th><th>وضعیت</th></tr></thead>
   <tbody>{% for defect in defects %}<tr>
-    <td class="small">{{ defect.created_at|date:"Y/m/d H:i" }}</td><td>#{{ defect.order_id }}<div class="small text-muted">{{ defect.order_item.product.name|default:"-" }}</div></td><td>{{ defect.task.get_station_name_display }}</td><td>{{ defect.part|default:"-" }}</td><td>{{ defect.quantity }} عدد<div class="small text-muted">{{ defect.description }}</div></td>
+    <td class="small">{{ defect.created_at|date:"Y/m/d H:i" }}</td><td>#{{ defect.order_id }}<div class="small text-muted">{{ defect.order_item.product.name|default:"-" }}</div></td>
+    <td>{{ defect.process_name|default:"-" }}</td>
+    <td>{{ defect.color_part|default:"-" }}</td>
+    <td>{{ defect.quantity }} عدد<div class="small text-muted">{{ defect.description }}</div></td>
     <td>{% for issue in defect.material_issues.all %}{{ issue.raw_material.name }}: {{ issue.requested_quantity }} <span class="badge {% if issue.status == 'issued' %}bg-success{% else %}bg-warning text-dark{% endif %}">{{ issue.get_status_display }}</span><br>{% empty %}-{% endfor %}</td>
     <td><span class="badge {% if defect.status == 'rework_issued' %}bg-success{% elif defect.status == 'reported' %}bg-secondary{% else %}bg-warning text-dark{% endif %}">{{ defect.get_status_display }}</span></td>
   </tr>{% empty %}<tr><td colspan="7" class="text-center text-muted py-4">هنوز خرابی ثبت نشده است.</td></tr>{% endfor %}</tbody>
 </table></div></div>
+
+<script>
+document.getElementById('id_order').addEventListener('change', function() {
+  const orderId = this.value;
+  const itemSelect = document.getElementById('id_order_item');
+  const colorSelect = document.getElementById('id_color_part');
+  colorSelect.innerHTML = '<option value="">ابتدا آیتم را انتخاب کنید</option>';
+  colorSelect.disabled = true;
+  if (!orderId) { itemSelect.innerHTML = '<option value="">ابتدا سفارش را انتخاب کنید</option>'; itemSelect.disabled = true; return; }
+  fetch(`/ajax/defects/order/${orderId}/items/`).then(r => r.json()).then(data => {
+    itemSelect.innerHTML = '<option value="">انتخاب کنید…</option>' + data.results.map(i => `<option value="${i.id}">${i.text}</option>`).join('');
+    itemSelect.disabled = false;
+  });
+});
+document.getElementById('id_order_item').addEventListener('change', function() {
+  const itemId = this.value;
+  const colorSelect = document.getElementById('id_color_part');
+  if (!itemId) { colorSelect.innerHTML = '<option value="">ابتدا آیتم را انتخاب کنید</option>'; colorSelect.disabled = true; return; }
+  fetch(`/ajax/defects/item/${itemId}/color-parts/`).then(r => r.json()).then(data => {
+    colorSelect.innerHTML = '<option value="">انتخاب کنید…</option>' + data.results.map(p => `<option value="${p.value}">${p.text}</option>`).join('');
+    colorSelect.disabled = false;
+  });
+});
+</script>
 {% endblock %}

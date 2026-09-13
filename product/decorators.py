@@ -18,10 +18,6 @@ def admin_or_manager_required(view_func=None, redirect_url='/orderlist/'):
     return decorator
 
 
-
-# product/decorators.py
-from django.contrib.auth.decorators import user_passes_test
-
 def staff_or_representative_required(view_func=None, redirect_url='/customer/orders/'):
 
     def check_user(user):
@@ -36,3 +32,26 @@ def staff_or_representative_required(view_func=None, redirect_url='/customer/ord
     if view_func:
         return decorator(view_func)
     return decorator
+
+
+def warehouse_required(view_func=None, redirect_url='/dashboard/'):
+    def check_user(user):
+        if not user.is_authenticated:
+            return False
+        if user.is_superuser:
+            return True
+        return user.groups.filter(name='انبار').exists()
+
+    decorator = user_passes_test(check_user, login_url=redirect_url)
+    if view_func:
+        return decorator(view_func)
+    return decorator
+
+
+def is_warehouse_user(user):
+    """Helper callable (not a decorator) for branching inside a shared view like scan_packaging_unit."""
+    if not user.is_authenticated:
+        return False
+    if user.is_superuser:
+        return True
+    return user.groups.filter(name='انبار').exists()

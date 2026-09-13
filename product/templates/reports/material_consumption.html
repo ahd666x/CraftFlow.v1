@@ -1,0 +1,207 @@
+{% extends 'base.html' %}
+{% load static %}
+{% load product_filters %}
+
+{% block title %}گزارش مصرف مواد اولیه{% endblock %}
+
+{% block extra_css %}
+<style>
+    :root {
+        --bs-card-bg: #ffffff;
+        --bs-card-shadow: 0 4px 24px rgba(0,0,0,0.04);
+    }
+
+    body {
+        background-color: #f7f9fc;
+    }
+
+    .summary-card {
+        background: var(--bs-card-bg);
+        border: none;
+        border-radius: 16px;
+        box-shadow: var(--bs-card-shadow);
+        padding: 1.2rem 1rem;
+        transition: transform 0.15s ease;
+    }
+    .summary-card:hover { transform: translateY(-2px); }
+    .summary-icon {
+        width: 44px; height: 44px; border-radius: 12px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1.4rem; margin-bottom: 0.8rem;
+    }
+    .filter-panel {
+        background: var(--bs-card-bg); border-radius: 16px;
+        box-shadow: var(--bs-card-shadow); padding: 1.5rem;
+    }
+    .table-report {
+        background: var(--bs-card-bg); border-radius: 16px;
+        box-shadow: var(--bs-card-shadow); overflow: hidden;
+    }
+    .table-report thead th {
+        background-color: #f1f5f9; color: #334155;
+        font-weight: 600; border-bottom: 2px solid #e2e8f0;
+        white-space: nowrap; font-size: 0.85rem; padding: 0.6rem 0.4rem;
+    }
+    .table-report tbody td {
+        vertical-align: middle; border-color: #f1f5f9;
+        font-size: 0.8rem; padding: 0.5rem 0.4rem;
+    }
+    .table-report tbody tr:hover { background-color: #f8fafc; }
+    .material-list { font-size: 0.75rem; line-height: 1.4; }
+    .material-item { display: flex; justify-content: space-between; padding: 0.15rem 0; }
+    .material-name { color: #334155; }
+    .material-qty { color: #2563eb; font-weight: 600; }
+    .defect-badge { background-color: #fef3c7; color: #92400e; padding: 0.2rem 0.5rem; border-radius: 20px; font-size: 0.75rem; font-weight: 500; }
+    .btn-glass {
+        background: rgba(255,255,255,0.7); backdrop-filter: blur(6px);
+        border: 1px solid rgba(0,0,0,0.05); border-radius: 10px;
+        padding: 0.4rem 1rem; transition: 0.15s;
+    }
+    .btn-glass:hover {
+        background: rgba(255,255,255,0.95);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+    }
+    .form-control-glass {
+        background: rgba(255,255,255,0.8); border: 1px solid #e2e8f0;
+        border-radius: 10px; padding: 0.4rem 0.8rem;
+    }
+    .form-select-glass {
+        background: rgba(255,255,255,0.8); border: 1px solid #e2e8f0;
+        border-radius: 10px; padding: 0.4rem 0.8rem;
+    }
+
+    @media (max-width: 767.98px) {
+        .hide-mobile { display: none; }
+        .table-report thead th, .table-report tbody td {
+            font-size: 0.7rem; padding: 0.3rem 0.2rem;
+        }
+        .summary-card { padding: 0.8rem 0.5rem; }
+        .summary-icon { width: 36px; height: 36px; font-size: 1.2rem; }
+        .material-list { font-size: 0.65rem; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <!-- Header -->
+    <div class="d-flex align-items-center mb-4">
+        <div class="bg-white p-3 rounded-3 shadow-sm me-3">
+            <i class="bi bi-box-seam fs-3 text-primary"></i>
+        </div>
+        <div>
+            <h4 class="mb-0 fw-bold">گزارش مصرف مواد اولیه</h4>
+            <p class="text-muted small mb-0">مصرف مواد بر اساس محصول، روند نقشی و نوع رنگ (روکشی/پوششی)</p>
+        </div>
+    </div>
+
+    <!-- Filter Panel -->
+    <div class="filter-panel mb-4">
+        <form method="get" id="filter-form">
+            <div class="row g-3 align-items-end">
+                <div class="col-md-3 col-sm-6">
+                    <label class="form-label small text-muted">از تاریخ</label>
+                    <input type="date" name="date_from" class="form-control form-control-glass" value="{{ date_from }}">
+                </div>
+                <div class="col-md-3 col-sm-6">
+                    <label class="form-label small text-muted">تا تاریخ</label>
+                    <input type="date" name="date_to" class="form-control form-control-glass" value="{{ date_to }}">
+                </div>
+                <div class="col-md-3 col-sm-6">
+                    <label class="form-label small text-muted">روند نقاشی</label>
+                    <select name="process" class="form-select form-select-glass">
+                        <option value="">همه روندها</option>
+                        {% for proc in processes %}
+                        <option value="{{ proc.id }}" {% if selected_process == proc.id|stringformat:"s" %}selected{% endif %}>{{ proc.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3 col-sm-6">
+                    <label class="form-label small text-muted">نوع رنگ</label>
+                    <select name="rokeshi" class="form-select form-select-glass">
+                        <option value="">همه (روکشی + پوششی)</option>
+                        <option value="rokeshi" {% if rokeshi_filter == 'rokeshi' %}selected{% endif %}>روکشی</option>
+                        <option value="poshshi" {% if rokeshi_filter == 'poshshi' %}selected{% endif %}>پوششی</option>
+                    </select>
+                </div>
+            </div>
+            <div class="row g-3 align-items-end mt-2">
+                <div class="col-md-4 col-sm-12 d-flex align-items-end gap-2">
+                    <button type="submit" class="btn btn-primary rounded-pill px-4"><i class="bi bi-funnel me-1"></i> فیلتر</button>
+                    <a href="?" class="btn btn-outline-secondary rounded-pill px-4"><i class="bi bi-x-circle me-1"></i> حذف فیلتر</a>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <!-- Report Table -->
+    {% if report_rows %}
+    <div class="table-report p-3">
+        <table class="table table-report align-middle mb-0">
+            <thead>
+                <tr>
+                    <th>محصول</th>
+                    <th class="hide-mobile">روند نقاشی</th>
+                    <th style="min-width: 280px;">مواد مصرفی (موجود:مقدار)</th>
+                    <th class="text-center" style="width: 120px;">تعداد خرابی</th>
+                    <th style="min-width: 220px;">مواد مصرف خرابی</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in report_rows %}
+                <tr>
+                    <td class="fw-semibold">{{ row.product.name }}</td>
+                    <td class="hide-mobile">
+                        {% if row.process %}
+                        <span class="badge bg-info text-dark">{{ row.process.name }}</span>
+                        {% else %}
+                        <span class="text-muted">— (غیرنقاشی)</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="material-list">
+                            {% for mat in row.materials.values %}
+                            <div class="material-item">
+                                <span class="material-name">{{ mat.raw_material.name }}</span>
+                                <span class="material-qty">{{ mat.qty|floatformat:2 }} {{ mat.raw_material.get_unit_display }}</span>
+                            </div>
+                            {% empty %}
+                            <span class="text-muted">بدون مصرف</span>
+                            {% endfor %}
+                        </div>
+                    </td>
+                    <td class="text-center">
+                        {% if row.defect_count > 0 %}
+                        <span class="defect-badge">{{ row.defect_count }} عدد</span>
+                        {% else %}
+                        <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if row.defect_materials %}
+                        <div class="material-list">
+                            {% for mat in row.defect_materials.values %}
+                            <div class="material-item">
+                                <span class="material-name">{{ mat.raw_material.name }}</span>
+                                <span class="material-qty">{{ mat.qty|floatformat:2 }} {{ mat.raw_material.get_unit_display }}</span>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% else %}
+                        <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="text-center py-5 bg-white rounded-3 shadow-sm">
+        <i class="bi bi-inbox display-3 text-muted mb-3"></i>
+        <h5 class="text-muted">موردی یافت نشد</h5>
+        <p class="text-muted">با تغییر فیلترها می‌توانید نتایج را بررسی کنید.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

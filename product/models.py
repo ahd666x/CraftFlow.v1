@@ -790,12 +790,16 @@ class ProductionDefect(models.Model):
         ('rework_issued', 'مواد جایگزین تحویل شد'),
         ('closed', 'بسته شده'),
     ]
-    task = models.ForeignKey(ProductionTask, on_delete=models.PROTECT, related_name='defects', verbose_name='مرحله/تسک')
+    task = models.ForeignKey(
+        ProductionTask, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='defects', verbose_name='مرحله/تسک (اختیاری)'
+    )
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='defects', verbose_name='سفارش')
     order_item = models.ForeignKey(OrderItem, null=True, blank=True, on_delete=models.SET_NULL,
                                    related_name='defects', verbose_name='آیتم سفارش')
     part = models.ForeignKey(Part, null=True, blank=True, on_delete=models.SET_NULL,
                              related_name='defects', verbose_name='قطعه آسیب‌دیده')
+    color_part = models.CharField(max_length=20, choices=Color.PART_CHOICES, blank=True, verbose_name='بخش رنگی')
     quantity = models.PositiveIntegerField(default=1, verbose_name='تعداد خراب')
     description = models.TextField(verbose_name='شرح خرابی و اقدام لازم')
     status = models.CharField(max_length=30, choices=STATUS_CHOICES, default='reported', verbose_name='وضعیت')
@@ -810,6 +814,12 @@ class ProductionDefect(models.Model):
 
     def __str__(self):
         return f'خرابی {self.quantity} عددی - سفارش {self.order_id}'
+
+    @property
+    def process_name(self):
+        if self.task and self.task.painting_stage:
+            return self.task.painting_stage.process.name
+        return None
 
 
 class PackagingUnit(models.Model):
