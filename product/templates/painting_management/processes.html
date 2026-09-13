@@ -1,5 +1,11 @@
 {% extends "painting_management/base.html" %}
+{% load static %}
 {% block title %}مدیریت روندهای نقاشی{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'selvi/css/select2.min.css' %}" />
+<link rel="stylesheet" href="{% static 'selvi/css/select2-bootstrap-5-theme.min.css' %}" />
+{% endblock %}
 
 {% block painting_content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
@@ -57,6 +63,9 @@
                         <a href="{% url 'painting_stages_process' process.id %}" class="btn btn-sm btn-outline-info">
                             <i class="bi bi-list-ul"></i> مراحل
                         </a>
+                        <button class="btn btn-sm btn-outline-secondary btn-process-materials" data-id="{{ process.id }}" data-name="{{ process.name }}" title="کاتالوگ مواد اولیه">
+                            <i class="bi bi-box-seam"></i> کاتالوگ
+                        </button>
                     </td>
                 </tr>
                 {% empty %}
@@ -107,11 +116,171 @@
         </div>
     </div>
 </div>
+
+<!-- مودال مدیریت کاتالوگ مواد اولیه روند -->
+<div class="modal fade" id="processMaterialsModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <form id="processMaterialsForm">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title" id="processMaterialsModalTitle">کاتالوگ مواد اولیه</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="processMaterialsList" class="mb-3">
+                        <div class="text-center text-muted py-3" id="processMaterialsLoading">در حال بارگذاری...</div>
+                    </div>
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-8">
+                            <select name="new_raw_material_id" id="newProcessRawMaterial" class="form-select select2-raw-material" style="width: 100%"></select>
+                        </div>
+                        <div class="col-md-4">
+                            <button type="button" class="btn btn-outline-primary w-100" id="addProcessMaterialBtn">
+                                <i class="bi bi-plus"></i> افزودن به کاتالوگ
+                            </button>
+                        </div>
+                    </div>
+                    <div class="form-text mt-1">ماده‌های اولیه‌ای که این روند می‌تواند استفاده کند را اینجا تعریف کنید. مقدار مصرف واقعی برای هر محصول در صفحهٔ ویرایش محصول تعیین می‌شود.</div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">بستن</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block painting_js %}
+<script src="{% static 'selvi/js/select2.min.js' %}"></script>
 <script>
 $(function () {
+    var PROCESS_MATERIALS_API_BASE = "{% url 'painting_process_materials_api' 0 %}".replace('/0/', '');
+    var RAW_MATERIAL_SEARCH_URL = "{% url 'painting_raw_materials_search' %}";
+
+    var processMaterialsModalEl = document.getElementById('processMaterialsModal');
+    var processMaterialsModal = new bootstrap.Modal(processMaterialsModalEl);
+    var currentProcessId = null;
+
+    function getProcessMaterialsUrl(processId) {
+        return PROCESS_MATERIALS_API_BASE + processId + '/';
+    }
+
+    function initProcessSelect2() {
+        var $sel = $('#newProcessRawMaterial');
+        if ($sel.data('select2')) {
+            $sel.select2('destroy');
+        }
+        $sel.select2({
+            theme: 'bootstrap-5',
+            width: '100%',
+            placeholder: 'جستجوی ماده اولیه...',
+            allowClear: true,
+            ajax: {
+                url: RAW_MATERIAL_SEARCH_URL,
+                dataType: 'json',
+                delay: 250,
+                data: function (params) {
+                    return { q: params.term || '' };
+                },
+                processResults: function (data) {
+                    return { results: data.results };
+                },
+                cache: false
+            }
+        });
+    }
+
+    function loadProcessMaterials(processId) {
+        currentProcessId = processId;
+        $('#processMaterialsModalTitle').text('کاتالوگ مواد اولیه - ' + $(event.target).closest('tr').find('td:first').text());
+        $('#processMaterialsList').html('<div class="text-center text-muted py-3" id="processMaterialsLoading">در حال بارگذاری...</div>');
+
+        $.getJSON(getProcessMaterialsUrl(processId), function (data) {
+            if (!data.success) {
+                $('#processMaterialsList').html('<div class="text-center text-danger py-3">خطا: ' + data.error + '</div>');
+                return;
+            }
+            if (data.materials.length === 0) {
+                $('#processMaterialsList').html('<div class="text-center text-muted py-3">ماده‌ای در کاتالوگ این روند تعریف نشده است.</div>');
+                return;
+            }
+            var html = '<table class="table table-sm table-hover"><thead><tr><th>ماده اولیه</th><th>واحد</th><th class="text-center">عملیات</th></tr></thead><tbody>';
+            data.materials.forEach(function (m) {
+                html += '<tr data-id="' + m.id + '" data-raw-material-id="' + m.raw_material_id + '">' +
+                    '<td>' + m.raw_material_name + '</td>' +
+                    '<td>' + m.unit + '</td>' +
+                    '<td class="text-center">' +
+                        '<button type="button" class="btn btn-sm btn-outline-danger delete-process-material-btn" data-id="' + m.id + '" title="حذف از کاتالوگ"><i class="bi bi-trash"></i></button>' +
+                    '</td>' +
+                '</tr>';
+            });
+            html += '</tbody></table>';
+            $('#processMaterialsList').html(html);
+        });
+    }
+
+    // Open modal
+    $(document).on('click', '.btn-process-materials', function () {
+        var processId = $(this).data('id');
+        var processName = $(this).data('name');
+        currentProcessId = processId;
+        $('#processMaterialsModalTitle').text('کاتالوگ مواد اولیه - ' + processName);
+        loadProcessMaterials(processId);
+        processMaterialsModal.show();
+    });
+
+    // Add material
+    $(document).on('click', '#addProcessMaterialBtn', function () {
+        var rawMaterialId = $('#newProcessRawMaterial').val();
+        if (!rawMaterialId) {
+            alert('ماده اولیه انتخاب کنید');
+            return;
+        }
+        $.ajax({
+            url: getProcessMaterialsUrl(currentProcessId),
+            method: 'POST',
+            headers: {'X-CSRFToken': '{{ csrf_token }}'},
+            contentType: 'application/json',
+            data: JSON.stringify({raw_material_id: rawMaterialId}),
+            success: function (data) {
+                if (data.success) {
+                    $('#newProcessRawMaterial').val(null).trigger('change');
+                    loadProcessMaterials(currentProcessId);
+                } else {
+                    alert('خطا: ' + data.error);
+                }
+            }
+        });
+    });
+
+    // Delete material
+    $(document).on('click', '.delete-process-material-btn', function () {
+        if (!confirm('این ماده از کاتالوگ حذف شود؟ تمام مقادیر مصرف ثبت‌شده برای این ماده در این روند هم حذف می‌شوند.')) return;
+        var id = $(this).data('id');
+        $.ajax({
+            url: getProcessMaterialsUrl(currentProcessId) + '?id=' + id,
+            method: 'DELETE',
+            headers: {'X-CSRFToken': '{{ csrf_token }}'},
+            success: function (data) {
+                if (data.success) {
+                    loadProcessMaterials(currentProcessId);
+                } else {
+                    alert('خطا: ' + data.error);
+                }
+            }
+        });
+    });
+
+    // destruir select2 on modal hide
+    $('#processMaterialsModal').on('hidden.bs.modal', function () {
+        var $sel = $('#newProcessRawMaterial');
+        if ($sel.data('select2')) {
+            $sel.select2('destroy');
+        }
+    });
+
     // ایجاد/ویرایش (ارسال فرم به صورت AJAX)
     $('#processForm').on('submit', function (e) {
         e.preventDefault();

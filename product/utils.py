@@ -90,57 +90,31 @@ def consume_material_for_task(task):
 
 def get_painting_material_requirements_for_task(task):
     """
-    فرمول مصرف مواد یک تسک نقاشی را برمی‌گرداند، با در نظر گرفتن override
-    محصولی در صورت وجود. برای هر ماده اولیه‌ی مرتبط با این مرحله:
-    - اگر یک override برای (این مرحله + این ماده + محصول این تسک) وجود داشته
-      باشد، همان استفاده می‌شود.
-    - در غیر این صورت، رکورد پیش‌فرض (product=None) همان مرحله+ماده استفاده
-      می‌شود.
-    - اگر هیچ‌کدام وجود نداشته باشد، آن ماده اصلاً در نتیجه ظاهر نمی‌شود.
-
-    اولویت‌بندی (از خاص‌ترین به کلی‌ترین):
-    ۱. product=این محصول + color_part=این تسک.color_part   (خاص‌ترین)
-    ۲. product=این محصول + color_part=NULL                 (override کل محصول)
-    ۳. product=NULL + color_part=NULL                       (پیش‌فرض مرحله)
-
-    خروجی: لیستی از PaintingMaterialRequirement (یکی به‌ازای هر
-    ماده اولیه‌ی مرتبط، با اولویت override).
+    فرمول مصرف مواد یک تسک نقاشی: دقیقاً بر اساس (روندِ مرحلهٔ تسک،
+    محصول آیتم سفارش، بخش رنگی تسک) از PaintingMaterialRequirement خوانده
+    می‌شود. اگر برای این ترکیب دقیق چیزی تعریف نشده باشد، لیست خالی
+    برمی‌گردد (یعنی مصرفی برای این ترکیب ثبت نشده — دیگر fallback به
+    پیش‌فرض وجود ندارد).
     """
     from .models import PaintingMaterialRequirement
-    from django.db.models import Q
 
     if task.station_name != 'paint' or not task.painting_stage_id:
         return []
+    if not task.order_item_id or not task.order_item.product_id:
+        return []
+    if not task.color_part:
+        return []
 
-    product_id = None
-    color_part = task.color_part or None
-    if task.order_item_id and task.order_item.product_id:
-        product_id = task.order_item.product_id
+    process_id = task.painting_stage.process_id
+    product_id = task.order_item.product_id
 
-    all_reqs = PaintingMaterialRequirement.objects.filter(
-        painting_stage_id=task.painting_stage_id
-    ).filter(
-        Q(product_id=product_id, color_part=color_part) |
-        Q(product_id=product_id, color_part__isnull=True) |
-        Q(product__isnull=True, color_part__isnull=True)
-    ).select_related('raw_material', 'product')
-
-    def priority(req):
-        if req.product_id == product_id and req.color_part == color_part and color_part is not None:
-            return 0
-        if req.product_id == product_id and req.color_part is None:
-            return 1
-        return 2
-
-    by_material = {}
-    for req in sorted(all_reqs, key=priority):
-        key = req.raw_material_id
-        if key not in by_material:
-            by_material[key] = req
-        # چون مرتب‌سازی بر اساس اولویت انجام شده، اولین موردی که برای هر
-        # raw_material_id دیده می‌شود، بالاترین اولویت است — بقیه را نادیده بگیر.
-
-    return list(by_material.values())
+    return list(
+        PaintingMaterialRequirement.objects.filter(
+            process_id=process_id,
+            product_id=product_id,
+            color_part=task.color_part,
+        ).select_related('raw_material')
+    )
 
 
 def consume_material_for_paint_task(task):

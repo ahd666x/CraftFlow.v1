@@ -1,7 +1,10 @@
 from django.test import TestCase
 from django.contrib.auth.models import User
+from django.urls import reverse
+from django.db import transaction
 from decimal import Decimal
 from unittest.mock import patch
+import json
 import jdatetime
 
 from product.utils import (
@@ -13,6 +16,7 @@ from product.models import (
     Product, ProductCategory, ProductBOM, Part, Material,
     Order, OrderItem, Color, ProductionTask, Customer,
     PaintingProcess, PaintingStage, PaintingMaterialRequirement,
+    PaintingProcessMaterial,
 )
 from inventory.models import (
     RawMaterial, RawMaterialCategory, StockMovement, MaterialIssue,
@@ -55,564 +59,585 @@ class IsWorkingDayTests(TestCase):
 
 
 # ============================================================
-# تست‌های فرمول مصرف مواد نقاشی
+# تست‌های مدل‌های جدید (PaintingProcessMaterial و PaintingMaterialRequirement با process FK)
 # ============================================================
 
-class PaintingMaterialRequirementTests(TestCase):
-    """
-    تست‌های سیستم مصرف مواد نقاشی که از PaintingMaterialRequirement استفاده می‌کند.
-    این مدل از ProductBOM/Part کاملاً جدا است — مصرف رنگ/تینر/آستر بر
-    اساس PaintingStage تعیین می‌شود، نه بر اساس متریال تخته‌ی زیرکار.
-    """
+class PaintingProcessMaterialModelTests(TestCase):
+    """تست‌های مدل کاتالوگ مواد روند نقاشی"""
 
     @classmethod
     def setUpTestData(cls):
-        cls.user = User.objects.create_user('testuser', password='testpass')
-
+        cls.user = User.objects.create_superuser('testuser2', password='testpass')
+        
         cat = RawMaterialCategory.objects.create(name='رنگ و مواد نقاشی')
         cls.paint_raw = RawMaterial.objects.create(
-            category=cat, name='رنگ آب‌پاشی متالیک', code='P001', unit='lit',
+            category=cat, name='رنگ تست', code='P002', unit='lit',
             min_stock_alert=Decimal('10.00'),
         )
         cls.thinner_raw = RawMaterial.objects.create(
-            category=cat, name='تینر حلال', code='T001', unit='lit',
+            category=cat, name='تینر تست', code='T002', unit='lit',
             min_stock_alert=Decimal('5.00'),
         )
-
-        board_cat = RawMaterialCategory.objects.create(name='تخته')
-        cls.board_raw = RawMaterial.objects.create(
-            category=board_cat, name='MDF 16mm', code='MDF16', unit='m2',
-            min_stock_alert=Decimal('0'),
+        
+        cls.process1 = PaintingProcess.objects.create(
+            name='روند تست 1', code='TST1', color_codes=['8'],
+            is_active=True,
+        )
+        cls.process2 = PaintingProcess.objects.create(
+            name='روند تست 2', code='TST2', color_codes=['9'],
+            is_active=True,
         )
 
-        cls.category = ProductCategory.objects.create(name='مبلم')
-        cls.material = Material.objects.create(name='MDF', thickness=16, raw_material=cls.board_raw)
-        cls.product = Product.objects.create(
-            category=cls.category, name='تخت‌فرش',
-            default_size='100x50', base_price=5000,
-        )
-
-        cls.customer = Customer.objects.create(name='مشتری تست', phone='09120000000')
-        cls.order = Order.objects.create(
-            user=cls.user, customer=cls.customer, number='ORD001',
-        )
-
-        cls.process = PaintingProcess.objects.create(
-            name='رنگ متالیک', code='MET', color_codes=['8'],
-        )
-        cls.stage_sealer = PaintingStage.objects.create(
-            process=cls.process, order=1, name='آستر',
-            duration_minutes=30, drying_time_minutes=60, required_skill='painter',
-        )
-        cls.stage_paint = PaintingStage.objects.create(
-            process=cls.process, order=2, name='رنگ رو',
-            duration_minutes=45, drying_time_minutes=120, required_skill='painter',
-        )
-
-        cls.req_sealer = PaintingMaterialRequirement.objects.create(
-            painting_stage=cls.stage_sealer, raw_material=cls.paint_raw,
-            consumption_per_unit=Decimal('0.100'),
-        )
-        cls.req_paint = PaintingMaterialRequirement.objects.create(
-            painting_stage=cls.stage_paint, raw_material=cls.paint_raw,
-            consumption_per_unit=Decimal('0.300'),
-        )
-        cls.req_paint_thinner = PaintingMaterialRequirement.objects.create(
-            painting_stage=cls.stage_paint, raw_material=cls.thinner_raw,
-            consumption_per_unit=Decimal('0.050'),
-        )
-
-        cls.part = Part.objects.create(
-            material=cls.material, name='پنل', length=100, width=50,
-            pname='تخت‌فرش', routing_code='cut.cnc',
-        )
-        ProductBOM.objects.create(product=cls.product, part=cls.part, quantity=4)
-
-    # --- helpers ---
-
-    def _make_order_item(self, quantity=2):
-        item = OrderItem.objects.create(
-            order=self.order, product=self.product, quantity=quantity,
-        )
-        Color.objects.create(part='بدنه', code='8', orderitem=item)
-        return item
-
-    def _make_paint_task(self, item, painting_stage, quantity=2, color_part='بدنه'):
-        task = ProductionTask.objects.create(
-            order=item.order,
-            part=None,
-            station_name='paint',
-            step_order=10,
-            quantity=quantity,
-            status='pending',
-            painting_stage=painting_stage,
-            order_item=item,
-            color_part=color_part,
-        )
-        return task
-
-    def _make_cut_task(self, quantity=4):
-        task = ProductionTask.objects.create(
-            order=self.order,
-            part=self.part,
-            station_name='cut',
-            step_order=1,
-            quantity=quantity,
-            status='pending',
-        )
-        return task
-
-    # --- تست 1: _task_material_requirements برای تسک‌های نقاشی ---
-
-    def test_paint_task_requirements_come_from_painting_stage(self):
-        """
-        تسک نقاشی باید موادش از PaintingMaterialRequirement بگیرد، نه از BOM.
-        برای مرحله آستر → 0.1 لیتر رنگ به ازای هر واحد؛ برای مرحله رنگ رو → 0.3 لیتر رنگ
-        به ازای هر واحد.
-        """
-        item = self._make_order_item(quantity=3)
-        task = self._make_paint_task(item, self.stage_sealer, quantity=3)
-
-        rows = _task_material_requirements(task)
-        self.assertEqual(len(rows), 1)
-        raw, qty = rows[0]
-        self.assertEqual(raw, self.paint_raw)
-        self.assertEqual(qty, Decimal(3) * Decimal('0.100'))
-
-    def test_paint_task_multiple_materials(self):
-        """
-        یک مرحله نقاشی می‌تواند چند ماده اولیه مصرف کند.
-        مرحله «رنگ رو» → 0.3 لیتر رنگ + 0.05 لیتر تینر.
-        """
-        item = self._make_order_item(quantity=2)
-        task = self._make_paint_task(item, self.stage_paint, quantity=2)
-
-        rows = _task_material_requirements(task)
-        self.assertEqual(len(rows), 2)
-        by_raw = {raw: qty for raw, qty in rows}
-        self.assertIn(self.paint_raw, by_raw)
-        self.assertIn(self.thinner_raw, by_raw)
-        self.assertEqual(by_raw[self.paint_raw], Decimal(2) * Decimal('0.300'))
-        self.assertEqual(by_raw[self.thinner_raw], Decimal(2) * Decimal('0.050'))
-
-    # --- تست 2: consume_material_for_paint_task هنگام done شدن ---
-
-    def test_consume_material_for_paint_task_creates_stock_movements(self):
-        """
-        وقتی تسک نقاشی done می‌شود، یک StockMovement مصرفی برای هر
-        PaintingMaterialRequirement ساخته می‌شود.
-        """
-        item = self._make_order_item(quantity=2)
-        task = self._make_paint_task(item, self.stage_paint, quantity=2)
-        task.status = 'done'
-        task.save()
-
-        movements = StockMovement.objects.filter(
-            reference_task=task, movement_type='consumption'
-        )
-        self.assertEqual(movements.count(), 2)
-
-        by_raw = {m.raw_material_id: m for m in movements}
-        self.assertIn(self.paint_raw.id, by_raw)
-        self.assertAlmostEqual(float(by_raw[self.paint_raw.id].quantity), 0.6, places=3)
-        self.assertIn(self.thinner_raw.id, by_raw)
-        self.assertAlmostEqual(float(by_raw[self.thinner_raw.id].quantity), 0.1, places=3)
-
-    def test_consume_material_for_paint_task_is_idempotent(self):
-        """فراخوانی مجدد consume_material_for_paint_task با همان تسک نباید رکورد تکراری بسازد."""
-        item = self._make_order_item(quantity=2)
-        task = self._make_paint_task(item, self.stage_paint, quantity=2)
-
-        consume_material_for_paint_task(task)
-        consume_material_for_paint_task(task)
-
-        movements = StockMovement.objects.filter(
-            reference_task=task, movement_type='consumption'
-        )
-        self.assertEqual(movements.count(), 2)
-
-    def test_consume_material_for_paint_task_no_stage(self):
-        """
-        تسک نقاشی بدون painting_stage (ghost task) نباید خطا بدهد
-        و نباید رکورد اضافه کند.
-        """
-        item = self._make_order_item(quantity=2)
-        task = self._make_paint_task(item, None, quantity=2)
-        task.painting_stage = None
-        task.save()
-
-        result = consume_material_for_paint_task(task)
-        self.assertEqual(result, [])
-        self.assertEqual(
-            StockMovement.objects.filter(reference_task=task).count(), 0
-        )
-
-    # --- تست 3: regression — BOM-based (cut) tasks unaffected ---
-
-    def test_cut_task_requirements_use_bom(self):
-        """
-        تسک‌های ایستگاه‌های غیر از paint (مثل cut) باید همچنان از
-        Part.material.raw_material استفاده کنند، نه از PaintingMaterialRequirement.
-        """
-        task = self._make_cut_task(quantity=4)
-        rows = _task_material_requirements(task)
-        self.assertEqual(len(rows), 1)
-        raw, qty = rows[0]
-        self.assertEqual(raw, self.board_raw)
-        self.assertEqual(qty, Decimal(4) * Decimal('1'))
-
-    def test_cut_task_consumption_unchanged(self):
-        """consume_material_for_task برای تسک cut دست‌نخورته باقی می‌ماند."""
-        task = self._make_cut_task(quantity=4)
-        task.status = 'done'
-        task.save()
-
-        movement = StockMovement.objects.filter(
-            reference_task=task, movement_type='consumption'
-        ).first()
-        self.assertIsNotNone(movement)
-        self.assertEqual(movement.raw_material, self.board_raw)
-        self.assertEqual(float(movement.quantity), 4.0)
-
-    # --- تست 4: production_issue_queue برای تسک نقاشی ---
-
-    def test_paint_task_appears_in_production_issue_queue_logic(self):
-        """
-        با صفحه‌نمایش _task_material_requirements، یک تسک نقاشی
-        باید در صف انتقال مواد ظاهر شود با مقدار صحیح.
-        """
-        item = self._make_order_item(quantity=5)
-        task = self._make_paint_task(item, self.stage_sealer, quantity=5)
-
-        rows = _task_material_requirements(task)
-        self.assertEqual(len(rows), 1)
-        raw, qty = rows[0]
-        self.assertEqual(raw, self.paint_raw)
-        self.assertEqual(qty, Decimal(5) * Decimal('0.100'))
-
-    # --- تست 5: auto_create_material_issues برای تسک نقاشی ---
-
-    def test_auto_create_material_issues_for_paint_task(self):
-        """
-        auto_create_material_issues باید برای تسک‌های نقاشی،
-        MaterialIssue با مقدار صحیح بسازد.
-        """
-        from product.utils import auto_create_material_issues
-
-        item = self._make_order_item(quantity=3)
-        task = self._make_paint_task(item, self.stage_sealer, quantity=3)
-
-        result = auto_create_material_issues([task], requested_by=self.user)
-        self.assertEqual(result['created'], 1)
-        self.assertEqual(result['skipped'], 0)
-
-        issue = MaterialIssue.objects.get(task=task, raw_material=self.paint_raw)
-        self.assertEqual(issue.raw_material, self.paint_raw)
-        self.assertEqual(float(issue.requested_quantity), 0.3)
-        self.assertEqual(issue.status, 'requested')
-
-    # --- تست 6: عدم تداخل BOM با PaintingMaterialRequirement ---
-
-    def test_paint_task_bom_entries_ignored_for_consumption(self):
-        """
-        اگر یک محصول BOM قطعات فیزیکی داشته باشد، این قطعات هیچ‌گاه
-        در محاسبه مصرف نقاشی استفاده نمی‌شوند.
-        """
-        item = self._make_order_item(quantity=2)
-        task = self._make_paint_task(item, self.stage_sealer, quantity=2)
-
-        rows = _task_material_requirements(task)
-        raw_mats = [raw.id for raw, _ in rows]
-        # رنگ (paint_raw) باید در لیست باشد
-        self.assertIn(self.paint_raw.id, raw_mats)
-        # ماده تخته (board_raw) نباید در مصرف نقاشی باشد
-        self.assertNotIn(self.board_raw.id, raw_mats)
-
-    # --- تست‌های Override محصولی ---
-
-    def test_default_requirement_used_when_no_override_exists(self):
-        """
-        وقتی فقط رکورد پیش‌فرض (product=None) وجود دارد، همان برای همه محصولات
-        استفاده می‌شود.
-        """
-        from product.utils import get_painting_material_requirements_for_task
-
-        item = self._make_order_item(quantity=2)
-        task = self._make_paint_task(item, self.stage_sealer, quantity=2)
-
-        reqs = get_painting_material_requirements_for_task(task)
-        self.assertEqual(len(reqs), 1)
-        self.assertEqual(reqs[0].raw_material, self.paint_raw)
-        self.assertEqual(reqs[0].consumption_per_unit, Decimal('0.100'))
-        self.assertIsNone(reqs[0].product)
-
-    def test_product_override_takes_precedence_over_default(self):
-        """
-        اگر هم پیش‌فرض و هم override برای یک محصول وجود داشته باشد،
-        override اولویت دارد.
-        پیش‌فرض: 0.100، Override برای product: 0.250
-        """
-        from product.utils import get_painting_material_requirements_for_task
-        from product.models import PaintingMaterialRequirement
-
-        # Override برای محصول فعلی (self.product)
-        PaintingMaterialRequirement.objects.create(
-            painting_stage=self.stage_sealer,
+    def test_create_process_material(self):
+        """ایجاد запиس کاتالوگ برای یک روند"""
+        from product.models import PaintingProcessMaterial
+        
+        entry = PaintingProcessMaterial.objects.create(
+            process=self.process1,
             raw_material=self.paint_raw,
-            product=self.product,
-            consumption_per_unit=Decimal('0.250'),
         )
+        
+        self.assertEqual(entry.process, self.process1)
+        self.assertEqual(entry.raw_material, self.paint_raw)
+        self.assertEqual(str(entry), f"{self.process1.name} ← {self.paint_raw.name}")
 
-        item = self._make_order_item(quantity=2)
-        task = self._make_paint_task(item, self.stage_sealer, quantity=2)
-
-        reqs = get_painting_material_requirements_for_task(task)
-        self.assertEqual(len(reqs), 1)
-        self.assertEqual(reqs[0].raw_material, self.paint_raw)
-        self.assertEqual(reqs[0].consumption_per_unit, Decimal('0.250'))
-        self.assertEqual(reqs[0].product, self.product)
-
-    def test_other_products_still_use_default_when_override_exists_for_one_product(self):
-        """
-        Override فقط برای محصول تعریف‌شده اعمال می‌شود؛ سایر محصولات
-        همچنان پیش‌فرض را می‌گیرند.
-        """
-        from product.utils import get_painting_material_requirements_for_task
-        from product.models import PaintingMaterialRequirement, Product
-
-        # Override برای محصول self.product
-        PaintingMaterialRequirement.objects.create(
-            painting_stage=self.stage_sealer,
-            raw_material=self.paint_raw,
-            product=self.product,
-            consumption_per_unit=Decimal('0.250'),
-        )
-
-        # محصول دیگر بدون override
-        other_product = Product.objects.create(
-            category=self.category, name='میز B',
-            default_size='80x40', base_price=4000,
-        )
-        item = OrderItem.objects.create(
-            order=self.order, product=other_product, quantity=2,
-        )
-        Color.objects.create(part='بدنه', code='8', orderitem=item)
-        task = self._make_paint_task(item, self.stage_sealer, quantity=2)
-
-        reqs = get_painting_material_requirements_for_task(task)
-        self.assertEqual(len(reqs), 1)
-        self.assertEqual(reqs[0].raw_material, self.paint_raw)
-        self.assertEqual(reqs[0].consumption_per_unit, Decimal('0.100'))  # پیش‌فرض
-        self.assertIsNone(reqs[0].product)
-
-    def test_unique_constraints_prevent_duplicate_default_and_override(self):
-        """
-        دو پیش‌فرض تکراری (product=None) برای همان stage+raw_material اجازه نمی‌شود.
-        دو override تکراری برای همان stage+raw_material+product اجازه نمی‌شود.
-        """
-        from product.models import PaintingMaterialRequirement
+    def test_unique_constraint_process_material(self):
+        """تست یکتای بودن ترکیب process + raw_material"""
+        from product.models import PaintingProcessMaterial
         from django.db import IntegrityError, transaction
-
-        # پیش‌فرض اول (از setUpTestData وجود دارد)
-        # تلاش برای ساخت پیش‌فرض دوم باید خطا بدهد
-        with self.assertRaises(IntegrityError):
-            with transaction.atomic():
-                PaintingMaterialRequirement.objects.create(
-                    painting_stage=self.stage_sealer,
-                    raw_material=self.paint_raw,
-                    product=None,
-                    consumption_per_unit=Decimal('0.200'),
-                )
-
-        # Override برای محصول (ماده khác: thinner_raw)
-        override1 = PaintingMaterialRequirement.objects.create(
-            painting_stage=self.stage_sealer,
-            raw_material=self.thinner_raw,
-            product=self.product,
-            consumption_per_unit=Decimal('0.050'),
+        
+        PaintingProcessMaterial.objects.create(
+            process=self.process1,
+            raw_material=self.paint_raw,
         )
-        # تلاش برای ساخت override تکراری باید خطا بدهد
+        
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
-                PaintingMaterialRequirement.objects.create(
-                    painting_stage=self.stage_sealer,
-                    raw_material=self.thinner_raw,
-                    product=self.product,
-                    consumption_per_unit=Decimal('0.100'),
+                PaintingProcessMaterial.objects.create(
+                    process=self.process1,
+                    raw_material=self.paint_raw,
                 )
 
-    def test_consume_material_for_paint_task_respects_override(self):
-        """
-        وقتی تسک نقاشی done می‌شود، اگر override وجود داشته باشد،
-        StockMovement با مقدار override ساخته می‌شود نه پیش‌فرض.
-        پیش‌فرض: 0.100، Override: 0.250
-        """
-        from product.utils import consume_material_for_paint_task
-        from product.models import PaintingMaterialRequirement
-        from inventory.models import StockMovement
+    def test_same_material_different_processes(self):
+        """ماده یکسان می‌تواند در روندهای مختلف باشد"""
+        from product.models import PaintingProcessMaterial
+        
+        PaintingProcessMaterial.objects.create(
+            process=self.process1,
+            raw_material=self.paint_raw,
+        )
+        entry2 = PaintingProcessMaterial.objects.create(
+            process=self.process2,
+            raw_material=self.paint_raw,
+        )
+        
+        self.assertEqual(PaintingProcessMaterial.objects.count(), 2)
+        self.assertEqual(entry2.process, self.process2)
 
-        # Override برای محصول
-        PaintingMaterialRequirement.objects.create(
-            painting_stage=self.stage_sealer,
+
+class PaintingMaterialRequirementNewModelTests(TestCase):
+    """تست‌های مدل جدید PaintingMaterialRequirement (با process FK)"""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_superuser('testuser3', password='testpass')
+        
+        cat = RawMaterialCategory.objects.create(name='رنگ و مواد نقاشی')
+        cls.paint_raw = RawMaterial.objects.create(
+            category=cat, name='رنگ تست جدید', code='P003', unit='lit',
+            min_stock_alert=Decimal('10.00'),
+        )
+        cls.thinner_raw = RawMaterial.objects.create(
+            category=cat, name='تینر تست جدید', code='T003', unit='lit',
+            min_stock_alert=Decimal('5.00'),
+        )
+        
+        cls.category = ProductCategory.objects.create(name='تست دسته')
+        cls.product = Product.objects.create(
+            category=cls.category, name='محصول تست', base_price=1000,
+        )
+        
+        cls.process = PaintingProcess.objects.create(
+            name='روند اصلی', code='MAIN', color_codes=['8'],
+            is_active=True,
+        )
+        
+        # Create catalog entry first
+        from product.models import PaintingProcessMaterial
+        cls.catalog_entry = PaintingProcessMaterial.objects.create(
+            process=cls.process,
+            raw_material=cls.paint_raw,
+        )
+
+    def test_create_requirement_with_process(self):
+        """ایجاد requirement با process FK (نه painting_stage)"""
+        from product.models import PaintingMaterialRequirement
+        
+        req = PaintingMaterialRequirement.objects.create(
+            process=self.process,
             raw_material=self.paint_raw,
             product=self.product,
+            color_part='بدنه',
             consumption_per_unit=Decimal('0.250'),
         )
+        
+        self.assertEqual(req.process, self.process)
+        self.assertEqual(req.raw_material, self.paint_raw)
+        self.assertEqual(req.product, self.product)
+        self.assertEqual(req.color_part, 'بدنه')
+        self.assertEqual(req.consumption_per_unit, Decimal('0.250'))
 
-        item = self._make_order_item(quantity=4)  # quantity = 4
-        task = self._make_paint_task(item, self.stage_sealer, quantity=4)
-        task.status = 'done'
-        task.save()
-
-        movements = StockMovement.objects.filter(
-            reference_task=task, movement_type='consumption'
-        )
-        self.assertEqual(movements.count(), 1)
-        movement = movements.first()
-        self.assertEqual(movement.raw_material, self.paint_raw)
-        # 4 * 0.250 = 1.0 (override)، نه 4 * 0.100 = 0.4 (پیش‌فرض)
-        self.assertAlmostEqual(float(movement.quantity), 1.0, places=3)
-
-
-# ============================================================
-# تست‌های Override بر اساس بخش رنگی (color_part)
-# ============================================================
-
-    def test_colorpart_override_more_specific_than_product_override(self):
-        """
-        یک override کل‌محصول (product=X, color_part=None، مقدار ۰.۲) و یک override
-        اختصاصی بخش رنگی (product=X, color_part='بدنه'، مقدار ۰.۵) روی همان stage+material
-        بساز. یک تسک با color_part='بدنه' برای محصول X بساز و بررسی کن مقدار ۰.۵ (نه ۰.۲)
-        اعمال می‌شود.
-        """
-        from product.utils import get_painting_material_requirements_for_task
-        from product.models import PaintingMaterialRequirement
-
-        # Override کل محصول
-        PaintingMaterialRequirement.objects.create(
-            painting_stage=self.stage_sealer,
-            raw_material=self.paint_raw,
-            product=self.product,
-            color_part=None,
-            consumption_per_unit=Decimal('0.200'),
-        )
-
-        # Override اختصاصی بخش رنگی 'بدنه'
-        PaintingMaterialRequirement.objects.create(
-            painting_stage=self.stage_sealer,
-            raw_material=self.paint_raw,
-            product=self.product,
-            color_part='بدنه',
-            consumption_per_unit=Decimal('0.500'),
-        )
-
-        item = self._make_order_item(quantity=2)
-        task = self._make_paint_task(item, self.stage_sealer, quantity=2, color_part='بدنه')
-
-        reqs = get_painting_material_requirements_for_task(task)
-        self.assertEqual(len(reqs), 1)
-        self.assertEqual(reqs[0].raw_material, self.paint_raw)
-        self.assertEqual(reqs[0].consumption_per_unit, Decimal('0.500'))
-        self.assertEqual(reqs[0].product, self.product)
-        self.assertEqual(reqs[0].color_part, 'بدنه')
-
-    def test_other_colorpart_falls_back_to_product_override(self):
-        """
-        با همان دیتاست بالا، یک تسک با color_part='درب' (که override اختصاصی ندارد) برای
-        همان محصول X بساز و بررسی کن مقدار ۰.۲ (override کل محصول) اعمال می‌شود، نه ۰.۵
-        و نه پیش‌فرض مرحله.
-        """
-        from product.utils import get_painting_material_requirements_for_task
-        from product.models import PaintingMaterialRequirement
-
-        # Override کل محصول
-        PaintingMaterialRequirement.objects.create(
-            painting_stage=self.stage_sealer,
-            raw_material=self.paint_raw,
-            product=self.product,
-            color_part=None,
-            consumption_per_unit=Decimal('0.200'),
-        )
-
-        # Override اختصاصی بخش رنگی 'بدنه'
-        PaintingMaterialRequirement.objects.create(
-            painting_stage=self.stage_sealer,
-            raw_material=self.paint_raw,
-            product=self.product,
-            color_part='بدنه',
-            consumption_per_unit=Decimal('0.500'),
-        )
-
-        item = self._make_order_item(quantity=2)
-        task = self._make_paint_task(item, self.stage_sealer, quantity=2, color_part='درب')
-
-        reqs = get_painting_material_requirements_for_task(task)
-        self.assertEqual(len(reqs), 1)
-        self.assertEqual(reqs[0].raw_material, self.paint_raw)
-        self.assertEqual(reqs[0].consumption_per_unit, Decimal('0.200'))  # override کل محصول
-        self.assertEqual(reqs[0].product, self.product)
-        self.assertIsNone(reqs[0].color_part)
-
-    def test_clean_rejects_colorpart_without_product(self):
-        """
-        بررسی کن ساخت یک PaintingMaterialRequirement با color_part='بدنه' و product=None
-        هنگام full_clean() خطای ValidationError می‌دهد.
-        """
+    def test_requirement_requires_catalog_entry(self):
+        """Requirement بایدKatlog entry داشته باشد"""
         from product.models import PaintingMaterialRequirement
         from django.core.exceptions import ValidationError
-
+        
+        # This should work - catalog exists
         req = PaintingMaterialRequirement(
-            painting_stage=self.stage_sealer,
-            raw_material=self.paint_raw,
-            product=None,
-            color_part='بدنه',
-            consumption_per_unit=Decimal('0.100'),
-        )
-        with self.assertRaises(ValidationError):
-            req.full_clean()
-
-    def test_unique_constraint_colorpart_override(self):
-        """
-        بررسی کن دو override تکراری برای همان (stage, material, product, color_part)
-        IntegrityError می‌دهد (داخل transaction.atomic()).
-        """
-        from product.models import PaintingMaterialRequirement
-        from django.db import IntegrityError, transaction
-
-        # اولین override
-        PaintingMaterialRequirement.objects.create(
-            painting_stage=self.stage_sealer,
+            process=self.process,
             raw_material=self.paint_raw,
             product=self.product,
             color_part='بدنه',
-            consumption_per_unit=Decimal('0.300'),
+            consumption_per_unit=Decimal('0.250'),
         )
+        req.full_clean()  # Should not raise
+        req.save()
 
-        # تلاش برای ساخت override تکراری باید خطا بدهد
+    def test_unique_constraint_process_material_product_colorpart(self):
+        """تست یکتای بودن ترکیب process + raw_material + product + color_part"""
+        from product.models import PaintingMaterialRequirement
+        from django.db import IntegrityError, transaction
+        
+        PaintingMaterialRequirement.objects.create(
+            process=self.process,
+            raw_material=self.paint_raw,
+            product=self.product,
+            color_part='بدنه',
+            consumption_per_unit=Decimal('0.250'),
+        )
+        
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
                 PaintingMaterialRequirement.objects.create(
-                    painting_stage=self.stage_sealer,
+                    process=self.process,
                     raw_material=self.paint_raw,
                     product=self.product,
                     color_part='بدنه',
-                    consumption_per_unit=Decimal('0.400'),
+                    consumption_per_unit=Decimal('0.300'),
                 )
 
-    def test_default_fallback_when_no_override_at_all(self):
-        """
-        وقتی هیچ override (نه کل محصول نه بخش رنگی) وجود نداشته باشد،
-        پیش‌فرض مرحله استفاده می‌شود.
-        """
+    def test_different_color_part_allowed(self):
+        """color_part‌های مختلف برای همان process+material+product مجازند"""
+        from product.models import PaintingMaterialRequirement
+        
+        req1 = PaintingMaterialRequirement.objects.create(
+            process=self.process,
+            raw_material=self.paint_raw,
+            product=self.product,
+            color_part='بدنه',
+            consumption_per_unit=Decimal('0.250'),
+        )
+        req2 = PaintingMaterialRequirement.objects.create(
+            process=self.process,
+            raw_material=self.paint_raw,
+            product=self.product,
+            color_part='درب',
+            consumption_per_unit=Decimal('0.300'),
+        )
+        
+        self.assertEqual(PaintingMaterialRequirement.objects.count(), 2)
+        self.assertEqual(req1.color_part, 'بدنه')
+        self.assertEqual(req2.color_part, 'درب')
+
+    def test_product_and_colorpart_required(self):
+        """product و color_part الزامی هستند (nullable=False)"""
+        from product.models import PaintingMaterialRequirement
+        from django.db import IntegrityError
+        
+        # This should fail at database level (NOT NULL constraint)
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                PaintingMaterialRequirement.objects.create(
+                    process=self.process,
+                    raw_material=self.paint_raw,
+                    product=None,
+                    color_part='بدنه',
+                    consumption_per_unit=Decimal('0.250'),
+                )
+
+
+class PaintingProcessMaterialsAPITests(TestCase):
+    """تست‌های API کاتالوگ مواد روند نقاشی"""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_superuser('apiuser', password='testpass')
+        
+        cat = RawMaterialCategory.objects.create(name='رنگ و مواد نقاشی')
+        cls.paint_raw = RawMaterial.objects.create(
+            category=cat, name='رنگ API', code='API01', unit='lit',
+        )
+        cls.thinner_raw = RawMaterial.objects.create(
+            category=cat, name='تینر API', code='API02', unit='lit',
+        )
+        
+        cls.process = PaintingProcess.objects.create(
+            name='روند API', code='API', color_codes=['8'],
+            is_active=True,
+        )
+
+    def setUp(self):
+        self.client.login(username='apiuser', password='testpass')
+
+    def test_get_empty_catalog(self):
+        """GET کاتالوگ خالی"""
+        url = reverse('painting_process_materials_api', args=[self.process.id])
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['success'])
+        self.assertEqual(data['materials'], [])
+
+    def test_post_add_material_to_catalog(self):
+        """POST اضافه کردن ماده به کاتالوگ"""
+        from product.models import PaintingProcessMaterial
+        
+        url = reverse('painting_process_materials_api', args=[self.process.id])
+        response = self.client.post(
+            url,
+            data=json.dumps({'raw_material_id': self.paint_raw.id}),
+            content_type='application/json',
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['success'])
+        self.assertTrue(data['created'])
+        
+        # Verify in database
+        entry = PaintingProcessMaterial.objects.get(process=self.process, raw_material=self.paint_raw)
+        self.assertEqual(entry.id, data['id'])
+
+    def test_post_duplicate_material_not_created(self):
+        """POST ماده تکراری ایجاد نمی‌کند (get_or_create)"""
+        from product.models import PaintingProcessMaterial
+        
+        PaintingProcessMaterial.objects.create(
+            process=self.process, raw_material=self.paint_raw,
+        )
+        
+        url = reverse('painting_process_materials_api', args=[self.process.id])
+        response = self.client.post(
+            url,
+            data=json.dumps({'raw_material_id': self.paint_raw.id}),
+            content_type='application/json',
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['success'])
+        self.assertFalse(data['created'])  # Not created, already existed
+        
+        self.assertEqual(PaintingProcessMaterial.objects.count(), 1)
+
+    def test_delete_material_from_catalog(self):
+        """DELETE حذف ماده از کاتالوگ"""
+        from product.models import PaintingProcessMaterial, PaintingMaterialRequirement
+        
+        entry = PaintingProcessMaterial.objects.create(
+            process=self.process, raw_material=self.paint_raw,
+        )
+        
+        url = reverse('painting_process_materials_api', args=[self.process.id])
+        response = self.client.delete(f"{url}?id={entry.id}")
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['success'])
+        
+        # Verify deleted
+        self.assertFalse(PaintingProcessMaterial.objects.filter(id=entry.id).exists())
+
+
+class ProductColorPartMaterialsAPITests(TestCase):
+    """تست‌های API مدیریت مقدار مصرف برای محصول + بخش رنگی"""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_superuser('apiuser2', password='testpass')
+        
+        cat = RawMaterialCategory.objects.create(name='رنگ و مواد نقاشی')
+        cls.paint_raw = RawMaterial.objects.create(
+            category=cat, name='رنگ API2', code='API21', unit='lit',
+        )
+        cls.thinner_raw = RawMaterial.objects.create(
+            category=cat, name='تینر API2', code='API22', unit='lit',
+        )
+        
+        cls.category = ProductCategory.objects.create(name='تست دسته 2')
+        cls.product = Product.objects.create(
+            category=cls.category, name='محصول API', base_price=1000,
+        )
+        
+        cls.process1 = PaintingProcess.objects.create(
+            name='روند 1', code='P1', color_codes=['8'], is_active=True,
+        )
+        cls.process2 = PaintingProcess.objects.create(
+            name='روند 2', code='P2', color_codes=['9'], is_active=True,
+        )
+        
+        # Create catalog entries
+        from product.models import PaintingProcessMaterial
+        cls.catalog1 = PaintingProcessMaterial.objects.create(
+            process=cls.process1, raw_material=cls.paint_raw,
+        )
+        cls.catalog2 = PaintingProcessMaterial.objects.create(
+            process=cls.process1, raw_material=cls.thinner_raw,
+        )
+        cls.catalog3 = PaintingProcessMaterial.objects.create(
+            process=cls.process2, raw_material=cls.paint_raw,
+        )
+
+    def setUp(self):
+        self.client.login(username='apiuser2', password='testpass')
+
+    def test_get_requirements_returns_all_catalog_entries(self):
+        """GET باید تمام ورودی‌های کاتالوگ برای روندهای فعال را برگرداند"""
+        from django.urls import reverse
+        
+        url = reverse('product_color_part_materials_api')
+        response = self.client.get(f"{url}?product_id={self.product.id}&color_part=بدنه")
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['success'])
+        
+        # Should return 3 rows (one per catalog entry)
+        self.assertEqual(len(data['rows']), 3)
+        
+        # Check structure
+        for row in data['rows']:
+            self.assertIn('process_id', row)
+            self.assertIn('process_name', row)
+            self.assertIn('raw_material_id', row)
+            self.assertIn('raw_material_name', row)
+            self.assertIn('unit', row)
+            self.assertIn('consumption_per_unit', row)
+            self.assertIn('is_set', row)
+            self.assertIn('requirement_id', row)
+            self.assertFalse(row['is_set'])  # None set yet
+            self.assertIsNone(row['requirement_id'])
+
+    def test_get_requirements_with_existing_values(self):
+        """GET با مقادیر موجود"""
+        from product.models import PaintingMaterialRequirement
+        from django.urls import reverse
+        
+        # Create existing requirement
+        req = PaintingMaterialRequirement.objects.create(
+            process=self.process1,
+            raw_material=self.paint_raw,
+            product=self.product,
+            color_part='بدنه',
+            consumption_per_unit=Decimal('0.500'),
+        )
+        
+        url = reverse('product_color_part_materials_api')
+        response = self.client.get(f"{url}?product_id={self.product.id}&color_part=بدنه")
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['success'])
+        
+        # Find the row for process1 + paint_raw
+        target_row = next(r for r in data['rows'] 
+                         if r['process_id'] == self.process1.id 
+                         and r['raw_material_id'] == self.paint_raw.id)
+        
+        self.assertTrue(target_row['is_set'])
+        self.assertEqual(target_row['consumption_per_unit'], '0.500')
+        self.assertEqual(target_row['requirement_id'], req.id)
+
+    def test_post_set_consumption(self):
+        """POST تعیین مقدار مصرف"""
+        from product.models import PaintingMaterialRequirement
+        from django.urls import reverse
+        
+        url = reverse('product_color_part_materials_api')
+        response = self.client.post(
+            url,
+            data=json.dumps({
+                'product_id': self.product.id,
+                'color_part': 'بدنه',
+                'process_id': self.process1.id,
+                'raw_material_id': self.paint_raw.id,
+                'consumption_per_unit': '0.750',
+            }),
+            content_type='application/json',
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['success'])
+        
+        # Verify in database
+        req = PaintingMaterialRequirement.objects.get(
+            process=self.process1,
+            raw_material=self.paint_raw,
+            product=self.product,
+            color_part='بدنه',
+        )
+        self.assertEqual(req.consumption_per_unit, Decimal('0.750'))
+        self.assertEqual(req.id, data['id'])
+
+    def test_post_update_existing_consumption(self):
+        """POST به‌روزرسانی مقدار موجود"""
+        from product.models import PaintingMaterialRequirement
+        from django.urls import reverse
+        
+        req = PaintingMaterialRequirement.objects.create(
+            process=self.process1,
+            raw_material=self.paint_raw,
+            product=self.product,
+            color_part='بدنه',
+            consumption_per_unit=Decimal('0.100'),
+        )
+        
+        url = reverse('product_color_part_materials_api')
+        response = self.client.post(
+            url,
+            data=json.dumps({
+                'product_id': self.product.id,
+                'color_part': 'بدنه',
+                'process_id': self.process1.id,
+                'raw_material_id': self.paint_raw.id,
+                'consumption_per_unit': '0.999',
+            }),
+            content_type='application/json',
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['success'])
+        
+        req.refresh_from_db()
+        self.assertEqual(req.consumption_per_unit, Decimal('0.999'))
+
+    def test_post_requires_catalog_entry(self):
+        """POST برای ماده‌ای که در کاتالوگ نیست خطا می‌دهد"""
+        from django.urls import reverse
+        
+        # Create a process without catalog entry for thinner
+        process3 = PaintingProcess.objects.create(
+            name='روند 3', code='P3', color_codes=['7'], is_active=True,
+        )
+        
+        url = reverse('product_color_part_materials_api')
+        response = self.client.post(
+            url,
+            data=json.dumps({
+                'product_id': self.product.id,
+                'color_part': 'بدنه',
+                'process_id': process3.id,
+                'raw_material_id': self.thinner_raw.id,  # Not in catalog for process3
+                'consumption_per_unit': '0.500',
+            }),
+            content_type='application/json',
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertFalse(data['success'])
+        self.assertIn('کاتالوگ', data['error'])
+
+    def test_delete_requirement(self):
+        """DELETE حذف مقدار مصرف (بازگشت به حالت تعیین‌نشده)"""
+        from product.models import PaintingMaterialRequirement
+        from django.urls import reverse
+        
+        req = PaintingMaterialRequirement.objects.create(
+            process=self.process1,
+            raw_material=self.paint_raw,
+            product=self.product,
+            color_part='بدنه',
+            consumption_per_unit=Decimal('0.500'),
+        )
+        
+        url = reverse('product_color_part_materials_api')
+        response = self.client.delete(f"{url}?id={req.id}")
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data['success'])
+        
+        # Verify deleted
+        self.assertFalse(PaintingMaterialRequirement.objects.filter(id=req.id).exists())
+
+
+class PaintingMaterialRequirementUtilsTests(TestCase):
+    """تست‌های توابع کمکی برای مدل جدید"""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_superuser('utiluser', password='testpass')
+        
+        cat = RawMaterialCategory.objects.create(name='رنگ و مواد نقاشی')
+        cls.paint_raw = RawMaterial.objects.create(
+            category=cat, name='رنگ Utils', code='UTL01', unit='lit',
+        )
+        
+        cls.category = ProductCategory.objects.create(name='تست Utils')
+        cls.product = Product.objects.create(
+            category=cls.category, name='محصول Utils', base_price=1000,
+        )
+        
+        cls.process = PaintingProcess.objects.create(
+            name='روند Utils', code='UTL', color_codes=['8'], is_active=True,
+        )
+        
+        from product.models import PaintingProcessMaterial, PaintingStage
+        cls.catalog = PaintingProcessMaterial.objects.create(
+            process=cls.process, raw_material=cls.paint_raw,
+        )
+        
+        cls.stage = PaintingStage.objects.create(
+            process=cls.process, order=1, name='مرحله Utils',
+            duration_minutes=30, drying_time_minutes=60, required_skill='painter',
+        )
+
+    def test_get_painting_material_requirements_for_task_new_structure(self):
+        """get_painting_material_requirements_for_task با مدل جدید"""
         from product.utils import get_painting_material_requirements_for_task
-
-        item = self._make_order_item(quantity=2)
-        task = self._make_paint_task(item, self.stage_sealer, quantity=2, color_part='بدنه')
-
+        from product.models import PaintingMaterialRequirement, ProductionTask, Order, OrderItem, Color, Customer
+        
+        # Create requirement for product + color_part
+        PaintingMaterialRequirement.objects.create(
+            process=self.process,
+            raw_material=self.paint_raw,
+            product=self.product,
+            color_part='بدنه',
+            consumption_per_unit=Decimal('0.333'),
+        )
+        
+        # Create order item with color
+        customer = Customer.objects.create(name='مشتری Utils', phone='09120000000')
+        order = Order.objects.create(user=self.user, customer=customer, number='ORDUTL')
+        item = OrderItem.objects.create(order=order, product=self.product, quantity=3)
+        Color.objects.create(part='بدنه', code='8', orderitem=item)
+        
+        # Create paint task (using stage, but function should resolve to process)
+        task = ProductionTask.objects.create(
+            order=order, part=None, station_name='paint', step_order=10,
+            quantity=3, status='pending', painting_stage=self.stage,
+            order_item=item, color_part='بدنه',
+        )
+        
         reqs = get_painting_material_requirements_for_task(task)
+        
         self.assertEqual(len(reqs), 1)
         self.assertEqual(reqs[0].raw_material, self.paint_raw)
-        self.assertEqual(reqs[0].consumption_per_unit, Decimal('0.100'))  # پیش‌فرض
-        self.assertIsNone(reqs[0].product)
-        self.assertIsNone(reqs[0].color_part)
-
+        self.assertEqual(reqs[0].consumption_per_unit, Decimal('0.333'))
+        self.assertEqual(reqs[0].process, self.process)
+        self.assertEqual(reqs[0].product, self.product)
+        self.assertEqual(reqs[0].color_part, 'بدنه')

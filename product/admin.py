@@ -9,7 +9,7 @@ from .models import (
 )
 from .forms import OrderItemForm
 from .models import ShipmentLog
-from .models import PaintingProcess, PaintingStage
+from .models import PaintingProcess, PaintingStage, PaintingProcessMaterial
 from .models import PaintingAssignmentRule
 from .models import PaintingMaterialRequirement
 
@@ -405,6 +405,15 @@ class ShipmentLogAdmin(admin.ModelAdmin):
 
 
 
+class PaintingProcessMaterialInline(admin.TabularInline):
+    model = PaintingProcessMaterial
+    fields = ('raw_material',)
+    autocomplete_fields = ['raw_material']
+    extra = 1
+    verbose_name = "ماده اولیه کاتالوگ"
+    verbose_name_plural = "کاتالوگ مواد اولیه این روند"
+
+
 @admin.register(PaintingProcess)
 class PaintingProcessAdmin(admin.ModelAdmin):
     list_display = ['name', 'code', 'color_codes', 'is_active']
@@ -415,15 +424,15 @@ class PaintingProcessAdmin(admin.ModelAdmin):
             'fields': ('name', 'code', 'color_codes', 'is_active', 'description')
         }),
     )
+    inlines = [PaintingProcessMaterialInline]
 
 
-class PaintingStageMaterialRequirementInline(admin.TabularInline):
-    model = PaintingMaterialRequirement
-    fields = ('raw_material', 'consumption_per_unit')
-    autocomplete_fields = ['raw_material']
-    extra = 1
-    verbose_name = "ماده اولیه مصرفی"
-    verbose_name_plural = "مواد اولیه مصرفی"
+@admin.register(PaintingMaterialRequirement)
+class PaintingMaterialRequirementAdmin(admin.ModelAdmin):
+    list_display = ['product', 'color_part', 'process', 'raw_material', 'consumption_per_unit']
+    list_filter = ['process', 'color_part']
+    search_fields = ['product__name', 'raw_material__name']
+    autocomplete_fields = ['product', 'raw_material']
 
 
 @admin.register(PaintingStage)
@@ -436,7 +445,6 @@ class PaintingStageAdmin(admin.ModelAdmin):
             'fields': ('process', 'order', 'name', 'duration_minutes', 'drying_time_minutes', 'required_skill')
         }),
     )
-    inlines = [PaintingStageMaterialRequirementInline]
 
 
 @admin.register(PaintingAssignmentRule)

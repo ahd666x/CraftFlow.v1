@@ -170,7 +170,8 @@
         </thead>
         <tbody>
           {% for issue in issues %}
-          <tr data-issue="{{ issue.id }}" class="{% if issue.status == 'requested' and issue.raw_material.current_stock < issue.requested_quantity %}table-danger{% elif issue.status == 'partial' %}table-warning{% endif %}">
+          {% with remaining=issue.requested_quantity|add:'-'|add:issue.issued_quantity %}
+          <tr data-issue="{{ issue.id }}" class="{% if issue.status == 'requested' and issue.raw_material.current_stock < remaining %}table-danger{% elif issue.status == 'partial' %}table-warning{% endif %}">
             <td>
               {% if issue.defect %}
                 <span class="badge bg-danger"><i class="bi bi-exclamation-octagon"></i> خرابی</span>
@@ -209,7 +210,7 @@
               </div>
             </td>
             <td>
-              <span class="{% if issue.raw_material.current_stock < (issue.requested_quantity - issue.issued_quantity) %}text-danger fw-bold{% else %}text-success{% endif %}">
+              <span class="{% if issue.raw_material.current_stock < remaining %}text-danger fw-bold{% else %}text-success{% endif %}">
                 {{ issue.raw_material.current_stock|floatformat:2 }} {{ issue.raw_material.get_unit_display }}
               </span>
             </td>
@@ -224,7 +225,6 @@
               </span>
             </td>
             <td>
-              {% with remaining=issue.requested_quantity|add:'-'|add:issue.issued_quantity %}
                 {% if issue.raw_material.current_stock < remaining and issue.status != 'issued' %}
                   <span class="badge bg-danger"><i class="bi bi-exclamation-triangle"></i> بحرانی</span>
                 {% elif issue.status == 'requested' %}
@@ -232,12 +232,11 @@
                 {% else %}
                   <span class="badge bg-secondary">—</span>
                 {% endif %}
-              {% endwith %}
             </td>
             <td>
               {% if issue.requested_at %}
                 {% with days_waited=issue.requested_at|timesince %}
-                  <span class="{% if issue.status == 'requested' and issue.raw_material.current_stock < (issue.requested_quantity - issue.issued_quantity) %}text-danger fw-bold{% endif %}">
+                  <span class="{% if issue.status == 'requested' and issue.raw_material.current_stock < remaining %}text-danger fw-bold{% endif %}">
                     {{ days_waited }}
                   </span>
                 {% endwith %}
@@ -272,13 +271,16 @@
                 </span>
               {% endif %}
             </td          </tr>
-          {% empty %}
-            <tr>
-              <td colspan="8" class="text-center text-muted py-5">
-                <i class="bi bi-inbox-fill fs-1"></i>
-                <div class="mt-2">درخواستی در انتظار تحویل نیست.</div>
-              </td>
-            </tr          </tbody>
+          {% endwith %}
+        {% empty %}
+          <tr>
+            <td colspan="8" class="text-center text-muted py-5">
+              <i class="bi bi-inbox-fill fs-1"></i>
+              <div class="mt-2">درخواستی در انتظار تحویل نیست.</div>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
       </table>
     </div>
   </div>

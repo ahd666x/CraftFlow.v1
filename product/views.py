@@ -4466,39 +4466,33 @@ def painting_stage_detail_api(request, stage_id):
 
 @login_required
 @admin_or_manager_required
-def painting_stage_materials_api(request, stage_id):
-    """API مدیریت مواد اولیه مصرفی یک مرحله نقاشی.
-
-    GET  – لیست مواد مصرفی جاری (برای Select2 + رندر جدول)
-    POST – اضافه کردن یا بروزرسانی یک ماده (raw_material_id + consumption + product_id اختیاری)
-    PUT  – جایگزینی کامل لیست مواد برای این مرحله
+def painting_process_materials_api(request, process_id):
     """
-    from .models import PaintingStage, PaintingMaterialRequirement
+    مدیریت کاتالوگ (بدون مقدار) مواد اولیه‌ی یک روند نقاشی.
+    GET: لیست مواد فعلی کاتالوگ
+    POST: افزودن یک ماده اولیه به کاتالوگ
+    DELETE: حذف یک ماده از کاتالوگ (همراه با حذف تمام مقادیر مصرفِ ثبت‌شده
+            برای این ماده در این روند، چون دیگر جزو این روند محسوب نمی‌شود)
+    """
+    from .models import PaintingProcess, PaintingProcessMaterial, PaintingMaterialRequirement
 
-    stage = get_object_or_404(PaintingStage, pk=stage_id)
+    process = get_object_or_404(PaintingProcess, pk=process_id)
 
     if request.method == 'GET':
-        requirements = PaintingMaterialRequirement.objects.select_related('raw_material', 'product').filter(
-            painting_stage=stage
-        )
-        results = [
-            {
-                'id': req.id,
-                'raw_material_id': req.raw_material_id,
-                'raw_material_name': str(req.raw_material),
-                'unit': req.raw_material.get_unit_display,
-                'consumption_per_unit': str(req.consumption_per_unit),
-                'product_id': req.product_id,
-                'product_name': req.product.name if req.product_id else None,
-                'is_override': req.product_id is not None,
-            }
-            for req in requirements
-        ]
+        entries = PaintingProcessMaterial.objects.select_related('raw_material').filter(process=process)
         return JsonResponse({
             'success': True,
-            'stage_id': stage.id,
-            'stage_name': stage.name,
-            'requirements': results,
+            'process_id': process.id,
+            'process_name': process.name,
+            'materials': [
+                {
+                    'id': e.id,
+                    'raw_material_id': e.raw_material_id,
+                    'raw_material_name': str(e.raw_material),
+                    'unit': e.raw_material.get_unit_display(),
+                }
+                for e in entries
+            ],
         })
 
     if request.method == 'POST':
@@ -4507,216 +4501,87 @@ def painting_stage_materials_api(request, stage_id):
         except (json.JSONDecodeError, TypeError):
             return JsonResponse({'success': False, 'error': 'داده ارسالی معتبر نیست'})
         raw_material_id = data.get('raw_material_id')
-        consumption = data.get('consumption_per_unit', 0)
-        product_id = data.get('product_id')  # Optional override
         if not raw_material_id:
             return JsonResponse({'success': False, 'error': 'ماده اولیه انتخاب نشده'})
-        try:
-            consumption = float(consumption)
-        except (TypeError, ValueError):
-            return JsonResponse({'success': False, 'error': 'مقدار مصرف نامعتبر'})
-
-        # Determine lookup fields based on whether it's an override or default
-        if product_id:
-            # Override for specific product
-            lookup = {
-                'painting_stage': stage,
-                'raw_material_id': raw_material_id,
-                'product_id': product_id,
-            }
-        else:
-            # Default for all products (product=None)
-            lookup = {
-                'painting_stage': stage,
-                'raw_material_id': raw_material_id,
-                'product__isnull': True,
-            }
-
-        req_obj, created = PaintingMaterialRequirement.objects.update_or_create(
-            **lookup,
-            defaults={'consumption_per_unit': consumption},
+        entry, created = PaintingProcessMaterial.objects.get_or_create(
+            process=process, raw_material_id=raw_material_id
         )
-        action = 'ایجاد' if created else 'به‌روزرسانی'
         return JsonResponse({
             'success': True,
-            'action': action,
-            'consumption_per_unit': str(req_obj.consumption_per_unit),
-            'raw_material_name': str(req_obj.raw_material),
-            'product_id': req_obj.product_id,
-            'product_name': req_obj.product.name if req_obj.product_id else None,
-            'is_override': req_obj.product_id is not None,
+            'created': created,
+            'id': entry.id,
+            'raw_material_name': str(entry.raw_material),
         })
 
-    if request.method == 'PUT':
-        try:
-            data = json.loads(request.body)
-        except (json.JSONDecodeError, TypeError):
-            return JsonResponse({'success': False, 'error': 'داده ارسالی معتبر نیست'})
-        items = data.get('items', [])
-        with transaction.atomic():
-            # Clear both defaults and overrides for this stage
-            PaintingMaterialRequirement.objects.filter(painting_stage=stage).delete()
-            for item in items:
-                raw_material_id = item.get('raw_material_id') if isinstance(item, dict) else item
-                consumption = item.get('consumption_per_unit', 0) if isinstance(item, dict) else 0
-                product_id = item.get('product_id') if isinstance(item, dict) else None
-                if not raw_material_id:
-                    continue
-                try:
-                    consumption = float(consumption)
-                except (TypeError, ValueError):
-                    consumption = 0
-                lookup = {'painting_stage': stage, 'raw_material_id': raw_material_id}
-                if product_id:
-                    lookup['product_id'] = product_id
-                else:
-                    lookup['product__isnull'] = True
-                PaintingMaterialRequirement.objects.create(
-                    **lookup,
-                    consumption_per_unit=consumption,
-                )
-        return JsonResponse({'success': True, 'count': len(items)})
+    if request.method == 'DELETE':
+        entry_id = request.GET.get('id')
+        entry = get_object_or_404(PaintingProcessMaterial, pk=entry_id, process=process)
+        # حذف کامل: چون این ماده دیگر جزو کاتالوگ این روند نیست،
+        # مقادیر مصرف ثبت‌شده برای آن هم بی‌معنی می‌شوند.
+        PaintingMaterialRequirement.objects.filter(
+            process=process, raw_material_id=entry.raw_material_id
+        ).delete()
+        entry.delete()
+        return JsonResponse({'success': True})
 
     return JsonResponse({'success': False, 'error': 'روش غیرمجاز'})
 
 
 @login_required
 @admin_or_manager_required
-def painting_material_requirement_delete(request, req_id):
-    """حذف یک ردیف ماده اولیه از مرحله نقاشی."""
-    from .models import PaintingMaterialRequirement
-    req_obj = get_object_or_404(PaintingMaterialRequirement, pk=req_id)
-    req_obj.delete()
-    return JsonResponse({'success': True, 'id': req_id})
-
-
-@login_required
-@admin_or_manager_required
 def product_color_part_materials_api(request):
     """
-    API مدیریت مواد اولیه نقاشی برای یک بخش رنگی خاص از یک محصول.
-    
-    GET  - با پارامتر product_id + color_part، لیست PaintingMaterialRequirement 
-           های مرتبط (چه override دقیق چه fallback) را برمی‌گرداند، همراه با 
-           پرچم مشخص که کدام‌یک override واقعی این بخش رنگی است و کدام از سطح 
-           بالاتر (کل محصول یا پیش‌فرض مرحله) به ارث رسیده.
-    POST - رکورد PaintingMaterialRequirement با product + color_part + stage +
-           raw_material مشخص را create/update کند (با update_or_create روی همین 
-           چهار فیلد، دقیقاً مطابق UniqueConstraint سوم).
-    DELETE - یک override خاص بخش رنگی را حذف کند (که باعث می‌شود دوباره fallback 
-             به سطح کل‌محصول یا پیش‌فرض مرحله برقرار شود).
+    مدیریت مقدار مصرف مواد اولیه برای یک (محصول + بخش رنگی) مشخص.
+
+    GET: برای هر روند فعال، تمام مواد کاتالوگ آن روند را ردیف‌به‌ردیف نشان
+         می‌دهد. اگر مقداری قبلاً برای این (محصول+بخش رنگی) تعیین شده
+         باشد، مقدار را می‌آورد؛ در غیر این صورت is_set=False برمی‌گرداند
+         تا در UI به‌عنوان «تعیین‌نشده» مشخص شود.
+    POST: مقدار مصرف یک (process, raw_material) را برای این (product,
+          color_part) ثبت/به‌روزرسانی می‌کند.
+    DELETE: مقدار تعیین‌شده را حذف می‌کند (بازگشت به حالت «تعیین‌نشده»).
     """
-    from .models import Product, PaintingMaterialRequirement, PaintingStage, PaintingProcess
-    from inventory.models import RawMaterial
-    from django.db.models import Q
-    import json
+    from .models import (
+        Product, PaintingProcess, PaintingProcessMaterial, PaintingMaterialRequirement,
+    )
 
     if request.method == 'GET':
         product_id = request.GET.get('product_id')
         color_part = request.GET.get('color_part')
-        stage_id = request.GET.get('stage_id')
-
         if not product_id or not color_part:
             return JsonResponse({'success': False, 'error': 'product_id و color_part الزامی هستند'})
 
         product = get_object_or_404(Product, pk=product_id)
 
-        # Build base query for this product + color_part
-        base_qs = PaintingMaterialRequirement.objects.select_related(
-            'raw_material', 'painting_stage', 'painting_stage__process', 'product'
-        ).filter(
-            Q(product_id=product_id, color_part=color_part) |
-            Q(product_id=product_id, color_part__isnull=True) |
-            Q(product__isnull=True, color_part__isnull=True)
-        )
+        existing = {
+            (r.process_id, r.raw_material_id): r
+            for r in PaintingMaterialRequirement.objects.filter(
+                product_id=product_id, color_part=color_part
+            )
+        }
 
-        if stage_id:
-            base_qs = base_qs.filter(painting_stage_id=stage_id)
-
-        all_reqs = list(base_qs.order_by('painting_stage__process__name', 'painting_stage__order', 'raw_material__name'))
-
-        # Group by stage and material, apply priority resolution
-        by_stage_material = {}
-        for req in all_reqs:
-            key = (req.painting_stage_id, req.raw_material_id)
-            if key not in by_stage_material:
-                by_stage_material[key] = []
-            by_stage_material[key].append(req)
-
-        results = []
-        for (stage_id_key, material_id), reqs in by_stage_material.items():
-            # Sort by priority
-            def priority(req):
-                if req.product_id == product_id and req.color_part == color_part and color_part is not None:
-                    return 0
-                if req.product_id == product_id and req.color_part is None:
-                    return 1
-                return 2
-
-            sorted_reqs = sorted(reqs, key=priority)
-            effective_req = sorted_reqs[0]
-
-            # Determine source of the effective requirement
-            if effective_req.product_id == product_id and effective_req.color_part == color_part:
-                source = 'colorpart_override'
-                source_label = f'Override اختصاصی بخش "{color_part}"'
-            elif effective_req.product_id == product_id and effective_req.color_part is None:
-                source = 'product_override'
-                source_label = f'Override کل محصول "{product.name}"'
-            else:
-                source = 'default'
-                source_label = 'پیش‌فرض مرحله'
-
-            # Get all stages that could be relevant for this color_part
-            # This helps in UI to show which stages are available for selection
-            results.append({
-                'id': effective_req.id,
-                'painting_stage_id': effective_req.painting_stage_id,
-                'painting_stage_name': str(effective_req.painting_stage),
-                'process_name': effective_req.painting_stage.process.name if effective_req.painting_stage.process else '',
-                'raw_material_id': effective_req.raw_material_id,
-                'raw_material_name': str(effective_req.raw_material),
-                'unit': effective_req.raw_material.get_unit_display(),
-                'consumption_per_unit': str(effective_req.consumption_per_unit),
-                'source': source,
-                'source_label': source_label,
-                'is_override': source != 'default',
-                'can_edit': source != 'default',  # defaults are not editable here
-            })
-
-        # Also get available stages for this product/color_part combination
-        # Find processes that match the color code for this color_part
-        color_code = None
-        # Try to get color code from default_colors
-        default_colors = product.default_colors or {}
-        if isinstance(default_colors, str):
-            try:
-                import json as json_lib
-                default_colors = json_lib.loads(default_colors) or {}
-            except (json_lib.JSONDecodeError, TypeError):
-                default_colors = {}
-        color_code = default_colors.get(color_part)
-
-        available_stages = []
-        if color_code:
-            process = None
-            # Find process that covers this color code
-            for p in PaintingProcess.objects.filter(is_active=True).prefetch_related('stages'):
-                if str(color_code) in [str(c) for c in (p.color_codes or [])]:
-                    process = p
-                    break
-            if process:
-                available_stages = list(process.stages.all().order_by('order').values(
-                    'id', 'name', 'order', 'duration_minutes', 'drying_time_minutes', 'required_skill'
-                ))
+        rows = []
+        for process in PaintingProcess.objects.filter(is_active=True).order_by('name'):
+            catalog = PaintingProcessMaterial.objects.select_related('raw_material').filter(process=process)
+            for entry in catalog:
+                req = existing.get((process.id, entry.raw_material_id))
+                rows.append({
+                    'process_id': process.id,
+                    'process_name': process.name,
+                    'raw_material_id': entry.raw_material_id,
+                    'raw_material_name': str(entry.raw_material),
+                    'unit': entry.raw_material.get_unit_display(),
+                    'consumption_per_unit': str(req.consumption_per_unit) if req else '',
+                    'is_set': req is not None,
+                    'requirement_id': req.id if req else None,
+                })
 
         return JsonResponse({
             'success': True,
             'product_id': product_id,
             'product_name': product.name,
             'color_part': color_part,
-            'requirements': results,
-            'available_stages': available_stages,
+            'rows': rows,
         })
 
     if request.method == 'POST':
@@ -4727,85 +4592,46 @@ def product_color_part_materials_api(request):
 
         product_id = data.get('product_id')
         color_part = data.get('color_part')
-        stage_id = data.get('painting_stage_id')
+        process_id = data.get('process_id')
         raw_material_id = data.get('raw_material_id')
         consumption = data.get('consumption_per_unit', 0)
 
-        if not all([product_id, color_part, stage_id, raw_material_id]):
-            return JsonResponse({'success': False, 'error': 'product_id، color_part، painting_stage_id و raw_material_id الزامی هستند'})
+        if not all([product_id, color_part, process_id, raw_material_id]):
+            return JsonResponse({'success': False, 'error': 'همه فیلدها (محصول، بخش رنگی، روند، ماده اولیه) الزامی هستند'})
 
         try:
             consumption = float(consumption)
         except (TypeError, ValueError):
             return JsonResponse({'success': False, 'error': 'مقدار مصرف نامعتبر'})
 
-        # Validate stage matches the color
-        product = get_object_or_404(Product, pk=product_id)
-        stage = get_object_or_404(PaintingStage, pk=stage_id)
-        raw_material = get_object_or_404(RawMaterial, pk=raw_material_id)
-
-        # Check if stage's process covers the color code for this color_part
-        default_colors = product.default_colors or {}
-        if isinstance(default_colors, str):
-            try:
-                import json as json_lib
-                default_colors = json_lib.loads(default_colors) or {}
-            except (json_lib.JSONDecodeError, TypeError):
-                default_colors = {}
-        color_code = default_colors.get(color_part)
-
-        if color_code and stage.process.color_codes:
-            if str(color_code) not in [str(c) for c in stage.process.color_codes]:
-                return JsonResponse({
-                    'success': False, 
-                    'error': f'مرحله "{stage.name}" از روند "{stage.process.name}" برای کد رنگ "{color_code}" (بخش {color_part}) مناسب نیست. لطفاً مرحله‌ای از روند مرتبط انتخاب کنید.'
-                })
-
-        lookup = {
-            'painting_stage': stage,
-            'raw_material': raw_material,
-            'product_id': product_id,
-            'color_part': color_part,
-        }
+        if not PaintingProcessMaterial.objects.filter(
+            process_id=process_id, raw_material_id=raw_material_id
+        ).exists():
+            return JsonResponse({
+                'success': False,
+                'error': 'این ماده در کاتالوگ این روند تعریف نشده است. ابتدا از صفحهٔ «روندها» آن را به کاتالوگ اضافه کنید.',
+            })
 
         req_obj, created = PaintingMaterialRequirement.objects.update_or_create(
-            **lookup,
+            process_id=process_id,
+            raw_material_id=raw_material_id,
+            product_id=product_id,
+            color_part=color_part,
             defaults={'consumption_per_unit': consumption},
         )
-        action = 'ایجاد' if created else 'به‌روزرسانی'
         return JsonResponse({
             'success': True,
-            'action': action,
             'id': req_obj.id,
             'consumption_per_unit': str(req_obj.consumption_per_unit),
-            'raw_material_name': str(req_obj.raw_material),
-            'stage_name': str(req_obj.painting_stage),
-            'color_part': req_obj.color_part,
         })
 
     if request.method == 'DELETE':
-        # Support both query param and body
-        if request.GET.get('id'):
-            req_id = request.GET.get('id')
-        else:
-            try:
-                data = json.loads(request.body)
-                req_id = data.get('id')
-            except (json.JSONDecodeError, TypeError):
-                req_id = None
-
+        req_id = request.GET.get('id')
         if not req_id:
             return JsonResponse({'success': False, 'error': 'شناسه رکورد مشخص نشده'})
-
-        from .models import PaintingMaterialRequirement
         req_obj = get_object_or_404(PaintingMaterialRequirement, pk=req_id)
-
-        # Only allow deletion of color_part overrides (not defaults or product-level overrides)
-        if req_obj.color_part is None:
-            return JsonResponse({'success': False, 'error': 'تنها overrideهای بخش رنگی (color_part) قابل حذف هستند. پیش‌فرض‌ها و overrideهای کل محصول باید از صفحه مراحل مدیریت شوند.'})
-
         req_obj.delete()
-        return JsonResponse({'success': True, 'id': req_id, 'message': 'Override بخش رنگی حذف شد. مقدار از سطح بالاتر (override کل محصول یا پیش‌فرض مرحله) ارث می‌شود.'})
+        return JsonResponse({'success': True, 'message': 'مقدار حذف شد و به حالت «تعیین‌نشده» بازگشت.'})
 
     return JsonResponse({'success': False, 'error': 'روش غیرمجاز'})
 

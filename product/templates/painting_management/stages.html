@@ -58,7 +58,6 @@
                     <th>زمان (دقیقه)</th>
                     <th>خشک‌شدن</th>
                     <th>مهارت</th>
-                    <th>مواد اولیه</th>
                     <th>عملیات</th>
                 </tr>
             </thead>
@@ -72,16 +71,8 @@
                     <td>{{ stage.drying_time_minutes }}</td>
                     <td>{{ stage.get_required_skill_display }}</td>
                     <td>
-                        <span class="badge bg-info text-dark rounded-pill" id="material-count-{{ stage.id }}">
-                            {{ stage.material_requirements.count }}
-                        </span>
-                    </td>
-                    <td>
                         <button class="btn btn-sm btn-outline-primary edit-stage" data-id="{{ stage.id }}">
                             <i class="bi bi-pencil"></i>
-                        </button>
-                        <button class="btn btn-sm btn-outline-warning btn-stage-materials" data-id="{{ stage.id }}" title="مدیریت مواد اولیه">
-                            <i class="bi bi-box-seam"></i>
                         </button>
                         <button class="btn btn-sm btn-outline-danger delete-stage" data-id="{{ stage.id }}">
                             <i class="bi bi-trash"></i>
@@ -89,7 +80,7 @@
                     </td>
                 </tr>
                 {% empty %}
-                <tr><td colspan="8" class="text-center">هیچ مرحله‌ای یافت نشد</td></tr>
+                <tr><td colspan="7" class="text-center">هیچ مرحله‌ای یافت نشد</td></tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -140,49 +131,6 @@
     </div>
 </div>
 
-<!-- مودال مدیریت مواد اولیه مرحله نقاشی -->
-<div class="modal fade" id="materialModal" tabindex="-1" data-bs-backdrop="static">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <form id="materialForm">
-                {% csrf_token %}
-                <div class="modal-header">
-                    <h5 class="modal-title" id="materialModalTitle">مدیریت مواد اولیه</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <div id="materialList" class="mb-3">
-                        <!-- ردیف‌ها از طریق JS بارگذاری می‌شوند -->
-                        <div class="text-center text-muted py-3" id="materialLoading">در حال بارگذاری...</div>
-                    </div>
-                    <div class="row g-2 mb-3">
-                        <div class="col-md-6">
-                            <select name="new_raw_material_id" id="newRawMaterial" class="form-select select2-raw-material" style="width: 100%"></select>
-                        </div>
-                        <div class="col-md-3">
-                            <input type="number" name="new_consumption" id="newConsumption" class="form-control" step="0.001" min="0" placeholder="مقدار مصرف">
-                        </div>
-                        <div class="col-md-3">
-                            <select name="new_product_id" id="newProduct" class="form-select select2-product" style="width: 100%">
-                                <option value="">همه محصولات (پیش‌فرض)</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="input-group">
-                        <button type="button" class="btn btn-outline-primary" id="addMaterialBtn">
-                            <i class="bi bi-plus"></i> افزودن
-                        </button>
-                    </div>
-                    <div class="form-text mt-1">ماده اولیه و مقدار مصرف به ازای هر واحد محصول را انتخاب کنید. برای Override اختصاصی، یک محصول انتخاب کنید.</div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">بستن</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
 <!-- لودینگ اوورلی -->
 <div class="loading-overlay" id="loadingOverlay">
     <div class="spinner-border text-primary" role="status"><span class="visually-hidden">در حال پردازش...</span></div>
@@ -193,229 +141,9 @@
 <script src="{% static 'selvi/js/select2.min.js' %}"></script>
 <script>
 $(function () {
-    var MATERIALS_API_BASE = "{% url 'painting_stage_materials_api' 0 %}".replace('/0/', '');
-    var RAW_MATERIAL_SEARCH_URL = "{% url 'painting_raw_materials_search' %}";
-    var PRODUCT_SEARCH_URL = "{% url 'search_products_api' %}";
-    var MATERIAL_DELETE_BASE = "{% url 'painting_material_requirement_delete' 0 %}".replace('/0/', '');
-
     var materialModalEl = document.getElementById('materialModal');
-    var materialModal = new bootstrap.Modal(materialModalEl);
+var materialModal = new bootstrap.Modal(materialModalEl);
     var currentStageId = null;
-
-    function getMaterialsUrl(stageId) {
-        return MATERIALS_API_BASE + stageId + '/';
-    }
-    function getMaterialDeleteUrl(reqId) {
-        return MATERIAL_DELETE_BASE + reqId + '/';
-    }
-
-    function initSelect2() {
-        var $sel = $('#newRawMaterial');
-        if ($sel.data('select2')) {
-            $sel.select2('destroy');
-        }
-        $sel.select2({
-            theme: 'bootstrap-5',
-            width: '100%',
-            placeholder: 'جستجوی ماده اولیه...',
-            allowClear: true,
-            ajax: {
-                url: RAW_MATERIAL_SEARCH_URL,
-                dataType: 'json',
-                delay: 250,
-                data: function (params) {
-                    return { q: params.term || '' };
-                },
-                processResults: function (data) {
-                    return { results: data.results };
-                },
-                cache: false
-            }
-        });
-
-        var $prod = $('#newProduct');
-        if ($prod.data('select2')) {
-            $prod.select2('destroy');
-        }
-        $prod.select2({
-            theme: 'bootstrap-5',
-            width: '100%',
-            placeholder: 'جستجوی محصول... (اختیاری)',
-            allowClear: true,
-            ajax: {
-                url: PRODUCT_SEARCH_URL,
-                dataType: 'json',
-                delay: 250,
-                data: function (params) {
-                    return { q: params.term || '' };
-                },
-                processResults: function (data) {
-                    // Add "All products" option at the beginning
-                    var results = [{id: '', text: 'همه محصولات (پیش‌فرض)'}];
-                    if (data.results) {
-                        results = results.concat(data.results);
-                    }
-                    return { results: results };
-                },
-                cache: false
-            }
-        });
-    }
-
-    function renderMaterialList(requirements) {
-        var $list = $('#materialList');
-        $list.empty();
-        if (!requirements || !requirements.length) {
-            $list.html('<div class="text-center text-muted py-3"><i class="bi bi-info-circle"></i> هیچ ماده اولیه‌ای تعریف نشده است.</div>');
-            return;
-        }
-        var html = '<table class="table table-sm table-bordered"><thead class="table-light"><tr><th>ماده اولیه</th><th>واحد</th><th>مقدار مصرف/واحد</th><th>نوع</th><th>عملیات</th></tr></thead><tbody>';
-        for (var i = 0; i < requirements.length; i++) {
-            var req = requirements[i];
-            var badgeClass = req.is_override ? 'badge-override' : 'badge-default';
-            var badgeText = req.is_override ? ('Override: ' + req.product_name) : 'پیش‌فرض';
-            html += '<tr data-id="' + req.id + '">' +
-                '<td>' + req.raw_material_name + '</td>' +
-                '<td>' + (req.unit || '') + '</td>' +
-                '<td>' + req.consumption_per_unit + '</td>' +
-                '<td><span class="badge ' + badgeClass + '">' + badgeText + '</span></td>' +
-                '<td class="text-center">' +
-                    '<button type="button" class="btn btn-sm btn-outline-danger btn-remove-material" data-id="' + req.id + '">' +
-                        '<i class="bi bi-trash"></i>' +
-                    '</button>' +
-                '</td></tr>';
-        }
-        html += '</tbody></table>';
-        $list.html(html);
-
-        $('.btn-remove-material').off('click').on('click', function () {
-            var reqId = $(this).data('id');
-            if (!confirm('آیا از حذف این ماده اولیه مطمئن هستید؟')) return;
-            $.ajax({
-                url: getMaterialDeleteUrl(reqId),
-                method: 'DELETE',
-                headers: {'X-Requested-With': 'XMLHttpRequest'},
-                success: function () {
-                    loadMaterials(currentStageId);
-                }
-            });
-        });
-    }
-
-    function loadMaterials(stageId) {
-        currentStageId = stageId;
-        $('#materialLoading').show();
-        $.ajax({
-            url: getMaterialsUrl(stageId),
-            method: 'GET',
-            headers: {'X-Requested-With': 'XMLHttpRequest'},
-            success: function (data) {
-                if (data.success) {
-                    renderMaterialList(data.requirements);
-                    $('#materialModalTitle').text('مدیریت مواد اولیه: ' + data.stage_name);
-                    updateMaterialBadge(stageId, data.requirements.length);
-                }
-            },
-            error: function () {
-                $('#materialList').html('<div class="text-danger">خطا در بارگذاری</div>');
-            }
-        });
-    }
-
-    function updateMaterialBadge(stageId, count) {
-        var el = $('#material-count-' + stageId);
-        if (el.length) {
-            el.text(count);
-        }
-    }
-
-    $('#addMaterialBtn').on('click', function () {
-        var rawMaterialId = $('#newRawMaterial').val();
-        var consumption = $('#newConsumption').val();
-        var productId = $('#newProduct').val() || null;
-        if (!rawMaterialId) {
-            alert('لطفاً ماده اولیه را انتخاب کنید');
-            return;
-        }
-        $.ajax({
-            url: getMaterialsUrl(currentStageId),
-            method: 'POST',
-            headers: {'X-Requested-With': 'XMLHttpRequest'},
-            contentType: 'application/json',
-            data: JSON.stringify({
-                raw_material_id: parseInt(rawMaterialId),
-                consumption_per_unit: floatVal(consumption),
-                product_id: productId ? parseInt(productId) : null
-            }),
-            success: function (data) {
-                if (data.success) {
-                    $('#newRawMaterial').val(null).trigger('change');
-                    $('#newProduct').val(null).trigger('change');
-                    $('#newConsumption').val('');
-                    loadMaterials(currentStageId);
-                } else {
-                    alert('خطا: ' + (data.error || 'نامشخص'));
-                }
-            },
-            error: function () { alert('خطای ارتباط با سرور'); }
-        });
-    });
-
-    function floatVal(v) {
-        try { return parseFloat(v); } catch(e) { return 0; }
-    }
-
-    $('.btn-stage-materials').on('click', function () {
-        var stageId = $(this).data('id');
-        materialModal.show();
-        loadMaterials(stageId);
-        initSelect2();
-    });
-
-    $('#stageForm').on('submit', function (e) {
-        e.preventDefault();
-        var $form = $(this);
-        $.ajax({
-            url: $form.attr('action'),
-            method: 'POST',
-            headers: {'X-Requested-With': 'XMLHttpRequest'},
-            data: $form.serialize(),
-            success: function (data) {
-                if (data.success) { location.reload(); }
-                else { alert('خطا: ' + JSON.stringify(data.errors || data)); }
-            },
-            error: function () { alert('خطای ارتباط با سرور'); }
-        });
-    });
-
-    $('.edit-stage').on('click', function () {
-        var id = $(this).data('id');
-        var $form = $('#stageForm');
-        $.getJSON('{% url "painting_stage_detail" 0 %}'.replace('/0/', '/' + id + '/'), function (data) {
-            $('#stageModalTitle').text('ویرایش مرحله');
-            $('#stageAction').val('edit');
-            $('#stageId').val(data.id);
-            $form.find('[name="process"]').val(data.process);
-            $form.find('[name="order"]').val(data.order);
-            $form.find('[name="name"]').val(data.name);
-            $form.find('[name="duration_minutes"]').val(data.duration_minutes);
-            $form.find('[name="drying_time_minutes"]').val(data.drying_time_minutes);
-            $form.find('[name="required_skill"]').val(data.required_skill);
-            new bootstrap.Modal(document.getElementById('stageModal')).show();
-        });
-    });
-
-    $('.delete-stage').on('click', function () {
-        if (!confirm('آیا از حذف این مرحله اطمینان دارید؟')) return;
-        var id = $(this).data('id');
-        $.ajax({
-            url: '{% url "painting_stages" %}',
-            method: 'POST',
-            headers: {'X-Requested-With': 'XMLHttpRequest'},
-            data: {'csrfmiddlewaretoken': '{{ csrf_token }}', 'action': 'delete', 'stage_id': id},
-            success: function (data) { if (data.success) location.reload(); }
-        });
-    });
 });
 </script>
 {% endblock %}

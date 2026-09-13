@@ -901,97 +901,79 @@ class PaintingStage(models.Model):
         return f"{self.process.name} - مرحله {self.order}: {self.name}"
 
 
+class PaintingProcessMaterial(models.Model):
+    """
+    کاتالوگ مواد اولیه‌ی متعلق به یک روند نقاشی — بدون مقدار مصرف.
+    فقط اعلام می‌کند «این روند اصولاً از این ماده استفاده می‌کند».
+    مقدار واقعی مصرف همیشه در PaintingMaterialRequirement (سطح محصول+بخش رنگی)
+    تعیین می‌شود. این دو مدل را هرگز ادغام نکن.
+    """
+    process = models.ForeignKey(
+        'PaintingProcess',
+        on_delete=models.CASCADE,
+        related_name='catalog_materials',
+        verbose_name="روند نقاشی",
+    )
+    raw_material = models.ForeignKey(
+        'inventory.RawMaterial',
+        on_delete=models.PROTECT,
+        related_name='process_catalog_entries',
+        verbose_name="مادة اولیه",
+    )
+
+    class Meta:
+        verbose_name = "ماده اولیه کاتالوگ روند"
+        verbose_name_plural = "مواد اولیه کاتالوگ روندها"
+        unique_together = ('process', 'raw_material')
+        ordering = ['process__name', 'raw_material__name']
+
+    def __str__(self):
+        return f"{self.process.name} ← {self.raw_material.name}"
+
+
 class PaintingMaterialRequirement(models.Model):
     """
-    فرمول مصرف مواد اولیه برای یک مرحله نقاشی مشخص.
-    مثال: مرحله «آستر» از روند «رنگ زیر» به ازای هر واحد محصول ۰.۰۵ لیتر
-    «آستر پلی‌استر» مصرف می‌کند.
-
-    ⚠️ این مدل عمداً از ProductBOM/Part جدا نگه داشته شده است،
-    چون مواد اولیه نقاشی (رنگ، تینر، آستر و ...) به PaintingStage وابسته‌اند
-    نه به قطعات فیزیکی برش‌خورده. هیچگاه این دو مدل را با هم ادغام نکنید.
+    مقدار واقعی مصرف یک ماده اولیه‌ی متعلق به یک روند، برای یک (محصول + بخش رنگی)
+    مشخص. هم product و هم color_part الزامی هستند — دیگر هیچ حالت پیش‌فرض/
+    سراسری وجود ندارد؛ چون مثلاً دستگیره و بدنه با اینکه از یک روند عبور
+    می‌کنند، مقدار مصرف کاملاً متفاوتی دارند و نمی‌توان یک مقدار مشترک گذاشت.
     """
-    painting_stage = models.ForeignKey(
-        PaintingStage,
+    process = models.ForeignKey(
+        'PaintingProcess',
         on_delete=models.CASCADE,
         related_name='material_requirements',
-        verbose_name="مرحله نقاشی"
+        verbose_name="روند نقاشی",
     )
     raw_material = models.ForeignKey(
         'inventory.RawMaterial',
         on_delete=models.PROTECT,
         related_name='painting_requirements',
-        verbose_name="ماده اولیه"
+        verbose_name="مادة اولیه",
     )
     product = models.ForeignKey(
         'Product',
         on_delete=models.CASCADE,
-        null=True,
-        blank=True,
-        related_name='painting_material_overrides',
-        verbose_name="محصول (برای Override اختصاصی — خالی = پیش‌فرض همه محصولات)",
-        help_text="اگر خالی باشد، این فرمول برای همه محصولاتی که از این مرحله عبور "
-                   "می‌کنند اعمال می‌شود. اگر محصول مشخصی انتخاب شود، فقط برای همان "
-                   "محصول این نرخ مصرف جایگزین نرخ پیش‌فرض مرحله می‌شود."
+        related_name='painting_material_requirements',
+        verbose_name="محصول",
     )
     color_part = models.CharField(
         max_length=20,
         choices=Color.PART_CHOICES,
-        blank=True,
-        null=True,
-        verbose_name="بخش رنگی (برای Override اختصاصی به یک بخش خاص محصول)",
-        help_text="اگر خالی باشد و product هم خالی باشد → پیش‌فرض سطح مرحله برای همه. "
-                   "اگر product پر و color_part خالی باشد → override برای کل محصول در "
-                   "همه بخش‌های رنگی آن. اگر هر دو پر باشند → override فقط برای همین "
-                   "بخش رنگی خاص همین محصول."
+        verbose_name="بخش رنگی",
     )
     consumption_per_unit = models.DecimalField(
-        max_digits=10,
-        decimal_places=3,
-        default=0,
+        max_digits=10, decimal_places=3, default=0,
         verbose_name="مقدار مصرف به ازای هر واحد محصول",
-        help_text="مثال: ۰.۰۵ لیتر رنگ به ازای هر عدد محصول در این مرحله"
     )
 
     class Meta:
         verbose_name = "فرمول مصرف مواد نقاشی"
         verbose_name_plural = "فرمول‌های مصرف مواد نقاشی"
-        constraints = [
-            # پیش‌فرض سطح مرحله (بدون محصول و بدون بخش رنگی)
-            models.UniqueConstraint(
-                fields=['painting_stage', 'raw_material'],
-                condition=models.Q(product__isnull=True, color_part__isnull=True),
-                name='unique_default_requirement_per_stage_material'
-            ),
-            # override کل محصول (همه بخش‌های رنگی آن محصول)
-            models.UniqueConstraint(
-                fields=['painting_stage', 'raw_material', 'product'],
-                condition=models.Q(product__isnull=False, color_part__isnull=True),
-                name='unique_product_override_per_stage_material'
-            ),
-            # override اختصاصی به یک بخش رنگی خاص از یک محصول خاص
-            models.UniqueConstraint(
-                fields=['painting_stage', 'raw_material', 'product', 'color_part'],
-                condition=models.Q(product__isnull=False, color_part__isnull=False),
-                name='unique_product_colorpart_override_per_stage_material'
-            ),
-        ]
-        ordering = ['painting_stage__process__name', 'painting_stage__order', 'raw_material__name']
-
-    def clean(self):
-        from django.core.exceptions import ValidationError
-        if self.color_part and not self.product_id:
-            raise ValidationError(
-                "بخش رنگی فقط زمانی معنی دارد که یک محصول مشخص هم انتخاب شده باشد."
-            )
+        unique_together = ('process', 'raw_material', 'product', 'color_part')
+        ordering = ['product__name', 'color_part', 'process__name', 'raw_material__name']
 
     def __str__(self):
-        base = f"{self.painting_stage} ← {self.raw_material} ({self.consumption_per_unit})"
-        if self.product_id:
-            if self.color_part:
-                return f"{base} [Override: {self.product} / {self.color_part}]"
-            return f"{base} [Override: {self.product}]"
-        return base
+        return f"{self.product} / {self.color_part} — {self.process.name} ← {self.raw_material} ({self.consumption_per_unit})"
 
 
 class PaintingAssignmentRule(models.Model):

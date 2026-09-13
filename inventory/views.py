@@ -730,7 +730,7 @@ def purchase_order_item_delete(request, item_id):
 @admin_or_manager_required
 def low_stock_report(request):
     materials = RawMaterial.objects.filter(is_active=True).annotate(
-        stock=Coalesce(Sum('movements__quantity'), 0)
+        stock=Coalesce(Sum('movements__quantity'), Value(0, output_field=DecimalField()))
     ).filter(stock__lte=F('min_stock_alert')).order_by('stock')
 
     context = {
