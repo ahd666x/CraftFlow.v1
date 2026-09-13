@@ -1,3 +1,4 @@
+from django.core.exceptions import ValidationError
 from django.db import models, transaction
 from django.contrib.auth.models import User
 from django.urls import reverse
@@ -330,7 +331,7 @@ class OrderItem(models.Model):
 
         if target_count > current_count:
             # ایجاد واحدهای جدید
-            base_url = getattr(settings, 'SCAN_BASE_URL', 'http://192.168.1.123:8000')
+            base_url = getattr(settings, 'SCAN_BASE_URL', 'https://selvichoob.ir')
             for i in range(current_count + 1, target_count + 1):
                 unit = PackagingUnit.objects.create(
                     order_item=self,
@@ -920,6 +921,11 @@ class PaintingProcessMaterial(models.Model):
         related_name='process_catalog_entries',
         verbose_name="مادة اولیه",
     )
+    is_color_variant = models.BooleanField(
+        default=False,
+        verbose_name="وابسته به کد رنگ سفارش",
+        help_text="اگر فعال باشد، جنس واقعی ماده بر اساس کد رنگ سفارش انتخاب می‌شود؛ مقدار مصرف در PaintingMaterialRequirement ثابت می‌ماند.",
+    )
 
     class Meta:
         verbose_name = "ماده اولیه کاتالوگ روند"
@@ -974,6 +980,51 @@ class PaintingMaterialRequirement(models.Model):
 
     def __str__(self):
         return f"{self.product} / {self.color_part} — {self.process.name} ← {self.raw_material} ({self.consumption_per_unit})"
+
+
+class PaintingColorMaterialVariant(models.Model):
+    """
+    ماده اولیه واقعی یک اسلات رنگ‌وابسته برای هر کد رنگ سفارش.
+    مقدار مصرف روی PaintingMaterialRequirement تعریف می‌شود و در این مدل تکرار نمی‌شود.
+    """
+    process_material = models.ForeignKey(
+        PaintingProcessMaterial,
+        on_delete=models.CASCADE,
+        related_name='color_variants',
+        limit_choices_to={'is_color_variant': True},
+        verbose_name="اسلات ماده کاتالوگ روند",
+    )
+    color_code = models.CharField(
+        max_length=20,
+        choices=Color.CODE_CHOICES,
+        verbose_name="کد رنگ سفارش",
+    )
+    raw_material = models.ForeignKey(
+        'inventory.RawMaterial',
+        on_delete=models.PROTECT,
+        related_name='painting_color_variants',
+        verbose_name="ماده اولیه واقعی",
+    )
+
+    class Meta:
+        verbose_name = "نگاشت کد رنگ به ماده اولیه"
+        verbose_name_plural = "نگاشت‌های کد رنگ به ماده اولیه"
+        unique_together = ('process_material', 'color_code')
+        ordering = ['process_material__process__name', 'process_material__raw_material__name', 'color_code']
+
+    def __str__(self):
+        return f"{self.process_material} → {self.get_color_code_display()}: {self.raw_material}"
+
+
+    def clean(self):
+        if self.process_material_id and not self.process_material.is_color_variant:
+            raise ValidationError({
+                'process_material': 'اسلات انتخاب‌شده به کد رنگ سفارش وابسته نیست.',
+            })
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
 
 
 class PaintingAssignmentRule(models.Model):

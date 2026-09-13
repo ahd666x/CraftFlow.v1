@@ -88,6 +88,15 @@ class StockMovement(models.Model):
     ]
 
     raw_material = models.ForeignKey(RawMaterial, on_delete=models.PROTECT, related_name='movements', verbose_name="ماده اولیه")
+    catalog_raw_material = models.ForeignKey(
+        RawMaterial,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='catalog_consumption_movements',
+        verbose_name="ماده اولیه کاتالوگ",
+        help_text="برای مصرف نقاشی، ماده کاتالوگ اصلی را مستقل از ماده واقعی رنگ نگه می‌دارد.",
+    )
     movement_type = models.CharField(max_length=20, choices=MOVEMENT_TYPES, verbose_name="نوع حرکت")
     quantity = models.DecimalField(max_digits=12, decimal_places=2, verbose_name="مقدار")
     unit_price = models.DecimalField(max_digits=12, decimal_places=0, null=True, blank=True, verbose_name="قیمت واحد (ریال)")

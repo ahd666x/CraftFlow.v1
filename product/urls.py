@@ -166,6 +166,7 @@ urlpatterns = [
     path('painting/stages/<int:process_id>/', views.painting_stages_view, name='painting_stages_process'),
     path('painting/stages/<int:stage_id>/get/', views.painting_stage_detail_api, name='painting_stage_detail'),
     path('painting/api/processes/<int:process_id>/materials/', views.painting_process_materials_api, name='painting_process_materials_api'),
+    path('painting/api/process-materials/<int:process_material_id>/color-variants/', views.painting_process_material_variants_api, name='painting_process_material_variants_api'),
     path('painting/api/product-colorpart-materials/', views.product_color_part_materials_api, name='product_color_part_materials_api'),
     path('painting/api/raw-materials/search/', views.search_raw_materials_api, name='painting_raw_materials_search'),
     path('painting/workers/', views.painting_workers_view, name='painting_workers'),

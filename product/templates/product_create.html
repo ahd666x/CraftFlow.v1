@@ -336,40 +336,9 @@
     // ================================================================
     // مدیریت مواد اولیه نقاشی برای بخش‌های رنگی
     // ================================================================
-    const PAINTING_MATERIALS_API = "{% url 'product_color_part_materials_api' %}";
-    const RAW_MATERIALS_SEARCH_API = "{% url 'painting_raw_materials_search' %}";
+const PAINTING_MATERIALS_API = "{% url 'product_color_part_materials_api' %}";
 
-    let rawMaterialsCache = [];
     let availableStagesCache = {};
-
-    // Load raw materials for Select2
-    async function loadRawMaterials() {
-        try {
-            const response = await fetch(RAW_MATERIALS_SEARCH_API + '?q=');
-            const data = await response.json();
-            rawMaterialsCache = data.results || [];
-        } catch (e) {
-            console.error('Failed to load raw materials:', e);
-        }
-    }
-
-    function getRawMaterialOptions(selectedId = null) {
-        let html = '<option value="">-- انتخاب ماده --</option>';
-        rawMaterialsCache.forEach(m => {
-            const sel = m.id == selectedId ? 'selected' : '';
-            html += `<option value="${m.id}" ${sel}>${m.text}</option>`;
-        });
-        return html;
-    }
-
-    function getStageOptions(stages, selectedId = null) {
-        let html = '<option value="">-- انتخاب مرحله --</option>';
-        stages.forEach(s => {
-            const sel = s.id == selectedId ? 'selected' : '';
-            html += `<option value="${s.id}" ${sel}>${s.name} (${s.process_name || ''})</option>`;
-        });
-        return html;
-    }
 
     function getSourceBadge(source) {
         const badges = {
@@ -380,11 +349,7 @@
         return badges[source] || '';
     }
 
-function renderMaterialRow(req) {
-        const canEdit = req.is_set; // Only show edit controls if already set, or always allow editing?
-        // Actually, we want to allow editing for all rows
-        const materialOptions = getRawMaterialOptions(req.raw_material_id);
-
+    function renderMaterialRow(req) {
         return `
             <tr class="material-row" data-req-id="${req.requirement_id || ''}" data-process-id="${req.process_id}" data-material-id="${req.raw_material_id}">
                 <td>
@@ -392,19 +357,18 @@ function renderMaterialRow(req) {
                     <input type="hidden" name="process_id" value="${req.process_id}" class="process-select" data-field="process_id" readonly>
                 </td>
                 <td>
-                    <select class="form-select form-select-sm material-select" data-field="raw_material_id" ${!canEdit && req.requirement_id ? '' : ''}>
-                        ${materialOptions}
-                    </select>
+                    <span class="raw-material-name">${req.raw_material_name}</span>
+                    ${req.is_color_variant ? '<span class="badge bg-warning text-dark ms-1" title="ماده واقعی این اسلات بر اساس کد رنگ سفارش انتخاب می‌شود">وابسته به رنگ سفارش</span>' : ''}
                 </td>
                 <td>${req.unit}</td>
                 <td>
-                    <input type="number" step="0.001" class="form-control form-control-sm consumption-input" 
-                           data-field="consumption_per_unit" value="${req.consumption_per_unit}" 
+                    <input type="number" step="0.001" class="form-control form-control-sm consumption-input"
+                           data-field="consumption_per_unit" value="${req.consumption_per_unit}"
                            placeholder="مقدار را وارد کنید">
                 </td>
                 <td class="text-center">
                     ${req.requirement_id ? `
-                        <button type="button" class="btn btn-sm btn-outline-danger delete-material-btn" 
+                        <button type="button" class="btn btn-sm btn-outline-danger delete-material-btn"
                                 data-req-id="${req.requirement_id}" title="حذف مقدار مصرف">
                             <i class="bi bi-trash"></i>
                         </button>
@@ -457,7 +421,7 @@ function renderMaterialRow(req) {
 
     async function saveMaterialRow(row, productId, colorPart) {
         const processId = row.querySelector('[data-field="process_id"]').value;
-        const materialId = row.querySelector('[data-field="raw_material_id"]').value;
+        const materialId = row.dataset.materialId;
         const consumption = row.querySelector('[data-field="consumption_per_unit"]').value;
 
         if (!processId || !materialId) {
@@ -585,8 +549,6 @@ function renderMaterialRow(req) {
 
     // Initialize when DOM ready
     document.addEventListener('DOMContentLoaded', async () => {
-        await loadRawMaterials();
-
         // Load materials for first active tab on page load
         const activeTab = document.querySelector('.colorpart-tab.active');
         if (activeTab) {
@@ -613,7 +575,7 @@ function renderMaterialRow(req) {
             });
         });
 
-        // Add material row buttons
+        // Add material row buttons (no-op: catalog materials are shown read-only)
         document.querySelectorAll('.add-material-row').forEach(btn => {
             btn.addEventListener('click', () => {
                 const productId = btn.dataset.productId;

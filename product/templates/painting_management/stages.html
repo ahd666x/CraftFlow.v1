@@ -141,9 +141,64 @@
 <script src="{% static 'selvi/js/select2.min.js' %}"></script>
 <script>
 $(function () {
-    var materialModalEl = document.getElementById('materialModal');
-var materialModal = new bootstrap.Modal(materialModalEl);
-    var currentStageId = null;
+    var STAGE_DETAIL_URL = "{% url 'painting_stage_detail' 0 %}";
+    var STAGES_URL = "{% url 'painting_stages' %}";
+    var $form = $('#stageForm');
+    var $overlay = $('#loadingOverlay');
+
+    function showLoading() { $overlay.addClass('show'); }
+    function hideLoading() { $overlay.removeClass('show'); }
+
+    // ایجاد/ویرایش (ارسال فرم به صورت AJAX)
+    $('#stageForm').on('submit', function (e) {
+        e.preventDefault();
+        showLoading();
+        $.ajax({
+            url: $form.attr('action'),
+            method: 'POST',
+            headers: {'X-Requested-With': 'XMLHttpRequest'},
+            data: $form.serialize(),
+            success: function (data) {
+                if (data.success) { location.reload(); }
+                else { alert('خطا: ' + JSON.stringify(data.errors || data)); }
+            },
+            error: function () { alert('خطای ارتباط با سرور'); },
+            complete: hideLoading
+        });
+    });
+
+    // ویرایش
+    $('.edit-stage').on('click', function () {
+        var id = $(this).data('id');
+        $.getJSON(STAGE_DETAIL_URL.replace('/0/', '/' + id + '/'), function (data) {
+            $('#stageModalTitle').text('ویرایش مرحله');
+            $('#stageAction').val('edit');
+            $('#stageId').val(data.id);
+            $('#stageForm [name="process"]').val(data.process);
+            $('#stageForm [name="order"]').val(data.order);
+            $('#stageForm [name="name"]').val(data.name);
+            $('#stageForm [name="duration_minutes"]').val(data.duration_minutes);
+            $('#stageForm [name="drying_time_minutes"]').val(data.drying_time_minutes);
+            $('#stageForm [name="required_skill"]').val(data.required_skill);
+            new bootstrap.Modal(document.getElementById('stageModal')).show();
+        });
+    });
+
+    // حذف
+    $('.delete-stage').on('click', function () {
+        if (!confirm('آیا از حذف این مرحله اطمینان دارید؟')) return;
+        var id = $(this).data('id');
+        showLoading();
+        $.ajax({
+            url: STAGES_URL,
+            method: 'POST',
+            headers: {'X-Requested-With': 'XMLHttpRequest'},
+            data: {'csrfmiddlewaretoken': '{{ csrf_token }}', 'action': 'delete', 'stage_id': id},
+            success: function (data) { if (data.success) location.reload(); },
+            error: function () { alert('خطای ارتباط با سرور'); },
+            complete: hideLoading
+        });
+    });
 });
 </script>
 {% endblock %}

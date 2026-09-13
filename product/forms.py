@@ -1,6 +1,6 @@
 # forms.py
 from django import forms
-from .models import Order, OrderItem, Color, ProductCategory, PaintingProcess, PaintingStage, PaintingMaterialRequirement, WorkerProfile, Customer
+from .models import Order, OrderItem, Color, ProductCategory, PaintingProcess, PaintingStage, PaintingMaterialRequirement, PaintingColorMaterialVariant, WorkerProfile, Customer
 from django.contrib.auth.models import User
 
 import ast
@@ -554,6 +554,22 @@ class PaintingMaterialRequirementForm(forms.ModelForm):
             'color_part': 'بخش رنگی',
             'raw_material': 'ماده اولیه',
             'consumption_per_unit': 'مقدار مصرف',
+        }
+
+
+class PaintingColorMaterialVariantForm(forms.ModelForm):
+    class Meta:
+        model = PaintingColorMaterialVariant
+        fields = ['process_material', 'color_code', 'raw_material']
+        widgets = {
+            'process_material': forms.Select(attrs={'class': 'form-select'}),
+            'color_code': forms.Select(attrs={'class': 'form-select'}),
+            'raw_material': forms.Select(attrs={'class': 'form-select select2-raw-material'}),
+        }
+        labels = {
+            'process_material': 'اسلات ماده کاتالوگ روند',
+            'color_code': 'کد رنگ سفارش',
+            'raw_material': 'ماده اولیه واقعی',
         }
 
 

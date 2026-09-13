@@ -131,13 +131,19 @@
                     <div id="processMaterialsList" class="mb-3">
                         <div class="text-center text-muted py-3" id="processMaterialsLoading">در حال بارگذاری...</div>
                     </div>
-                    <div class="row g-2 mb-3">
-                        <div class="col-md-8">
+                    <div class="row g-2 mb-3 align-items-end">
+                        <div class="col-md-7">
                             <select name="new_raw_material_id" id="newProcessRawMaterial" class="form-select select2-raw-material" style="width: 100%"></select>
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-md-3">
+                            <div class="form-check pt-2">
+                                <input type="checkbox" class="form-check-input" id="newProcessMaterialIsColorVariant">
+                                <label class="form-check-label" for="newProcessMaterialIsColorVariant">وابسته به رنگ سفارش</label>
+                            </div>
+                        </div>
+                        <div class="col-md-2">
                             <button type="button" class="btn btn-outline-primary w-100" id="addProcessMaterialBtn">
-                                <i class="bi bi-plus"></i> افزودن به کاتالوگ
+                                <i class="bi bi-plus"></i> افزودن
                             </button>
                         </div>
                     </div>
@@ -150,21 +156,56 @@
         </div>
     </div>
 </div>
+
+<!-- مودال نگاشت کد رنگ به ماده واقعی -->
+<div class="modal fade" id="colorVariantModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="colorVariantModalTitle">نگاشت کدهای رنگ</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="colorVariantList">
+                    <div class="text-center text-muted py-3">در حال بارگذاری...</div>
+                </div>
+                <div class="form-text mt-2">برای هر کد رنگ، ماده اولیه واقعی را انتخاب کنید. مقدار مصرف از فرمول محصول خوانده می‌شود و در این جدول تکرار نمی‌شود.</div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">بستن</button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block painting_js %}
 <script src="{% static 'selvi/js/select2.min.js' %}"></script>
 <script>
 $(function () {
-    var PROCESS_MATERIALS_API_BASE = "{% url 'painting_process_materials_api' 0 %}".replace('/0/', '');
+    var PROCESS_MATERIALS_API_TEMPLATE = "{% url 'painting_process_materials_api' 0 %}";
+    var COLOR_VARIANT_API_TEMPLATE = "{% url 'painting_process_material_variants_api' 0 %}";
     var RAW_MATERIAL_SEARCH_URL = "{% url 'painting_raw_materials_search' %}";
 
     var processMaterialsModalEl = document.getElementById('processMaterialsModal');
     var processMaterialsModal = new bootstrap.Modal(processMaterialsModalEl);
+    var colorVariantModalEl = document.getElementById('colorVariantModal');
+    var colorVariantModal = new bootstrap.Modal(colorVariantModalEl);
     var currentProcessId = null;
+    var currentProcessMaterialId = null;
 
     function getProcessMaterialsUrl(processId) {
-        return PROCESS_MATERIALS_API_BASE + processId + '/';
+        return PROCESS_MATERIALS_API_TEMPLATE.replace('/0/', '/' + processId + '/');
+    }
+
+    function getColorVariantUrl(processMaterialId) {
+        return COLOR_VARIANT_API_TEMPLATE.replace('/0/', '/' + processMaterialId + '/');
+    }
+
+    function escapeHtml(value) {
+        var div = document.createElement('div');
+        div.textContent = value == null ? '' : String(value);
+        return div.innerHTML;
     }
 
     function initProcessSelect2() {
@@ -194,24 +235,27 @@ $(function () {
 
     function loadProcessMaterials(processId) {
         currentProcessId = processId;
-        $('#processMaterialsModalTitle').text('کاتالوگ مواد اولیه - ' + $(event.target).closest('tr').find('td:first').text());
         $('#processMaterialsList').html('<div class="text-center text-muted py-3" id="processMaterialsLoading">در حال بارگذاری...</div>');
 
         $.getJSON(getProcessMaterialsUrl(processId), function (data) {
             if (!data.success) {
-                $('#processMaterialsList').html('<div class="text-center text-danger py-3">خطا: ' + data.error + '</div>');
+                $('#processMaterialsList').html('<div class="text-center text-danger py-3">خطا: ' + escapeHtml(data.error) + '</div>');
                 return;
             }
             if (data.materials.length === 0) {
                 $('#processMaterialsList').html('<div class="text-center text-muted py-3">ماده‌ای در کاتالوگ این روند تعریف نشده است.</div>');
                 return;
             }
-            var html = '<table class="table table-sm table-hover"><thead><tr><th>ماده اولیه</th><th>واحد</th><th class="text-center">عملیات</th></tr></thead><tbody>';
+            var html = '<table class="table table-sm table-hover align-middle"><thead><tr><th>ماده اولیه</th><th>واحد</th><th class="text-center">وابسته به رنگ</th><th class="text-center">عملیات</th></tr></thead><tbody>';
             data.materials.forEach(function (m) {
                 html += '<tr data-id="' + m.id + '" data-raw-material-id="' + m.raw_material_id + '">' +
-                    '<td>' + m.raw_material_name + '</td>' +
-                    '<td>' + m.unit + '</td>' +
+                    '<td>' + escapeHtml(m.raw_material_name) + (m.color_variant_count ? ' <span class="badge bg-info">' + m.color_variant_count + ' نگاشت</span>' : '') + '</td>' +
+                    '<td>' + escapeHtml(m.unit) + '</td>' +
                     '<td class="text-center">' +
+                        '<input type="checkbox" class="form-check-input process-material-variant-toggle" data-id="' + m.id + '" ' + (m.is_color_variant ? 'checked' : '') + ' title="وابسته به کد رنگ سفارش">' +
+                    '</td>' +
+                    '<td class="text-center">' +
+                        '<button type="button" class="btn btn-sm btn-outline-primary color-variant-map-btn" data-id="' + m.id + '" data-name="' + escapeHtml(m.raw_material_name) + '" ' + (m.is_color_variant ? '' : 'disabled') + ' title="نگاشت کدهای رنگ"><i class="bi bi-palette"></i> نگاشت رنگ</button> ' +
                         '<button type="button" class="btn btn-sm btn-outline-danger delete-process-material-btn" data-id="' + m.id + '" title="حذف از کاتالوگ"><i class="bi bi-trash"></i></button>' +
                     '</td>' +
                 '</tr>';
@@ -221,6 +265,95 @@ $(function () {
         });
     }
 
+    function initVariantSelect2($select, selected) {
+        if ($select.data('select2')) {
+            $select.select2('destroy');
+        }
+        if (selected && selected.raw_material_id) {
+            var option = new Option(selected.raw_material_name, selected.raw_material_id, true, true);
+            $select.append(option);
+        }
+        $select.select2({
+            theme: 'bootstrap-5',
+            width: '100%',
+            placeholder: 'جستجوی ماده اولیه...',
+            allowClear: true,
+            ajax: {
+                url: RAW_MATERIAL_SEARCH_URL,
+                dataType: 'json',
+                delay: 250,
+                data: function (params) {
+                    return { q: params.term || '' };
+                },
+                processResults: function (data) {
+                    return { results: data.results };
+                },
+                cache: false
+            }
+        });
+    }
+
+    function loadColorVariants(processMaterialId) {
+        currentProcessMaterialId = processMaterialId;
+        $('#colorVariantList').html('<div class="text-center text-muted py-3">در حال بارگذاری...</div>');
+        $.getJSON(getColorVariantUrl(processMaterialId), function (data) {
+            if (!data.success) {
+                $('#colorVariantList').html('<div class="text-center text-danger py-3">خطا: ' + escapeHtml(data.error) + '</div>');
+                return;
+            }
+            if (!data.is_color_variant) {
+                $('#colorVariantList').html('<div class="alert alert-warning">این ماده به کد رنگ سفارش وابسته نیست.</div>');
+                return;
+            }
+            var html = '<table class="table table-sm table-bordered align-middle"><thead><tr><th>کد رنگ</th><th>ماده اولیه واقعی</th><th>واحد</th></tr></thead><tbody>';
+            data.variants.forEach(function (variant) {
+                html += '<tr data-color-code="' + escapeHtml(variant.color_code) + '">' +
+                    '<td>' + escapeHtml(variant.color_label) + '</td>' +
+                    '<td><select class="form-select form-select-sm color-variant-material-select" data-color-code="' + escapeHtml(variant.color_code) + '" style="width: 100%">' +
+                        '<option value="">انتخاب نشده</option>' +
+                    '</select></td>' +
+                    '<td>' + escapeHtml(variant.unit) + '</td>' +
+                '</tr>';
+            });
+            html += '</tbody></table>';
+            $('#colorVariantList').html(html);
+            $('#colorVariantList .color-variant-material-select').each(function () {
+                var $select = $(this);
+                var colorCode = $select.attr('data-color-code');
+                var variant = data.variants.find(function (item) {
+                    return item.color_code === colorCode;
+                });
+                initVariantSelect2($select, variant);
+            });
+        });
+    }
+
+    function saveColorVariant($select) {
+        var colorCode = $select.data('color-code');
+        var rawMaterialId = $select.val();
+        var url = getColorVariantUrl(currentProcessMaterialId);
+        var options = {
+            headers: {'X-CSRFToken': '{{ csrf_token }}'},
+            success: function (data) {
+                if (!data.success) {
+                    alert('خطا: ' + (data.error || 'ذخیره نگاشت انجام نشد'));
+                    loadColorVariants(currentProcessMaterialId);
+                }
+            },
+            error: function () {
+                alert('خطای ارتباط با سرور');
+                loadColorVariants(currentProcessMaterialId);
+            }
+        };
+        if (!rawMaterialId) {
+            $.ajax($.extend({url: url + '?color_code=' + encodeURIComponent(colorCode), method: 'DELETE'}, options));
+            return;
+        }
+        options.contentType = 'application/json';
+        options.data = JSON.stringify({color_code: colorCode, raw_material_id: rawMaterialId});
+        $.ajax($.extend({url: url, method: 'POST'}, options));
+    }
+
     // Open modal
     $(document).on('click', '.btn-process-materials', function () {
         var processId = $(this).data('id');
@@ -228,6 +361,7 @@ $(function () {
         currentProcessId = processId;
         $('#processMaterialsModalTitle').text('کاتالوگ مواد اولیه - ' + processName);
         loadProcessMaterials(processId);
+        initProcessSelect2();
         processMaterialsModal.show();
     });
 
@@ -243,16 +377,58 @@ $(function () {
             method: 'POST',
             headers: {'X-CSRFToken': '{{ csrf_token }}'},
             contentType: 'application/json',
-            data: JSON.stringify({raw_material_id: rawMaterialId}),
+            data: JSON.stringify({
+                raw_material_id: rawMaterialId,
+                is_color_variant: $('#newProcessMaterialIsColorVariant').prop('checked')
+            }),
             success: function (data) {
                 if (data.success) {
                     $('#newProcessRawMaterial').val(null).trigger('change');
+                    $('#newProcessMaterialIsColorVariant').prop('checked', false);
                     loadProcessMaterials(currentProcessId);
                 } else {
                     alert('خطا: ' + data.error);
                 }
             }
         });
+    });
+
+    $(document).on('change', '.process-material-variant-toggle', function () {
+        var id = $(this).data('id');
+        var isColorVariant = $(this).prop('checked');
+        $.ajax({
+            url: getProcessMaterialsUrl(currentProcessId),
+            method: 'PATCH',
+            headers: {'X-CSRFToken': '{{ csrf_token }}'},
+            contentType: 'application/json',
+            data: JSON.stringify({id: id, is_color_variant: isColorVariant}),
+            success: function (data) {
+                if (data.success) {
+                    loadProcessMaterials(currentProcessId);
+                } else {
+                    alert('خطا: ' + data.error);
+                    loadProcessMaterials(currentProcessId);
+                }
+            },
+            error: function () {
+                alert('خطای ارتباط با سرور');
+                loadProcessMaterials(currentProcessId);
+            }
+        });
+    });
+
+    $(document).on('click', '.color-variant-map-btn', function () {
+        var id = $(this).data('id');
+        var name = $(this).data('name');
+        currentProcessMaterialId = id;
+        $('#colorVariantModalTitle').text('نگاشت کدهای رنگ - ' + name);
+        loadColorVariants(id);
+        processMaterialsModal.hide();
+        colorVariantModal.show();
+    });
+
+    $(document).on('change', '.color-variant-material-select', function () {
+        saveColorVariant($(this));
     });
 
     // Delete material
@@ -273,11 +449,21 @@ $(function () {
         });
     });
 
-    // destruir select2 on modal hide
     $('#processMaterialsModal').on('hidden.bs.modal', function () {
         var $sel = $('#newProcessRawMaterial');
         if ($sel.data('select2')) {
             $sel.select2('destroy');
+        }
+    });
+
+    $('#colorVariantModal').on('hidden.bs.modal', function () {
+        $('#colorVariantList .color-variant-material-select').each(function () {
+            if ($(this).data('select2')) {
+                $(this).select2('destroy');
+            }
+        });
+        if (currentProcessId) {
+            processMaterialsModal.show();
         }
     });
 

@@ -6,6 +6,8 @@ import logging
 import traceback
 from datetime import datetime, time, timedelta
 from collections import defaultdict, deque
+from copy import copy
+from dataclasses import dataclass
 from decimal import Decimal
 
 import jdatetime
@@ -71,7 +73,7 @@ def consume_material_for_task(task):
         if StockMovement.objects.filter(reference_task=task, movement_type='consumption').exists():
             return None
 
-        qty = (task.quantity or 0) * float(material.consumption_per_unit or 1)
+        qty = Decimal(task.completed_quantity or 0) * Decimal(material.consumption_per_unit or 1)
         if qty <= 0:
             return None
 
@@ -88,15 +90,27 @@ def consume_material_for_task(task):
         return None
 
 
+def _get_task_actual_color_code(task):
+    """کد رنگ سفارش برای بخش رنگی تسک را با fallback به رنگ پیش‌فرض محصول می‌یابد."""
+    if not task.order_item_id or not task.color_part:
+        return None
+
+    color_obj = task.order_item.ordercolor.filter(part=task.color_part).first()
+    if color_obj and color_obj.code and color_obj.code != 'nan':
+        return str(color_obj.code)
+
+    code = _parse_default_colors(task.order_item.product).get(task.color_part)
+    return str(code) if code and code != 'nan' else None
+
+
 def get_painting_material_requirements_for_task(task):
     """
     فرمول مصرف مواد یک تسک نقاشی: دقیقاً بر اساس (روندِ مرحلهٔ تسک،
     محصول آیتم سفارش، بخش رنگی تسک) از PaintingMaterialRequirement خوانده
-    می‌شود. اگر برای این ترکیب دقیق چیزی تعریف نشده باشد، لیست خالی
-    برمی‌گردد (یعنی مصرفی برای این ترکیب ثبت نشده — دیگر fallback به
-    پیش‌فرض وجود ندارد).
+    می‌شود. اسلات‌های وابسته به رنگ در این مرحله فقط در حافظه به مادهٔ واقعی
+    کد رنگ سفارش تبدیل می‌شوند و مقدار مصرف بدون تغییر باقی می‌ماند.
     """
-    from .models import PaintingMaterialRequirement
+    from .models import PaintingMaterialRequirement, PaintingColorMaterialVariant
 
     if task.station_name != 'paint' or not task.painting_stage_id:
         return []
@@ -108,13 +122,33 @@ def get_painting_material_requirements_for_task(task):
     process_id = task.painting_stage.process_id
     product_id = task.order_item.product_id
 
-    return list(
+    requirements = list(
         PaintingMaterialRequirement.objects.filter(
             process_id=process_id,
             product_id=product_id,
             color_part=task.color_part,
         ).select_related('raw_material')
     )
+
+    actual_code = _get_task_actual_color_code(task)
+    if not actual_code:
+        return requirements
+
+    variant_map = {
+        variant.process_material.raw_material_id: variant.raw_material
+        for variant in PaintingColorMaterialVariant.objects.filter(
+            process_material__process_id=process_id,
+            process_material__is_color_variant=True,
+            color_code=actual_code,
+        ).select_related('raw_material', 'process_material')
+    }
+
+    for requirement in requirements:
+        real_material = variant_map.get(requirement.raw_material_id)
+        if real_material:
+            requirement.raw_material = real_material
+
+    return requirements
 
 
 def consume_material_for_paint_task(task):

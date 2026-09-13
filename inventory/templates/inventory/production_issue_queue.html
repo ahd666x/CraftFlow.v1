@@ -349,13 +349,14 @@
     window.location.reload();
   });
 
-  // Confirm cancel - requires backend view
+// Confirm cancel - backend view not implemented yet
   // document.querySelectorAll('.btn-cancel-issue').forEach(btn => {
   //   btn.addEventListener('click', (e) => {
   //     e.preventDefault();
-  //     if (confirm('آیا مطمئن هستید که می‌خواهید این درخواست را لغو کنید؟')) {
+  //     if (confirm('آیا مطمئن هستید که می‌خواهید این درخواست را لgnu کنید؟')) {
   //       const issueId = btn.dataset.issue;
-  //       fetch(`{% url 'inventory:cancel_material_issue' 0 %}`.replace('0', issueId), {
+  //       const url = '/inventory/production-queue/' + issueId + '/cancel/';
+  //       fetch(url, {
   //         method: 'POST',
   //         headers: { 'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value, 'X-Requested-With': 'XMLHttpRequest' }
   //       }).then(r => {

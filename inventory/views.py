@@ -582,6 +582,8 @@ def purchase_order_list(request):
         'search': search,
         'status_filter': status,
         'form': PurchaseOrderForm(),
+        'suppliers': Supplier.objects.filter(is_active=True).order_by('name'),
+        'materials': RawMaterial.objects.filter(is_active=True).order_by('category__name', 'name'),
         'can_receive': orders.filter(status__in=['draft', 'ordered']).exists(),
     }
     return render(request, 'inventory/purchase_orders.html', context)

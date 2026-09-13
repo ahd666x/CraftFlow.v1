@@ -4479,7 +4479,7 @@ def painting_process_materials_api(request, process_id):
     process = get_object_or_404(PaintingProcess, pk=process_id)
 
     if request.method == 'GET':
-        entries = PaintingProcessMaterial.objects.select_related('raw_material').filter(process=process)
+        entries = PaintingProcessMaterial.objects.select_related('raw_material').prefetch_related('color_variants__raw_material').filter(process=process)
         return JsonResponse({
             'success': True,
             'process_id': process.id,
@@ -4490,6 +4490,8 @@ def painting_process_materials_api(request, process_id):
                     'raw_material_id': e.raw_material_id,
                     'raw_material_name': str(e.raw_material),
                     'unit': e.raw_material.get_unit_display(),
+                    'is_color_variant': e.is_color_variant,
+                    'color_variant_count': e.color_variants.count(),
                 }
                 for e in entries
             ],
@@ -4506,11 +4508,38 @@ def painting_process_materials_api(request, process_id):
         entry, created = PaintingProcessMaterial.objects.get_or_create(
             process=process, raw_material_id=raw_material_id
         )
+        if 'is_color_variant' in data:
+            value = data.get('is_color_variant')
+            entry.is_color_variant = value if isinstance(value, bool) else str(value).lower() in ('1', 'true', 'yes', 'on')
+            entry.save(update_fields=['is_color_variant'])
         return JsonResponse({
             'success': True,
             'created': created,
             'id': entry.id,
+            'raw_material_id': entry.raw_material_id,
             'raw_material_name': str(entry.raw_material),
+            'is_color_variant': entry.is_color_variant,
+        })
+
+    if request.method in ('PUT', 'PATCH'):
+        try:
+            data = json.loads(request.body)
+        except (json.JSONDecodeError, TypeError):
+            return JsonResponse({'success': False, 'error': 'داده ارسالی معتبر نیست'})
+        entry_id = data.get('id') or data.get('entry_id')
+        entry = get_object_or_404(PaintingProcessMaterial, pk=entry_id, process=process)
+        if 'raw_material_id' in data:
+            entry.raw_material_id = data['raw_material_id']
+        if 'is_color_variant' in data:
+            value = data.get('is_color_variant')
+            entry.is_color_variant = value if isinstance(value, bool) else str(value).lower() in ('1', 'true', 'yes', 'on')
+        entry.save()
+        return JsonResponse({
+            'success': True,
+            'id': entry.id,
+            'raw_material_id': entry.raw_material_id,
+            'raw_material_name': str(entry.raw_material),
+            'is_color_variant': entry.is_color_variant,
         })
 
     if request.method == 'DELETE':
@@ -4522,6 +4551,91 @@ def painting_process_materials_api(request, process_id):
             process=process, raw_material_id=entry.raw_material_id
         ).delete()
         entry.delete()
+        return JsonResponse({'success': True})
+
+    return JsonResponse({'success': False, 'error': 'روش غیرمجاز'})
+
+
+@login_required
+@admin_or_manager_required
+def painting_process_material_variants_api(request, process_material_id):
+    """مدیریت نگاشت کد رنگ به ماده واقعی برای یک اسلات رنگ‌وابسته."""
+    from inventory.models import RawMaterial
+    from .models import Color, PaintingColorMaterialVariant, PaintingProcessMaterial
+
+    process_material = get_object_or_404(PaintingProcessMaterial, pk=process_material_id)
+
+    if request.method == 'GET':
+        variants = {
+            variant.color_code: variant
+            for variant in process_material.color_variants.select_related('raw_material__category')
+        }
+        return JsonResponse({
+            'success': True,
+            'process_material_id': process_material.id,
+            'process_name': process_material.process.name,
+            'raw_material_name': str(process_material.raw_material),
+            'is_color_variant': process_material.is_color_variant,
+            'color_choices': [
+                {'code': code, 'label': label}
+                for code, label in Color.CODE_CHOICES
+            ],
+            'variants': [
+                {
+                    'color_code': code,
+                    'color_label': label,
+                    'raw_material_id': variants[code].raw_material_id if code in variants else None,
+                    'raw_material_name': str(variants[code].raw_material) if code in variants else '',
+                    'unit': variants[code].raw_material.get_unit_display() if code in variants else '',
+                }
+                for code, label in Color.CODE_CHOICES
+            ],
+        })
+
+    if request.method in ('POST', 'PUT', 'PATCH'):
+        if not process_material.is_color_variant:
+            return JsonResponse({'success': False, 'error': 'این اسلات به کد رنگ وابسته نیست.'})
+        try:
+            data = json.loads(request.body)
+        except (json.JSONDecodeError, TypeError):
+            return JsonResponse({'success': False, 'error': 'داده ارسالی معتبر نیست'})
+
+        color_code = str(data.get('color_code', '')).strip()
+        color_choices = dict(Color.CODE_CHOICES)
+        if color_code not in color_choices:
+            return JsonResponse({'success': False, 'error': 'کد رنگ معتبر نیست'})
+
+        raw_material_id = data.get('raw_material_id')
+        if not raw_material_id:
+            return JsonResponse({'success': False, 'error': 'ماده اولیه واقعی انتخاب نشده'})
+        raw_material = get_object_or_404(RawMaterial, pk=raw_material_id)
+        if not raw_material.is_active:
+            return JsonResponse({'success': False, 'error': 'ماده اولیه غیرفعال است'})
+
+        variant, created = PaintingColorMaterialVariant.objects.update_or_create(
+            process_material=process_material,
+            color_code=color_code,
+            defaults={'raw_material': raw_material},
+        )
+        return JsonResponse({
+            'success': True,
+            'created': created,
+            'id': variant.id,
+            'color_code': variant.color_code,
+            'color_label': variant.get_color_code_display(),
+            'raw_material_id': variant.raw_material_id,
+            'raw_material_name': str(variant.raw_material),
+            'unit': variant.raw_material.get_unit_display(),
+        })
+
+    if request.method == 'DELETE':
+        color_code = request.GET.get('color_code')
+        variant = get_object_or_404(
+            PaintingColorMaterialVariant,
+            process_material=process_material,
+            color_code=color_code,
+        )
+        variant.delete()
         return JsonResponse({'success': True})
 
     return JsonResponse({'success': False, 'error': 'روش غیرمجاز'})
@@ -4562,15 +4676,18 @@ def product_color_part_materials_api(request):
 
         rows = []
         for process in PaintingProcess.objects.filter(is_active=True).order_by('name'):
-            catalog = PaintingProcessMaterial.objects.select_related('raw_material').filter(process=process)
+            catalog = PaintingProcessMaterial.objects.select_related('raw_material').prefetch_related('color_variants').filter(process=process)
             for entry in catalog:
                 req = existing.get((process.id, entry.raw_material_id))
                 rows.append({
                     'process_id': process.id,
                     'process_name': process.name,
+                    'process_material_id': entry.id,
                     'raw_material_id': entry.raw_material_id,
                     'raw_material_name': str(entry.raw_material),
                     'unit': entry.raw_material.get_unit_display(),
+                    'is_color_variant': entry.is_color_variant,
+                    'color_variant_count': entry.color_variants.count(),
                     'consumption_per_unit': str(req.consumption_per_unit) if req else '',
                     'is_set': req is not None,
                     'requirement_id': req.id if req else None,

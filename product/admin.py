@@ -11,7 +11,7 @@ from .forms import OrderItemForm
 from .models import ShipmentLog
 from .models import PaintingProcess, PaintingStage, PaintingProcessMaterial
 from .models import PaintingAssignmentRule
-from .models import PaintingMaterialRequirement
+from .models import PaintingMaterialRequirement, PaintingColorMaterialVariant
 
 # @admin.register(PackagingUnit)
 # class PackagingUnitAdmin(admin.ModelAdmin):
@@ -407,7 +407,7 @@ class ShipmentLogAdmin(admin.ModelAdmin):
 
 class PaintingProcessMaterialInline(admin.TabularInline):
     model = PaintingProcessMaterial
-    fields = ('raw_material',)
+    fields = ('raw_material', 'is_color_variant')
     autocomplete_fields = ['raw_material']
     extra = 1
     verbose_name = "ماده اولیه کاتالوگ"
@@ -427,12 +427,28 @@ class PaintingProcessAdmin(admin.ModelAdmin):
     inlines = [PaintingProcessMaterialInline]
 
 
+@admin.register(PaintingProcessMaterial)
+class PaintingProcessMaterialAdmin(admin.ModelAdmin):
+    list_display = ['process', 'raw_material', 'is_color_variant']
+    list_filter = ['process', 'is_color_variant']
+    search_fields = ['process__name', 'raw_material__name']
+    autocomplete_fields = ['process', 'raw_material']
+
+
 @admin.register(PaintingMaterialRequirement)
 class PaintingMaterialRequirementAdmin(admin.ModelAdmin):
     list_display = ['product', 'color_part', 'process', 'raw_material', 'consumption_per_unit']
     list_filter = ['process', 'color_part']
     search_fields = ['product__name', 'raw_material__name']
     autocomplete_fields = ['product', 'raw_material']
+
+
+@admin.register(PaintingColorMaterialVariant)
+class PaintingColorMaterialVariantAdmin(admin.ModelAdmin):
+    list_display = ['process_material', 'color_code', 'raw_material']
+    list_filter = ['process_material__process', 'color_code']
+    search_fields = ['process_material__process__name', 'process_material__raw_material__name', 'raw_material__name']
+    autocomplete_fields = ['process_material', 'raw_material']
 
 
 @admin.register(PaintingStage)
