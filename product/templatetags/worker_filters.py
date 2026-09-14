@@ -26,3 +26,12 @@ def mul(value, arg):
         return float(value) * float(arg)
     except (ValueError, TypeError):
         return 0
+
+
+@register.filter
+def sub(value, arg):
+    """Subtract arg from value (value - arg)"""
+    try:
+        return value - arg
+    except (TypeError, ValueError):
+        return 0

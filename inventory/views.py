@@ -100,6 +100,10 @@ def _task_material_requirements(task):
         material = task.part.material
         return [(material.raw_material, Decimal(task.quantity) * material.consumption_per_unit)]
 
+    if task.part_id:
+        # Material for this part is not linked to a warehouse RawMaterial; no formula to derive.
+        return rows
+
     if not task.order_item_id:
         return rows
     bom = task.order_item.product.bom.select_related('part__material__raw_material')
@@ -134,6 +138,10 @@ def production_issue_queue(request):
         return redirect('inventory:production_issue_queue')
 
     station = request.GET.get('station', 'paint')
+    q = request.GET.get('q', '').strip()
+    status_filter = request.GET.get('status', '')
+
+    # ---------- نیازهای جدید از فرمول ساخت ----------
     tasks = ProductionTask.objects.filter(status__in=['pending', 'waiting']).select_related(
         'order', 'order_item__product', 'part__material__raw_material', 'painting_stage'
     ).order_by('scheduled_start', 'order_id')
@@ -142,10 +150,7 @@ def production_issue_queue(request):
 
     existing = {(issue.task_id, issue.raw_material_id) for issue in MaterialIssue.objects.exclude(status='cancelled')}
     requirements = []
-    # کلید یکتاسازی برای نیازهای نقاشی: یک روند فقط یک‌بار در نظر گرفته شود،
-    # حتی اگر چند PaintingStage/ProductionTask از همان روند در صف باشند.
     seen_paint_groups = set()
-    representative_paint_task = {}
 
     for task in tasks:
         if task.station_name == 'paint':
@@ -155,18 +160,48 @@ def production_issue_queue(request):
             if group_key in seen_paint_groups:
                 continue
             seen_paint_groups.add(group_key)
-            representative_paint_task[group_key] = task
 
         for raw, quantity in _task_material_requirements(task):
             if (task.id, raw.id) not in existing:
                 requirements.append({'task': task, 'raw_material': raw, 'quantity': quantity})
 
-    issues = MaterialIssue.objects.filter(status__in=['requested', 'partial']).select_related(
+    if q:
+        ql = q.lower()
+        requirements = [
+            r for r in requirements
+            if ql in str(r['task'].order_id)
+            or (r['task'].order_item and ql in r['task'].order_item.product.name.lower())
+            or ql in r['raw_material'].name.lower()
+        ]
+
+    # ---------- درخواست‌های انبار ----------
+    issues_qs = MaterialIssue.objects.select_related(
         'raw_material', 'task__order', 'task__order_item__product', 'defect__order', 'defect__part'
+    ).order_by('-created_at')
+
+    issues_qs = (
+        issues_qs.filter(status=status_filter) if status_filter
+        else issues_qs.filter(status__in=['requested', 'partial'])
     )
+
+    if q:
+        issues_qs = issues_qs.filter(
+            Q(task__order_id__icontains=q) |
+            Q(task__order_item__product__name__icontains=q) |
+            Q(raw_material__name__icontains=q) |
+            Q(defect__order_id__icontains=q)
+        )
+
+    paginator = Paginator(issues_qs, 25)
+    issues = paginator.get_page(request.GET.get('page'))
+
     return render(request, 'inventory/production_issue_queue.html', {
-        **_inventory_context('production_queue'), 'requirements': requirements, 'issues': issues,
-        'station': station, 'stations': ProductionTask.STATION_CHOICES,
+        **_inventory_context('production_queue'),
+        'requirements': requirements,
+        'issues': issues,
+        'issues_total': paginator.count,
+        'station': station,
+        'stations': ProductionTask.STATION_CHOICES,
     })
 
 
