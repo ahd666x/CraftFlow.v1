@@ -133,7 +133,16 @@ class MaterialIssue(models.Model):
     defect = models.ForeignKey('product.ProductionDefect', null=True, blank=True,
                                on_delete=models.SET_NULL, related_name='material_issues', verbose_name='گزارش خرابی')
     raw_material = models.ForeignKey(RawMaterial, on_delete=models.PROTECT,
-                                     related_name='issues', verbose_name='ماده اولیه')
+                                      related_name='issues', verbose_name='ماده اولیه')
+    stock_movement = models.OneToOneField(
+        'StockMovement',
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='fulfilled_issue',
+        verbose_name='حرکت انبار ثبت‌شده',
+        help_text='حرکت انبار مصرفی که این درخواست را تسویه کرده است.',
+    )
     requested_quantity = models.DecimalField(max_digits=12, decimal_places=2, verbose_name='مقدار مورد نیاز')
     issued_quantity = models.DecimalField(max_digits=12, decimal_places=2, default=0, verbose_name='مقدار تحویل شده')
     purpose = models.CharField(max_length=20, choices=PURPOSE_CHOICES, default='production', verbose_name='علت درخواست')

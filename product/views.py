@@ -2333,6 +2333,8 @@ def report_material_consumption(request):
     movements = StockMovement.objects.filter(
         movement_type='consumption',
         reference_task__isnull=False,
+    ).exclude(
+        fulfilled_issue__purpose='rework'
     ).select_related(
         'raw_material',
         'reference_task__painting_stage__process',
@@ -3063,13 +3065,75 @@ def import_data(request):
 
 @login_required
 def scan_packaging_unit(request, pk):
+    from .decorators import is_warehouse_user
+    from .utils import _parse_default_colors as _parse_default_colors_for_view
     unit = get_object_or_404(PackagingUnit, pk=pk)
     worker_stage = request.user.workerprofile.stage if hasattr(request.user, 'workerprofile') else None
+    item = unit.order_item
     next_url = request.GET.get('next', 'dashboard')
 
-    # ==================================================================
-    # فقط درخواست‌های POST پردازش شوند (حذف کامل GET/auto)
-    # ==================================================================
+    # ---------- شاخه ۱: مونتاژ -> ثبت خرابی با انتخاب بخش رنگی ----------
+    if worker_stage in ('mon', 'assembly2'):
+        available_parts = list(item.ordercolor.values_list('part', flat=True))
+        if not available_parts:
+            available_parts = list(_parse_default_colors_for_view(item.product).keys())
+        label_map = dict(Color.PART_CHOICES)
+
+        if request.method == 'POST':
+            color_part = request.POST.get('color_part', '').strip()
+            quantity = int(request.POST.get('quantity', 1) or 1)
+            description = request.POST.get('description', '').strip() or 'خرابی ثبت‌شده هنگام اسکن بسته‌بندی'
+            if not color_part:
+                messages.error(request, 'لطفاً بخش رنگی را انتخاب کنید.')
+            else:
+                related_task = ProductionTask.objects.filter(
+                    order_item=item, station_name='paint', color_part=color_part
+                ).order_by('-step_order').first()
+                ProductionDefect.objects.create(
+                    task=related_task, order=item.order, order_item=item, color_part=color_part,
+                    quantity=quantity, description=description, reported_by=request.user,
+                )
+                messages.success(request, f'خرابی برای بخش «{label_map.get(color_part, color_part)}» ثبت شد.')
+                return redirect('product_defects')
+
+        return render(request, 'scan_defect_report.html', {
+            'unit': unit, 'item': item,
+            'color_parts': [(p, label_map.get(p, p)) for p in available_parts],
+        })
+
+    # ---------- شاخه ۲: گروه «انبار» -> ثبت تحویل ماده اولیه ----------
+    if is_warehouse_user(request.user):
+        from inventory.models import RawMaterial, StockMovement
+        pending_tasks = ProductionTask.objects.filter(
+            order_item=item
+        ).exclude(status='done').select_related('painting_stage', 'part').order_by('step_order')
+
+        if request.method == 'POST':
+            raw = get_object_or_404(RawMaterial, pk=request.POST.get('raw_material_id'))
+            qty_str = request.POST.get('quantity', '0')
+            task_id = request.POST.get('task_id') or None
+            try:
+                qty = Decimal(qty_str)
+            except Exception:
+                qty = Decimal('0')
+
+            if qty <= 0:
+                messages.error(request, 'مقدار تحویل باید بزرگ‌تر از صفر باشد.')
+            else:
+                StockMovement.objects.create(
+                    raw_material=raw, movement_type='consumption', quantity=qty,
+                    reference_task_id=task_id, created_by=request.user,
+                    note=f'تحویل دستی هنگام اسکن بسته‌بندی — آیتم {item.id} (سفارش {item.order_id})',
+                )
+                messages.success(request, f'تحویل {qty} {raw.get_unit_display()} از «{raw.name}» ثبت شد.')
+                return redirect('item_detail', pk=item.id)
+
+        return render(request, 'scan_material_issue.html', {
+            'unit': unit, 'item': item, 'tasks': pending_tasks,
+            'raw_materials': RawMaterial.objects.filter(is_active=True).order_by('category__name', 'name'),
+        })
+
+    # ---------- شاخه سوم (پیش‌فرض/موجود): بسته‌بندی و ارسال ----------
     if request.method == 'POST':
         # --- بسته‌بندی ---
         if worker_stage == 'packaging':
@@ -3155,9 +3219,6 @@ def scan_packaging_unit(request, pk):
         'saved_plate': request.session.get('current_plate', ''),  # پلاک قبلی (در صورت وجود)
     }
     return render(request, 'scan_packaging_unit.html', context)
-
-
-
 
 
 @login_required

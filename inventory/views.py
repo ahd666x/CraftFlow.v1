@@ -186,16 +186,17 @@ def issue_material(request, issue_id):
         elif issue.raw_material.current_stock < quantity:
             messages.error(request, f'موجودی کافی نیست. موجودی فعلی: {issue.raw_material.current_stock}')
         else:
-            StockMovement.objects.create(
+            movement = StockMovement.objects.create(
                 raw_material=issue.raw_material, movement_type='consumption', quantity=quantity,
                 reference_task=issue.task, created_by=request.user,
                 note=f'تحویل انبار #{issue.id} — {issue.get_purpose_display()}'
             )
+            issue.stock_movement = movement
             issue.issued_quantity += quantity
             issue.status = 'issued' if issue.issued_quantity >= issue.requested_quantity else 'partial'
             issue.issued_by = request.user
             issue.issued_at = timezone.now()
-            issue.save(update_fields=['issued_quantity', 'status', 'issued_by', 'issued_at'])
+            issue.save(update_fields=['issued_quantity', 'status', 'issued_by', 'issued_at', 'stock_movement'])
             if issue.defect_id and issue.status == 'issued':
                 issue.defect.status = 'rework_issued'
                 issue.defect.save(update_fields=['status'])

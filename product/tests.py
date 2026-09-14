@@ -16,7 +16,7 @@ from product.models import (
     Product, ProductCategory, ProductBOM, Part, Material,
     Order, OrderItem, Color, ProductionTask, Customer,
     PaintingProcess, PaintingStage, PaintingMaterialRequirement,
-    PaintingProcessMaterial,
+    PaintingProcessMaterial, ProductionDefect,
 )
 from inventory.models import (
     RawMaterial, RawMaterialCategory, StockMovement, MaterialIssue,
@@ -641,3 +641,110 @@ class PaintingMaterialRequirementUtilsTests(TestCase):
         self.assertEqual(reqs[0].process, self.process)
         self.assertEqual(reqs[0].product, self.product)
         self.assertEqual(reqs[0].color_part, 'بدنه')
+
+
+class MaterialIssueStockMovementLinkTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_superuser('stocklinkuser', password='testpass')
+        cls.cat = RawMaterialCategory.objects.create(name='مواد اولیه تست')
+        cls.production_raw = RawMaterial.objects.create(category=cls.cat, name='ماده تولید', unit='kg')
+        cls.rework_raw = RawMaterial.objects.create(category=cls.cat, name='ماده خرابی', unit='kg')
+        StockMovement.objects.create(
+            raw_material=cls.production_raw, movement_type='purchase',
+            quantity=Decimal('100'), note='موجودی اولیه',
+        )
+        StockMovement.objects.create(
+            raw_material=cls.rework_raw, movement_type='purchase',
+            quantity=Decimal('100'), note='موجودی اولیه',
+        )
+
+        cls.product_category = ProductCategory.objects.create(name='دسته تست')
+        cls.product = Product.objects.create(category=cls.product_category, name='محصول تست', base_price=1000)
+        cls.customer = Customer.objects.create(name='مشتری تست', phone='09120000000')
+        cls.order = Order.objects.create(user=cls.user, customer=cls.customer, number='MATLINK')
+        cls.order_item = OrderItem.objects.create(order=cls.order, product=cls.product, quantity=2)
+        cls.process = PaintingProcess.objects.create(name='روند تست', code='MATLINK', color_codes=['8'], is_active=True)
+        cls.stage = PaintingStage.objects.create(
+            process=cls.process, order=1, name='مرحله تست',
+            duration_minutes=10, drying_time_minutes=0, required_skill='painter',
+        )
+        cls.task = ProductionTask.objects.create(
+            order=cls.order, part=None, station_name='paint', step_order=1,
+            quantity=2, status='pending', painting_stage=cls.stage,
+            order_item=cls.order_item, color_part='بدنه',
+        )
+
+    def setUp(self):
+        self.client.login(username='stocklinkuser', password='testpass')
+
+    def test_issue_material_links_stock_movement(self):
+        issue = MaterialIssue.objects.create(
+            task=self.task, raw_material=self.production_raw,
+            requested_quantity=Decimal('5'), status='requested', purpose='production',
+            requested_by=self.user,
+        )
+        response = self.client.post(reverse('inventory:issue_material', args=[issue.id]), {'quantity': '3'})
+        self.assertEqual(response.status_code, 302)
+        issue.refresh_from_db()
+        self.assertIsNotNone(issue.stock_movement)
+        self.assertEqual(issue.stock_movement.reference_task_id, issue.task_id)
+        self.assertEqual(issue.stock_movement.quantity, Decimal('3'))
+        self.assertEqual(issue.issued_quantity, Decimal('3'))
+        self.assertEqual(issue.status, 'partial')
+
+    def test_rework_movement_excluded_from_normal_consumption_report(self):
+        rework_movement = StockMovement.objects.create(
+            raw_material=self.rework_raw, movement_type='consumption', quantity=Decimal('2'),
+            reference_task=self.task, note=f'تحویل انبار #rework — جبران خرابی / ساخت مجدد',
+        )
+        defect = ProductionDefect.objects.create(
+            task=self.task, order=self.order, order_item=self.order_item,
+            color_part='بدنه', quantity=1, description='خرابی تست',
+            reported_by=self.user,
+        )
+        MaterialIssue.objects.create(
+            task=self.task, defect=defect, raw_material=self.rework_raw,
+            requested_quantity=Decimal('2'), issued_quantity=Decimal('2'),
+            purpose='rework', status='issued', requested_by=self.user,
+            stock_movement=rework_movement,
+        )
+        response = self.client.get(reverse('report_material_consumption'))
+        self.assertEqual(response.status_code, 200)
+        rows = response.context['report_rows']
+        self.assertEqual(len(rows), 1)
+        self.assertNotIn(self.rework_raw.id, rows[0]['materials'])
+        self.assertIn(self.rework_raw.id, rows[0]['defect_materials'])
+
+    def test_production_movement_still_included_in_report(self):
+        movement = StockMovement.objects.create(
+            raw_material=self.production_raw, movement_type='consumption', quantity=Decimal('4'),
+            reference_task=self.task, note=f'تحویل انبار #production — برنامه تولید',
+        )
+        MaterialIssue.objects.create(
+            task=self.task, raw_material=self.production_raw,
+            requested_quantity=Decimal('4'), issued_quantity=Decimal('4'),
+            purpose='production', status='issued', requested_by=self.user,
+            stock_movement=movement,
+        )
+        response = self.client.get(reverse('report_material_consumption'))
+        self.assertEqual(response.status_code, 200)
+        rows = response.context['report_rows']
+        self.assertEqual(len(rows), 1)
+        self.assertIn(self.production_raw.id, rows[0]['materials'])
+        self.assertEqual(rows[0]['materials'][self.production_raw.id]['qty'], Decimal('4'))
+
+    def test_backfill_command_links_unambiguous_old_movement(self):
+        from django.core.management import call_command
+        issue = MaterialIssue.objects.create(
+            task=self.task, raw_material=self.rework_raw,
+            requested_quantity=Decimal('1'), issued_quantity=Decimal('1'),
+            purpose='rework', status='issued', requested_by=self.user,
+        )
+        movement = StockMovement.objects.create(
+            raw_material=self.rework_raw, movement_type='consumption', quantity=Decimal('1'),
+            reference_task=self.task, note=f'تحویل انبار #{issue.id} — جبران خرابی / ساخت مجدد',
+        )
+        call_command('backfill_material_issue_links', verbosity=0)
+        issue.refresh_from_db()
+        self.assertEqual(issue.stock_movement, movement)

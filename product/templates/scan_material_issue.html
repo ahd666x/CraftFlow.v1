@@ -1,0 +1,34 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container mt-5">
+  <h3>📦 ثبت تحویل ماده اولیه — سفارش #{{ item.order.id }} / آیتم #{{ item.id }}</h3>
+  <p><strong>محصول:</strong> {{ item.product.category.name }} {{ item.product.name }}</p>
+  <form method="post">
+    {% csrf_token %}
+    <div class="mb-3">
+      <label class="form-label">مرحله تولید مرتبط (اختیاری)</label>
+      <select name="task_id" class="form-select">
+        <option value="">بدون ارتباط با مرحله خاص</option>
+        {% for t in tasks %}
+        <option value="{{ t.id }}">{{ t.get_station_name_display }}{% if t.painting_stage %} - {{ t.painting_stage.name }}{% endif %} ({{ t.get_status_display }})</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="mb-3">
+      <label class="form-label">ماده اولیه</label>
+      <select name="raw_material_id" class="form-select" required>
+        <option value="">انتخاب کنید…</option>
+        {% for raw in raw_materials %}
+        <option value="{{ raw.id }}">{{ raw.name }} ({{ raw.category.name }}) — موجودی: {{ raw.current_stock }} {{ raw.get_unit_display }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="mb-3">
+      <label class="form-label">مقدار تحویلی</label>
+      <input type="number" name="quantity" class="form-control" step="0.01" min="0.01" required>
+    </div>
+    <button type="submit" class="btn btn-primary">ثبت تحویل</button>
+    <a href="{% url 'item_detail' item.id %}" class="btn btn-outline-secondary">انصراف</a>
+  </form>
+</div>
+{% endblock %}
