@@ -23,7 +23,6 @@ from .forms import (
     SupplierForm, RawMaterialCategoryForm, RawMaterialForm,
     StockMovementForm, PurchaseOrderForm, PurchaseOrderItemForm
 )
-from product.models import PaintingMaterialRequirement
 
 
 # ============================================================
@@ -60,7 +59,11 @@ def inventory_dashboard(request):
     ).order_by('-created_at')[:10]
 
     pending_orders = PurchaseOrder.objects.filter(status__in=['draft', 'ordered']).count()
-    pending_issues = MaterialIssue.objects.filter(status='requested').count()
+    pending_issues = MaterialIssue.objects.filter(
+        status='requested',
+    ).filter(
+        Q(task__isnull=False) | Q(defect__isnull=False)
+    ).count()
 
     context = {
         **_inventory_context('dashboard'),
@@ -100,19 +103,6 @@ def _task_material_requirements(task):
         material = task.part.material
         return [(material.raw_material, Decimal(task.quantity) * material.consumption_per_unit)]
 
-    if task.part_id:
-        # Material for this part is not linked to a warehouse RawMaterial; no formula to derive.
-        return rows
-
-    if not task.order_item_id:
-        return rows
-    bom = task.order_item.product.bom.select_related('part__material__raw_material')
-    if task.color_part:
-        bom = bom.filter(color_part=task.color_part)
-    for entry in bom:
-        raw = entry.part.material.raw_material
-        if raw:
-            rows.append((raw, Decimal(task.quantity) * entry.quantity * entry.part.material.consumption_per_unit))
     return rows
 
 
@@ -137,59 +127,45 @@ def production_issue_queue(request):
             messages.success(request, 'درخواست تحویل مواد ثبت شد.' if created else 'این درخواست پیش‌تر در صف انبار ثبت شده است.')
         return redirect('inventory:production_issue_queue')
 
-    station = request.GET.get('station', 'paint')
+    station = request.GET.get('station', '')
     q = request.GET.get('q', '').strip()
     status_filter = request.GET.get('status', '')
 
-    # ---------- نیازهای جدید از فرمول ساخت ----------
-    tasks = ProductionTask.objects.filter(status__in=['pending', 'waiting']).select_related(
-        'order', 'order_item__product', 'part__material__raw_material', 'painting_stage'
-    ).order_by('scheduled_start', 'order_id')
-    if station:
-        tasks = tasks.filter(station_name=station)
-
-    existing = {(issue.task_id, issue.raw_material_id) for issue in MaterialIssue.objects.exclude(status='cancelled')}
-    requirements = []
-    seen_paint_groups = set()
-
-    for task in tasks:
-        if task.station_name == 'paint':
-            if not task.painting_stage_id:
-                continue
-            group_key = (task.order_item_id, task.color_part, task.painting_stage.process_id)
-            if group_key in seen_paint_groups:
-                continue
-            seen_paint_groups.add(group_key)
-
-        for raw, quantity in _task_material_requirements(task):
-            if (task.id, raw.id) not in existing:
-                requirements.append({'task': task, 'raw_material': raw, 'quantity': quantity})
-
-    if q:
-        ql = q.lower()
-        requirements = [
-            r for r in requirements
-            if ql in str(r['task'].order_id)
-            or (r['task'].order_item and ql in r['task'].order_item.product.name.lower())
-            or ql in r['raw_material'].name.lower()
-        ]
-
     # ---------- درخواست‌های انبار ----------
     issues_qs = MaterialIssue.objects.select_related(
-        'raw_material', 'task__order', 'task__order_item__product', 'defect__order', 'defect__part'
+        'raw_material', 'task__order', 'task__order_item__product',
+        'defect__order', 'defect__order_item__product',
+        'defect__packaging_unit__order_item__product', 'defect__task__painting_stage__process',
+        'packaging_unit__order_item__product'
     ).order_by('-created_at')
 
     issues_qs = (
         issues_qs.filter(status=status_filter) if status_filter
         else issues_qs.filter(status__in=['requested', 'partial'])
     )
+    issues_qs = issues_qs.filter(
+        Q(purpose='production', task__isnull=False) |
+        Q(purpose='rework', defect__isnull=False)
+    )
+
+    if station:
+        issues_qs = issues_qs.filter(
+            Q(task__station_name=station) |
+            Q(defect__task__station_name=station)
+        )
 
     if q:
         issues_qs = issues_qs.filter(
             Q(task__order_id__icontains=q) |
             Q(task__order_item__product__name__icontains=q) |
             Q(raw_material__name__icontains=q) |
-            Q(defect__order_id__icontains=q)
+            Q(defect__order_id__icontains=q) |
+            Q(defect__order_item__product__name__icontains=q) |
+            Q(defect__packaging_unit__order_item__product__name__icontains=q) |
+            Q(defect__packaging_unit__unit_number__icontains=q) |
+            Q(packaging_unit__order_item__product__name__icontains=q) |
+            Q(packaging_unit__unit_number__icontains=q) |
+            Q(defect__color_part__icontains=q)
         )
 
     paginator = Paginator(issues_qs, 25)
@@ -197,7 +173,6 @@ def production_issue_queue(request):
 
     return render(request, 'inventory/production_issue_queue.html', {
         **_inventory_context('production_queue'),
-        'requirements': requirements,
         'issues': issues,
         'issues_total': paginator.count,
         'station': station,
@@ -230,13 +205,36 @@ def issue_material(request, issue_id):
             issue.issued_quantity += quantity
             issue.status = 'issued' if issue.issued_quantity >= issue.requested_quantity else 'partial'
             issue.issued_by = request.user
+            issue.received_by = request.user  # ثبت نام شخص تحویل گیرنده
             issue.issued_at = timezone.now()
-            issue.save(update_fields=['issued_quantity', 'status', 'issued_by', 'issued_at', 'stock_movement'])
+            issue.save(update_fields=['issued_quantity', 'status', 'issued_by', 'received_by', 'issued_at', 'stock_movement'])
             if issue.defect_id and issue.status == 'issued':
                 issue.defect.status = 'rework_issued'
                 issue.defect.save(update_fields=['status'])
             messages.success(request, 'تحویل مواد و خروج انبار ثبت شد.')
     return redirect('inventory:production_issue_queue')
+
+
+@login_required
+@admin_or_manager_required
+@require_http_methods(['POST'])
+def cancel_material_issue(request, issue_id):
+    if request.headers.get('X-Requested-With') != 'XMLHttpRequest':
+        return HttpResponseForbidden()
+
+    with atomic():
+        issue = get_object_or_404(
+            MaterialIssue.objects.select_for_update().select_related('defect', 'packaging_unit'),
+            pk=issue_id
+        )
+        if issue.status not in ('requested', 'partial'):
+            return JsonResponse({'success': False, 'error': 'این درخواست دیگر قابل لغو نیست.'})
+        issue.status = 'cancelled'
+        issue.save(update_fields=['status'])
+        if issue.defect_id and issue.defect.status == 'material_requested':
+            issue.defect.status = 'reported'
+            issue.defect.save(update_fields=['status'])
+    return JsonResponse({'success': True})
 
 
 # ============================================================

@@ -797,6 +797,10 @@ class ProductionDefect(models.Model):
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='defects', verbose_name='سفارش')
     order_item = models.ForeignKey(OrderItem, null=True, blank=True, on_delete=models.SET_NULL,
                                    related_name='defects', verbose_name='آیتم سفارش')
+    packaging_unit = models.ForeignKey(
+        'PackagingUnit', null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='defects', verbose_name='واحد بسته‌بندی (بارکد یکتا)'
+    )
     part = models.ForeignKey(Part, null=True, blank=True, on_delete=models.SET_NULL,
                              related_name='defects', verbose_name='قطعه آسیب‌دیده')
     color_part = models.CharField(max_length=20, choices=Color.PART_CHOICES, blank=True, verbose_name='بخش رنگی')
@@ -819,7 +823,22 @@ class ProductionDefect(models.Model):
     def process_name(self):
         if self.task and self.task.painting_stage:
             return self.task.painting_stage.process.name
-        return None
+
+        item = self.packaging_unit.order_item if self.packaging_unit_id else self.order_item
+        color_part = self.color_part or (self.task.color_part if self.task else '')
+        if not item or not color_part:
+            return None
+
+        color_obj = item.ordercolor.filter(part=color_part).first()
+        code = color_obj.code if color_obj and color_obj.code and color_obj.code != 'nan' else None
+        if not code:
+            from .utils import _parse_default_colors, get_painting_process_for_color
+            code = _parse_default_colors(item.product).get(color_part)
+            process = get_painting_process_for_color(code) if code else None
+        else:
+            from .utils import get_painting_process_for_color
+            process = get_painting_process_for_color(code)
+        return process.name if process else None
 
 
 class PackagingUnit(models.Model):

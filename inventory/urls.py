@@ -26,6 +26,7 @@ urlpatterns = [
     path('movements/', views.stock_movement_list, name='movement_list'),
     path('movements/create/', views.stock_movement_create, name='movement_create'),
     path('production-queue/', views.production_issue_queue, name='production_issue_queue'),
+    path('production-queue/<int:issue_id>/cancel/', views.cancel_material_issue, name='cancel_material_issue'),
     path('production-queue/<int:issue_id>/issue/', views.issue_material, name='issue_material'),
 
     path('purchase-orders/', views.purchase_order_list, name='purchase_order_list'),

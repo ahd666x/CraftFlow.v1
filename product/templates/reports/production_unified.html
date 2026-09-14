@@ -147,6 +147,26 @@
                     <a href="?" class="btn btn-outline-secondary rounded-pill px-4"><i class="bi bi-x-circle me-1"></i> حذف فیلتر</a>
                 </div>
             </div>
+            
+            <!-- فیلترهای بازه زمانی برای بسته‌بندی و ارسال -->
+            <div class="row g-3 align-items-end mt-3 pt-3 border-top">
+                <div class="col-md-3 col-sm-6">
+                    <label class="form-label small text-muted">بسته‌بندی از</label>
+                    <input type="date" name="pack_date_from" class="form-control form-control-glass" value="{{ pack_date_from|default:'' }}">
+                </div>
+                <div class="col-md-3 col-sm-6">
+                    <label class="form-label small text-muted">بسته‌بندی تا</label>
+                    <input type="date" name="pack_date_to" class="form-control form-control-glass" value="{{ pack_date_to|default:'' }}">
+                </div>
+                <div class="col-md-3 col-sm-6">
+                    <label class="form-label small text-muted">ارسال از</label>
+                    <input type="date" name="ship_date_from" class="form-control form-control-glass" value="{{ ship_date_from|default:'' }}">
+                </div>
+                <div class="col-md-3 col-sm-6">
+                    <label class="form-label small text-muted">ارسال تا</label>
+                    <input type="date" name="ship_date_to" class="form-control form-control-glass" value="{{ ship_date_to|default:'' }}">
+                </div>
+            </div>
         </form>
     </div>
 

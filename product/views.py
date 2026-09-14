@@ -71,6 +71,8 @@ from .utils import (
     get_unique_color_codes_for_item,
     log_production_event,
     auto_create_material_issues,
+    _parse_default_colors,
+    get_painting_process_for_color,
 )
 logger = logging.getLogger(__name__)
 
@@ -81,12 +83,25 @@ def production_defects(request):
     from inventory.models import RawMaterial, MaterialIssue
 
     if request.method == 'POST':
-        item = get_object_or_404(OrderItem, pk=request.POST.get('order_item_id'))
+        order = get_object_or_404(Order, pk=request.POST.get('order_id'))
+        unit = get_object_or_404(
+            PackagingUnit.objects.select_related('order_item__order', 'order_item__product').filter(
+                order_item__order=order
+            ),
+            pk=request.POST.get('packaging_unit_id')
+        )
+        item = unit.order_item
         color_part = request.POST.get('color_part', '').strip()
-        quantity = int(request.POST.get('quantity', 0) or 0)
+        try:
+            quantity = int(request.POST.get('quantity', 0) or 0)
+        except (TypeError, ValueError):
+            quantity = 0
         description = request.POST.get('description', '').strip()
+        available_parts = list(item.ordercolor.values_list('part', flat=True))
+        if not available_parts:
+            available_parts = list(_parse_default_colors(item.product).keys())
 
-        if quantity < 1 or not description or not color_part:
+        if quantity < 1 or not description or not color_part or color_part not in available_parts:
             messages.error(request, 'بخش رنگی، تعداد خراب و شرح خرابی الزامی است.')
         else:
             related_task = ProductionTask.objects.filter(
@@ -95,7 +110,7 @@ def production_defects(request):
 
             defect = ProductionDefect.objects.create(
                 task=related_task, order=item.order, order_item=item,
-                color_part=color_part, quantity=quantity,
+                packaging_unit=unit, color_part=color_part, quantity=quantity,
                 description=description, reported_by=request.user,
             )
             raw_id = request.POST.get('raw_material_id')
@@ -105,7 +120,7 @@ def production_defects(request):
                     replacement_quantity = Decimal(replacement_quantity)
                     if replacement_quantity > 0:
                         MaterialIssue.objects.create(
-                            task=related_task, defect=defect, raw_material_id=raw_id,
+                            task=related_task, defect=defect, packaging_unit=unit, raw_material_id=raw_id,
                             requested_quantity=replacement_quantity, purpose='rework',
                             requested_by=request.user, note=f'ساخت مجدد برای خرابی #{defect.id}'
                         )
@@ -118,7 +133,8 @@ def production_defects(request):
 
     orders = Order.objects.filter(status__in=['planned', 'producing']).select_related('customer').order_by('-id')[:200]
     defects = ProductionDefect.objects.select_related(
-        'order', 'order_item__product', 'reported_by', 'task__painting_stage__process'
+        'order', 'order_item__product', 'packaging_unit__order_item__product',
+        'reported_by', 'task__painting_stage__process'
     ).prefetch_related('material_issues__raw_material')
 
     return render(request, 'production_defects.html', {
@@ -127,6 +143,39 @@ def production_defects(request):
         'raw_materials': RawMaterial.objects.filter(is_active=True).order_by('name'),
         'color_parts': Color.PART_CHOICES,
     })
+
+
+@login_required
+@admin_or_manager_required
+def ajax_order_units_for_defect(request, order_id):
+    order = get_object_or_404(Order, pk=order_id)
+    units = PackagingUnit.objects.filter(
+        order_item__order=order
+    ).select_related('order_item__product__category').order_by(
+        'order_item_id', 'unit_number'
+    )
+    data = []
+    for unit in units:
+        category_name = unit.order_item.product.category.name if unit.order_item.product.category else ''
+        data.append({
+            'id': unit.id,
+            'text': f"{category_name} {unit.order_item.product.name} — واحد #{unit.unit_number} (بارکد #{unit.id})"
+        })
+    return JsonResponse({'results': data})
+
+
+@login_required
+@admin_or_manager_required
+def ajax_unit_color_parts_for_defect(request, unit_id):
+    unit = get_object_or_404(
+        PackagingUnit.objects.select_related('order_item__product'), pk=unit_id
+    )
+    parts = list(dict.fromkeys(unit.order_item.ordercolor.values_list('part', flat=True)))
+    if not parts:
+        parts = list(_parse_default_colors(unit.order_item.product).keys())
+    label_map = dict(Color.PART_CHOICES)
+    data = [{'value': part, 'text': label_map.get(part, part)} for part in parts]
+    return JsonResponse({'results': data})
 
 
 @login_required
@@ -1282,7 +1331,7 @@ def order_item_list(request):
 @staff_or_representative_required
 def item_detail(request, pk):
     item = get_object_or_404(
-        OrderItem.objects.select_related('product', 'order__customer').prefetch_related('logs'),
+        OrderItem.objects.select_related('product', 'order__customer', 'order__user', 'product__category').prefetch_related('logs'),
         pk=pk
     )
     
@@ -1324,12 +1373,25 @@ def item_detail(request, pk):
             'station_status': station_status,
         })
     
+    # اطلاعات اضافه: تاریخ سفارش، دسته‌بندی، نماینده
+    order_date = item.order.created_at
+    if hasattr(order_date, 'strftime'):
+        order_date_str = order_date.strftime('%Y/%m/%d')
+    else:
+        order_date_str = str(order_date)
+    
+    category_name = item.product.category.name if item.product.category else '—'
+    representative_name = item.order.user.get_full_name() or item.order.user.username if item.order.user else '—'
+    
     context = {
         'item': item,
         'stage_status_list': stage_status_list,
         'station_choices': STATION_CHOICES,
         'bom_parts': bom_parts,
         'has_paint_tasks': item.paint_tasks.exists(),
+        'order_date_str': order_date_str,
+        'category_name': category_name,
+        'representative_name': representative_name,
     }
     return render(request, 'item.html', context)
 
@@ -2083,6 +2145,21 @@ def report_stages(request):
     if date_to:
         base_items = base_items.filter(order__created_at__lte=date_to)
 
+    # ---------- packaging / shipping date range filters ----------
+    pack_date_from = request.GET.get('pack_date_from')
+    pack_date_to = request.GET.get('pack_date_to')
+    ship_date_from = request.GET.get('ship_date_from')
+    ship_date_to = request.GET.get('ship_date_to')
+
+    if pack_date_from:
+        base_items = base_items.filter(packaging_units__packed_at__date__gte=pack_date_from)
+    if pack_date_to:
+        base_items = base_items.filter(packaging_units__packed_at__date__lte=pack_date_to)
+    if ship_date_from:
+        base_items = base_items.filter(packaging_units__shipped_at__date__gte=ship_date_from)
+    if ship_date_to:
+        base_items = base_items.filter(packaging_units__shipped_at__date__lte=ship_date_to)
+
     # ---------- summary (based on filtered base_items before stage/pack/ship filters) ----------
     total = base_items.count()
     summary = {}
@@ -2187,6 +2264,10 @@ def report_stages(request):
         'selected_product': product_id,
         'date_from': date_from,
         'date_to': date_to,
+        'pack_date_from': pack_date_from,
+        'pack_date_to': pack_date_to,
+        'ship_date_from': ship_date_from,
+        'ship_date_to': ship_date_to,
         'stage_pending': stage_pending,
         'stage_done': stage_done,
         'packaging_status': packaging_status or '',
@@ -2204,6 +2285,7 @@ def report_production_unified(request):
     خروجی: برای هر order_item، آخرین رویداد هر ایستگاه + وضعیت فعلی تسک‌ها.
     """
     from .models import ProductionEvent, OrderItem
+    from django.db.models import Q, OuterRef, Subquery, Count
 
     events = ProductionEvent.objects.filter(event_type='done').select_related(
         'order_item__product__category', 'order_item__order__user', 'task'
@@ -2245,6 +2327,21 @@ def report_production_unified(request):
     items = OrderItem.objects.filter(id__in=item_ids).select_related(
         'order__user', 'product__category'
     ).prefetch_related('logs', 'packaging_units')
+
+    # فیلترهای بازه زمانی برای بسته‌بندی و ارسال
+    pack_date_from = request.GET.get('pack_date_from')
+    pack_date_to = request.GET.get('pack_date_to')
+    ship_date_from = request.GET.get('ship_date_from')
+    ship_date_to = request.GET.get('ship_date_to')
+
+    if pack_date_from:
+        items = items.filter(packaging_units__packed_at__date__gte=pack_date_from)
+    if pack_date_to:
+        items = items.filter(packaging_units__packed_at__date__lte=pack_date_to)
+    if ship_date_from:
+        items = items.filter(packaging_units__shipped_at__date__gte=ship_date_from)
+    if ship_date_to:
+        items = items.filter(packaging_units__shipped_at__date__lte=ship_date_to)
 
     report_rows = []
     for item in items:
@@ -2292,6 +2389,10 @@ def report_production_unified(request):
         'search_query': q,
         'date_from': date_from,
         'date_to': date_to,
+        'pack_date_from': pack_date_from,
+        'pack_date_to': pack_date_to,
+        'ship_date_from': ship_date_from,
+        'ship_date_to': ship_date_to,
         'representatives': representatives,
         'categories': categories,
         'products': products,
@@ -2393,23 +2494,38 @@ def report_material_consumption(request):
         m['qty'] += mv.quantity
 
     defects = ProductionDefect.objects.select_related(
-        'order_item__product', 'task__painting_stage__process'
+        'order_item__product', 'packaging_unit__order_item__product', 'task__painting_stage__process'
     ).prefetch_related('material_issues__raw_material')
     if date_from:
         defects = defects.filter(created_at__date__gte=date_from)
     if date_to:
         defects = defects.filter(created_at__date__lte=date_to)
-    if process_id:
-        defects = defects.filter(task__painting_stage__process_id=process_id)
+
+    def _get_defect_process(defect):
+        if defect.task and defect.task.painting_stage:
+            return defect.task.painting_stage.process
+
+        item = defect.packaging_unit.order_item if defect.packaging_unit_id else defect.order_item
+        color_part = defect.color_part or (defect.task.color_part if defect.task else '')
+        if not item or not color_part:
+            return None
+
+        color_obj = item.ordercolor.filter(part=color_part).first()
+        code = color_obj.code if color_obj and color_obj.code and color_obj.code != 'nan' else None
+        if not code:
+            code = _parse_default_colors(item.product).get(color_part)
+        return get_painting_process_for_color(code) if code else None
 
     for d in defects:
-        item = d.order_item
+        item = d.packaging_unit.order_item if d.packaging_unit_id else d.order_item
         if not item:
             continue
-        process = d.task.painting_stage.process if (d.task and d.task.painting_stage) else None
+        process = _get_defect_process(d)
+        if process_id and (not process or str(process.id) != str(process_id)):
+            continue
 
-        color_part = getattr(d, 'color_part', '') or (d.task.color_part if d.task else '')
-        if rokeshi_filter and process:
+        color_part = d.color_part or (d.task.color_part if d.task else '')
+        if rokeshi_filter:
             is_rok = _is_rokeshi(item, color_part)
             if rokeshi_filter == 'rokeshi' and not is_rok:
                 continue
@@ -3081,17 +3197,21 @@ def scan_packaging_unit(request, pk):
 
         if request.method == 'POST':
             color_part = request.POST.get('color_part', '').strip()
-            quantity = int(request.POST.get('quantity', 1) or 1)
+            try:
+                quantity = int(request.POST.get('quantity', 1) or 1)
+            except (TypeError, ValueError):
+                quantity = 0
             description = request.POST.get('description', '').strip() or 'خرابی ثبت‌شده هنگام اسکن بسته‌بندی'
-            if not color_part:
-                messages.error(request, 'لطفاً بخش رنگی را انتخاب کنید.')
+            if not color_part or color_part not in available_parts or quantity < 1:
+                messages.error(request, 'بخش رنگی و تعداد خراب معتبر را انتخاب کنید.')
             else:
                 related_task = ProductionTask.objects.filter(
                     order_item=item, station_name='paint', color_part=color_part
                 ).order_by('-step_order').first()
                 ProductionDefect.objects.create(
-                    task=related_task, order=item.order, order_item=item, color_part=color_part,
-                    quantity=quantity, description=description, reported_by=request.user,
+                    task=related_task, order=item.order, order_item=item,
+                    packaging_unit=unit, color_part=color_part, quantity=quantity,
+                    description=description, reported_by=request.user,
                 )
                 messages.success(request, f'خرابی برای بخش «{label_map.get(color_part, color_part)}» ثبت شد.')
                 return redirect('product_defects')
@@ -4365,9 +4485,11 @@ def assign_painting_process(request, item_id):
 @admin_or_manager_required
 def daily_schedule_print(request):
     """نمایش و چاپ برنامه روزانه کارگران نقاشی"""
-    from django.db.models import Sum
+    from django.db.models import Sum, Max
     from .models import ProductionTask, WorkerProfile, OrderItem
     import jdatetime
+
+    all_days = request.GET.get('all_days', '') == '1'
 
     date_str = request.GET.get('date')
     if date_str:
@@ -4380,71 +4502,155 @@ def daily_schedule_print(request):
         selected_date = jdatetime.date.today()
 
     gregorian_date = selected_date.togregorian()
+    today_gregorian = jdatetime.date.today().togregorian()
 
-    # واکشی یکجای همهٔ تسک‌های نقاشیِ برنامه‌ریزی‌شده در این روز
-    tasks = list(
-        ProductionTask.objects.filter(
+    if all_days:
+        max_date_qs = ProductionTask.objects.filter(
             station_name='paint',
-            scheduled_start__date=gregorian_date
-        ).select_related(
-            'order_item__product__category',
-            'order_item__order__user',
-            'painting_stage',
-            'assigned_worker',
-            'order_item__order__customer'
-        ).order_by('assigned_worker_id', 'scheduled_start')
-    )
+            scheduled_start__isnull=False,
+        ).aggregate(max_date=Max('scheduled_start'))
+        end_date_gregorian = max_date_qs['max_date'].date() if max_date_qs['max_date'] else gregorian_date
 
-    # گروه‌بندی بر اساس کارگر تخصیص‌یافته
-    tasks_by_worker = {}
-    for task in tasks:
-        key = task.assigned_worker_id
-        tasks_by_worker.setdefault(key, []).append(task)
-
-    # کارگرانی که حداقل یک تسک دارند
-    worker_ids = [k for k in tasks_by_worker if k is not None]
-    workers = WorkerProfile.objects.filter(user_id__in=worker_ids).select_related('user')
-    workers_map = {wp.user_id: wp for wp in workers}
-
-    # ساخت worker_columns
-    worker_columns = []
-    for worker_id, worker_tasks in tasks_by_worker.items():
-        if worker_id is None:
-            continue  # تسک‌های بدون تخصیص را در چاپ نمایش نمی‌دهیم (می‌توانید در صورت نیاز اضافه کنید)
-        worker_profile = workers_map.get(worker_id)
-        if worker_profile:
-            user = worker_profile.user
-            label = user.get_full_name() or user.username
-            skills = worker_profile.skills or []
-        else:
-            label = f"کارگر #{worker_id}"
-            skills = []
-
-        total_duration = sum(
-            t.painting_stage.duration_minutes if t.painting_stage else 0
-            for t in worker_tasks
+        tasks = list(
+            ProductionTask.objects.filter(
+                station_name='paint',
+                scheduled_start__date__gte=today_gregorian,
+                scheduled_start__date__lte=end_date_gregorian,
+                scheduled_start__isnull=False,
+            ).select_related(
+                'order_item__product__category',
+                'order_item__order__user',
+                'painting_stage',
+                'assigned_worker',
+                'order_item__order__customer'
+            ).order_by('assigned_worker_id', 'scheduled_start', 'step_order')
         )
 
-        worker_columns.append({
-            'worker_id': worker_id,
-            'label': label,
-            'skills': skills,
-            'tasks': worker_tasks,
-            'total_duration': total_duration,
-        })
+        worker_date_tasks = {}
+        for task in tasks:
+            worker_id = task.assigned_worker_id
+            if worker_id is None:
+                continue
+            task_date = task.scheduled_start.date()
+            worker_date_tasks.setdefault(worker_id, {}).setdefault(task_date, []).append(task)
 
-    # مرتب‌سازی ستون‌ها بر اساس نام کارگر
-    worker_columns.sort(key=lambda x: x['label'])
+        worker_ids = list(worker_date_tasks.keys())
+        workers = WorkerProfile.objects.filter(user_id__in=worker_ids).select_related('user')
+        workers_map = {wp.user_id: wp for wp in workers}
 
-    context = {
-        'worker_columns': worker_columns,
-        'selected_date': selected_date,
-        'selected_date_str': selected_date.strftime('%Y-%m-%d'),
-        'gregorian_date': gregorian_date,
-        'today_str': jdatetime.date.today().strftime('%Y/%m/%d'),
-        'yesterday': (selected_date - jdatetime.timedelta(days=1)).strftime('%Y-%m-%d'),
-        'tomorrow': (selected_date + jdatetime.timedelta(days=1)).strftime('%Y-%m-%d'),
-    }
+        worker_columns = []
+        for worker_id, date_tasks in worker_date_tasks.items():
+            if worker_id is None:
+                continue
+            worker_profile = workers_map.get(worker_id)
+            if worker_profile:
+                user = worker_profile.user
+                label = user.get_full_name() or user.username
+                skills = worker_profile.skills or []
+            else:
+                label = f"کارگر #{worker_id}"
+                skills = []
+
+            total_duration = 0
+            date_entries = []
+            for task_date, worker_tasks in sorted(date_tasks.items()):
+                duration = sum(
+                    t.painting_stage.duration_minutes if t.painting_stage else 0
+                    for t in worker_tasks
+                )
+                total_duration += duration
+                date_entries.append({
+                    'date': task_date,
+                    'date_str': task_date.strftime('%Y-%m-%d'),
+                    'tasks': worker_tasks,
+                    'total_duration': duration,
+                })
+
+            worker_columns.append({
+                'worker_id': worker_id,
+                'label': label,
+                'skills': skills,
+                'date_entries': date_entries,
+                'total_duration': total_duration,
+                'task_count': sum(len(d['tasks']) for d in date_entries),
+            })
+
+        worker_columns.sort(key=lambda x: x['label'])
+
+        end_date_jalali = None
+        if max_date_qs['max_date']:
+            end_date_jalali = jdatetime.date.fromgregorian(date=max_date_qs['max_date'])
+
+        context = {
+            'worker_columns': worker_columns,
+            'all_days': True,
+            'selected_date': selected_date,
+            'selected_date_str': selected_date.strftime('%Y-%m-%d'),
+            'gregorian_date': gregorian_date,
+            'today_str': jdatetime.date.today().strftime('%Y/%m/%d'),
+            'end_date': end_date_jalali,
+        }
+    else:
+        tasks = list(
+            ProductionTask.objects.filter(
+                station_name='paint',
+                scheduled_start__date=gregorian_date
+            ).select_related(
+                'order_item__product__category',
+                'order_item__order__user',
+                'painting_stage',
+                'assigned_worker',
+                'order_item__order__customer'
+            ).order_by('assigned_worker_id', 'scheduled_start')
+        )
+
+        tasks_by_worker = {}
+        for task in tasks:
+            key = task.assigned_worker_id
+            tasks_by_worker.setdefault(key, []).append(task)
+
+        worker_ids = [k for k in tasks_by_worker if k is not None]
+        workers = WorkerProfile.objects.filter(user_id__in=worker_ids).select_related('user')
+        workers_map = {wp.user_id: wp for wp in workers}
+
+        worker_columns = []
+        for worker_id, worker_tasks in tasks_by_worker.items():
+            if worker_id is None:
+                continue
+            worker_profile = workers_map.get(worker_id)
+            if worker_profile:
+                user = worker_profile.user
+                label = user.get_full_name() or user.username
+                skills = worker_profile.skills or []
+            else:
+                label = f"کارگر #{worker_id}"
+                skills = []
+
+            total_duration = sum(
+                t.painting_stage.duration_minutes if t.painting_stage else 0
+                for t in worker_tasks
+            )
+
+            worker_columns.append({
+                'worker_id': worker_id,
+                'label': label,
+                'skills': skills,
+                'tasks': worker_tasks,
+                'total_duration': total_duration,
+            })
+
+        worker_columns.sort(key=lambda x: x['label'])
+
+        context = {
+            'worker_columns': worker_columns,
+            'all_days': False,
+            'selected_date': selected_date,
+            'selected_date_str': selected_date.strftime('%Y-%m-%d'),
+            'gregorian_date': gregorian_date,
+            'today_str': jdatetime.date.today().strftime('%Y/%m/%d'),
+            'yesterday': (selected_date - jdatetime.timedelta(days=1)).strftime('%Y-%m-%d'),
+            'tomorrow': (selected_date + jdatetime.timedelta(days=1)).strftime('%Y-%m-%d'),
+        }
     return render(request, 'daily_schedule_print.html', context)
 
 

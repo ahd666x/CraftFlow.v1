@@ -42,104 +42,6 @@
       <span class="badge bg-info text-dark align-self-center">
         <i class="bi bi-lightning-charge"></i> {{ issues_total }} درخواست در صف
       </span>
-      {% if requirements %}
-        <span class="badge bg-warning text-dark align-self-center">
-          <i class="bi bi-plus-circle"></i> {{ requirements|length }} نیاز جدید از فرمول
-        </span>
-      {% endif %}
-    </div>
-  </div>
-</div>
-
-<div class="card-modern mb-4" id="newRequirementsCard">
-  <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-    <span><i class="bi bi-calendar2-check"></i> نیازهای جدید از فرمول ساخت (BOM)</span>
-    <form method="get" class="d-flex gap-2 align-items-center">
-      <label class="small text-muted">مرحله</label>
-      <select class="form-select form-select-sm" name="station" onchange="this.form.submit()">
-        <option value="">همه مراحل</option>
-        {% for value,label in stations %}
-          <option value="{{ value }}" {% if station == value %}selected{% endif %}>{{ label }}</option>
-        {% endfor %}
-      </select>
-    </form>
-  </div>
-  <div class="card-body p-0">
-    <div class="table-responsive">
-      <table class="table table-hover align-middle mb-0" id="requirementsTable">
-        <thead class="table-light">
-          <tr>
-            <th style="width:35%">سفارش / کالا / قطعه</th>
-            <th style="width:15%">ایستگاه / مرحله</th>
-            <th style="width:20%">ماده اولیه</th>
-            <th style="width:12%">مقدار (فرمول)</th>
-            <th style="width:10%">موجودی انبار</th>
-            <th style="width:8%">اقدام</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in requirements %}
-          <tr data-task="{{ row.task.id }}" data-material="{{ row.raw_material.id }}">
-            <td>
-              <strong>#{{ row.task.order_id }}</strong>
-              <div class="small text-muted">
-                {% if row.task.order_item %}
-                  {{ row.task.order_item.product.name }}
-                  {% if row.task.part %} — {{ row.task.part.name }}{% endif %}
-                {% else %}
-                  {{ row.task.part|default:"بدون قطعه" }}
-                {% endif %}
-              </div>
-            </td>
-            <td>
-              <span class="badge bg-secondary">{{ row.task.get_station_name_display }}</span>
-              {% if row.task.station_name == 'paint' and row.task.painting_stage %}
-                <div class="small text-muted mt-1">{{ row.task.painting_stage.name }}</div>
-              {% endif %}
-            </td>
-            <td>
-              <strong>{{ row.raw_material.name }}</strong>
-              {% if row.raw_material.code %}
-                <div class="small text-muted">{{ row.raw_material.code }}</div>
-              {% endif %}
-            </td>
-            <td>
-              <span class="fw-bold text-primary">{{ row.quantity|floatformat:2 }}</span>
-              <span class="text-muted small"> {{ row.raw_material.get_unit_display }}</span>
-            </td>
-            <td>
-              <span class="{% if row.raw_material.current_stock < row.quantity %}text-danger fw-bold{% else %}text-success{% endif %}">
-                {{ row.raw_material.current_stock|floatformat:2 }} {{ row.raw_material.get_unit_display }}
-              </span>
-              {% if row.raw_material.current_stock < row.quantity %}
-                <i class="bi bi-exclamation-triangle-fill text-danger ms-1" title="موجودی کمتر از نیاز"></i>
-              {% endif %}
-            </td>
-            <td>
-              <form method="post" class="d-inline request-form">
-                {% csrf_token %}
-                <input type="hidden" name="action" value="request">
-                <input type="hidden" name="task_id" value="{{ row.task.id }}">
-                <input type="hidden" name="raw_material_id" value="{{ row.raw_material.id }}">
-                <input type="hidden" name="quantity" value="{{ row.quantity }}">
-                <button type="submit" class="btn btn-sm btn-primary btn-add-to-queue"
-                  {% if row.raw_material.current_stock < row.quantity %}title="موجودی انبار کمتر از مقدار مورد نیاز است"{% endif %}>
-                  <i class="bi bi-plus-lg"></i> اضافه
-                </button>
-              </form>
-            </td>
-          </tr>
-          {% empty %}
-            <tr>
-              <td colspan="6" class="text-center text-muted py-5">
-                <i class="bi bi-check-circle-fill text-success fs-1"></i>
-                <div class="mt-2">نیاز جدیدی با فرمول متصل به انبار پیدا نشد.</div>
-                <div class="small">تسک‌های فعال برای این مرحله بررسی شده‌اند و مواد مورد نیازشان قبلاً در صف انبار ثبت شده است.</div>
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
     </div>
   </div>
 </div>
@@ -159,14 +61,14 @@
       <table class="table table-hover align-middle mb-0" id="issuesTable">
         <thead class="table-light">
           <tr>
-            <th style="width:30%">منشأ / سفارش</th>
+            <th style="width:35%">منشأ / سفارش</th>
             <th style="width:18%">ماده اولیه</th>
             <th style="width:12%">مقدار</th>
             <th style="width:10%">موجودی</th>
             <th style="width:10%">وضعیت</th>
-            <th style="width:10%">اولویت</th>
-            <th style="width:10%">انتظار (روز)</th>
-            <th style="width:10%">اقدام</th>
+            <!-- <th style="width:10%">اولویت</th> -->
+            <!-- <th style="width:10%">انتظار (روز)</th> -->
+            <th style="width:15%">اقدام</th>
           </tr>
         </thead>
         <tbody>
@@ -176,22 +78,43 @@
             <td>
               {% if issue.defect %}
                 <span class="badge bg-danger"><i class="bi bi-exclamation-octagon"></i> خرابی</span>
-                <div class="small text-muted mt-1">سفارش #{{ issue.defect.order_id }}</div>
-                <div class="small">{{ issue.defect.part|default:"قطعه ثبت‌نشده" }}</div>
+                <div class="small text-muted mt-1">سفارش #{{ issue.defect.order_id }}/{{ issue.defect.order_item_id|default:"—" }}</div>
+                {% if issue.defect.packaging_unit %}
+                  <div class="small">
+                    {{ issue.defect.packaging_unit.order_item.product.category.name|default:"" }} {{ issue.defect.packaging_unit.order_item.product.name|default:"-" }}
+                    <span class="badge bg-info text-dark ms-1">واحد #{{ issue.defect.packaging_unit.unit_number }}</span>
+                  </div>
+                  <div class="small text-muted">بارکد #{{ issue.defect.packaging_unit_id }} — {{ issue.defect.get_color_part_display|default:issue.defect.color_part }}</div>
+                {% elif issue.packaging_unit %}
+                  <div class="small">
+                    {{ issue.packaging_unit.order_item.product.category.name|default:"" }} {{ issue.packaging_unit.order_item.product.name|default:"-" }}
+                    <span class="badge bg-info text-dark ms-1">واحد #{{ issue.packaging_unit.unit_number }}</span>
+                  </div>
+                  <div class="small text-muted">بارکد #{{ issue.packaging_unit_id }}</div>
+                {% else %}
+                  <div class="small">{{ issue.defect.order_item.product.category.name|default:"" }} {{ issue.defect.order_item.product.name|default:"قطعه ثبت‌نشده" }}</div>
+                {% endif %}
               {% else %}
-                <strong>سفارش #{{ issue.task.order_id }}</strong>
-                <div class="small text-muted">
-                  {% if issue.task.order_item %}
-                    {{ issue.task.order_item.product.name }}
-                    {% if issue.task.part %} — {{ issue.task.part.name }}{% endif %}
-                  {% else %}
-                    {{ issue.task.part|default:"بدون قطعه" }}
-                  {% endif %}
-                </div>
-                <div class="small text-muted">
-                  <i class="bi bi-person-badge"></i> {{ issue.task.get_station_name_display }}
-                  {% if issue.task.painting_stage %} — {{ issue.task.painting_stage.name }}{% endif %}
-                </div>
+                {% if issue.packaging_unit %}
+                  <div class="small">
+                    {{ issue.packaging_unit.order_item.product.category.name|default:"" }} {{ issue.packaging_unit.order_item.product.name|default:"-" }}
+                    <span class="badge bg-info text-dark ms-1">واحد #{{ issue.packaging_unit.unit_number }}</span>
+                  </div>
+                  <div class="small text-muted">بارکد #{{ issue.packaging_unit_id }}</div>
+                {% else %}
+                  <strong>سفارش #{{ issue.task.order_id }}/{{ issue.task.order_item_id|default:"—" }}</strong>
+                  <div class="small text-muted">
+                    {% if issue.task.order_item %}
+                      {{ issue.task.order_item.product.category.name|default:"" }} {{ issue.task.order_item.product.name }}
+                      {% if issue.task.color_part %} — {{ issue.task.get_color_part_display|default:issue.task.color_part }}{% endif %}
+                    {% else %}
+                      {{ issue.task.part|default:"بدون قطعه" }}
+                    {% endif %}
+                  </div>
+                  <div class="small text-muted">
+                    <i class="bi bi-person-badge"></i> {{ issue.task.get_station_name_display }}
+                  </div>
+                {% endif %}
               {% endif %}
             </td>
             <td>
@@ -225,7 +148,7 @@
                 {{ issue.get_status_display }}
               </span>
             </td>
-            <td>
+            <!-- <td>
                 {% if issue.raw_material.current_stock < remaining and issue.status != 'issued' %}
                   <span class="badge bg-danger"><i class="bi bi-exclamation-triangle"></i> بحرانی</span>
                 {% elif issue.status == 'requested' %}
@@ -242,7 +165,7 @@
                   </span>
                 {% endwith %}
               {% else %}—{% endif %}
-            </td>
+            </td> -->
             <td>
               {% if issue.status in 'requested,partial' %}
                 <form method="post" action="{% url 'inventory:issue_material' issue.id %}" class="d-flex gap-1 issue-form">
@@ -252,22 +175,20 @@
                     max="{{ issue.requested_quantity|sub:issue.issued_quantity }}"
                     step="0.01"
                     value="{{ issue.requested_quantity|sub:issue.issued_quantity }}"
-                    style="max-width:90px"
+                    style="width:120px"
                     title="مقدار تحویل">
-<button type="submit" class="btn btn-sm btn-success" title="ثبت تحویل">
-                      <i class="bi bi-check-lg"></i>
-                    </button>
-                    {% comment %} Cancel button requires backend view - enable when implemented {% endcomment %}
-                    {# {% if issue.status == 'requested' %}
-                      <button type="button" class="btn btn-sm btn-outline-danger btn-cancel-issue"
-                        data-issue="{{ issue.id }}" title="لغو درخواست">
-                        <i class="bi bi-x-lg"></i>
-                      </button>
-                    {% endif %} #}
-                  </form>
-                {% else %}
+                  <button type="submit" class="btn btn-sm btn-success" title="ثبت تحویل">
+                    <i class="bi bi-check-lg"></i>
+                  </button>
+                  <button type="button" class="btn btn-sm btn-outline-danger btn-cancel-issue"
+                    data-issue="{{ issue.id }}" data-cancel-url="{% url 'inventory:cancel_material_issue' issue.id %}" title="لغو درخواست">
+                    <i class="bi bi-x-lg"></i>
+                  </button>
+                </form>
+{% else %}
                   <span class="text-muted small">
-                    {% if issue.issued_by %}<i class="bi bi-person"></i> {{ issue.issued_by.get_short_name|default:issue.issued_by.username }}{% endif %}
+                    {% if issue.issued_by %}<i class="bi bi-person"></i> تحویل‌دهنده: {{ issue.issued_by.get_full_name|default:issue.issued_by.username }}{% endif %}
+                    {% if issue.received_by %}<br><i class="bi bi-person-check"></i> تحویل‌گیرنده: {{ issue.received_by.get_full_name|default:issue.received_by.username }}{% endif %}
                     {% if issue.issued_at %}<br><i class="bi bi-clock"></i> {{ issue.issued_at|date:"Y/m/d H:i" }}{% endif %}
                   </span>
                 {% endif %}
@@ -276,7 +197,7 @@
           {% endwith %}
         {% empty %}
           <tr>
-            <td colspan="8" class="text-center text-muted py-5">
+            <td colspan="6" class="text-center text-muted py-5">
               <i class="bi bi-inbox-fill fs-1"></i>
               <div class="mt-2">درخواستی در انتظار تحویل نیست.</div>
             </td>
@@ -351,23 +272,24 @@
     window.location.reload();
   });
 
-// Confirm cancel - backend view not implemented yet
-  // document.querySelectorAll('.btn-cancel-issue').forEach(btn => {
-  //   btn.addEventListener('click', (e) => {
-  //     e.preventDefault();
-  //     if (confirm('آیا مطمئن هستید که می‌خواهید این درخواست را لgnu کنید؟')) {
-  //       const issueId = btn.dataset.issue;
-  //       const url = '/inventory/production-queue/' + issueId + '/cancel/';
-  //       fetch(url, {
-  //         method: 'POST',
-  //         headers: { 'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value, 'X-Requested-With': 'XMLHttpRequest' }
-  //       }).then(r => {
-  //         if (r.ok) window.location.reload();
-  //         else alert('خطا در لغو درخواست');
-  //       });
-  //     }
-  //   });
-  // });
+  const csrfToken = '{{ csrf_token }}';
+  document.querySelectorAll('.btn-cancel-issue').forEach(btn => {
+    btn.addEventListener('click', async function () {
+      const response = await fetch(this.dataset.cancelUrl, {
+        method: 'POST',
+        headers: {
+          'X-CSRFToken': csrfToken,
+          'X-Requested-With': 'XMLHttpRequest'
+        }
+      });
+      const result = await response.json();
+      if (response.ok && result.success) {
+        window.location.reload();
+      } else {
+        alert(result.error || 'خطا در لغو درخواست');
+      }
+    });
+  });
 
   // Keyboard shortcut: Enter to submit quantity
   document.querySelectorAll('.issue-qty-input').forEach(input => {

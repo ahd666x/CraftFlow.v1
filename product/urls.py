@@ -70,6 +70,8 @@ urlpatterns = [
     path('reports/delayed/', views.delayed_orders, name='report_delayed'),
     path('reports/material-consumption/', views.report_material_consumption, name='report_material_consumption'),
     path('production/defects/', views.production_defects, name='product_defects'),
+    path('ajax/defects/order/<int:order_id>/units/', views.ajax_order_units_for_defect, name='ajax_order_units_for_defect'),
+    path('ajax/defects/unit/<int:unit_id>/color-parts/', views.ajax_unit_color_parts_for_defect, name='ajax_unit_color_parts_for_defect'),
     path('ajax/defects/order/<int:order_id>/items/', views.ajax_order_items_for_defect, name='ajax_order_items_for_defect'),
     path('ajax/defects/item/<int:item_id>/color-parts/', views.ajax_item_color_parts_for_defect, name='ajax_item_color_parts_for_defect'),
 

@@ -132,6 +132,21 @@ class MaterialIssue(models.Model):
                              on_delete=models.SET_NULL, related_name='material_issues', verbose_name='تسک تولید')
     defect = models.ForeignKey('product.ProductionDefect', null=True, blank=True,
                                on_delete=models.SET_NULL, related_name='material_issues', verbose_name='گزارش خرابی')
+    packaging_unit = models.ForeignKey(
+        'product.PackagingUnit', null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='material_issues', verbose_name='واحد بسته‌بندی'
+    )
+    order_item = models.ForeignKey(
+        'product.OrderItem', null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='material_issues', verbose_name='آیتم سفارش'
+    )
+    painting_process = models.ForeignKey(
+        'product.PaintingProcess', null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='material_issues', verbose_name='روند نقاشی'
+    )
+    color_part = models.CharField(
+        max_length=20, blank=True, verbose_name='بخش رنگی'
+    )
     raw_material = models.ForeignKey(RawMaterial, on_delete=models.PROTECT,
                                       related_name='issues', verbose_name='ماده اولیه')
     stock_movement = models.OneToOneField(
@@ -152,6 +167,8 @@ class MaterialIssue(models.Model):
                                      related_name='requested_material_issues', verbose_name='درخواست کننده')
     issued_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL,
                                   related_name='issued_material_issues', verbose_name='تحویل دهنده')
+    received_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL,
+                                    related_name='received_material_issues', verbose_name='تحویل گیرنده')
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='زمان درخواست')
     issued_at = models.DateTimeField(null=True, blank=True, verbose_name='زمان تحویل')
 

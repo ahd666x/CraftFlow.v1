@@ -1,78 +1,203 @@
-{% extends "base.html" %}
-{% block title %}ثبت و پیگیری خرابی تولید{% endblock %}
+{% extends 'base.html' %}
+{% block title %}ثبت و پیگیری خرابی‌ها{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
-  <div><h1 class="h3 mb-1">خرابی و ساخت مجدد</h1><p class="text-muted mb-0">خرابی بر اساس سفارش، آیتم و بخش رنگی ثبت می‌شود؛ مواد جایگزین مستقیماً به صف انبار می‌رود.</p></div>
-  <a class="btn btn-outline-primary" href="{% url 'inventory:production_issue_queue' %}"><i class="bi bi-box-seam"></i> صف تحویل انبار</a>
-</div>
-<div class="card shadow-sm border-0 mb-4"><div class="card-body p-4">
-  <h2 class="h5 mb-3">ثبت خرابی جدید</h2>
-  <form method="post" class="row g-3">{% csrf_token %}
-    <div class="col-md-4">
-      <label class="form-label">سفارش</label>
-      <select name="order_id" id="id_order" class="form-select" required>
-        <option value="">انتخاب کنید…</option>
-        {% for o in orders %}
-        <option value="{{ o.id }}">#{{ o.id }} - {{ o.customer.name }}</option>
-        {% endfor %}
-      </select>
+<div class="container-fluid px-4 py-4">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+    <div>
+      <h1 class="h3 mb-1">ثبت و پیگیری خرابی‌ها</h1>
+      <p class="text-muted mb-0">ثبت خرابی بر اساس سفارش، واحد بسته‌بندی و بخش رنگی</p>
     </div>
-    <div class="col-md-4">
-      <label class="form-label">آیتم (کالا)</label>
-      <select name="order_item_id" id="id_order_item" class="form-select" required disabled>
-        <option value="">ابتدا سفارش را انتخاب کنید</option>
-      </select>
-    </div>
-    <div class="col-md-4">
-      <label class="form-label">بخش رنگی</label>
-      <select name="color_part" id="id_color_part" class="form-select" required disabled>
-        <option value="">ابتدا آیتم را انتخاب کنید</option>
-      </select>
-    </div>
-    <div class="col-md-2"><label class="form-label">تعداد خراب</label><input required class="form-control" name="quantity" type="number" min="1" value="1"></div>
-    <div class="col-md-6"><label class="form-label">ماده اولیه جایگزین (اختیاری)</label>
-      <select name="raw_material_id" class="form-select"><option value="">فعلاً فقط ثبت خرابی</option>
-        {% for raw in raw_materials %}<option value="{{ raw.id }}">{{ raw.name }} — موجودی: {{ raw.current_stock }} {{ raw.get_unit_display }}</option>{% endfor %}
-      </select>
-    </div>
-    <div class="col-md-2"><label class="form-label">مقدار برای ساخت مجدد</label><input class="form-control" name="replacement_quantity" type="number" min="0.01" step="0.01"></div>
-    <div class="col-12"><label class="form-label">شرح خرابی و اقدام لازم</label><input required class="form-control" name="description" placeholder="مثلاً: خط‌وخش روی درب هنگام مونتاژ"></div>
-    <div class="col-12"><button class="btn btn-danger"><i class="bi bi-exclamation-triangle"></i> ثبت خرابی و درخواست مواد</button></div>
-  </form>
-</div></div>
-<div class="card shadow-sm border-0"><div class="card-header bg-white"><h2 class="h5 mb-0">سابقه خرابی‌ها</h2></div><div class="table-responsive"><table class="table align-middle mb-0">
-  <thead class="table-light"><tr><th>زمان</th><th>سفارش / کالا</th><th>روند نقاشی</th><th>بخش رنگی</th><th>خرابی</th><th>مواد جایگزین</th><th>وضعیت</th></tr></thead>
-  <tbody>{% for defect in defects %}<tr>
-    <td class="small">{{ defect.created_at|date:"Y/m/d H:i" }}</td><td>#{{ defect.order_id }}<div class="small text-muted">{{ defect.order_item.product.name|default:"-" }}</div></td>
-    <td>{{ defect.process_name|default:"-" }}</td>
-    <td>{{ defect.color_part|default:"-" }}</td>
-    <td>{{ defect.quantity }} عدد<div class="small text-muted">{{ defect.description }}</div></td>
-    <td>{% for issue in defect.material_issues.all %}{{ issue.raw_material.name }}: {{ issue.requested_quantity }} <span class="badge {% if issue.status == 'issued' %}bg-success{% else %}bg-warning text-dark{% endif %}">{{ issue.get_status_display }}</span><br>{% empty %}-{% endfor %}</td>
-    <td><span class="badge {% if defect.status == 'rework_issued' %}bg-success{% elif defect.status == 'reported' %}bg-secondary{% else %}bg-warning text-dark{% endif %}">{{ defect.get_status_display }}</span></td>
-  </tr>{% empty %}<tr><td colspan="7" class="text-center text-muted py-4">هنوز خرابی ثبت نشده است.</td></tr>{% endfor %}</tbody>
-</table></div></div>
+    <a href="{% url 'inventory:production_issue_queue' %}" class="btn btn-outline-primary">
+      <i class="bi bi-clipboard2-check me-1"></i> صف تحویل مواد
+    </a>
+  </div>
 
+  <div class="card shadow-sm border-0 mb-4">
+    <div class="card-header bg-white">
+      <h2 class="h5 mb-0">ثبت خرابی جدید</h2>
+    </div>
+    <div class="card-body">
+      <form method="post" action="{% url 'product_defects' %}" id="defectForm">
+        {% csrf_token %}
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label" for="id_order">سفارش</label>
+            <select name="order_id" id="id_order" class="form-select" required>
+              <option value="">انتخاب سفارش…</option>
+              {% for order in orders %}
+                <option value="{{ order.id }}">{{ order.number|default:order.id }} — {{ order.customer }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label" for="id_packaging_unit">واحد بسته‌بندی / بارکد</label>
+            <select name="packaging_unit_id" id="id_packaging_unit" class="form-select" required disabled data-units-url="{% url 'ajax_order_units_for_defect' order_id=0 %}">
+              <option value="">ابتدا سفارش را انتخاب کنید</option>
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label" for="id_color_part">بخش رنگی</label>
+            <select name="color_part" id="id_color_part" class="form-select" required disabled data-color-parts-url="{% url 'ajax_unit_color_parts_for_defect' unit_id=0 %}">
+              <option value="">ابتدا واحد بسته‌بندی را انتخاب کنید</option>
+            </select>
+          </div>
+          <div class="col-md-2">
+            <label class="form-label" for="id_quantity">تعداد خراب</label>
+            <input id="id_quantity" class="form-control" name="quantity" type="number" min="1" value="1" required>
+          </div>
+          <div class="col-md-10">
+            <label class="form-label" for="id_description">شرح خرابی</label>
+            <textarea id="id_description" class="form-control" name="description" rows="2" required placeholder="شرح خرابی و اقدام لازم"></textarea>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="id_raw_material">ماده جایگزین (اختیاری)</label>
+            <select id="id_raw_material" class="form-select" name="raw_material_id">
+              <option value="">بدون درخواست مواد</option>
+              {% for material in raw_materials %}
+                <option value="{{ material.id }}">{{ material.name }} ({{ material.get_unit_display }})</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="id_replacement_quantity">مقدار ماده جایگزین</label>
+            <input id="id_replacement_quantity" class="form-control" name="replacement_quantity" type="number" min="0.01" step="0.01">
+          </div>
+        </div>
+        <div class="d-flex justify-content-end gap-2 mt-4">
+          <button type="submit" class="btn btn-danger"><i class="bi bi-exclamation-octagon me-1"></i> ثبت خرابی</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card shadow-sm border-0">
+    <div class="card-header bg-white">
+      <h2 class="h5 mb-0">سابقه خرابی‌ها</h2>
+    </div>
+    <div class="table-responsive">
+      <table class="table align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>زمان</th>
+            <th>سفارش / واحد بسته‌بندی</th>
+            <th>روند نقاشی</th>
+            <th>بخش رنگی</th>
+            <th>خرابی</th>
+            <th>مواد جایگزین</th>
+            <th>وضعیت</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for defect in defects %}
+          <tr>
+            <td class="small">{{ defect.created_at|date:"Y/m/d H:i" }}</td>
+            <td>
+              {% if defect.packaging_unit %}
+                <strong>سفارش #{{ defect.order_id }}</strong>
+                <div class="small text-muted">{{ defect.packaging_unit.order_item.product.name|default:"-" }}</div>
+                <div class="small">
+                  <span class="badge bg-info text-dark">واحد #{{ defect.packaging_unit.unit_number }}</span>
+                  <span class="text-muted">بارکد #{{ defect.packaging_unit_id }}</span>
+                </div>
+              {% elif defect.order_item %}
+                <strong>سفارش #{{ defect.order_id }}</strong>
+                <div class="small text-muted">{{ defect.order_item.product.name|default:"-" }}</div>
+                <div class="small text-muted">واحد بسته‌بندی ثبت نشده</div>
+              {% else %}
+                <strong>سفارش #{{ defect.order_id }}</strong>
+                <div class="small text-muted">جزییات آیتم موجود نیست</div>
+              {% endif %}
+            </td>
+            <td>{{ defect.process_name|default:"-" }}</td>
+            <td>{{ defect.get_color_part_display|default:defect.color_part|default:"-" }}</td>
+            <td>
+              {{ defect.quantity }} عدد
+              <div class="small text-muted">{{ defect.description }}</div>
+            </td>
+            <td>
+              {% for issue in defect.material_issues.all %}
+                {{ issue.raw_material.name }}: {{ issue.requested_quantity }}
+                <span class="badge {% if issue.status == 'issued' %}bg-success{% else %}bg-warning text-dark{% endif %}">{{ issue.get_status_display }}</span><br>
+              {% empty %}
+                <span class="text-muted">-</span>
+              {% endfor %}
+            </td>
+            <td>
+              <span class="badge {% if defect.status == 'rework_issued' %}bg-success{% elif defect.status == 'reported' %}bg-secondary{% else %}bg-warning text-dark{% endif %}">
+                {{ defect.get_status_display }}
+              </span>
+            </td>
+          </tr>
+          {% empty %}
+            <tr>
+              <td colspan="7" class="text-center text-muted py-4">هنوز خرابی ثبت نشده است.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block extra_js %}
 <script>
-document.getElementById('id_order').addEventListener('change', function() {
-  const orderId = this.value;
-  const itemSelect = document.getElementById('id_order_item');
+(function () {
+  const orderSelect = document.getElementById('id_order');
+  const unitSelect = document.getElementById('id_packaging_unit');
   const colorSelect = document.getElementById('id_color_part');
-  colorSelect.innerHTML = '<option value="">ابتدا آیتم را انتخاب کنید</option>';
-  colorSelect.disabled = true;
-  if (!orderId) { itemSelect.innerHTML = '<option value="">ابتدا سفارش را انتخاب کنید</option>'; itemSelect.disabled = true; return; }
-  fetch(`/ajax/defects/order/${orderId}/items/`).then(r => r.json()).then(data => {
-    itemSelect.innerHTML = '<option value="">انتخاب کنید…</option>' + data.results.map(i => `<option value="${i.id}">${i.text}</option>`).join('');
-    itemSelect.disabled = false;
+
+  function resetSelect(select, placeholder) {
+    select.replaceChildren();
+    select.add(new Option(placeholder, ''));
+    select.disabled = true;
+  }
+
+  function buildAjaxUrl(pattern, id) {
+    return pattern.replace(/\/0(?=\/)/, `/${encodeURIComponent(id)}`);
+  }
+
+  orderSelect.addEventListener('change', async function () {
+    resetSelect(unitSelect, 'ابتدا سفارش را انتخاب کنید');
+    resetSelect(colorSelect, 'ابتدا واحد بسته‌بندی را انتخاب کنید');
+    const orderId = this.value;
+    if (!orderId) return;
+
+    try {
+      const response = await fetch(buildAjaxUrl(unitSelect.dataset.unitsUrl, orderId), {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+      });
+      if (!response.ok) throw new Error('خطا در بارگذاری واحدها');
+      const data = await response.json();
+      data.results.forEach(function (unit) {
+        unitSelect.add(new Option(unit.text, unit.id));
+      });
+      unitSelect.disabled = unitSelect.options.length <= 1;
+    } catch (error) {
+      resetSelect(unitSelect, 'بارگذاری واحدها ناموفق بود');
+      console.error(error);
+    }
   });
-});
-document.getElementById('id_order_item').addEventListener('change', function() {
-  const itemId = this.value;
-  const colorSelect = document.getElementById('id_color_part');
-  if (!itemId) { colorSelect.innerHTML = '<option value="">ابتدا آیتم را انتخاب کنید</option>'; colorSelect.disabled = true; return; }
-  fetch(`/ajax/defects/item/${itemId}/color-parts/`).then(r => r.json()).then(data => {
-    colorSelect.innerHTML = '<option value="">انتخاب کنید…</option>' + data.results.map(p => `<option value="${p.value}">${p.text}</option>`).join('');
-    colorSelect.disabled = false;
+
+  unitSelect.addEventListener('change', async function () {
+    resetSelect(colorSelect, 'ابتدا واحد بسته‌بندی را انتخاب کنید');
+    const unitId = this.value;
+    if (!unitId) return;
+
+    try {
+      const response = await fetch(buildAjaxUrl(colorSelect.dataset.colorPartsUrl, unitId), {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+      });
+      if (!response.ok) throw new Error('خطا در بارگذاری بخش‌های رنگی');
+      const data = await response.json();
+      data.results.forEach(function (part) {
+        colorSelect.add(new Option(part.text, part.value));
+      });
+      colorSelect.disabled = colorSelect.options.length <= 1;
+    } catch (error) {
+      resetSelect(colorSelect, 'بارگذاری بخش‌های رنگی ناموفق بود');
+      console.error(error);
+    }
   });
-});
+})();
 </script>
 {% endblock %}

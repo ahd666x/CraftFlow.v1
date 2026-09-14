@@ -35,6 +35,12 @@
                         <div class="col-md-2"><strong>اندازه:</strong> {{ item.size|default:"-" }}</div>
                         <div class="col-md-2"><strong>رنگ:</strong> {{ item.color_summary }}</div>
                     </div>
+                    <div class="row mt-2">
+                        <div class="col-md-3"><strong>تاریخ سفارش:</strong> {{ order_date_str }}</div>
+                        <div class="col-md-3"><strong>دسته‌بندی:</strong> {{ category_name }}</div>
+                        <div class="col-md-3"><strong>نماینده:</strong> {{ representative_name }}</div>
+                        <div class="col-md-3"><strong>مشتری:</strong> {{ item.order.customer.name|default:"—" }}</div>
+                    </div>
                 </div>
             </div>
         </div>

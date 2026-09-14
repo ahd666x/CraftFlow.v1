@@ -14,9 +14,9 @@ from product.utils import (
 )
 from product.models import (
     Product, ProductCategory, ProductBOM, Part, Material,
-    Order, OrderItem, Color, ProductionTask, Customer,
+    Order, OrderItem, Color, ProductionTask, Customer, WorkerProfile,
     PaintingProcess, PaintingStage, PaintingMaterialRequirement,
-    PaintingProcessMaterial, ProductionDefect,
+    PaintingProcessMaterial, ProductionDefect, PackagingUnit,
 )
 from inventory.models import (
     RawMaterial, RawMaterialCategory, StockMovement, MaterialIssue,
@@ -748,3 +748,152 @@ class MaterialIssueStockMovementLinkTests(TestCase):
         call_command('backfill_material_issue_links', verbosity=0)
         issue.refresh_from_db()
         self.assertEqual(issue.stock_movement, movement)
+
+    def test_task_without_part_does_not_fallback_to_product_bom(self):
+        material = Material.objects.create(
+            name='ماده فرمول', thickness=Decimal('1'), raw_material=self.production_raw,
+            consumption_per_unit=Decimal('1'),
+        )
+        part = Part.objects.create(
+            material=material, name='قطعه فرمول', length=Decimal('1'), width=Decimal('1'),
+            pname='محصول تست', routing_code='test',
+        )
+        ProductBOM.objects.create(product=self.product, part=part, quantity=2)
+        task = ProductionTask.objects.create(
+            order=self.order, order_item=self.order_item, station_name='mon',
+            quantity=1, status='pending', step_order=2,
+        )
+        self.assertEqual(_task_material_requirements(task), [])
+
+
+class PackagingUnitDefectTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_superuser('unituser', password='testpass')
+        cls.category = ProductCategory.objects.create(name='دسته واحد')
+        cls.product = Product.objects.create(category=cls.category, name='محصول واحد', base_price=1000)
+        cls.customer = Customer.objects.create(name='مشتری واحد', phone='09120000000')
+        cls.order = Order.objects.create(user=cls.user, customer=cls.customer, number='UNIT')
+        cls.order_item = OrderItem.objects.create(order=cls.order, product=cls.product, quantity=1)
+        Color.objects.create(part='بدنه', code='8', orderitem=cls.order_item)
+        cls.unit = PackagingUnit.objects.get(order_item=cls.order_item, unit_number=1)
+        cls.raw_material = RawMaterial.objects.create(
+            name='ماده واحد', unit='kg', category=RawMaterialCategory.objects.create(name='واحد')
+        )
+        cls.process = PaintingProcess.objects.create(
+            name='روند واحد', code='UNIT', color_codes=['8'], is_active=True
+        )
+
+    def setUp(self):
+        self.client.login(username='unituser', password='testpass')
+
+    def test_defect_form_links_unit_and_material_issue(self):
+        response = self.client.post(reverse('product_defects'), {
+            'order_id': self.order.id,
+            'packaging_unit_id': self.unit.id,
+            'color_part': 'بدنه',
+            'quantity': '1',
+            'description': 'خرابی واحد',
+            'raw_material_id': self.raw_material.id,
+            'replacement_quantity': '2',
+        })
+        self.assertEqual(response.status_code, 302)
+        defect = ProductionDefect.objects.get(packaging_unit=self.unit)
+        issue = MaterialIssue.objects.get(defect=defect)
+        self.assertEqual(defect.status, 'material_requested')
+        self.assertEqual(issue.packaging_unit, self.unit)
+        self.assertEqual(issue.purpose, 'rework')
+
+    def test_cancel_material_issue_ajax(self):
+        defect = ProductionDefect.objects.create(
+            order=self.order, order_item=self.order_item, packaging_unit=self.unit,
+            color_part='بدنه', quantity=1, description='خرابی واحد', reported_by=self.user,
+            status='material_requested',
+        )
+        issue = MaterialIssue.objects.create(
+            defect=defect, packaging_unit=self.unit, raw_material=self.raw_material,
+            requested_quantity=Decimal('2'), purpose='rework', status='requested',
+            requested_by=self.user,
+        )
+        response = self.client.post(
+            reverse('inventory:cancel_material_issue', args=[issue.id]),
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['success'])
+        issue.refresh_from_db()
+        defect.refresh_from_db()
+        self.assertEqual(issue.status, 'cancelled')
+        self.assertEqual(defect.status, 'reported')
+
+    def test_ajax_order_units_and_color_parts(self):
+        units_response = self.client.get(
+            reverse('ajax_order_units_for_defect', args=[self.order.id]),
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+        self.assertEqual(units_response.status_code, 200)
+        self.assertEqual(units_response.json()['results'][0]['id'], self.unit.id)
+        parts_response = self.client.get(
+            reverse('ajax_unit_color_parts_for_defect', args=[self.unit.id]),
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+        self.assertEqual(parts_response.status_code, 200)
+        self.assertEqual(parts_response.json()['results'], [{'value': 'بدنه', 'text': 'بدنه'}])
+
+    def test_scan_packaging_unit_defect_branch_links_unit(self):
+        WorkerProfile.objects.create(user=self.user, stage='mon')
+        response = self.client.post(reverse('scan_packaging_unit', args=[self.unit.id]), {
+            'color_part': 'بدنه',
+            'quantity': '1',
+            'description': 'خرابی اسکن',
+        })
+        self.assertEqual(response.status_code, 302)
+        defect = ProductionDefect.objects.get(packaging_unit=self.unit)
+        self.assertEqual(defect.order_item, self.order_item)
+        self.assertEqual(defect.color_part, 'بدنه')
+
+    def test_report_uses_actual_color_process_without_task(self):
+        defect = ProductionDefect.objects.create(
+            order=self.order, order_item=self.order_item, packaging_unit=self.unit,
+            color_part='بدنه', quantity=1, description='خرابی روند', reported_by=self.user,
+        )
+        response = self.client.get(reverse('report_material_consumption'), {'process': self.process.id})
+        self.assertEqual(response.status_code, 200)
+        rows = response.context['report_rows']
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]['process'], self.process)
+        self.assertEqual(rows[0]['defect_count'], 1)
+
+    def test_production_queue_renders_packaging_unit_issue(self):
+        task = ProductionTask.objects.create(
+            order=self.order, order_item=self.order_item, station_name='mon',
+            quantity=1, status='pending', step_order=1,
+        )
+        issue = MaterialIssue.objects.create(
+            task=task, packaging_unit=self.unit, raw_material=self.raw_material,
+            requested_quantity=Decimal('1'), purpose='production', status='requested',
+            requested_by=self.user,
+        )
+        response = self.client.get(reverse('inventory:production_issue_queue'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, f'بارکد #{self.unit.id}')
+        self.assertContains(response, str(issue.id))
+
+    def test_station_filter_includes_rework_through_defect_task(self):
+        task = ProductionTask.objects.create(
+            order=self.order, order_item=self.order_item, station_name='mon',
+            quantity=1, status='pending', step_order=1,
+        )
+        defect = ProductionDefect.objects.create(
+            task=task, order=self.order, order_item=self.order_item,
+            packaging_unit=self.unit, color_part='بدنه', quantity=1,
+            description='خرابی ایستگاه', reported_by=self.user,
+        )
+        issue = MaterialIssue.objects.create(
+            defect=defect, packaging_unit=self.unit, raw_material=self.raw_material,
+            requested_quantity=Decimal('1'), purpose='rework', status='requested',
+            requested_by=self.user,
+        )
+        response = self.client.get(reverse('inventory:production_issue_queue'), {'station': 'mon'})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, str(issue.id))

@@ -1,8 +1,9 @@
 {% extends 'base.html' %}
 {% block content %}
 <div class="container mt-5">
-  <h3>📦 ثبت تحویل ماده اولیه — سفارش #{{ item.order.id }} / آیتم #{{ item.id }}</h3>
+  <h3>📦 ثبت تحویل ماده اولیه — سفارش #{{ item.order.id }} / واحد بسته‌بندی #{{ unit.unit_number }}</h3>
   <p><strong>محصول:</strong> {{ item.product.category.name }} {{ item.product.name }}</p>
+  <p class="text-muted">بارکد #{{ unit.id }}</p>
   <form method="post">
     {% csrf_token %}
     <div class="mb-3">

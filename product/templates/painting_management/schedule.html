@@ -318,6 +318,9 @@
                 </div>
                 <div class="info-row">
                     <span class="stage-tag">{{ task.painting_stage.name|default:"مرحله نامشخص" }}</span>
+                    {% if not col.is_unscheduled %}
+                    <button type="button" class="btn-delete-task btn btn-sm btn-outline-danger ms-1" data-task-id="{{ task.id }}" title="حذف مرحله" style="padding:2px 6px;font-size:10px;line-height:1;vertical-align:middle;">✕</button>
+                    {% endif %}
                 </div>
             </div>
             {% empty %}
@@ -370,6 +373,9 @@
                 </div>
                 <div class="info-row">
                     <span class="stage-tag">{{ task.painting_stage.name|default:"مرحله نامشخص" }}</span>
+                    <button type="button" class="btn-delete-task btn btn-sm btn-outline-danger ms-1" data-task-id="{{ task.id }}" title="حذف مرحله" style="padding:2px 6px;font-size:10px;line-height:1;vertical-align:middle;">✕</button>
+                </div>
+                <div class="info-row">
                     {% if task.scheduled_start %}
                     <span class="time-badge">
                         <i class="bi bi-clock"></i>
@@ -570,6 +576,47 @@ $(function () {
             error: function () {
                 alert('خطای ارتباط با سرور');
                 btn.prop('disabled', false).html(originalHtml);
+            }
+        });
+    });
+
+    $(document).on('click', '.btn-delete-task', function () {
+        var btn = $(this);
+        var taskId = btn.data('task-id');
+        if (!taskId) return;
+        if (!confirm('آیا از حذف این مرحله اطمینان دارید؟')) {
+            return;
+        }
+        btn.prop('disabled', true).html('...');
+        $.ajax({
+            url: '{% url "painting_delete_tasks" %}',
+            method: 'POST',
+            headers: {'X-Requested-With': 'XMLHttpRequest'},
+            data: {
+                'csrfmiddlewaretoken': csrf,
+                'task_ids[]': taskId,
+            },
+            success: function (data) {
+                if (data.success) {
+                    var card = btn.closest('.kanban-card');
+                    card.fadeOut(300, function() {
+                        card.remove();
+                        var col = card.closest('.kanban-col');
+                        var badge = col.querySelector('.badge-count');
+                        if (badge) {
+                            var count = col.querySelectorAll('.kanban-card').length;
+                            badge.textContent = count;
+                        }
+                    });
+                    alert(data.message || 'مرحله حذف شد.');
+                } else {
+                    alert(data.error || 'خطا در حذف مرحله.');
+                    btn.prop('disabled', false).html('✕');
+                }
+            },
+            error: function () {
+                alert('خطای ارتباط با سرور');
+                btn.prop('disabled', false).html('✕');
             }
         });
     });

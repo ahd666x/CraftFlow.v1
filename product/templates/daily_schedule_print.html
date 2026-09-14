@@ -327,24 +327,101 @@
     <!-- ===== دکمه‌ها ===== -->
     <div class="no-print">
         <button onclick="window.print()" class="btn btn-primary">🖨️ چاپ</button>
+        {% if not all_days %}
+        <a href="?all_days=1" class="btn btn-success ms-1">📅 چاپ تمام روزها</a>
         <a href="?date={{ yesterday }}" class="btn">روز قبل</a>
         <a href="?date={{ tomorrow }}" class="btn">روز بعد</a>
+        {% else %}
+        <a href="{% url 'daily_schedule_print' %}?date={{ selected_date_str }}" class="btn ms-1">بازگشت به روز فعلی</a>
+        {% endif %}
         <a href="{% url 'painting_schedule' %}" class="btn">بازگشت</a>
         <button type="button" class="btn btn-outline-secondary" onclick="toggleTimeColumn()">⏱ زمان</button>
     </div>
 
-    <!-- ===== شبکه دوستونی ===== -->
+    {% if all_days %}
+    <!-- ===== حالت چاپ تمام روزها ===== -->
+    {% if worker_columns %}
+        {% for col in worker_columns %}
+        <div style="page-break-after:always;margin-bottom:12px;">
+            <div style="text-align:center;margin-bottom:6px;">
+                <span style="background:#0f172a;color:#fff;padding:4px 12px;border-radius:6px;font-size:14px;font-weight:700;">{{ col.label }}</span>
+                <span style="background:#4b5563;color:#fff;padding:3px 10px;border-radius:6px;font-size:11px;margin-right:8px;">تعداد تسک‌ها: {{ col.task_count }}</span>
+            </div>
+            {% for entry in col.date_entries %}
+            <div style="margin-bottom:6px;border:1px solid #9ca3af;border-radius:4px;padding:4px;">
+                <div style="background:#e5e7eb;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:700;margin-bottom:3px;">
+                    📅 {{ entry.date|date:"j \\M \\Y" }} ({{ entry.date_str }})
+                    <span style="float:left;font-weight:400;font-size:9px;color:#64748b;">
+                        {{ entry.tasks|length }} تسک | مجموع زمان: {{ entry.total_duration }} دقیقه
+                    </span>
+                </div>
+                <table class="task-table">
+                    <colgroup>
+                        <col style="width:5%;">
+                        <col style="width:18%;">
+                        <col style="width:14%;">
+                        <col style="width:13%;">
+                        <col style="width:16%;">
+                        <col style="width:12%;">
+                        <col style="width:16%;">
+                        <col style="width:6%;">
+                    </colgroup>
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th class="col-product">محصول</th>
+                            <th>سفارش</th>
+                            <th class="col-rep">نماینده</th>
+                            <th class="col-stage">مرحله</th>
+                            <th class="col-color">قطعه / کد رنگ</th>
+                            <th class="col-time">زمان</th>
+                            <th class="col-notes">توضیحات</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for task in entry.tasks %}
+                        <tr>
+                            <td>{{ forloop.parent.loop.index }}.{{ forloop.counter }}</td>
+                            <td class="col-product" style="text-align:right;">
+                                {% if task.order_item.product.category %}
+                                    <span class="cat">{{ task.order_item.product.category.name }}</span>
+                                {% endif %}
+                                <span class="name">{{ task.order_item.product.name }}</span>
+                            </td>
+                            <td class="col-order">{{ task.order_item.order.id }}/{{ task.order_item.id }}</td>
+                            <td class="col-rep" title="{{ task.order_item.order.user.get_full_name|default:task.order_item.order.user.username }}">
+                                {{ task.order_item.order.user.get_full_name|default:task.order_item.order.user.username|truncatechars:8 }}
+                            </td>
+                            <td class="col-stage"><span class="stage-badge">{{ task.painting_stage.name|default:"-"|truncatechars:10 }}</span></td>
+                            <td class="col-color"><span class="color-badge">{{ task.color_part|default:"-" }}{% if task.color_part %} ({{ task|task_color_code }}){% endif %}</span></td>
+                            <td class="col-time">
+                                {% if task.scheduled_start %}
+                                    {{ task.scheduled_start|date:"H:i" }}–{{ task.scheduled_end|date:"H:i" }}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td class="col-notes"><span>...</span></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endfor %}
+        </div>
+        {% endfor %}
+    {% else %}
+        <div class="empty-msg">هیچ برنامه‌ریزی از تاریخ {{ today_str }} تا پایان برنامه‌ریزی وجود ندارد.</div>
+    {% endif %}
+    <div class="footer">
+        از تاریخ {{ today_str }} تا {{ end_date|date:"j \\M \\Y" }} | تاریخ چاپ: {{ today_str }} | ساعت: {% now "H:i" %}
+    </div>
+    {% else %}
+    <!-- ===== حالت چاپ یک روز ===== -->
     <div class="workers-grid">
         {% for col in worker_columns %}
         <div class="worker-card">
             <div class="worker-title">{{ col.label }}</div>
-            {% comment %} <div class="worker-skills">
-                {% for skill in col.skills %}
-                <span>{{ skill }}</span>
-                {% empty %}
-                <span style="color:#94a3b8;">بدون مهارت</span>
-                {% endfor %}
-            </div> {% endcomment %}
 
             <table class="task-table">
                 <colgroup>
@@ -414,11 +491,10 @@
         <div class="empty-msg">هیچ برنامه‌ریزی برای این تاریخ وجود ندارد.</div>
         {% endfor %}
     </div>
-
-    <!-- ===== فوتر ===== -->
     <div class="footer">
         تاریخ چاپ: {{ today_str }} | ساعت: {% now "H:i" %}
     </div>
+    {% endif %}
 
     <script>
         function toggleTimeColumn() {
