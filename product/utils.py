@@ -151,6 +151,75 @@ def get_painting_material_requirements_for_task(task):
     return requirements
 
 
+def get_painting_material_requirements_for_item_colorpart(order_item, color_part):
+    """
+    فرمول مصرف مواد برای (آیتم سفارش + بخش رنگی)، مستقل از اینکه چند Task/مرحله
+    دارد. روند نقاشی از روی کد رنگ واقعی این بخش تعیین می‌شود (با همان منطق
+    _get_task_actual_color_code ولی بدون نیاز به task).
+    """
+    from .models import PaintingMaterialRequirement, PaintingColorMaterialVariant
+
+    if not order_item or not color_part:
+        return None, []
+
+    # 1. کد رنگ واقعی این بخش رنگی
+    color_obj = order_item.ordercolor.filter(part=color_part).first()
+    actual_code = None
+    if color_obj and color_obj.code and color_obj.code != 'nan':
+        actual_code = str(color_obj.code)
+    if not actual_code:
+        code = _parse_default_colors(order_item.product).get(color_part)
+        actual_code = str(code) if code and code != 'nan' else None
+    if not actual_code:
+        return None, []
+
+    # 2. روند نقاشی متناظر با این کد رنگ
+    process = get_painting_process_for_color(actual_code)
+    if not process:
+        return None, []
+
+    # 3. فرمول‌های ثبت‌شده برای (روند، محصول، بخش رنگی)
+    requirements = list(
+        PaintingMaterialRequirement.objects.filter(
+            process_id=process.id,
+            product_id=order_item.product_id,
+            color_part=color_part,
+        ).select_related('raw_material')
+    )
+
+    # 4. اسلات‌های وابسته به رنگ را به ماده‌ی واقعی تبدیل کن (in-memory، مثل نسخه‌ی task)
+    variant_map = {
+        v.process_material.raw_material_id: v.raw_material
+        for v in PaintingColorMaterialVariant.objects.filter(
+            process_material__process_id=process.id,
+            process_material__is_color_variant=True,
+            color_code=actual_code,
+        ).select_related('raw_material', 'process_material')
+    }
+    for req in requirements:
+        real = variant_map.get(req.raw_material_id)
+        if real:
+            req.raw_material = real
+
+    return process, requirements
+
+    variant_map = {
+        variant.process_material.raw_material_id: variant.raw_material
+        for variant in PaintingColorMaterialVariant.objects.filter(
+            process_material__process_id=process_id,
+            process_material__is_color_variant=True,
+            color_code=actual_code,
+        ).select_related('raw_material', 'process_material')
+    }
+
+    for requirement in requirements:
+        real_material = variant_map.get(requirement.raw_material_id)
+        if real_material:
+            requirement.raw_material = real_material
+
+    return requirements
+
+
 def consume_material_for_paint_task(task):
     """
     برای یک تسک نقاشی (station_name='paint') که painting_stage دارد،
@@ -1987,67 +2056,93 @@ post_delete.connect(_invalidate_on_change, sender=WorkerProfile)
 
 def auto_create_material_issues(tasks, requested_by=None, purpose='production'):
     """
-    برای لیست تسک‌های تولید، درخواست تحویل مواد (MaterialIssue) را
-    بر اساس فرمول ساخت (BOM) به‌صورت خودکات ایجاد می‌کند.
-
-    برای هر تسک، مواد مورد نیاز از طریق _task_material_requirements
-    محاسبه می‌شود و یک MaterialIssue با وضعیت 'requested' ساخته می‌شود
-    (مگر اینکه یک درخواست فعال قبلی برای همان تسک + ماده وجود داشته باشد).
-
-    Args:
-        tasks: لیست ProductionTask اشیا
-        requested_by: کاربر درخواست‌کننده (اختیاری)
-        purpose: 'production' یا 'rework'
-
-    Returns:
-        dict شامرایندکات: {'created': N, 'skipped': M, 'total_raw': K}
+    برای تسک‌های غیرنقاشی: مثل قبل، per-task.
+    برای تسک‌های نقاشی: به‌جای per-task، به ازای هر (order_item, color_part)
+    یکتا در لیست ورودی، فقط یک‌بار درخواست ساخته می‌شود (اگر از قبل نبوده).
     """
     from inventory.models import MaterialIssue
+    from decimal import Decimal
 
     created_count = 0
     skipped_count = 0
 
-    # دریافت تمام درخواست‌های فعال (غیر لغو‌شده) برای جلوگیری از تکرار
-    existing = set(
-        MaterialIssue.objects
-        .exclude(status='cancelled')
+    paint_tasks = [t for t in tasks if t.station_name == 'paint' and t.order_item_id]
+    other_tasks = [t for t in tasks if t.station_name != 'paint']
+
+    # ---------- شاخه‌ی غیرنقاشی: بدون تغییر (per-task) ----------
+    existing_task_based = set(
+        MaterialIssue.objects.exclude(status='cancelled')
+        .filter(task__isnull=False)
         .values_list('task_id', 'raw_material_id')
     )
-
-    for task in tasks:
-        if not task.order_item_id:
-            continue
-
-        # محاسبه مواد مورد نیاز از BOM
-        # استفاده از منطق مشابه _task_material_requirements در inventory/views.py
+    for task in other_tasks:
         try:
             from inventory.views import _task_material_requirements
             rows = _task_material_requirements(task)
         except Exception:
             rows = []
-
         for raw_material, quantity in rows:
-            if not raw_material or quantity is None or quantity <= 0:
+            if not raw_material or not quantity or quantity <= 0:
                 continue
+            key = (task.id, raw_material.id)
+            if key in existing_task_based:
+                skipped_count += 1
+                continue
+            MaterialIssue.objects.create(
+                task=task, raw_material=raw_material,
+                requested_quantity=quantity, purpose=purpose, status='requested',
+                requested_by=requested_by,
+                note='درخواست خودکار از برنامه تولید',
+            )
+            existing_task_based.add(key)
+            created_count += 1
 
-            if (getattr(task, 'id', None), raw_material.id) in existing:
+    # ---------- شاخه‌ی نقاشی: به سطح (order_item, color_part) تقلیل بده ----------
+    seen_item_colorparts = set()
+    existing_paint = set(
+        MaterialIssue.objects.exclude(status='cancelled')
+        .filter(order_item__isnull=False, task__isnull=True)
+        .values_list('order_item_id', 'color_part', 'raw_material_id')
+    )
+
+    for task in paint_tasks:
+        key = (task.order_item_id, task.color_part or '')
+        if key in seen_item_colorparts:
+            continue
+        seen_item_colorparts.add(key)
+
+        item = task.order_item
+        process, requirements = get_painting_material_requirements_for_item_colorpart(
+            item, task.color_part
+        )
+        if not process or not requirements:
+            continue
+
+        for req in requirements:
+            quantity = Decimal(item.quantity) * req.consumption_per_unit
+            if quantity <= 0:
+                continue
+            dedup_key = (item.id, task.color_part or '', req.raw_material.id)
+            if dedup_key in existing_paint:
                 skipped_count += 1
                 continue
 
             MaterialIssue.objects.create(
-                task=task,
-                raw_material=raw_material,
+                task=None,
+                order_item=item,
+                color_part=task.color_part or '',
+                painting_process=process,
+                raw_material=req.raw_material,
                 requested_quantity=quantity,
                 purpose=purpose,
                 status='requested',
                 requested_by=requested_by,
-                note='درخواست خودکار از برنامه‌ریزی تولید' if purpose == 'production' else 'درخواست خودکات از برنامه‌ریزی نقاشی',
+                note=(
+                    f'نیاز نقاشی: سفارش {item.order_id} / آیتم {item.id} / '
+                    f'{item.product.name} / {task.color_part} / روند {process.name}'
+                ),
             )
-            existing.add((getattr(task, 'id', None), raw_material.id))
+            existing_paint.add(dedup_key)
             created_count += 1
 
-    return {
-        'created': created_count,
-        'skipped': skipped_count,
-        'total_raw': len(existing),
-    }
+    return {'created': created_count, 'skipped': skipped_count, 'total_raw': None}

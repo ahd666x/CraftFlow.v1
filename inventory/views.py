@@ -134,6 +134,7 @@ def production_issue_queue(request):
     # ---------- درخواست‌های انبار ----------
     issues_qs = MaterialIssue.objects.select_related(
         'raw_material', 'task__order', 'task__order_item__product',
+        'order_item__order', 'order_item__product', 'painting_process',
         'defect__order', 'defect__order_item__product',
         'defect__packaging_unit__order_item__product', 'defect__task__painting_stage__process',
         'packaging_unit__order_item__product'
@@ -144,15 +145,18 @@ def production_issue_queue(request):
         else issues_qs.filter(status__in=['requested', 'partial'])
     )
     issues_qs = issues_qs.filter(
-        Q(purpose='production', task__isnull=False) |
+        Q(purpose='production', task__isnull=False) |          # سایر ایستگاه‌ها (per-task)
+        Q(purpose='production', task__isnull=True, order_item__isnull=False) |  # نقاشی (per-item)
         Q(purpose='rework', defect__isnull=False)
     )
 
-    if station:
+    if station == 'paint':
         issues_qs = issues_qs.filter(
-            Q(task__station_name=station) |
-            Q(defect__task__station_name=station)
+            Q(task__station_name='paint') |
+            Q(task__isnull=True, order_item__isnull=False)
         )
+    elif station:
+        issues_qs = issues_qs.filter(task__station_name=station)
 
     if q:
         issues_qs = issues_qs.filter(
@@ -165,7 +169,10 @@ def production_issue_queue(request):
             Q(defect__packaging_unit__unit_number__icontains=q) |
             Q(packaging_unit__order_item__product__name__icontains=q) |
             Q(packaging_unit__unit_number__icontains=q) |
-            Q(defect__color_part__icontains=q)
+            Q(defect__color_part__icontains=q) |
+            Q(order_item__id__icontains=q) |
+            Q(order_item__product__name__icontains=q) |
+            Q(order_item__order_id__icontains=q)
         )
 
     paginator = Paginator(issues_qs, 25)
@@ -196,11 +203,21 @@ def issue_material(request, issue_id):
         elif issue.raw_material.current_stock < quantity:
             messages.error(request, f'موجودی کافی نیست. موجودی فعلی: {issue.raw_material.current_stock}')
         else:
-            movement = StockMovement.objects.create(
-                raw_material=issue.raw_material, movement_type='consumption', quantity=quantity,
-                reference_task=issue.task, created_by=request.user,
-                note=f'تحویل انبار #{issue.id} — {issue.get_purpose_display()}'
-            )
+            if issue.task_id:
+                movement = StockMovement.objects.create(
+                    raw_material=issue.raw_material, movement_type='consumption', quantity=quantity,
+                    reference_task=issue.task, created_by=request.user,
+                    note=f'تحویل انبار #{issue.id} — {issue.get_purpose_display()}'
+                )
+            else:
+                movement = StockMovement.objects.create(
+                    raw_material=issue.raw_material, movement_type='consumption', quantity=quantity,
+                    reference_task=None,
+                    reference_order_item=issue.order_item,
+                    reference_color_part=issue.color_part,
+                    created_by=request.user,
+                    note=f'تحویل انبار #{issue.id} — نقاشی — سفارش {issue.order_item.order_id}/آیتم {issue.order_item_id}',
+                )
             issue.stock_movement = movement
             issue.issued_quantity += quantity
             issue.status = 'issued' if issue.issued_quantity >= issue.requested_quantity else 'partial'

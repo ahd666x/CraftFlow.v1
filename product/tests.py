@@ -11,12 +11,15 @@ from product.utils import (
     is_working_day,
     consume_material_for_task,
     consume_material_for_paint_task,
+    get_painting_material_requirements_for_item_colorpart,
+    auto_create_material_issues,
 )
 from product.models import (
     Product, ProductCategory, ProductBOM, Part, Material,
     Order, OrderItem, Color, ProductionTask, Customer, WorkerProfile,
     PaintingProcess, PaintingStage, PaintingMaterialRequirement,
     PaintingProcessMaterial, ProductionDefect, PackagingUnit,
+    PaintingColorMaterialVariant,
 )
 from inventory.models import (
     RawMaterial, RawMaterialCategory, StockMovement, MaterialIssue,
@@ -897,3 +900,299 @@ class PackagingUnitDefectTests(TestCase):
         response = self.client.get(reverse('inventory:production_issue_queue'), {'station': 'mon'})
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, str(issue.id))
+
+
+# ============================================================
+# تست‌های مربوط به بازطراحی صف تحویل مواد نقاشی
+# ============================================================
+
+class PaintMaterialIssuePerItemTests(TestCase):
+    """تست‌های درخواست مواد نقاشی در سطح (OrderItem + color_part)"""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_superuser('paintuser', password='testpass')
+        
+        cat = RawMaterialCategory.objects.create(name='رنگ و مواد نقاشی')
+        cls.paint_raw = RawMaterial.objects.create(
+            category=cat, name='رنگ تست', code='P001', unit='lit',
+            min_stock_alert=Decimal('10.00'),
+        )
+        cls.thinner_raw = RawMaterial.objects.create(
+            category=cat, name='تینر تست', code='T001', unit='lit',
+            min_stock_alert=Decimal('5.00'),
+        )
+        
+        cls.category = ProductCategory.objects.create(name='تست دسته')
+        cls.product = Product.objects.create(
+            category=cls.category, name='کنسول اوربیتال', base_price=1000,
+        )
+        
+        cls.customer = Customer.objects.create(name='مشتری تست', phone='09120000000')
+        cls.order = Order.objects.create(user=cls.user, customer=cls.customer, number='ORD001')
+        cls.order_item = OrderItem.objects.create(order=cls.order, product=cls.product, quantity=5)
+        Color.objects.create(part='بدنه', code='8', orderitem=cls.order_item)
+        
+        cls.process = PaintingProcess.objects.create(
+            name='پوششی', code='POSH', color_codes=['8'], is_active=True,
+        )
+        cls.stage1 = PaintingStage.objects.create(
+            process=cls.process, order=1, name='دهان اولیه',
+            duration_minutes=30, drying_time_minutes=60, required_skill='painter',
+        )
+        cls.stage2 = PaintingStage.objects.create(
+            process=cls.process, order=2, name='کد رنگ',
+            duration_minutes=30, drying_time_minutes=60, required_skill='painter',
+        )
+        
+        # Create catalog entries
+        from product.models import PaintingProcessMaterial
+        cls.catalog_paint = PaintingProcessMaterial.objects.create(
+            process=cls.process, raw_material=cls.paint_raw,
+        )
+        cls.catalog_thinner = PaintingProcessMaterial.objects.create(
+            process=cls.process, raw_material=cls.thinner_raw,
+        )
+        
+        # Create requirements
+        cls.req_paint = PaintingMaterialRequirement.objects.create(
+            process=cls.process,
+            raw_material=cls.paint_raw,
+            product=cls.product,
+            color_part='بدنه',
+            consumption_per_unit=Decimal('0.200'),
+        )
+        cls.req_thinner = PaintingMaterialRequirement.objects.create(
+            process=cls.process,
+            raw_material=cls.thinner_raw,
+            product=cls.product,
+            color_part='بدنه',
+            consumption_per_unit=Decimal('0.050'),
+        )
+        
+        # Create paint tasks (two stages for same order_item + color_part)
+        cls.task1 = ProductionTask.objects.create(
+            order=cls.order, order_item=cls.order_item, station_name='paint', step_order=10,
+            quantity=5, status='pending', painting_stage=cls.stage1,
+            color_part='بدنه',
+        )
+        cls.task2 = ProductionTask.objects.create(
+            order=cls.order, order_item=cls.order_item, station_name='paint', step_order=20,
+            quantity=5, status='pending', painting_stage=cls.stage2,
+            color_part='بدنه',
+        )
+
+    def test_paint_material_issue_created_once_per_item_colorpart(self):
+        """تست اینکه برای هر (order_item, color_part) فقط یک درخواست مواد ایجاد می‌شود"""
+        auto_create_material_issues([self.task1, self.task2], requested_by=self.user)
+        
+        # باید فقط 2 MaterialIssue وجود داشته باشد (رنگ و تینر)، نه 4 (2 تسک × 2 ماده)
+        issues = MaterialIssue.objects.filter(
+            purpose='production',
+            task__isnull=True,
+            order_item=self.order_item,
+            color_part='بدنه',
+        )
+        self.assertEqual(issues.count(), 2)
+        
+        # بررسی مقادیر: quantity = item.quantity * consumption_per_unit
+        paint_issue = issues.get(raw_material=self.paint_raw)
+        thinner_issue = issues.get(raw_material=self.thinner_raw)
+        
+        self.assertEqual(paint_issue.requested_quantity, Decimal('1.000'))  # 5 * 0.200
+        self.assertEqual(thinner_issue.requested_quantity, Decimal('0.250'))  # 5 * 0.050
+
+    def test_paint_material_issue_quantity_matches_item_quantity(self):
+        """تست اینکه requested_quantity برابر item.quantity * consumption_per_unit است"""
+        auto_create_material_issues([self.task1, self.task2], requested_by=self.user)
+        
+        paint_issue = MaterialIssue.objects.get(
+            order_item=self.order_item, color_part='بدنه', raw_material=self.paint_raw
+        )
+        # item.quantity = 5, consumption_per_unit = 0.200
+        expected = Decimal('5') * Decimal('0.200')
+        self.assertEqual(paint_issue.requested_quantity, expected)
+
+    def test_paint_material_issue_task_is_none(self):
+        """تست اینکه برای درخواست‌های نقاشی جدید task برابر None است"""
+        auto_create_material_issues([self.task1], requested_by=self.user)
+        
+        issue = MaterialIssue.objects.get(
+            order_item=self.order_item, color_part='بدنه', raw_material=self.paint_raw
+        )
+        self.assertIsNone(issue.task)
+        self.assertEqual(issue.order_item, self.order_item)
+        self.assertEqual(issue.color_part, 'بدنه')
+        self.assertEqual(issue.painting_process, self.process)
+
+    def test_issue_material_for_paint_creates_stock_movement_with_order_item_ref(self):
+        """تست اینکه تحویل مواد برای نقاشی StockMovement با reference_order_item ایجاد می‌کند"""
+        auto_create_material_issues([self.task1], requested_by=self.user)
+        
+        issue = MaterialIssue.objects.get(
+            order_item=self.order_item, color_part='بدنه', raw_material=self.paint_raw
+        )
+        
+        # اضافه کردن موجودی انبار
+        StockMovement.objects.create(
+            raw_material=self.paint_raw, movement_type='purchase',
+            quantity=Decimal('100'), note='موجودی اولیه',
+        )
+        
+        # شبیه‌سازی issue_material view
+        from django.test import Client
+        client = Client()
+        client.login(username='paintuser', password='testpass')
+        response = client.post(reverse('inventory:issue_material', args=[issue.id]), {'quantity': '1'})
+        
+        issue.refresh_from_db()
+        self.assertIsNotNone(issue.stock_movement)
+        movement = issue.stock_movement
+        
+        self.assertIsNone(movement.reference_task)
+        self.assertEqual(movement.reference_order_item, self.order_item)
+        self.assertEqual(movement.reference_color_part, 'بدنه')
+
+    def test_report_material_consumption_includes_new_style_movements(self):
+        """تست اینکه گزارش مصرف مواد درخواست‌های جدید را شامل می‌شود"""
+        auto_create_material_issues([self.task1], requested_by=self.user)
+        
+        issue = MaterialIssue.objects.get(
+            order_item=self.order_item, color_part='بدنه', raw_material=self.paint_raw
+        )
+        
+        # اضافه کردن موجودی انبار
+        StockMovement.objects.create(
+            raw_material=self.paint_raw, movement_type='purchase',
+            quantity=Decimal('100'), note='موجودی اولیه',
+        )
+        
+        # تحویل مواد
+        from django.test import Client
+        client = Client()
+        client.login(username='paintuser', password='testpass')
+        client.post(reverse('inventory:issue_material', args=[issue.id]), {'quantity': '1'})
+        
+        # گزارش
+        response = client.get(reverse('report_material_consumption'))
+        self.assertEqual(response.status_code, 200)
+        rows = response.context['report_rows']
+        
+        # باید ردیفی برای این محصول و روند وجود داشته باشد
+        found = False
+        for row in rows:
+            if row['product'] == self.product and row['process'] == self.process:
+                found = True
+                self.assertIn(self.paint_raw.id, row['materials'])
+                self.assertEqual(row['materials'][self.paint_raw.id]['qty'], Decimal('1'))
+        self.assertTrue(found, 'گزارش باید درخواست‌های جدید نقاشی را نمایش دهد')
+
+
+class ConsolidatePaintMaterialIssuesCommandTests(TestCase):
+    """تست‌های دستور ادغام درخواست‌های مواد نقاشی"""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_superuser('consolidateuser', password='testpass')
+        
+        cat = RawMaterialCategory.objects.create(name='رنگ و مواد')
+        cls.paint_raw = RawMaterial.objects.create(
+            category=cat, name='رنگ', code='P002', unit='lit',
+        )
+        
+        cls.category = ProductCategory.objects.create(name='دسته')
+        cls.product = Product.objects.create(
+            category=cls.category, name='محصول', base_price=1000,
+        )
+        
+        cls.customer = Customer.objects.create(name='مشتری', phone='09120000000')
+        cls.order = Order.objects.create(user=cls.user, customer=cls.customer, number='ORD002')
+        cls.order_item = OrderItem.objects.create(order=cls.order, product=cls.product, quantity=3)
+        Color.objects.create(part='بدنه', code='8', orderitem=cls.order_item)
+        
+        cls.process = PaintingProcess.objects.create(
+            name='روند', code='PRC', color_codes=['8'], is_active=True,
+        )
+        cls.stage1 = PaintingStage.objects.create(
+            process=cls.process, order=1, name='مرحله 1',
+            duration_minutes=30, drying_time_minutes=60, required_skill='painter',
+        )
+        cls.stage2 = PaintingStage.objects.create(
+            process=cls.process, order=2, name='مرحله 2',
+            duration_minutes=30, drying_time_minutes=60, required_skill='painter',
+        )
+        
+        from product.models import PaintingProcessMaterial
+        cls.catalog_paint = PaintingProcessMaterial.objects.create(
+            process=cls.process, raw_material=cls.paint_raw,
+        )
+        
+        cls.req_paint = PaintingMaterialRequirement.objects.create(
+            process=cls.process,
+            raw_material=cls.paint_raw,
+            product=cls.product,
+            color_part='بدنه',
+            consumption_per_unit=Decimal('0.100'),
+        )
+        
+        # دو تسک قدیمی (per-task)
+        cls.task1 = ProductionTask.objects.create(
+            order=cls.order, order_item=cls.order_item, station_name='paint', step_order=10,
+            quantity=3, status='pending', painting_stage=cls.stage1,
+            color_part='بدنه',
+        )
+        cls.task2 = ProductionTask.objects.create(
+            order=cls.order, order_item=cls.order_item, station_name='paint', step_order=20,
+            quantity=3, status='pending', painting_stage=cls.stage2,
+            color_part='بدنه',
+        )
+        
+        # دو MaterialIssue قدیمی برای هر تسک
+        cls.old_issue1 = MaterialIssue.objects.create(
+            task=cls.task1, raw_material=cls.paint_raw,
+            requested_quantity=Decimal('0.300'), purpose='production', status='requested',
+            requested_by=cls.user,
+        )
+        cls.old_issue2 = MaterialIssue.objects.create(
+            task=cls.task2, raw_material=cls.paint_raw,
+            requested_quantity=Decimal('0.300'), purpose='production', status='requested',
+            requested_by=cls.user,
+        )
+
+    def test_consolidate_command_merges_duplicates(self):
+        """تست اینکه دستور ادغام درخواست‌های تکراری قدیمی را می‌کند"""
+        from django.core.management import call_command
+        from io import StringIO
+        
+        out = StringIO()
+        call_command('consolidate_paint_material_issues', '--dry-run', stdout=out)
+        output = out.getvalue()
+        
+        self.assertIn('ادغام', output)
+        
+        # اجرای واقعی
+        out = StringIO()
+        call_command('consolidate_paint_material_issues', stdout=out)
+        output = out.getvalue()
+        
+        # باید فقط یک درخواست فعال باقی بماند
+        active_issues = MaterialIssue.objects.filter(
+            purpose='production',
+            status__in=['requested', 'partial', 'issued'],
+            order_item=self.order_item,
+            color_part='بدنه',
+            raw_material=self.paint_raw,
+            task__isnull=True,
+        )
+        self.assertEqual(active_issues.count(), 1)
+        
+        # درخواست‌های قدیمی باید cancelled باشند
+        cancelled_issues = MaterialIssue.objects.filter(
+            id__in=[self.old_issue1.id, self.old_issue2.id],
+            status='cancelled',
+        )
+        self.assertEqual(cancelled_issues.count(), 2)
+        
+        # مقدار درخواست جدید باید درست باشد: 3 * 0.100 = 0.300
+        new_issue = active_issues.first()
+        self.assertEqual(new_issue.requested_quantity, Decimal('0.300'))

@@ -150,21 +150,39 @@
             
             <!-- فیلترهای بازه زمانی برای بسته‌بندی و ارسال -->
             <div class="row g-3 align-items-end mt-3 pt-3 border-top">
-                <div class="col-md-3 col-sm-6">
-                    <label class="form-label small text-muted">بسته‌بندی از</label>
-                    <input type="date" name="pack_date_from" class="form-control form-control-glass" value="{{ pack_date_from|default:'' }}">
+                <div class="col-md-2 col-sm-6">
+                    <label class="form-label small text-muted">وضعیت بسته‌بندی</label>
+                    <select name="packaging_status" class="form-select form-select-glass">
+                        <option value="">همه</option>
+                        <option value="done" {% if packaging_status == 'done' %}selected{% endif %}>کامل شده</option>
+                        <option value="pending" {% if packaging_status == 'pending' %}selected{% endif %}>ناقص</option>
+                        <option value="none" {% if packaging_status == 'none' %}selected{% endif %}>بسته‌بندی نشده</option>
+                    </select>
                 </div>
-                <div class="col-md-3 col-sm-6">
-                    <label class="form-label small text-muted">بسته‌بندی تا</label>
-                    <input type="date" name="pack_date_to" class="form-control form-control-glass" value="{{ pack_date_to|default:'' }}">
+                <div class="col-md-2 col-sm-6">
+                    <label class="form-label small text-muted">وضعیت ارسال</label>
+                    <select name="shipping_status" class="form-select form-select-glass">
+                        <option value="">همه</option>
+                        <option value="done" {% if shipping_status == 'done' %}selected{% endif %}>کامل شده</option>
+                        <option value="pending" {% if shipping_status == 'pending' %}selected{% endif %}>ناقص</option>
+                        <option value="none" {% if shipping_status == 'none' %}selected{% endif %}>ارسال نشده</option>
+                    </select>
                 </div>
-                <div class="col-md-3 col-sm-6">
+                <div class="col-md-2 col-sm-6">
+                    <label class="form-label small text-muted">بسته‌سازی از</label>
+                    <input type="text" name="pack_date_from" class="form-control form-control-glass persian-date" placeholder="اختیاری" value="{{ pack_date_from|default:'' }}" autocomplete="off">
+                </div>
+                <div class="col-md-2 col-sm-6">
+                    <label class="form-label small text-muted">بسته‌سازی تا</label>
+                    <input type="text" name="pack_date_to" class="form-control form-control-glass persian-date" placeholder="اختیاری" value="{{ pack_date_to|default:'' }}" autocomplete="off">
+                </div>
+                <div class="col-md-2 col-sm-6">
                     <label class="form-label small text-muted">ارسال از</label>
-                    <input type="date" name="ship_date_from" class="form-control form-control-glass" value="{{ ship_date_from|default:'' }}">
+                    <input type="text" name="ship_date_from" class="form-control form-control-glass persian-date" placeholder="اختیاری" value="{{ ship_date_from|default:'' }}" autocomplete="off">
                 </div>
-                <div class="col-md-3 col-sm-6">
+                <div class="col-md-2 col-sm-6">
                     <label class="form-label small text-muted">ارسال تا</label>
-                    <input type="date" name="ship_date_to" class="form-control form-control-glass" value="{{ ship_date_to|default:'' }}">
+                    <input type="text" name="ship_date_to" class="form-control form-control-glass persian-date" placeholder="اختیاری" value="{{ ship_date_to|default:'' }}" autocomplete="off">
                 </div>
             </div>
         </form>
@@ -291,6 +309,39 @@
 
         if (categorySelect.value) loadProducts(categorySelect.value);
     }
+
+    // ===== میکروپرسش تاریخ شمسی =====
+    // از CDN Persian Date Picker استفاده می‌شود
+    (function() {
+        if (typeof jQuery === 'undefined') return;
+        if (!document.getElementById('pdatepicker-css-unified')) {
+            var css = document.createElement('link');
+            css.id = 'pdatepicker-css-unified';
+            css.rel = 'stylesheet';
+            css.href = 'https://cdn.jsdelivr.net/npm/persian-datepicker@1.2.0/dist/css/persian-datepicker.min.css';
+            document.head.appendChild(css);
+        }
+        if (!document.getElementById('pdatepicker-js-unified')) {
+            var script = document.createElement('script');
+            script.id = 'pdatepicker-js-unified';
+            script.src = 'https://cdn.jsdelivr.net/npm/persian-datepicker@1.2.0/dist/js/persian-datepicker.min.js';
+            script.onload = function() {
+                document.querySelectorAll('.persian-date').forEach(function(input) {
+                    new PersianDatepicker(input, {
+                        format: 'YYYY/MM/DD',
+                        autoClose: true,
+                        initialValueType: 'persian',
+                        calendar: {
+                            persian: {
+                                locale: 'fa'
+                            }
+                        }
+                    });
+                });
+            };
+            document.head.appendChild(script);
+        }
+    })();
 })();
 </script>
 {% endblock %}

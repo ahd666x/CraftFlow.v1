@@ -101,7 +101,7 @@
                     <span class="badge bg-info text-dark ms-1">واحد #{{ issue.packaging_unit.unit_number }}</span>
                   </div>
                   <div class="small text-muted">بارکد #{{ issue.packaging_unit_id }}</div>
-                {% else %}
+                {% elif issue.task %}
                   <strong>سفارش #{{ issue.task.order_id }}/{{ issue.task.order_item_id|default:"—" }}</strong>
                   <div class="small text-muted">
                     {% if issue.task.order_item %}
@@ -113,6 +113,13 @@
                   </div>
                   <div class="small text-muted">
                     <i class="bi bi-person-badge"></i> {{ issue.task.get_station_name_display }}
+                  </div>
+                {% elif issue.order_item %}
+                  <strong>سفارش #{{ issue.order_item.order_id }}/{{ issue.order_item_id }}</strong>
+                  <div class="small text-muted">
+                    {{ issue.order_item.product.category.name|default:"" }} {{ issue.order_item.product.name }}
+                    — {{ issue.get_color_part_display|default:issue.color_part }}
+                    {% if issue.painting_process %} — روند {{ issue.painting_process.name }}{% endif %}
                   </div>
                 {% endif %}
               {% endif %}

@@ -2285,7 +2285,20 @@ def report_production_unified(request):
     خروجی: برای هر order_item، آخرین رویداد هر ایستگاه + وضعیت فعلی تسک‌ها.
     """
     from .models import ProductionEvent, OrderItem
-    from django.db.models import Q, OuterRef, Subquery, Count
+    from django.db.models import Q, OuterRef, Subquery, Count, F
+
+    def _parse_jalali_date_str(date_str):
+        """Convert Persian date string YYYY-MM-DD or YYYY/MM/DD to Gregorian date object or None."""
+        if not date_str:
+            return None
+        try:
+            # normalize separators
+            normalized = date_str.replace('/', '-')
+            y, m, d = map(int, normalized.split('-'))
+            persian_date = jdatetime.date(y, m, d)
+            return persian_date.togregorian()
+        except (ValueError, TypeError):
+            return None
 
     events = ProductionEvent.objects.filter(event_type='done').select_related(
         'order_item__product__category', 'order_item__order__user', 'task'
@@ -2299,10 +2312,12 @@ def report_production_unified(request):
             Q(order_item__order__customer__name__icontains=q)
         )
 
-    date_from = request.GET.get('date_from')
+    date_from_str = request.GET.get('date_from')
+    date_from = _parse_jalali_date_str(date_from_str)
     if date_from:
         events = events.filter(created_at__date__gte=date_from)
-    date_to = request.GET.get('date_to')
+    date_to_str = request.GET.get('date_to')
+    date_to = _parse_jalali_date_str(date_to_str)
     if date_to:
         events = events.filter(created_at__date__lte=date_to)
 
@@ -2329,19 +2344,49 @@ def report_production_unified(request):
     ).prefetch_related('logs', 'packaging_units')
 
     # فیلترهای بازه زمانی برای بسته‌بندی و ارسال
-    pack_date_from = request.GET.get('pack_date_from')
-    pack_date_to = request.GET.get('pack_date_to')
-    ship_date_from = request.GET.get('ship_date_from')
-    ship_date_to = request.GET.get('ship_date_to')
-
+    pack_date_from_str = request.GET.get('pack_date_from')
+    pack_date_from = _parse_jalali_date_str(pack_date_from_str)
     if pack_date_from:
         items = items.filter(packaging_units__packed_at__date__gte=pack_date_from)
+    pack_date_to_str = request.GET.get('pack_date_to')
+    pack_date_to = _parse_jalali_date_str(pack_date_to_str)
     if pack_date_to:
         items = items.filter(packaging_units__packed_at__date__lte=pack_date_to)
+    ship_date_from_str = request.GET.get('ship_date_from')
+    ship_date_from = _parse_jalali_date_str(ship_date_from_str)
     if ship_date_from:
         items = items.filter(packaging_units__shipped_at__date__gte=ship_date_from)
+    ship_date_to_str = request.GET.get('ship_date_to')
+    ship_date_to = _parse_jalali_date_str(ship_date_to_str)
     if ship_date_to:
         items = items.filter(packaging_units__shipped_at__date__lte=ship_date_to)
+
+    # فیلتر وضعیت بسته‌بندی و ارسال
+    packaging_status = request.GET.get('packaging_status')
+    if packaging_status:
+        items = items.annotate(
+            total_pack=Count('packaging_units', distinct=True),
+            packed_count=Count('packaging_units', filter=Q(packaging_units__is_packed=True), distinct=True),
+        )
+        if packaging_status == 'done':
+            items = items.filter(total_pack__gt=0, packed_count=F('total_pack'))
+        elif packaging_status == 'pending':
+            items = items.filter(total_pack__gt=0, packed_count__lt=F('total_pack'))
+        elif packaging_status == 'none':
+            items = items.filter(total_pack=0)
+
+    shipping_status = request.GET.get('shipping_status')
+    if shipping_status:
+        items = items.annotate(
+            total_pack_ship=Count('packaging_units', distinct=True),
+            shipped_count=Count('packaging_units', filter=Q(packaging_units__is_shipped=True), distinct=True),
+        )
+        if shipping_status == 'done':
+            items = items.filter(total_pack_ship__gt=0, shipped_count=F('total_pack_ship'))
+        elif shipping_status == 'pending':
+            items = items.filter(total_pack_ship__gt=0, shipped_count__lt=F('total_pack_ship'))
+        elif shipping_status == 'none':
+            items = items.filter(total_pack_ship=0)
 
     report_rows = []
     for item in items:
@@ -2387,12 +2432,14 @@ def report_production_unified(request):
         'report_rows': report_rows,
         'station_choices': STATION_CHOICES,
         'search_query': q,
-        'date_from': date_from,
-        'date_to': date_to,
-        'pack_date_from': pack_date_from,
-        'pack_date_to': pack_date_to,
-        'ship_date_from': ship_date_from,
-        'ship_date_to': ship_date_to,
+        'date_from': date_from_str,
+        'date_to': date_to_str,
+        'pack_date_from': pack_date_from_str,
+        'pack_date_to': pack_date_to_str,
+        'ship_date_from': ship_date_from_str,
+        'ship_date_to': ship_date_to_str,
+        'packaging_status': packaging_status,
+        'shipping_status': shipping_status,
         'representatives': representatives,
         'categories': categories,
         'products': products,
@@ -2423,6 +2470,8 @@ def delayed_orders(request):
 def report_material_consumption(request):
     from inventory.models import StockMovement, MaterialIssue
     from .models import ProductionDefect, PaintingProcess
+    from django.db.models import Q
+    from .utils import get_painting_process_for_color
 
     date_from = request.GET.get('date_from')
     date_to = request.GET.get('date_to')
@@ -2433,7 +2482,8 @@ def report_material_consumption(request):
 
     movements = StockMovement.objects.filter(
         movement_type='consumption',
-        reference_task__isnull=False,
+    ).filter(
+        Q(reference_task__isnull=False) | Q(reference_order_item__isnull=False)
     ).exclude(
         fulfilled_issue__purpose='rework'
     ).select_related(
@@ -2441,6 +2491,9 @@ def report_material_consumption(request):
         'reference_task__painting_stage__process',
         'reference_task__order_item__product__category',
         'reference_task__order_item',
+        'reference_order_item__product__category',
+        'reference_order_item__order',
+        'reference_order_item',
     )
 
     if date_from:
@@ -2448,7 +2501,10 @@ def report_material_consumption(request):
     if date_to:
         movements = movements.filter(created_at__date__lte=date_to)
     if process_id:
-        movements = movements.filter(reference_task__painting_stage__process_id=process_id)
+        movements = movements.filter(
+            Q(reference_task__painting_stage__process_id=process_id) |
+            Q(reference_order_item__isnull=False, reference_order_item__product__isnull=False)  # will filter below
+        )
 
     rows = {}
 
@@ -2473,19 +2529,42 @@ def report_material_consumption(request):
         return str(code) in ROKESHI_CODES
 
     for mv in movements:
-        task = mv.reference_task
-        item = task.order_item
-        if not item:
-            continue
-        stage = task.painting_stage
-        process = stage.process if stage else None
+        if mv.reference_task_id:
+            task = mv.reference_task
+            item = task.order_item
+            if not item:
+                continue
+            stage = task.painting_stage
+            process = stage.process if stage else None
 
-        if task.station_name == 'paint' and rokeshi_filter:
-            is_rok = _is_rokeshi(item, task.color_part)
-            if rokeshi_filter == 'rokeshi' and not is_rok:
+            if task.station_name == 'paint' and rokeshi_filter:
+                is_rok = _is_rokeshi(item, task.color_part)
+                if rokeshi_filter == 'rokeshi' and not is_rok:
+                    continue
+                if rokeshi_filter == 'poshshi' and is_rok:
+                    continue
+        else:
+            item = mv.reference_order_item
+            if not item:
                 continue
-            if rokeshi_filter == 'poshshi' and is_rok:
+            # For paint materials, get process from color code
+            color_part = mv.reference_color_part
+            color_obj = item.ordercolor.filter(part=color_part).first()
+            code = color_obj.code if color_obj and color_obj.code and color_obj.code != 'nan' else None
+            if not code:
+                from .utils import _parse_default_colors
+                code = _parse_default_colors(item.product).get(color_part)
+            process = get_painting_process_for_color(code) if code else None
+            
+            if process_id and (not process or str(process.id) != str(process_id)):
                 continue
+
+            if rokeshi_filter:
+                is_rok = _is_rokeshi(item, color_part)
+                if rokeshi_filter == 'rokeshi' and not is_rok:
+                    continue
+                if rokeshi_filter == 'poshshi' and is_rok:
+                    continue
 
         row = _get_row(item, process)
         m = row['materials'].setdefault(
