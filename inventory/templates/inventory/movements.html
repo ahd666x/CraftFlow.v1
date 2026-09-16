@@ -72,7 +72,7 @@
                 {% csrf_token %}
                 <input type="hidden" name="action" value="create">
                 <div class="modal-header">
-                    <h5 class="modal-title">ثبت حرکت انبار</h5>
+                    <h5 class="modal-title"></h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
@@ -86,7 +86,7 @@
                         </select>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">نوع حرکت <span class="text-danger">*</span></label>
+                        <label class="form-label">نوع <span class="text-danger">*</span></label>
                         <select name="movement_type" class="form-select" required>
                             <option value="purchase">خرید/ورود</option>
                             <option value="consumption">مصرف</option>

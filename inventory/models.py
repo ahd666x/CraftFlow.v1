@@ -94,10 +94,10 @@ class StockMovement(models.Model):
         blank=True,
         on_delete=models.SET_NULL,
         related_name='catalog_consumption_movements',
-        verbose_name="ماده اولیه کاتالوگ",
-        help_text="برای مصرف نقاشی، ماده کاتالوگ اصلی را مستقل از ماده واقعی رنگ نگه می‌دارد.",
+        verbose_name="ماده اولیه ",
+        help_text="",
     )
-    movement_type = models.CharField(max_length=20, choices=MOVEMENT_TYPES, verbose_name="نوع حرکت")
+    movement_type = models.CharField(max_length=20, choices=MOVEMENT_TYPES, verbose_name="نوع")
     quantity = models.DecimalField(max_digits=12, decimal_places=2, verbose_name="مقدار")
     unit_price = models.DecimalField(max_digits=12, decimal_places=0, null=True, blank=True, verbose_name="قیمت واحد (ریال)")
     supplier = models.ForeignKey(Supplier, null=True, blank=True, on_delete=models.SET_NULL, verbose_name="تامین‌کننده")
@@ -115,8 +115,8 @@ class StockMovement(models.Model):
         return f"{self.get_movement_type_display()} - {self.raw_material.name} ({self.quantity})"
 
     class Meta:
-        verbose_name = "حرکت انبار"
-        verbose_name_plural = "حرکات انبار"
+        verbose_name = "گردش انبار"
+        verbose_name_plural = "گردش انبار"
         ordering = ['-created_at']
 
 
@@ -160,8 +160,8 @@ class MaterialIssue(models.Model):
         blank=True,
         on_delete=models.SET_NULL,
         related_name='fulfilled_issue',
-        verbose_name='حرکت انبار ثبت‌شده',
-        help_text='حرکت انبار مصرفی که این درخواست را تسویه کرده است.',
+        verbose_name='گردش انبار ثبت‌شده',
+        help_text='گردش انبار مصرفی که این درخواست را تسویه کرده است.',
     )
     requested_quantity = models.DecimalField(max_digits=12, decimal_places=2, verbose_name='مقدار مورد نیاز')
     issued_quantity = models.DecimalField(max_digits=12, decimal_places=2, default=0, verbose_name='مقدار تحویل شده')

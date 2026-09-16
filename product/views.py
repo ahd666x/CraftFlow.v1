@@ -5195,7 +5195,7 @@ def painting_stages_view(request, process_id=None):
     stages = PaintingStage.objects.all()
     if process:
         stages = stages.filter(process=process)
-    stages = stages.select_related('process').prefetch_related('material_requirements').order_by('process__name', 'order')
+    stages = stages.select_related('process').order_by('process__name', 'order')
 
     # جستجو
     search = request.GET.get('search')
