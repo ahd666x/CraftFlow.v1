@@ -2104,6 +2104,22 @@ def report_orders(request):
     return render(request, 'reports/orders.html', {'data': data})
 
 
+def _parse_jalali_or_none(date_str):
+    """Parse a Jalali date string (YYYY/MM/DD or YYYY-MM-DD) into a jdatetime.date.
+
+    PersianDateField.get_prep_value only converts to Gregorian when it receives
+    an actual ``jdatetime.date`` — a raw string would bypass that conversion and
+    silently break database lookups against PersianDateField columns.
+    """
+    if not date_str:
+        return None
+    try:
+        y, m, d = map(int, date_str.strip().replace('/', '-').split('-'))
+        return jdatetime.date(y, m, d)
+    except (ValueError, TypeError):
+        return None
+
+
 @login_required
 @staff_or_representative_required
 def report_stages(request):
@@ -2135,30 +2151,17 @@ def report_stages(request):
     if product_id:
         base_items = base_items.filter(product_id=product_id)
 
-    date_from = request.GET.get('date_from')
+    date_from_raw = request.GET.get('date_from', '')
+    date_to_raw = request.GET.get('date_to', '')
+    date_from = _parse_jalali_or_none(date_from_raw)
+    date_to = _parse_jalali_or_none(date_to_raw)
+
     if date_from:
         base_items = base_items.filter(order__created_at__gte=date_from)
-
-    date_to = request.GET.get('date_to')
     if date_to:
         base_items = base_items.filter(order__created_at__lte=date_to)
 
-    # ---------- packaging / shipping date range filters ----------
-    pack_date_from = request.GET.get('pack_date_from')
-    pack_date_to = request.GET.get('pack_date_to')
-    ship_date_from = request.GET.get('ship_date_from')
-    ship_date_to = request.GET.get('ship_date_to')
-
-    if pack_date_from:
-        base_items = base_items.filter(packaging_units__packed_at__date__gte=pack_date_from)
-    if pack_date_to:
-        base_items = base_items.filter(packaging_units__packed_at__date__lte=pack_date_to)
-    if ship_date_from:
-        base_items = base_items.filter(packaging_units__shipped_at__date__gte=ship_date_from)
-    if ship_date_to:
-        base_items = base_items.filter(packaging_units__shipped_at__date__lte=ship_date_to)
-
-    # ---------- summary (based on filtered base_items before stage/pack/ship filters) ----------
+    # ---------- summary (based on filtered base_items before stage filters) ----------
     total = base_items.count()
     # Single aggregated query instead of one COUNT per station (11 → 1)
     stage_done_counts = (
@@ -2189,6 +2192,9 @@ def report_stages(request):
     # We'll build annotations using subqueries for precise calculations
     pack_units = PackagingUnit.objects.filter(order_item=OuterRef('pk'))
     ship_units = PackagingUnit.objects.filter(order_item=OuterRef('pk'))
+    packed_not_shipped_units = PackagingUnit.objects.filter(
+        order_item=OuterRef('pk'), is_packed=True, is_shipped=False
+    )
 
     items = items.annotate(
         total_units=Count('packaging_units'),
@@ -2202,6 +2208,11 @@ def report_stages(request):
             .annotate(cnt=Count('id')).values('cnt'),
             output_field=IntegerField()
         ),
+        in_stock_count=Subquery(
+            packed_not_shipped_units.values('order_item')
+            .annotate(cnt=Count('id')).values('cnt'),
+            output_field=IntegerField()
+        ),
     )
 
     # Apply packaging filter
@@ -2211,6 +2222,8 @@ def report_stages(request):
         items = items.filter(total_units__gt=0, packed_count__lt=F('total_units'))
     elif packaging_status == 'none':
         items = items.filter(total_units=0)
+    elif packaging_status == 'in_stock':
+        items = items.filter(in_stock_count__gt=0)
 
     # Apply shipping filter
     if shipping_status == 'done':
@@ -2256,6 +2269,7 @@ def report_stages(request):
             total=Count('id'),
             packed=Count('id', filter=Q(is_packed=True)),
             shipped=Count('id', filter=Q(is_shipped=True)),
+            in_stock=Count('id', filter=Q(is_packed=True, is_shipped=False)),
         )
     )
     pack_map = {row['order_item_id']: row for row in pack_stats}
@@ -2272,10 +2286,12 @@ def report_stages(request):
             total_units = stats['total']
             packed_units = stats['packed']
             shipped_units = stats['shipped']
+            in_stock_units = stats['in_stock']
         else:
             total_units = 0
             packed_units = 0
             shipped_units = 0
+            in_stock_units = 0
 
         report_data.append({
             'item': item,
@@ -2283,6 +2299,7 @@ def report_stages(request):
             'total_units': total_units,
             'packed_units': packed_units,
             'shipped_units': shipped_units,
+            'in_stock_units': in_stock_units,
             'representative': item.order.user.get_full_name() if item.order.user else (item.order.user.username if item.order.user else '—'),
             'category_name': item.product.category.name,
         })
@@ -2307,12 +2324,8 @@ def report_stages(request):
         'selected_representative': representative_id,
         'selected_category': category_id,
         'selected_product': product_id,
-        'date_from': date_from,
-        'date_to': date_to,
-        'pack_date_from': pack_date_from,
-        'pack_date_to': pack_date_to,
-        'ship_date_from': ship_date_from,
-        'ship_date_to': ship_date_to,
+        'date_from': date_from_raw,
+        'date_to': date_to_raw,
         'stage_pending': stage_pending,
         'stage_done': stage_done,
         'packaging_status': packaging_status or '',

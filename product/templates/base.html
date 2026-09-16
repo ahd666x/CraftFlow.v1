@@ -34,7 +34,6 @@
 
         <div class="collapse navbar-collapse" id="mainNavbar">
             <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-                <li class="nav-item"><a class="nav-link {% if request.resolver_match.url_name == 'dashboard' %}active fw-bold{% endif %}" href="{% url 'dashboard' %}"><i class="bi bi-speedometer2 me-1"></i> داشبورد اصلی</a></li>
                 <li class="nav-item"><a class="nav-link {% if request.resolver_match.url_name == 'order_list' %}active fw-bold{% endif %}" href="{% url 'order_list' %}"><i class="bi bi-cart-check me-1"></i> سفارشات</a></li>
                 <li class="nav-item"><a class="nav-link {% if request.resolver_match.url_name == 'order_item_list' %}active fw-bold{% endif %}" href="{% url 'order_item_list' %}"><i class="bi bi-boxes me-1"></i> آیتم‌ها</a></li>
                 <li class="nav-item"><a class="nav-link {% if request.resolver_match.url_name == 'scan_part' %}active fw-bold{% endif %}" href="{% url 'scan_part' %}"><i class="bi bi-upc-scan me-1"></i> اسکن</a></li>

@@ -1378,3 +1378,24 @@ class ReportStagesNPlusOneTests(TestCase):
         # Pagination context exposed for the template.
         self.assertIn('page_obj', context)
         self.assertEqual(context['page_obj'].paginator.per_page, 200)
+
+    def test_in_stock_filter_returns_packed_unshipped_units(self):
+        items = self._seed(3)
+        shipped = items[0].packaging_units.first()
+        shipped.is_shipped = True
+        shipped.save(update_fields=['is_shipped'])
+
+        unpacked = items[1].packaging_units.first()
+        unpacked.is_packed = False
+        unpacked.save(update_fields=['is_packed'])
+
+        response = self.client.get(
+            reverse('report_stages'), {'packaging_status': 'in_stock'}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            {row['item'].id for row in response.context['report_data']},
+            {items[2].id},
+        )
+        self.assertEqual(response.context['report_data'][0]['in_stock_units'], 1)

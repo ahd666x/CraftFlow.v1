@@ -16,14 +16,12 @@
   {% else %}
     <form method="post">
       {% csrf_token %}
-      <div class="alert alert-warning">
-        فقط خرابی‌هایی را انتخاب کنید که پس از بررسی، برای جبران آن‌ها مواد اولیه نیاز است.
-      </div>
+
 
       {% for defect in defects %}
         <div class="card mb-3 border-danger">
           <div class="card-header bg-danger text-white d-flex justify-content-between align-items-center gap-2">
-            <strong>خرابی بخش {{ defect.get_color_part_display|default:defect.color_part }}</strong>
+            <strong> بخش {{ defect.get_color_part_display|default:defect.color_part }}</strong>
             <span class="small">{{ defect.created_at|date:"Y/m/d H:i" }}</span>
           </div>
           <div class="card-body">

@@ -5,17 +5,13 @@
 {% block title %}گزارش تولید{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/persian-datepicker@1.2.0/dist/css/persian-datepicker.min.css">
 <style>
-    :root {
     :root {
         --bs-card-bg: #ffffff;
         --bs-card-shadow: 0 4px 24px rgba(0,0,0,0.04);
     }
 
-    body {
-        background-color: #f7f9fc;
-    }
+    body { background-color: #f7f9fc; }
 
     .summary-card {
         background: var(--bs-card-bg);
@@ -31,10 +27,85 @@
         display: flex; align-items: center; justify-content: center;
         font-size: 1.4rem; margin-bottom: 0.8rem;
     }
+
+    /* ============== فیلتر پنل بازطراحی‌شده ============== */
     .filter-panel {
-        background: var(--bs-card-bg); border-radius: 16px;
-        box-shadow: var(--bs-card-shadow); padding: 1.5rem;
+        background: var(--bs-card-bg);
+        border-radius: 16px;
+        box-shadow: var(--bs-card-shadow);
+        padding: 1.4rem 1.4rem 1rem;
     }
+    .filter-group {
+        display: flex;
+        flex-direction: column;
+        gap: 0.3rem;
+        min-width: 0;
+    }
+    .filter-group label {
+        font-size: 0.76rem;
+        font-weight: 600;
+        color: #64748b;
+        margin: 0;
+        padding-right: 0.1rem;
+    }
+    .filter-row {
+        display: grid;
+        grid-template-columns: repeat(6, 1fr);
+        gap: 0.9rem;
+        margin-bottom: 0.9rem;
+    }
+    .filter-row.row-search {
+        grid-template-columns: 2fr 1fr 1fr 1fr;
+    }
+    .filter-panel .form-control,
+    .filter-panel .form-select {
+        height: 40px;
+        border-radius: 10px;
+        border: 1px solid #e2e8f0;
+        background: #f8fafc;
+        font-size: 0.85rem;
+    }
+    .filter-panel .form-control:focus,
+    .filter-panel .form-select:focus {
+        background: #fff;
+        border-color: #2563eb;
+        box-shadow: 0 0 0 3px rgba(37,99,235,0.08);
+    }
+    .filter-actions {
+        display: flex;
+        align-items: flex-end;
+        gap: 0.5rem;
+    }
+    .filter-actions .btn {
+        height: 40px;
+        border-radius: 10px;
+        white-space: nowrap;
+    }
+    .inventory-quicklink {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        height: 40px;
+        padding: 0 0.9rem;
+        border-radius: 10px;
+        border: 1px solid #fde68a;
+        background: #fffbeb;
+        color: #92400e;
+        font-size: 0.8rem;
+        font-weight: 600;
+        text-decoration: none;
+        white-space: nowrap;
+    }
+    .inventory-quicklink:hover { background: #fef3c7; color: #78350f; }
+    .inventory-quicklink .badge { font-size: 0.68rem; }
+
+    @media (max-width: 991.98px) {
+        .filter-row, .filter-row.row-search { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 575.98px) {
+        .filter-row, .filter-row.row-search { grid-template-columns: 1fr; }
+    }
+
     .table-report {
         background: var(--bs-card-bg); border-radius: 16px;
         box-shadow: var(--bs-card-shadow); overflow: hidden;
@@ -61,14 +132,6 @@
     .btn-glass:hover {
         background: rgba(255,255,255,0.95);
         box-shadow: 0 4px 12px rgba(0,0,0,0.06);
-    }
-    .form-control-glass {
-        background: rgba(255,255,255,0.8); border: 1px solid #e2e8f0;
-        border-radius: 10px; padding: 0.4rem 0.8rem;
-    }
-    .form-select-glass {
-        background: rgba(255,255,255,0.8); border: 1px solid #e2e8f0;
-        border-radius: 10px; padding: 0.4rem 0.8rem;
     }
 
     .stage-col { transition: 0.2s; }
@@ -97,150 +160,128 @@
         <div>
             <h4 class="mb-0 fw-bold">گزارش تولید</h4>
         </div>
-        <div class="ms-auto">
-            <a href="{% url 'report_production_unified' %}" class="btn btn-sm btn-outline-info">
-                <i class="bi bi-graph-up me-1"></i> نسخه آزمایشی گزارش یکپارچه
-            </a>
-        </div>
+
     </div>
-
-
 
     <!-- پنل فیلترها -->
     <div class="filter-panel mb-4">
         <form method="get" id="filter-form">
-            <div class="row g-3 align-items-end">
-                <div class="col-md-3 col-sm-6">
-                    <label class="form-label small text-muted">جستجو</label>
-                    <div class="input-group">
-                        <span class="input-group-text bg-white border-end-0"><i class="bi bi-search"></i></span>
-                        <input type="text" name="q" class="form-control form-control-glass border-start-0" placeholder="شماره سفارش، نماینده، محصول..." value="{{ search_query|default:'' }}">
-                    </div>
+
+            <!-- ردیف ۱: جستجو + نماینده + دسته + محصول -->
+            <div class="filter-row row-search">
+                <div class="filter-group">
+                    <label>جستجو</label>
+                    <input type="text" name="q" class="form-control" placeholder="شماره سفارش، نماینده، محصول..." value="{{ search_query|default:'' }}">
                 </div>
-                <div class="col-md-2 col-sm-6">
-                    <label class="form-label small text-muted">نماینده</label>
-                    <select name="representative" class="form-select form-select-glass">
+                <div class="filter-group">
+                    <label>نماینده</label>
+                    <select name="representative" class="form-select">
                         <option value="">همه</option>
                         {% for rep in representatives %}
                             <option value="{{ rep.id }}" {% if selected_representative == rep.id|stringformat:"s" %}selected{% endif %}>{{ rep.get_full_name|default:rep.username }}</option>
                         {% endfor %}
                     </select>
                 </div>
-                <div class="col-md-2 col-sm-6">
-                    <label class="form-label small text-muted">دسته</label>
-                    <select name="category" class="form-select form-select-glass" id="id_category">
+                <div class="filter-group">
+                    <label>دسته</label>
+                    <select name="category" class="form-select" id="id_category">
                         <option value="">همه</option>
                         {% for cat in categories %}
                             <option value="{{ cat.id }}" {% if selected_category == cat.id|stringformat:"s" %}selected{% endif %}>{{ cat.name }}</option>
                         {% endfor %}
                     </select>
                 </div>
-                <div class="col-md-2 col-sm-6">
-                    <label class="form-label small text-muted">از تاریخ سفارش</label>
-                    <input type="text" name="date_from" class="form-control form-control-glass persian-date" placeholder="اختیاری" value="{{ date_from|default:'' }}" autocomplete="off">
-                </div>
-                <div class="col-md-2 col-sm-6">
-                    <label class="form-label small text-muted">تا تاریخ سفارش</label>
-                    <input type="text" name="date_to" class="form-control form-control-glass persian-date" placeholder="اختیاری" value="{{ date_to|default:'' }}" autocomplete="off">
-                </div>
-                <div class="col-md-2 col-sm-6">
-                    <label class="form-label small text-muted">محصول</label>
-                    <select name="product" class="form-select form-select-glass" id="id_product">
+                <div class="filter-group">
+                    <label>محصول</label>
+                    <select name="product" class="form-select" id="id_product">
                         <option value="">همه</option>
                         {% for prod in products %}
                             <option value="{{ prod.id }}" {% if selected_product == prod.id|stringformat:"s" %}selected{% endif %}>{{ prod.name }}</option>
                         {% endfor %}
                     </select>
                 </div>
-                <div class="col-md-3 col-sm-12">
-                    <label class="form-label small text-muted">مرحله تولید</label>
-                    <div class="d-flex gap-1">
-                        <select name="stage_pending" class="form-select form-select-glass">
-                            <option value="">انجام‌نشده</option>
-                            {% for code, name in station_choices %}
-                                {% if code != 'packaging' and code != 'shipping' %}
-                                    <option value="{{ code }}" {% if stage_pending == code %}selected{% endif %}>{{ name }}</option>
-                                {% endif %}
-                            {% endfor %}
-                        </select>
-                        <select name="stage_done" class="form-select form-select-glass">
-                            <option value="">انجام‌شده</option>
-                            {% for code, name in station_choices %}
-                                {% if code != 'packaging' and code != 'shipping' %}
-                                    <option value="{{ code }}" {% if stage_done == code %}selected{% endif %}>{{ name }}</option>
-                                {% endif %}
-                            {% endfor %}
-                        </select>
-                    </div>
-                </div>
             </div>
 
-
-
-
-<div class="row g-3 align-items-end mt-2">
-                <div class="col-md-2 col-sm-6">
-                    <label class="form-label small text-muted">بسته‌بندی</label>
-                    <select name="packaging_status" class="form-select form-select-glass">
-                        <option value="">همه</option>
-                        <option value="done" {% if packaging_status == 'done' %}selected{% endif %}>کامل شده</option>
-                        <option value="pending" {% if packaging_status == 'pending' %}selected{% endif %}>ناقص</option>
-                        <option value="none" {% if packaging_status == 'none' %}selected{% endif %}> بسته‌بندی نشده</option>
+            <!-- ردیف ۲: بازه تاریخ + مرحله انجام‌نشده/انجام‌شده + وضعیت بسته‌بندی + وضعیت ارسال -->
+            <div class="filter-row">
+                <div class="filter-group">
+                    <label>از تاریخ</label>
+                    <input type="text" name="date_from" id="date_from" class="form-control mini-jalali-datepicker" placeholder="۱۴۰۳-۰۱-۰۱" autocomplete="off" value="{{ date_from|default:'' }}">
+                </div>
+                <div class="filter-group">
+                    <label>تا تاریخ</label>
+                    <input type="text" name="date_to" id="date_to" class="form-control mini-jalali-datepicker" placeholder="۱۴۰۳-۱۲-۲۹" autocomplete="off" value="{{ date_to|default:'' }}">
+                </div>
+                <div class="filter-group">
+                    <label>مرحله انجام‌نشده</label>
+                    <select name="stage_pending" class="form-select">
+                        <option value="">— انتخاب —</option>
+                        {% for code, name in station_choices %}
+                            {% if code != 'packaging' and code != 'shipping' %}
+                                <option value="{{ code }}" {% if stage_pending == code %}selected{% endif %}>{{ name }}</option>
+                            {% endif %}
+                        {% endfor %}
                     </select>
                 </div>
-                <div class="col-md-2 col-sm-6">
-                    <label class="form-label small text-muted">ارسال</label>
-                    <select name="shipping_status" class="form-select form-select-glass">
+                <div class="filter-group">
+                    <label>مرحله انجام‌شده</label>
+                    <select name="stage_done" class="form-select">
+                        <option value="">— انتخاب —</option>
+                        {% for code, name in station_choices %}
+                            {% if code != 'packaging' and code != 'shipping' %}
+                                <option value="{{ code }}" {% if stage_done == code %}selected{% endif %}>{{ name }}</option>
+                            {% endif %}
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>وضعیت بسته‌بندی</label>
+                    <div class="d-flex gap-1">
+                        <select name="packaging_status" class="form-select">
+                            <option value="">همه</option>
+                            <option value="done" {% if packaging_status == 'done' %}selected{% endif %}>کامل شده</option>
+                            <option value="pending" {% if packaging_status == 'pending' %}selected{% endif %}>ناقص</option>
+                            <option value="none" {% if packaging_status == 'none' %}selected{% endif %}>بسته‌بندی نشده</option>
+                            <option value="in_stock" {% if packaging_status == 'in_stock' %}selected{% endif %}>بسته‌بندی شده (موجود در انبار)</option>
+                        </select>
+                        <a href="{% url 'report_ready_to_ship' %}" class="inventory-quicklink" title="لیست کامل محصولات بسته‌بندی‌شدهٔ آمادهٔ بارگیری" target="_blank">
+                            <i class="bi bi-box-seam"></i>
+                        </a>
+                    </div>
+                </div>
+                <div class="filter-group">
+                    <label>وضعیت ارسال</label>
+                    <select name="shipping_status" class="form-select">
                         <option value="">همه</option>
                         <option value="done" {% if shipping_status == 'done' %}selected{% endif %}>کامل شده</option>
                         <option value="pending" {% if shipping_status == 'pending' %}selected{% endif %}>ناقص</option>
-                        <option value="none" {% if shipping_status == 'none' %}selected{% endif %}> ارسال نشده</option>
+                        <option value="none" {% if shipping_status == 'none' %}selected{% endif %}>ارسال نشده</option>
                     </select>
                 </div>
-
-                <div class="col-md-3 col-sm-12 d-flex align-items-end gap-2">
-                    <button type="submit" class="btn btn-primary rounded-pill px-4"><i class="bi bi-funnel me-1"></i> فیلتر</button>
-                    <a href="?" class="btn btn-outline-secondary rounded-pill px-4"><i class="bi bi-x-circle me-1"></i> حذف فیلتر</a>
-                </div> 
             </div>
-            
-            <!-- فیلترهای بازه زمانی برای بسته‌بندی و ارسال -->
-            <div class="row g-3 align-items-end mt-3 pt-3 border-top">
-                <div class="col-md-3 col-sm-6">
-                    <label class="form-label small text-muted">بسته‌بندی از</label>
-                    <input type="text" name="pack_date_from" class="form-control form-control-glass persian-date" placeholder="اختیاری" value="{{ pack_date_from|default:'' }}" autocomplete="off">
+
+            <!-- ردیف دکمه‌ها + دکمه انتخاب ستون‌ها -->
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-1">
+                <div class="filter-actions">
+                    <button type="submit" class="btn btn-primary px-4"><i class="bi bi-funnel me-1"></i> فیلتر</button>
+                    <a href="?" class="btn btn-outline-secondary px-4"><i class="bi bi-x-circle me-1"></i> حذف فیلتر</a>
                 </div>
-                <div class="col-md-3 col-sm-6">
-                    <label class="form-label small text-muted">بسته‌بندی تا</label>
-                    <input type="text" name="pack_date_to" class="form-control form-control-glass persian-date" placeholder="اختیاری" value="{{ pack_date_to|default:'' }}" autocomplete="off">
-                </div>
-                <div class="col-md-3 col-sm-6">
-                    <label class="form-label small text-muted">ارسال از</label>
-                    <input type="text" name="ship_date_from" class="form-control form-control-glass persian-date" placeholder="اختیاری" value="{{ ship_date_from|default:'' }}" autocomplete="off">
-                </div>
-                <div class="col-md-3 col-sm-6">
-                    <label class="form-label small text-muted">ارسال تا</label>
-                    <input type="text" name="ship_date_to" class="form-control form-control-glass persian-date" placeholder="اختیاری" value="{{ ship_date_to|default:'' }}" autocomplete="off">
+                <div class="dropdown">
+                    <button class="btn btn-sm btn-glass dropdown-toggle" type="button" id="stageToggleDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="bi bi-layout-three-columns me-1"></i> نمایش ستون‌ها
+                    </button>
+                    <ul class="dropdown-menu p-2" aria-labelledby="stageToggleDropdown" style="max-height: 300px; overflow-y: auto;">
+                        {% for code, name in station_choices %}
+                        <li class="dropdown-item stage-toggle-item">
+                            <label>
+                                <input type="checkbox" class="stage-toggle" data-stage="{{ code }}" checked> {{ name }}
+                            </label>
+                        </li>
+                        {% endfor %}
+                    </ul>
                 </div>
             </div>
         </form>
-        <!-- دکمه انتخاب مراحل نمایشی -->
-        <div class="mt-3">
-            <div class="dropdown">
-                <button class="btn btn-sm btn-glass dropdown-toggle" type="button" id="stageToggleDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-                    <i class="bi bi-layout-three-columns me-1"></i> انتخاب          
-                </button>
-                <ul class="dropdown-menu p-2" aria-labelledby="stageToggleDropdown" style="max-height: 300px; overflow-y: auto;">
-                    {% for code, name in station_choices %}
-                    <li class="dropdown-item stage-toggle-item">
-                        <label>
-                            <input type="checkbox" class="stage-toggle" data-stage="{{ code }}" checked> {{ name }}
-                        </label>
-                    </li>
-                    {% endfor %}
-                </ul>
-            </div>
-        </div>
     </div>
 
     <!-- جدول گزارش -->
@@ -288,11 +329,13 @@
                         {% endif %}
                     {% endfor %}
 
-                    <!-- بسته‌بندی (تعداد + تاریخ در صورت تکمیل) -->
                     <td class="text-center stage-col stage-col-packaging">
                         {% with date=row.stage_status|get_item:'packaging' %}
                             {% if row.total_units > 0 %}
                                 <div class="fw-semibold small">{{ row.packed_units }} / {{ row.total_units }}</div>
+                                {% if row.in_stock_units %}
+                                    <div class="small text-muted mt-1">{{ row.in_stock_units }} در انبار</div>
+                                {% endif %}
                                 {% if date %}
                                     <span class="stage-badge bg-success bg-opacity-10 text-success mt-1">{{ date }}</span>
                                 {% else %}
@@ -304,7 +347,6 @@
                         {% endwith %}
                     </td>
 
-                    <!-- ارسال (تعداد + تاریخ در صورت تکمیل) -->
                     <td class="text-center stage-col stage-col-shipping">
                         {% with date=row.stage_status|get_item:'shipping' %}
                             {% if row.total_units > 0 %}
@@ -332,7 +374,7 @@
     </div>
     {% endif %}
 
-    <!-- Pagination -->
+    <!-- صفحه‌بندی -->
     {% if page_obj and page_obj.has_other_pages %}
     <nav class="mt-4">
         <ul class="pagination justify-content-center">
@@ -363,12 +405,13 @@
     </nav>
     {% endif %}
 </div>
+{% endblock %}
 
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/persian-datepicker@1.2.0/dist/js/persian-datepicker.min.js"></script>
 <script>
 (function() {
-    // ===== بارگذاری محصولات =====
+    // ===== بارگذاری محصولات وابسته به دسته =====
     const categorySelect = document.getElementById('id_category');
     const productSelect = document.getElementById('id_product');
     const initialProduct = "{{ selected_product|default:'' }}";
@@ -394,35 +437,14 @@
                 console.error('خطا در بارگذاری محصولات:', error);
             }
         }
-
         categorySelect.addEventListener('change', function() {
             loadProducts(this.value);
         });
-
         if (categorySelect.value) loadProducts(categorySelect.value);
     }
 
-    // ===== مدیریت نمایش/مخفی مراحل =====
-    const toggles = document.querySelectorAll('.stage-toggle');
-    function updateStageVisibility() {
-        toggles.forEach(cb => {
-            const code = cb.dataset.stage;
-            const els = document.querySelectorAll('.stage-col-' + code);
-            els.forEach(el => {
-                el.style.display = cb.checked ? '' : 'none';
-            });
-        });
-    }
-    toggles.forEach(cb => {
-        cb.addEventListener('change', updateStageVisibility);
-        cb.closest('.dropdown-item').addEventListener('click', function(e) {
-            e.stopPropagation();
-        });
-    });
-    updateStageVisibility();
-
-    // ===== تاریخ شمسی - بعد از لود کامل DOM =====
-    document.addEventListener('DOMContentLoaded', function() {
+    // ===== تقویم شمسی برای بازه تاریخ =====
+    $(document).ready(function() {
         document.querySelectorAll('.persian-date').forEach(function(input) {
             new PersianDatepicker(input, {
                 format: 'YYYY/MM/DD',
@@ -436,6 +458,57 @@
             });
         });
     });
+
+    // ===== نمایش/مخفی کردن ستون‌ها با ماندگاری در localStorage =====
+    const STORAGE_KEY = 'stagesReportVisibleColumns';
+    const toggles = document.querySelectorAll('.stage-toggle');
+
+    function loadSavedColumns() {
+        try {
+            const raw = localStorage.getItem(STORAGE_KEY);
+            return raw ? JSON.parse(raw) : null;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function saveColumns() {
+        const hidden = [];
+        toggles.forEach(cb => {
+            if (!cb.checked) hidden.push(cb.dataset.stage);
+        });
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(hidden)); } catch (e) {}
+    }
+
+    function updateStageVisibility() {
+        toggles.forEach(cb => {
+            const code = cb.dataset.stage;
+            const els = document.querySelectorAll('.stage-col-' + code);
+            els.forEach(el => {
+                el.style.display = cb.checked ? '' : 'none';
+            });
+        });
+    }
+
+    // اعمال وضعیت ذخیره‌شده قبل از هر چیز
+    const hiddenColumns = loadSavedColumns();
+    if (hiddenColumns) {
+        toggles.forEach(cb => {
+            if (hiddenColumns.includes(cb.dataset.stage)) cb.checked = false;
+        });
+    }
+
+    toggles.forEach(cb => {
+        cb.addEventListener('change', function() {
+            updateStageVisibility();
+            saveColumns();
+        });
+        cb.closest('.dropdown-item').addEventListener('click', function(e) {
+            e.stopPropagation();
+        });
+    });
+
+    updateStageVisibility();
 })();
 </script>
 {% endblock %}
