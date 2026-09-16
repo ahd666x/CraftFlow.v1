@@ -2553,13 +2553,18 @@ def report_material_consumption(request):
 
     rows = {}
 
-    def _row_key(item, process):
-        return (item.product_id, process.id if process else None)
+    def _row_key(item, process, packaging_unit=None):
+        return (item.product_id, process.id if process else None, packaging_unit.id if packaging_unit else None)
 
-    def _get_row(item, process):
-        key = _row_key(item, process)
+    def _get_row(item, process, packaging_unit=None):
+        key = _row_key(item, process, packaging_unit)
         return rows.setdefault(key, {
-            'product': item.product, 'process': process,
+            'product': item.product,
+            'product_category': item.product.category if item.product.category else None,
+            'order': item.order,
+            'order_item': item,
+            'packaging_unit': packaging_unit,
+            'process': process,
             'materials': {}, 'defect_count': 0, 'defect_materials': {},
         })
 
@@ -2656,7 +2661,7 @@ def report_material_consumption(request):
             if rokeshi_filter == 'poshshi' and is_rok:
                 continue
 
-        row = _get_row(item, process)
+        row = _get_row(item, process, d.packaging_unit)
         row['defect_count'] += d.quantity
         for issue in d.material_issues.all():
             if issue.issued_quantity <= 0:
@@ -2666,7 +2671,14 @@ def report_material_consumption(request):
             )
             dm['qty'] += issue.issued_quantity
 
-    report_rows = sorted(rows.values(), key=lambda r: (r['product'].name, r['process'].name if r['process'] else ''))
+    report_rows = sorted(rows.values(), key=lambda r: (
+        r['product_category'].name if r['product_category'] else '',
+        r['product'].name,
+        r['order'].number if r['order'] else '',
+        r['order_item'].id if r['order_item'] else 0,
+        r['packaging_unit'].unit_number if r['packaging_unit'] else 0,
+        r['process'].name if r['process'] else ''
+    ))
 
     material_totals = {}
     for row in report_rows:
@@ -3342,11 +3354,23 @@ def scan_packaging_unit(request, pk):
                 related_task = ProductionTask.objects.filter(
                     order_item=item, station_name='paint', color_part=color_part
                 ).order_by('-step_order').first()
-                ProductionDefect.objects.create(
-                    task=related_task, order=item.order, order_item=item,
-                    packaging_unit=unit, color_part=color_part, quantity=1,
-                    description=description, reported_by=request.user,
-                )
+                with transaction.atomic():
+                    existing = ProductionDefect.objects.filter(
+                        packaging_unit=unit,
+                        color_part=color_part,
+                        status__in=['reported', 'material_requested', 'rework_issued'],
+                    ).select_for_update().first()
+                    if existing:
+                        messages.warning(
+                            request,
+                            f'برای این بخش قبلاً خرابی ثبت شده است (#{existing.id}).'
+                        )
+                        return redirect('item_detail', pk=item.id)
+                    ProductionDefect.objects.create(
+                        task=related_task, order=item.order, order_item=item,
+                        packaging_unit=unit, color_part=color_part, quantity=1,
+                        description=description, reported_by=request.user,
+                    )
                 messages.success(request, f'خرابی برای بخش «{label_map.get(color_part, color_part)}» ثبت شد.')
                 return redirect('item_detail', pk=item.id)
 

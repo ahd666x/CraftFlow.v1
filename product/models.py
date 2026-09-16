@@ -347,9 +347,11 @@ class OrderItem(models.Model):
                 unit.qr_code.save(filename, ContentFile(buffer.getvalue()), save=True)
 
         elif target_count < current_count:
-            # حذف واحدهای اضافی (آخرین‌ها)
-            extra_units = self.packaging_units.order_by('-unit_number')[:current_count - target_count]
-            extra_units.delete()
+            extra_ids = list(
+                self.packaging_units.order_by('-unit_number')
+                .values_list('id', flat=True)[:current_count - target_count]
+            )
+            PackagingUnit.objects.filter(id__in=extra_ids).delete()
 
 
 

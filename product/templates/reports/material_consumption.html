@@ -114,14 +114,14 @@
                         {% endfor %}
                     </select>
                 </div>
-                <div class="col-md-3 col-sm-6">
+                {% comment %} <div class="col-md-3 col-sm-6">
                     <label class="form-label small text-muted">نوع رنگ</label>
                     <select name="rokeshi" class="form-select form-select-glass">
                         <option value="">همه (روکشی + پوششی)</option>
                         <option value="rokeshi" {% if rokeshi_filter == 'rokeshi' %}selected{% endif %}>روکشی</option>
                         <option value="poshshi" {% if rokeshi_filter == 'poshshi' %}selected{% endif %}>پوششی</option>
                     </select>
-                </div>
+                </div> {% endcomment %}
             </div>
             <div class="row g-3 align-items-end mt-2">
                 <div class="col-md-4 col-sm-12 d-flex align-items-end gap-2">
@@ -138,7 +138,11 @@
         <table class="table table-report align-middle mb-0">
             <thead>
                 <tr>
+                    <th>دسته‌بندی محصول</th>
                     <th>محصول</th>
+                    <th class="hide-mobile">شماره سفارش</th>
+                    <th class="hide-mobile">آیتم سفارش</th>
+                    <th class="hide-mobile">واحد بسته‌بندی</th>
                     <th class="hide-mobile">روند نقاشی</th>
                     <th style="min-width: 280px;">مواد مصرفی (موجود:مقدار)</th>
                     <th class="text-center" style="width: 120px;">تعداد خرابی</th>
@@ -148,7 +152,11 @@
             <tbody>
                 {% for row in report_rows %}
                 <tr>
+                    <td class="fw-semibold text-muted small">{{ row.product_category.name|default:"—" }}</td>
                     <td class="fw-semibold">{{ row.product.name }}</td>
+                    <td class="hide-mobile small">{{ row.order.number|default:"—" }}</td>
+                    <td class="hide-mobile small">{{ row.order_item.id|default:"—" }}</td>
+                    <td class="hide-mobile small">{{ row.packaging_unit.unit_number|default:"—" }}</td>
                     <td class="hide-mobile">
                         {% if row.process %}
                         <span class="badge bg-info text-dark">{{ row.process.name }}</span>

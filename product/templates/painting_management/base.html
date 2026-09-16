@@ -15,18 +15,18 @@
     <a href="{% url 'dashboard' %}" class="brand-link">سلوی چوب</a>
 
     <nav class="nav-links">
-        <a href="{% url 'painting_dashboard' %}" class="nav-link {% if request.resolver_match.url_name == 'painting_dashboard' %}active{% endif %}">
+        {% comment %} <a href="{% url 'painting_dashboard' %}" class="nav-link {% if request.resolver_match.url_name == 'painting_dashboard' %}active{% endif %}">
             <i class="bi bi-speedometer2"></i> داشبورد نقاشی
-        </a>
+        </a> {% endcomment %}
         <a href="{% url 'painting_ready_list' %}" class="nav-link {% if request.resolver_match.url_name == 'painting_ready_list' %}active{% endif %}">
             <i class="bi bi-clipboard-check"></i> آماده نقاشی
         </a>
         <a href="{% url 'painting_schedule' %}" class="nav-link {% if request.resolver_match.url_name == 'painting_schedule' %}active{% endif %}">
             <i class="bi bi-calendar-week"></i> برنامه روزانه
         </a>
-        <a href="{% url 'product_defects' %}" class="nav-link {% if request.resolver_match.url_name == 'product_defects' %}active{% endif %}">
+        {% comment %} <a href="{% url 'product_defects' %}" class="nav-link {% if request.resolver_match.url_name == 'product_defects' %}active{% endif %}">
             <i class="bi bi-exclamation-octagon"></i> خرابی‌ها
-        </a>
+        </a> {% endcomment %}
         <a href="{% url 'painting_processes' %}" class="nav-link {% if request.resolver_match.url_name == 'painting_processes' %}active{% endif %}">
             <i class="bi bi-diagram-3"></i> روندها
         </a>

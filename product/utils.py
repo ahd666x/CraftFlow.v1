@@ -203,22 +203,6 @@ def get_painting_material_requirements_for_item_colorpart(order_item, color_part
 
     return process, requirements
 
-    variant_map = {
-        variant.process_material.raw_material_id: variant.raw_material
-        for variant in PaintingColorMaterialVariant.objects.filter(
-            process_material__process_id=process_id,
-            process_material__is_color_variant=True,
-            color_code=actual_code,
-        ).select_related('raw_material', 'process_material')
-    }
-
-    for requirement in requirements:
-        real_material = variant_map.get(requirement.raw_material_id)
-        if real_material:
-            requirement.raw_material = real_material
-
-    return requirements
-
 
 def consume_material_for_paint_task(task):
     """
