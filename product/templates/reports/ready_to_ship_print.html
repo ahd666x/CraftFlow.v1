@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+{% load product_filters %}
 <html lang="fa" dir="rtl">
 <head>
     <meta charset="UTF-8">
@@ -16,11 +17,11 @@
     <div class="header">
         <h2>صنایع چوبی سلوی</h2>
         <h4>لیست آماده بارگیری — نماینده: {{ representative_name }}</h4>
-        <div>تاریخ: {{ today|date:"Y/m/d" }}</div>
+        <div>تاریخ: {{ today|persian_date }}</div>
     </div>
     <table>
         <thead>
-            <tr><th>ردیف</th><th>سفارش</th><th>محصول</th><th>مشتری</th><th>رنگ</th><th>شماره واحد</th></tr>
+            <tr><th>ردیف</th><th>سفارش</th><th>محصول</th><th>مشتری</th><th>رنگ</th></tr>
         </thead>
         <tbody>
             {% for unit in units %}
@@ -30,10 +31,9 @@
                 <td>{{ unit.order_item.product.category.name }} {{ unit.order_item.product.name }}</td>
                 <td>{{ unit.order_item.order.customer.name }}</td>
                 <td>{{ unit.order_item.color_summary }}</td>
-                <td>{{ unit.unit_number }}</td>
             </tr>
             {% empty %}
-            <tr><td colspan="6">موردی وجود ندارد.</td></tr>
+            <tr><td colspan="5">موردی وجود ندارد.</td></tr>
             {% endfor %}
         </tbody>
     </table>

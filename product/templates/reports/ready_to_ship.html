@@ -1,8 +1,9 @@
 {% extends 'base.html' %}
+{% load product_filters %}
 {% block content %}
 <div class="container-fluid py-4">
     <div class="d-flex justify-content-between align-items-center mb-3">
-        <h3>📋 آماده بارگیری (بسته‌بندی‌شده، ارسال‌نشده)</h3>
+        <h3> آماده بارگیری</h3>
         <a href="{% url 'report_shipped' %}" class="btn btn-outline-secondary">گزارش ارسال‌شده‌ها</a>
     </div>
 
@@ -28,7 +29,7 @@
     <table class="table table-bordered table-hover">
         <thead class="table-light">
             <tr>
-                <th>نماینده</th><th>سفارش</th><th>محصول</th><th>مشتری</th><th>رنگ</th><th>شماره واحد</th><th>تاریخ بسته‌بندی</th>
+                <th>نماینده</th><th>سفارش</th><th>محصول</th><th>مشتری</th><th>رنگ</th><th>تاریخ بسته‌بندی</th>
             </tr>
         </thead>
         <tbody>
@@ -39,11 +40,10 @@
                 <td>{{ unit.order_item.product.category.name }} {{ unit.order_item.product.name }}</td>
                 <td>{{ unit.order_item.order.customer.name }}</td>
                 <td>{{ unit.order_item.color_summary }}</td>
-                <td>{{ unit.unit_number }}</td>
-                <td>{{ unit.packed_at|date:"Y/m/d H:i" }}</td>
+                <td>{{ unit.packed_at|persian_date }}</td>
             </tr>
             {% empty %}
-            <tr><td colspan="7" class="text-center text-muted py-4">موردی برای بارگیری وجود ندارد.</td></tr>
+            <tr><td colspan="6" class="text-center text-muted py-4">موردی برای بارگیری وجود ندارد.</td></tr>
             {% endfor %}
         </tbody>
     </table>

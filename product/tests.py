@@ -3,7 +3,9 @@ from django.contrib.auth.models import Group, User
 from django.urls import reverse
 from django.db import transaction
 from decimal import Decimal
+from datetime import datetime, time
 from unittest.mock import patch
+from django.utils import timezone
 import json
 import jdatetime
 
@@ -718,6 +720,10 @@ class MaterialIssueStockMovementLinkTests(TestCase):
         self.assertEqual(len(rows), 1)
         self.assertNotIn(self.rework_raw.id, rows[0]['materials'])
         self.assertIn(self.rework_raw.id, rows[0]['defect_materials'])
+        defect_totals = response.context['defect_material_totals']
+        self.assertEqual(len(defect_totals), 1)
+        self.assertEqual(defect_totals[0]['raw_material'], self.rework_raw)
+        self.assertEqual(defect_totals[0]['qty'], Decimal('2'))
 
     def test_production_movement_still_included_in_report(self):
         movement = StockMovement.objects.create(
@@ -736,6 +742,27 @@ class MaterialIssueStockMovementLinkTests(TestCase):
         self.assertEqual(len(rows), 1)
         self.assertIn(self.production_raw.id, rows[0]['materials'])
         self.assertEqual(rows[0]['materials'][self.production_raw.id]['qty'], Decimal('4'))
+
+    def test_report_date_filters_accept_persian_dates(self):
+        movement = StockMovement.objects.create(
+            raw_material=self.production_raw,
+            movement_type='consumption',
+            quantity=Decimal('3'),
+            reference_task=self.task,
+        )
+        movement_date = jdatetime.date(1402, 10, 12).togregorian()
+        StockMovement.objects.filter(pk=movement.pk).update(
+            created_at=timezone.make_aware(datetime.combine(movement_date, time(12)))
+        )
+
+        response = self.client.get(reverse('report_material_consumption'), {
+            'date_from': '1402/10/12',
+            'date_to': '1402/10/12',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.context['report_rows']), 1)
+        self.assertIn(self.production_raw.id, response.context['report_rows'][0]['materials'])
 
     def test_backfill_command_links_unambiguous_old_movement(self):
         from django.core.management import call_command
@@ -1399,3 +1426,42 @@ class ReportStagesNPlusOneTests(TestCase):
             {items[2].id},
         )
         self.assertEqual(response.context['report_data'][0]['in_stock_units'], 1)
+
+    def test_packed_filter_returns_items_with_any_packed_unit(self):
+        items = self._seed(2)
+        unpacked = items[0].packaging_units.first()
+        unpacked.is_packed = False
+        unpacked.save(update_fields=['is_packed'])
+
+        response = self.client.get(
+            reverse('report_stages'), {'packaging_status': 'packed'}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            {row['item'].id for row in response.context['report_data']},
+            {items[1].id},
+        )
+
+    def test_representative_falls_back_to_username_when_full_name_is_empty(self):
+        representative = User.objects.create_user(
+            'representative-user', password='pass'
+        )
+        order = Order.objects.create(
+            user=representative,
+            customer=self.customer,
+            number='S-REPRESENTATIVE',
+        )
+        item = OrderItem.objects.create(
+            order=order, product=self.product, quantity=1
+        )
+
+        response = self.client.get(
+            reverse('report_stages'), {'q': str(order.id)}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.context['report_data'][0]['representative'],
+            'representative-user',
+        )

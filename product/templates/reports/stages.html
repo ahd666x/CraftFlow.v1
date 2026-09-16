@@ -50,7 +50,7 @@
     }
     .filter-row {
         display: grid;
-        grid-template-columns: repeat(6, 1fr);
+        grid-template-columns: repeat(7, 1fr);
         gap: 0.9rem;
         margin-bottom: 0.9rem;
     }
@@ -147,6 +147,65 @@
         .summary-card { padding: 0.8rem 0.5rem; }
         .summary-icon { width: 36px; height: 36px; font-size: 1.2rem; }
     }
+
+    /* ============== مینی تقویم شمسی ============== */
+    .mini-jdp-popup {
+        display: none;
+        position: absolute;
+        z-index: 3000;
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.12);
+        padding: 0.7rem;
+        width: 260px;
+        font-size: 0.85rem;
+        direction: rtl;
+    }
+    .mini-jdp-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.5rem;
+        font-weight: 600;
+    }
+    .mini-jdp-nav {
+        border: none;
+        background: #f1f5f9;
+        border-radius: 8px;
+        width: 28px;
+        height: 28px;
+        font-size: 1rem;
+        cursor: pointer;
+    }
+    .mini-jdp-nav:hover { background: #e2e8f0; }
+    .mini-jdp-weekdays, .mini-jdp-days {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 2px;
+        text-align: center;
+    }
+    .mini-jdp-weekdays span { color: #94a3b8; font-size: 0.72rem; padding: 2px 0; }
+    .mini-jdp-day {
+        border: none;
+        background: transparent;
+        border-radius: 6px;
+        padding: 5px 0;
+        cursor: pointer;
+        font-size: 0.8rem;
+    }
+    .mini-jdp-day:hover { background: #eff6ff; color: #2563eb; }
+    .mini-jdp-today-cell { border: 1px solid #2563eb; font-weight: 700; }
+    .mini-jdp-footer { text-align: center; margin-top: 0.5rem; }
+    .mini-jdp-today {
+        border: none;
+        background: #2563eb;
+        color: #fff;
+        border-radius: 8px;
+        padding: 4px 14px;
+        font-size: 0.75rem;
+        cursor: pointer;
+    }
 </style>
 {% endblock %}
 
@@ -154,9 +213,7 @@
 <div class="container-fluid py-4">
     <!-- هدر -->
     <div class="d-flex align-items-center mb-4">
-        <div class="bg-white p-3 rounded-3 shadow-sm me-3">
-            <i class="bi bi-bar-chart-line fs-3 text-primary"></i>
-        </div>
+
         <div>
             <h4 class="mb-0 fw-bold">گزارش تولید</h4>
         </div>
@@ -171,12 +228,12 @@
             <div class="filter-row row-search">
                 <div class="filter-group">
                     <label>جستجو</label>
-                    <input type="text" name="q" class="form-control" placeholder="شماره سفارش، نماینده، محصول..." value="{{ search_query|default:'' }}">
+                    <input type="text" name="q" class="form-control"  value="{{ search_query|default:'' }}">
                 </div>
                 <div class="filter-group">
                     <label>نماینده</label>
                     <select name="representative" class="form-select">
-                        <option value="">همه</option>
+                        <option value=""></option>
                         {% for rep in representatives %}
                             <option value="{{ rep.id }}" {% if selected_representative == rep.id|stringformat:"s" %}selected{% endif %}>{{ rep.get_full_name|default:rep.username }}</option>
                         {% endfor %}
@@ -185,7 +242,7 @@
                 <div class="filter-group">
                     <label>دسته</label>
                     <select name="category" class="form-select" id="id_category">
-                        <option value="">همه</option>
+                        <option value=""></option>
                         {% for cat in categories %}
                             <option value="{{ cat.id }}" {% if selected_category == cat.id|stringformat:"s" %}selected{% endif %}>{{ cat.name }}</option>
                         {% endfor %}
@@ -194,7 +251,7 @@
                 <div class="filter-group">
                     <label>محصول</label>
                     <select name="product" class="form-select" id="id_product">
-                        <option value="">همه</option>
+                        <option value=""></option>
                         {% for prod in products %}
                             <option value="{{ prod.id }}" {% if selected_product == prod.id|stringformat:"s" %}selected{% endif %}>{{ prod.name }}</option>
                         {% endfor %}
@@ -205,17 +262,26 @@
             <!-- ردیف ۲: بازه تاریخ + مرحله انجام‌نشده/انجام‌شده + وضعیت بسته‌بندی + وضعیت ارسال -->
             <div class="filter-row">
                 <div class="filter-group">
+                    <label>هدف فیلتر تاریخ</label>
+                    <select name="date_target" class="form-select">
+                        <option value="order" {% if date_target == 'order' %}selected{% endif %}>سفارش</option>
+                        <option value="pack" {% if date_target == 'pack' %}selected{% endif %}>بسته‌بندی</option>
+                        <option value="ship" {% if date_target == 'ship' %}selected{% endif %}>ارسال</option>
+                    </select>
+                </div>
+                <div class="filter-group">
                     <label>از تاریخ</label>
-                    <input type="text" name="date_from" id="date_from" class="form-control mini-jalali-datepicker" placeholder="۱۴۰۳-۰۱-۰۱" autocomplete="off" value="{{ date_from|default:'' }}">
+                    <input type="text" name="date_from" id="date_from" class="form-control mini-jalali-datepicker" autocomplete="off" value="{{ date_from|default:'' }}">
                 </div>
                 <div class="filter-group">
                     <label>تا تاریخ</label>
-                    <input type="text" name="date_to" id="date_to" class="form-control mini-jalali-datepicker" placeholder="۱۴۰۳-۱۲-۲۹" autocomplete="off" value="{{ date_to|default:'' }}">
+                    <input type="text" name="date_to" id="date_to" class="form-control mini-jalali-datepicker"  autocomplete="off" value="{{ date_to|default:'' }}">
                 </div>
+
                 <div class="filter-group">
                     <label>مرحله انجام‌نشده</label>
                     <select name="stage_pending" class="form-select">
-                        <option value="">— انتخاب —</option>
+                        <option value=""></option>
                         {% for code, name in station_choices %}
                             {% if code != 'packaging' and code != 'shipping' %}
                                 <option value="{{ code }}" {% if stage_pending == code %}selected{% endif %}>{{ name }}</option>
@@ -226,7 +292,7 @@
                 <div class="filter-group">
                     <label>مرحله انجام‌شده</label>
                     <select name="stage_done" class="form-select">
-                        <option value="">— انتخاب —</option>
+                        <option value=""></option>
                         {% for code, name in station_choices %}
                             {% if code != 'packaging' and code != 'shipping' %}
                                 <option value="{{ code }}" {% if stage_done == code %}selected{% endif %}>{{ name }}</option>
@@ -238,11 +304,12 @@
                     <label>وضعیت بسته‌بندی</label>
                     <div class="d-flex gap-1">
                         <select name="packaging_status" class="form-select">
-                            <option value="">همه</option>
+                            <option value=""></option>
                             <option value="done" {% if packaging_status == 'done' %}selected{% endif %}>کامل شده</option>
+                            <option value="packed" {% if packaging_status == 'packed' %}selected{% endif %}>بسته‌بندی شده</option>
                             <option value="pending" {% if packaging_status == 'pending' %}selected{% endif %}>ناقص</option>
+                            <option value="in_stock" {% if packaging_status == 'in_stock' %}selected{% endif %}>در انبار (بسته‌بندی شده ولی ارسال نشده)</option>
                             <option value="none" {% if packaging_status == 'none' %}selected{% endif %}>بسته‌بندی نشده</option>
-                            <option value="in_stock" {% if packaging_status == 'in_stock' %}selected{% endif %}>بسته‌بندی شده (موجود در انبار)</option>
                         </select>
                         <a href="{% url 'report_ready_to_ship' %}" class="inventory-quicklink" title="لیست کامل محصولات بسته‌بندی‌شدهٔ آمادهٔ بارگیری" target="_blank">
                             <i class="bi bi-box-seam"></i>
@@ -252,7 +319,7 @@
                 <div class="filter-group">
                     <label>وضعیت ارسال</label>
                     <select name="shipping_status" class="form-select">
-                        <option value="">همه</option>
+                        <option value=""></option>
                         <option value="done" {% if shipping_status == 'done' %}selected{% endif %}>کامل شده</option>
                         <option value="pending" {% if shipping_status == 'pending' %}selected{% endif %}>ناقص</option>
                         <option value="none" {% if shipping_status == 'none' %}selected{% endif %}>ارسال نشده</option>
@@ -408,7 +475,6 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="https://cdn.jsdelivr.net/npm/persian-datepicker@1.2.0/dist/js/persian-datepicker.min.js"></script>
 <script>
 (function() {
     // ===== بارگذاری محصولات وابسته به دسته =====
@@ -419,13 +485,13 @@
     if (categorySelect && productSelect) {
         async function loadProducts(categoryId) {
             if (!categoryId) {
-                productSelect.innerHTML = '<option value="">همه</option>';
+                productSelect.innerHTML = '<option value=""></option>';
                 return;
             }
             try {
                 const response = await fetch(`/ajax/load-products/?category=${categoryId}`);
                 const data = await response.json();
-                productSelect.innerHTML = '<option value="">همه</option>';
+                productSelect.innerHTML = '<option value=""></option>';
                 data.forEach(product => {
                     const option = document.createElement('option');
                     option.value = product.id;
@@ -443,19 +509,205 @@
         if (categorySelect.value) loadProducts(categorySelect.value);
     }
 
-    // ===== تقویم شمسی برای بازه تاریخ =====
-    $(document).ready(function() {
-        document.querySelectorAll('.persian-date').forEach(function(input) {
-            new PersianDatepicker(input, {
-                format: 'YYYY/MM/DD',
-                autoClose: true,
-                initialValueType: 'persian',
-                calendar: {
-                    persian: {
-                        locale: 'fa'
-                    }
-                }
+    // ===== تقویم شمسی سبک و مستقل (بدون وابستگی به PersianDatepicker یا کتابخانهٔ خارجی) =====
+    function div(a, b) { return ~~(a / b); }
+    function jalCal(jy) {
+        var breaks = [-61,9,38,199,426,686,756,818,1111,1181,1210,1635,2060,2097,2192,2262,2324,2394,2456,3178];
+        var bl = breaks.length, jp = breaks[0], jump, leapJ = -14, jm, N, leap, gy;
+        if (jy < jp || jy >= breaks[bl - 1]) return null;
+        for (var i = 1; i < bl; i += 1) {
+            jm = breaks[i];
+            jump = jm - jp;
+            if (jy < jm) break;
+            leapJ += div(jump, 33) * 8 + div((jump % 33), 4);
+            jp = jm;
+        }
+        N = jy - jp;
+        leapJ += div(N, 33) * 8 + div(((N % 33) + 3), 4);
+        if ((jump % 33) === 4 && (jump - N) === 4) leapJ += 1;
+        gy = jy + 621;
+        var leapG = div(gy, 4) - div((div(gy, 100) + 1) * 3, 4) - 150;
+        var march = 20 + leapJ - leapG;
+        if ((jump - N) < 6) N = N - jump + div((jump + 4), 33) * 33;
+        leap = ((((N + 1) % 33) - 1) % 4);
+        if (leap === -1) leap = 4;
+        return { leap: leap, gy: gy, march: march };
+    }
+    function j2d(jy, jm, jd) {
+        var r = jalCal(jy);
+        return g2d(r.gy, 3, r.march) + (jm - 1) * 31 - div(jm, 7) * (jm - 7) + jd - 1;
+    }
+    function g2d(gy, gm, gd) {
+        var d = div((gy + div(gm - 8, 6) + 100100) * 1461, 4)
+            + div(153 * ((gm + 9) % 12) + 2, 5)
+            + gd - 34840408;
+        d = d - div(div(gy + 100100 + div(gm - 8, 6), 100) * 3, 4) + 752;
+        return d;
+    }
+    function d2g(jdn) {
+        var j, i, gd, gm, gy;
+        j = 4 * jdn + 139361631;
+        j = j + div(div(4 * jdn + 183187720, 146097) * 3, 4) * 4 - 3908;
+        i = div((j % 1461), 4) * 5 + 308;
+        gd = div((i % 153), 5) + 1;
+        gm = (div(i, 153) % 12) + 1;
+        gy = div(j, 1461) - 100100 + div(8 - gm, 6);
+        return { gy: gy, gm: gm, gd: gd };
+    }
+    function d2j(jdn) {
+        var gy = d2g(jdn).gy, jy = gy - 621, r = jalCal(jy), jdn1f = g2d(gy, 3, r.march);
+        var jd, jm, k;
+        k = jdn - jdn1f;
+        if (k >= 0) {
+            if (k <= 185) {
+                jm = 1 + div(k, 31);
+                jd = (k % 31) + 1;
+                return { jy: jy, jm: jm, jd: jd };
+            } else { k -= 186; }
+        } else {
+            jy -= 1;
+            k += 179;
+            if (r.leap === 1) k += 1;
+        }
+        jm = 7 + div(k, 30);
+        jd = (k % 30) + 1;
+        return { jy: jy, jm: jm, jd: jd };
+    }
+    function toJalali(gy, gm, gd) { return d2j(g2d(gy, gm, gd)); }
+    function toGregorian(jy, jm, jd) {
+        var jdn = j2d(jy, jm, jd);
+        return d2g(jdn);
+    }
+    function jalMonthLength(jy, jm) {
+        if (jm <= 6) return 31;
+        if (jm <= 11) return 30;
+        return jalCal(jy).leap === 0 ? 30 : 29;
+    }
+
+    var MONTH_NAMES = ['فروردین','اردیبهشت','خرداد','تیر','مرداد','شهریور','مهر','آبان','آذر','دی','بهمن','اسفند'];
+    var WEEK_DAYS = ['ش','ی','د','س','چ','پ','ج'];
+
+    var activeInput = null, popupEl = null, viewYear, viewMonth;
+
+    function todayJalali() {
+        var t = new Date();
+        return toJalali(t.getFullYear(), t.getMonth() + 1, t.getDate());
+    }
+
+    function buildPopup() {
+        if (popupEl) return popupEl;
+        popupEl = document.createElement('div');
+        popupEl.className = 'mini-jdp-popup';
+        popupEl.innerHTML =
+            '<div class="mini-jdp-header">' +
+                '<button type="button" class="mini-jdp-nav" data-dir="-1">&#8250;</button>' +
+                '<span class="mini-jdp-title"></span>' +
+                '<button type="button" class="mini-jdp-nav" data-dir="1">&#8249;</button>' +
+            '</div>' +
+            '<div class="mini-jdp-weekdays"></div>' +
+            '<div class="mini-jdp-days"></div>' +
+            '<div class="mini-jdp-footer"><button type="button" class="mini-jdp-today">امروز</button></div>';
+        document.body.appendChild(popupEl);
+
+        var wd = popupEl.querySelector('.mini-jdp-weekdays');
+        WEEK_DAYS.forEach(function(d) {
+            var s = document.createElement('span');
+            s.textContent = d;
+            wd.appendChild(s);
+        });
+
+        popupEl.querySelectorAll('.mini-jdp-nav').forEach(function(btn) {
+            btn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                var dir = parseInt(this.dataset.dir, 10);
+                viewMonth += dir;
+                if (viewMonth > 12) { viewMonth = 1; viewYear += 1; }
+                if (viewMonth < 1) { viewMonth = 12; viewYear -= 1; }
+                renderDays();
             });
+        });
+
+        popupEl.querySelector('.mini-jdp-today').addEventListener('click', function(e) {
+            e.stopPropagation();
+            var t = todayJalali();
+            selectDate(t.jy, t.jm, t.jd);
+        });
+
+        popupEl.addEventListener('click', function(e) { e.stopPropagation(); });
+        return popupEl;
+    }
+
+    function renderDays() {
+        popupEl.querySelector('.mini-jdp-title').textContent = MONTH_NAMES[viewMonth - 1] + ' ' + viewYear;
+        var daysEl = popupEl.querySelector('.mini-jdp-days');
+        daysEl.innerHTML = '';
+
+        var firstG = toGregorian(viewYear, viewMonth, 1);
+        var firstJs = new Date(firstG.gy, firstG.gm - 1, firstG.gd);
+        var jsWeekday = firstJs.getDay();
+        var startOffset = (jsWeekday + 1) % 7;
+
+        for (var i = 0; i < startOffset; i++) {
+            daysEl.appendChild(document.createElement('span'));
+        }
+        var len = jalMonthLength(viewYear, viewMonth);
+        var t = todayJalali();
+        for (var d = 1; d <= len; d++) {
+            (function(day) {
+                var btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'mini-jdp-day';
+                btn.textContent = day;
+                if (viewYear === t.jy && viewMonth === t.jm && day === t.jd) {
+                    btn.classList.add('mini-jdp-today-cell');
+                }
+                btn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    selectDate(viewYear, viewMonth, day);
+                });
+                daysEl.appendChild(btn);
+            })(d);
+        }
+    }
+
+    function selectDate(jy, jm, jd) {
+        var pad = function(n) { return n < 10 ? '0' + n : '' + n; };
+        activeInput.value = jy + '-' + pad(jm) + '-' + pad(jd);
+        closePopup();
+        activeInput.dispatchEvent(new Event('change'));
+    }
+
+    function openPopup(input) {
+        activeInput = input;
+        buildPopup();
+        var existing = input.value.split('-');
+        var t = todayJalali();
+        if (existing.length === 3 && existing[0]) {
+            viewYear = parseInt(existing[0], 10);
+            viewMonth = parseInt(existing[1], 10);
+        } else {
+            viewYear = t.jy;
+            viewMonth = t.jm;
+        }
+        renderDays();
+        var rect = input.getBoundingClientRect();
+        popupEl.style.display = 'block';
+        popupEl.style.top = (window.scrollY + rect.bottom + 4) + 'px';
+        popupEl.style.left = (window.scrollX + rect.left) + 'px';
+    }
+
+    function closePopup() {
+        if (popupEl) popupEl.style.display = 'none';
+        activeInput = null;
+    }
+
+    document.addEventListener('click', function() { closePopup(); });
+
+    document.querySelectorAll('.mini-jalali-datepicker').forEach(function(input) {
+        input.setAttribute('readonly', 'readonly');
+        input.addEventListener('click', function(e) {
+            e.stopPropagation();
+            openPopup(input);
         });
     });
 

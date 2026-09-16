@@ -2151,15 +2151,28 @@ def report_stages(request):
     if product_id:
         base_items = base_items.filter(product_id=product_id)
 
+    date_target = request.GET.get('date_target', 'order')
     date_from_raw = request.GET.get('date_from', '')
     date_to_raw = request.GET.get('date_to', '')
     date_from = _parse_jalali_or_none(date_from_raw)
     date_to = _parse_jalali_or_none(date_to_raw)
 
+    # Order.created_at is a PersianDateField (handles jdatetime.date natively).
+    # PackagingUnit.packed_at / shipped_at are DateTimeField -- pass Gregorian date.
     if date_from:
-        base_items = base_items.filter(order__created_at__gte=date_from)
+        if date_target == 'pack':
+            base_items = base_items.filter(packaging_units__packed_at__date__gte=date_from.togregorian())
+        elif date_target == 'ship':
+            base_items = base_items.filter(packaging_units__shipped_at__date__gte=date_from.togregorian())
+        else:
+            base_items = base_items.filter(order__created_at__gte=date_from)
     if date_to:
-        base_items = base_items.filter(order__created_at__lte=date_to)
+        if date_target == 'pack':
+            base_items = base_items.filter(packaging_units__packed_at__date__lte=date_to.togregorian())
+        elif date_target == 'ship':
+            base_items = base_items.filter(packaging_units__shipped_at__date__lte=date_to.togregorian())
+        else:
+            base_items = base_items.filter(order__created_at__lte=date_to)
 
     # ---------- summary (based on filtered base_items before stage filters) ----------
     total = base_items.count()
@@ -2218,6 +2231,8 @@ def report_stages(request):
     # Apply packaging filter
     if packaging_status == 'done':
         items = items.filter(total_units__gt=0, packed_count__gte=F('total_units'))
+    elif packaging_status == 'packed':
+        items = items.filter(packed_count__gt=0)
     elif packaging_status == 'pending':
         items = items.filter(total_units__gt=0, packed_count__lt=F('total_units'))
     elif packaging_status == 'none':
@@ -2300,7 +2315,9 @@ def report_stages(request):
             'packed_units': packed_units,
             'shipped_units': shipped_units,
             'in_stock_units': in_stock_units,
-            'representative': item.order.user.get_full_name() if item.order.user else (item.order.user.username if item.order.user else '—'),
+            'representative': (
+                item.order.user.get_full_name() or item.order.user.username
+            ) if item.order.user else '—',
             'category_name': item.product.category.name,
         })
 
@@ -2311,6 +2328,22 @@ def report_stages(request):
         products = Product.objects.filter(category_id=category_id).order_by('name')
     else:
         products = Product.objects.none()
+
+    # ---------- inventory low-stock count (for the quick-link badge) ----------
+    from inventory.models import RawMaterial
+    from django.db.models import Case, When, DecimalField, Sum
+
+    low_stock_count = RawMaterial.objects.filter(is_active=True).annotate(
+        stock=Sum(
+            Case(
+                When(movements__movement_type='consumption', then=-F('movements__quantity')),
+                default=F('movements__quantity'),
+                output_field=DecimalField(),
+            )
+        )
+    ).filter(
+        Q(stock__lte=F('min_stock_alert')) | Q(stock__isnull=True)
+    ).count()
 
     context = {
         'report_data': report_data,
@@ -2330,6 +2363,8 @@ def report_stages(request):
         'stage_done': stage_done,
         'packaging_status': packaging_status or '',
         'shipping_status': shipping_status or '',
+        'date_target': date_target,
+        'low_stock_count': low_stock_count,
     }
     return render(request, 'reports/stages.html', context)
 
@@ -2531,8 +2566,10 @@ def report_material_consumption(request):
     from django.db.models import Q
     from .utils import get_painting_process_for_color
 
-    date_from = request.GET.get('date_from')
-    date_to = request.GET.get('date_to')
+    date_from_raw = request.GET.get('date_from')
+    date_to_raw = request.GET.get('date_to')
+    date_from = _parse_jalali_or_none(date_from_raw)
+    date_to = _parse_jalali_or_none(date_to_raw)
     process_id = request.GET.get('process')
     rokeshi_filter = request.GET.get('rokeshi')
 
@@ -2555,9 +2592,9 @@ def report_material_consumption(request):
     )
 
     if date_from:
-        movements = movements.filter(created_at__date__gte=date_from)
+        movements = movements.filter(created_at__date__gte=date_from.togregorian())
     if date_to:
-        movements = movements.filter(created_at__date__lte=date_to)
+        movements = movements.filter(created_at__date__lte=date_to.togregorian())
     if process_id:
         movements = movements.filter(
             Q(reference_task__painting_stage__process_id=process_id) |
@@ -2639,9 +2676,9 @@ def report_material_consumption(request):
         'order_item__product', 'packaging_unit__order_item__product', 'task__painting_stage__process'
     ).prefetch_related('material_issues__raw_material')
     if date_from:
-        defects = defects.filter(created_at__date__gte=date_from)
+        defects = defects.filter(created_at__date__gte=date_from.togregorian())
     if date_to:
-        defects = defects.filter(created_at__date__lte=date_to)
+        defects = defects.filter(created_at__date__lte=date_to.togregorian())
 
     def _get_defect_process(defect):
         if defect.task and defect.task.painting_stage:
@@ -2706,11 +2743,22 @@ def report_material_consumption(request):
     
     material_totals_list = sorted(material_totals.values(), key=lambda m: m['raw_material'].name)
 
+    defect_material_totals = {}
+    for row in report_rows:
+        for mat in row['defect_materials'].values():
+            rm = mat['raw_material']
+            defect_material_totals.setdefault(rm.id, {'raw_material': rm, 'qty': Decimal('0')})
+            defect_material_totals[rm.id]['qty'] += mat['qty']
+    defect_material_totals_list = sorted(
+        defect_material_totals.values(), key=lambda m: m['raw_material'].name
+    )
+
     context = {
         'report_rows': report_rows,
         'material_totals': material_totals_list,
+        'defect_material_totals': defect_material_totals_list,
         'processes': PaintingProcess.objects.filter(is_active=True).order_by('name'),
-        'date_from': date_from or '', 'date_to': date_to or '',
+        'date_from': date_from_raw or '', 'date_to': date_to_raw or '',
         'selected_process': process_id or '', 'rokeshi_filter': rokeshi_filter or '',
     }
     return render(request, 'reports/material_consumption.html', context)
@@ -4209,7 +4257,7 @@ def report_ready_to_ship(request):
     if request.GET.get('print'):
         return render(request, 'reports/ready_to_ship_print.html', {
             'units': units,
-            'today': jdatetime.date.today(),
+            'today': dt.date.today(),
             'representative_name': representative_name,
         })
 
