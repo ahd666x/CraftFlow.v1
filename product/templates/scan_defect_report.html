@@ -1,13 +1,13 @@
 {% extends 'base.html' %}
 {% block content %}
 <div class="container mt-5">
-  <h3>🔧 ثبت خرابی — سفارش #{{ item.order.id }} / واحد بسته‌بندی #{{ unit.unit_number }}</h3>
+  <h3>🔧 ثبت خرابی — سفارش #{{ item.order.id }} / واحد  #{{ unit.unit_number }}</h3>
   <p><strong>محصول:</strong> {{ item.product.category.name }} {{ item.product.name }}</p>
   <p class="text-muted">بارکد #{{ unit.id }}</p>
   <form method="post">
     {% csrf_token %}
     <div class="mb-3">
-      <label class="form-label">بخش رنگی خراب</label>
+      <label class="form-label">بخش</label>
       <select name="color_part" class="form-select" required>
         <option value="">انتخاب کنید…</option>
         {% for value, label in color_parts %}
@@ -16,14 +16,10 @@
       </select>
     </div>
     <div class="mb-3">
-      <label class="form-label">تعداد خراب</label>
-      <input type="number" name="quantity" class="form-control" min="1" value="1" required>
-    </div>
-    <div class="mb-3">
-      <label class="form-label">شرح خرابی</label>
+      <label class="form-label">توضیحات</label>
       <textarea name="description" class="form-control" rows="3" placeholder="مثلاً: خط‌وخش روی درب هنگام مونتاژ"></textarea>
     </div>
-    <button type="submit" class="btn btn-danger">ثبت خرابی</button>
+    <button type="submit" class="btn btn-danger">ثبت</button>
     <a href="{% url 'item_detail' item.id %}" class="btn btn-outline-secondary">انصراف</a>
   </form>
 </div>

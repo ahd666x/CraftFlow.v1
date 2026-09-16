@@ -105,17 +105,17 @@
             </a>
         </div>
         <div class="col-6 col-md-3">
-            <a href="{% url 'inventory:dashboard' %}" class="quick-link-card">
+            <a href="{% url 'inventory:production_issue_queue' %}" class="quick-link-card">
                 <div class="quick-link-icon"><i class="bi bi-archive"></i></div>
                 <h6 class="fw-bold">انبار</h6>
             </a>
         </div>
-        <div class="col-6 col-md-3">
+        {% comment %} <div class="col-6 col-md-3">
             <a href="{% url 'report_production_unified' %}" class="quick-link-card">
                 <div class="quick-link-icon"><i class="bi bi-graph-up"></i></div>
                 <h6 class="fw-bold">گزارش یکپارچه</h6>
             </a>
-        </div>
+        </div> {% endcomment %}
     </div>
 
     <!-- ردیف چهارم -->

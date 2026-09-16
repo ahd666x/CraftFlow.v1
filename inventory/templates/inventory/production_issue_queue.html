@@ -7,11 +7,11 @@
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
   <div>
     <h1 class="h3 mb-1">صف تحویل مواد به تولید</h1>
-    <p class="text-muted mb-0">برنامه تولید ← درخواست مواد ← تأیید تحویل انبار</p>
+    {% comment %} <p class="text-muted mb-0">برنامه تولید ← درخواست مواد ← تأیید تحویل انبار</p> {% endcomment %}
   </div>
-  <a href="{% url 'product_defects' %}" class="btn btn-outline-danger">
+  {% comment %} <a href="{% url 'product_defects' %}" class="btn btn-outline-danger">
     <i class="bi bi-exclamation-octagon"></i> ثبت و پیگیری خرابی‌ها
-  </a>
+  </a> {% endcomment %}
 </div>
 
 <div class="row g-3 mb-3">
@@ -32,7 +32,7 @@
           <option value="cancelled" {% if request.GET.status == 'cancelled' %}selected{% endif %}>لغو‌شده</option>
         </select>
         <input type="text" name="q" class="form-control form-control-sm" placeholder="جستجو: سفارش، کالا، ماده..." value="{{ request.GET.q|default:'' }}" style="max-width:280px">
-        <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-funnel"></i> اعمال</button>
+        <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-funnel"></i> فیلتر</button>
         <a href="{% url 'inventory:production_issue_queue' %}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-x-circle"></i> پاک</a>
       </div>
     </form>
@@ -47,7 +47,7 @@
 </div>
 
 <div class="card-modern" id="issuesCard">
-  <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+  {% comment %} <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
     <span><i class="bi bi-box-arrow-left"></i> درخواست‌های انبار</span>
     <div class="d-flex gap-2">
       <button type="button" class="btn btn-sm btn-outline-primary" id="refreshBtn" title="بروزرسانی خودکار">
@@ -55,20 +55,20 @@
       </button>
       <span class="badge bg-secondary align-self-center" id="issueCount">{{ issues_total }} آیتم</span>
     </div>
-  </div>
+  </div> {% endcomment %}
   <div class="card-body p-0">
     <div class="table-responsive">
       <table class="table table-hover align-middle mb-0" id="issuesTable">
         <thead class="table-light">
           <tr>
-            <th style="width:35%">منشأ / سفارش</th>
+            <th style="width:35%"> سفارش</th>
             <th style="width:18%">ماده اولیه</th>
             <th style="width:12%">مقدار</th>
             <th style="width:10%">موجودی</th>
             <th style="width:10%">وضعیت</th>
             <!-- <th style="width:10%">اولویت</th> -->
             <!-- <th style="width:10%">انتظار (روز)</th> -->
-            <th style="width:15%">اقدام</th>
+            <th style="width:15%"></th>
           </tr>
         </thead>
         <tbody>
@@ -119,7 +119,7 @@
                   <div class="small text-muted">
                     {{ issue.order_item.product.category.name|default:"" }} {{ issue.order_item.product.name }}
                     — {{ issue.get_color_part_display|default:issue.color_part }}
-                    {% if issue.painting_process %} — روند {{ issue.painting_process.name }}{% endif %}
+                    {% if issue.painting_process %} —  {{ issue.painting_process.name }}{% endif %}
                   </div>
                 {% endif %}
               {% endif %}

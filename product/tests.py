@@ -1,5 +1,5 @@
 from django.test import TestCase
-from django.contrib.auth.models import User
+from django.contrib.auth.models import Group, User
 from django.urls import reverse
 from django.db import transaction
 from decimal import Decimal
@@ -19,7 +19,7 @@ from product.models import (
     Order, OrderItem, Color, ProductionTask, Customer, WorkerProfile,
     PaintingProcess, PaintingStage, PaintingMaterialRequirement,
     PaintingProcessMaterial, ProductionDefect, PackagingUnit,
-    PaintingColorMaterialVariant,
+    PaintingColorMaterialVariant, STATION_CHOICES, ProductionLog,
 )
 from inventory.models import (
     RawMaterial, RawMaterialCategory, StockMovement, MaterialIssue,
@@ -854,6 +854,66 @@ class PackagingUnitDefectTests(TestCase):
         defect = ProductionDefect.objects.get(packaging_unit=self.unit)
         self.assertEqual(defect.order_item, self.order_item)
         self.assertEqual(defect.color_part, 'بدنه')
+        self.assertEqual(defect.quantity, 1)
+
+    def test_paint_scan_opens_material_request_for_reported_defect(self):
+        WorkerProfile.objects.create(user=self.user, stage='paint')
+        defect = ProductionDefect.objects.create(
+            order=self.order, order_item=self.order_item, packaging_unit=self.unit,
+            color_part='بدنه', quantity=1, description='خط و خش',
+            reported_by=self.user, status='reported',
+        )
+
+        response = self.client.get(reverse('scan_packaging_unit', args=[self.unit.id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'درخواست مواد برای جبران خرابی')
+        self.assertContains(response, defect.description)
+        self.assertContains(response, self.raw_material.name)
+
+    def test_paint_scan_creates_rework_material_issue(self):
+        WorkerProfile.objects.create(user=self.user, stage='paint')
+        defect = ProductionDefect.objects.create(
+            order=self.order, order_item=self.order_item, packaging_unit=self.unit,
+            color_part='بدنه', quantity=1, description='خط و خش',
+            reported_by=self.user, status='reported',
+        )
+
+        response = self.client.post(reverse('scan_packaging_unit', args=[self.unit.id]), {
+            'defect_ids': [str(defect.id)],
+            f'raw_material_{defect.id}': str(self.raw_material.id),
+            f'quantity_{defect.id}': '2.5',
+        })
+
+        self.assertEqual(response.status_code, 302)
+        issue = MaterialIssue.objects.get(defect=defect)
+        defect.refresh_from_db()
+        self.assertEqual(issue.raw_material, self.raw_material)
+        self.assertEqual(issue.requested_quantity, Decimal('2.5'))
+        self.assertEqual(issue.purpose, 'rework')
+        self.assertEqual(issue.status, 'requested')
+        self.assertEqual(issue.packaging_unit, self.unit)
+        self.assertEqual(issue.order_item, self.order_item)
+        self.assertEqual(defect.status, 'material_requested')
+
+    def test_paint_scan_without_reported_defect_shows_empty_state(self):
+        WorkerProfile.objects.create(user=self.user, stage='paint')
+
+        response = self.client.get(reverse('scan_packaging_unit', args=[self.unit.id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'هیچ خرابی ثبت‌شده‌ای برای این واحد وجود ندارد')
+
+    def test_warehouse_user_can_access_material_queue(self):
+        warehouse_group = Group.objects.get_or_create(name='انبار')[0]
+        warehouse_user = User.objects.create_user('warehouseuser', password='testpass')
+        warehouse_user.groups.add(warehouse_group)
+        WorkerProfile.objects.create(user=warehouse_user, stage='paint')
+        self.client.login(username='warehouseuser', password='testpass')
+
+        response = self.client.get(reverse('inventory:production_issue_queue'))
+
+        self.assertEqual(response.status_code, 200)
 
     def test_report_uses_actual_color_process_without_task(self):
         defect = ProductionDefect.objects.create(
@@ -1196,3 +1256,125 @@ class ConsolidatePaintMaterialIssuesCommandTests(TestCase):
         # مقدار درخواست جدید باید درست باشد: 3 * 0.100 = 0.300
         new_issue = active_issues.first()
         self.assertEqual(new_issue.requested_quantity, Decimal('0.300'))
+
+
+class ReportStagesNPlusOneTests(TestCase):
+    """Regression guard: `report_stages` must not issue per-item/per-stage queries."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_superuser(
+            'stagesadmin', 'a@b.c', 'pass', first_name='ادمین', last_name='گزارش'
+        )
+        cls.category = ProductCategory.objects.create(name='دسته تست')
+        cls.product = Product.objects.create(
+            category=cls.category, name='محصول تست', base_price=1000
+        )
+        cls.customer = Customer.objects.create(name='مشتری تست', phone='09120000000')
+
+    def setUp(self):
+        self.client.login(username='stagesadmin', password='pass')
+
+    def _seed(self, count):
+        """Create `count` order items, each with a log at every production stage
+        and one packaging unit (packed but not shipped). quantity=1 keeps the
+        auto-generated QR-code signal affordable in test runtime."""
+        production_stations = [c for c, _ in STATION_CHOICES
+                               if c not in ('packaging', 'shipping')]
+        for i in range(count):
+            order = Order.objects.create(
+                user=self.user, customer=self.customer, number=f'S{count}_{i}'
+            )
+            oi = OrderItem.objects.create(order=order, product=self.product, quantity=1)
+            for stage in production_stations:
+                ProductionLog.objects.create(
+                    order_item=oi, stage=stage, user=self.user, notes='seed'
+                )
+            pu = oi.packaging_units.first()
+            pu.is_packed = True
+            pu.packed_at = '2024-01-01T10:00:00Z'
+            pu.save(update_fields=['is_packed', 'packed_at'])
+        return list(OrderItem.objects.order_by('-id'))
+
+    def test_query_count_is_bounded_regardless_of_item_count(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        url = reverse('report_stages')
+
+        # Small dataset (fits a single page of 200).
+        self._seed(30)
+        with CaptureQueriesContext(connection) as ctx_small:
+            resp = self.client.get(url)
+        self.assertEqual(resp.status_code, 200)
+        small_q = len(ctx_small)
+
+        # Larger dataset (still rendered on page 1 of the 200-per-page view).
+        # Query count must NOT scale with the number of matched rows.
+        self._seed(120)
+        with CaptureQueriesContext(connection) as ctx_large:
+            resp = self.client.get(url)
+        self.assertEqual(resp.status_code, 200)
+        large_q = len(ctx_large)
+
+        # Bounded well below 20 and independent of the row count.
+        self.assertLess(large_q, 20, f'report_stages issued {large_q} queries')
+        self.assertEqual(small_q, large_q,
+                         'query count must not grow with the number of items')
+
+    def test_output_matches_model_state(self):
+        """Stage dates, summary counts and packaging stats must be correct."""
+        items = self._seed(10)
+        resp = self.client.get(reverse('report_stages'))
+        self.assertEqual(resp.status_code, 200)
+
+        context = resp.context
+        report_data = context['report_data']
+
+        # Every row present and ordered by -id.
+        self.assertEqual(len(report_data), len(items))
+        self.assertEqual(
+            [r['item'].id for r in report_data],
+            [i.id for i in items[:len(report_data)]],
+        )
+
+        first = report_data[0]['item']
+        # Stage status: one entry per station, formatted as MM/DD or None.
+        stage_status = report_data[0]['stage_status']
+        production_stations = [c for c, _ in STATION_CHOICES
+                               if c not in ('packaging', 'shipping')]
+        self.assertEqual(set(stage_status.keys()), set(code for code, _ in STATION_CHOICES))
+        for stage in production_stations:
+            log = ProductionLog.objects.filter(order_item=first, stage=stage).first()
+            if log and log.created_at:
+                expected = f"{log.created_at.month:02d}/{log.created_at.day:02d}"
+                self.assertEqual(stage_status[stage], expected)
+            else:
+                self.assertIsNone(stage_status[stage])
+
+        # Packaging stats must equal the model's own progress helpers.
+        packed, total = first.packaging_progress
+        shipped, _ = first.shipping_progress
+        row = report_data[0]
+        self.assertEqual(row['total_units'], total)
+        self.assertEqual(row['packed_units'], packed)
+        self.assertEqual(row['shipped_units'], shipped)
+
+        # Summary "done" counts must equal distinct item counts per stage.
+        base_ids = set(OrderItem.objects.values_list('pk', flat=True))
+        for code, _ in STATION_CHOICES:
+            if code in ('packaging', 'shipping'):
+                continue
+            expected_done = (
+                ProductionLog.objects
+                .filter(order_item_id__in=base_ids, stage=code)
+                .values('order_item_id')
+                .distinct()
+                .count()
+            )
+            self.assertEqual(context['summary'][code]['done'], expected_done)
+        self.assertEqual(context['summary']['cut']['total'], len(items))
+
+        # Pagination context exposed for the template.
+        self.assertIn('page_obj', context)
+        self.assertEqual(context['page_obj'].paginator.per_page, 200)

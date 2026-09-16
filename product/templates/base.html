@@ -40,9 +40,9 @@
                 <li class="nav-item"><a class="nav-link {% if request.resolver_match.url_name == 'scan_part' %}active fw-bold{% endif %}" href="{% url 'scan_part' %}"><i class="bi bi-upc-scan me-1"></i> اسکن</a></li>
                 <li class="nav-item"><a class="nav-link {% if request.resolver_match.url_name == 'admin_product_list' %}active fw-bold{% endif %}" href="{% url 'admin_product_list' %}"><i class="bi bi-grid me-1"></i> محصولات</a></li>
                 <li class="nav-item"><a class="nav-link {% if request.resolver_match.url_name == 'painting_schedule' %}active fw-bold{% endif %}" href="{% url 'painting_schedule' %}"><i class="bi bi-brush me-1"></i> نقاشی</a></li>
-                <li class="nav-item"><a class="nav-link {% if request.resolver_match.namespace == 'inventory' %}active fw-bold{% endif %}" href="{% url 'inventory:dashboard' %}"><i class="bi bi-archive me-1"></i> انبار</a></li>
-                <li class="nav-item"><a class="nav-link {% if request.resolver_match.url_name == 'report_production_unified' %}active fw-bold{% endif %}" href="{% url 'report_production_unified' %}"><i class="bi bi-graph-up me-1"></i> گزارش یکپارچه</a></li>
-                <li class="nav-item"><a class="nav-link {% if request.resolver_match.url_name == 'report_fulfillment_status' %}active fw-bold{% endif %}" href="{% url 'report_fulfillment_status' %}"><i class="bi bi-truck me-1"></i> وضعیت ارسال</a></li>
+                <li class="nav-item"><a class="nav-link {% if request.resolver_match.namespace == 'inventory' %}active fw-bold{% endif %}" href="{% url 'inventory:production_issue_queue' %}"><i class="bi bi-archive me-1"></i> انبار</a></li>
+                {% comment %} <li class="nav-item"><a class="nav-link {% if request.resolver_match.url_name == 'report_production_unified' %}active fw-bold{% endif %}" href="{% url 'report_production_unified' %}"><i class="bi bi-graph-up me-1"></i> گزارش یکپارچه</a></li> {% endcomment %}
+                {% comment %} <li class="nav-item"><a class="nav-link {% if request.resolver_match.url_name == 'report_fulfillment_status' %}active fw-bold{% endif %}" href="{% url 'report_fulfillment_status' %}"><i class="bi bi-truck me-1"></i> وضعیت ارسال</a></li> {% endcomment %}
             </ul>
 
             <ul class="navbar-nav ms-auto align-items-lg-center">

@@ -5,7 +5,7 @@
   <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
     <div>
       <h1 class="h3 mb-1">ثبت و پیگیری خرابی‌ها</h1>
-      <p class="text-muted mb-0">ثبت خرابی بر اساس سفارش، واحد بسته‌بندی و بخش رنگی</p>
+      {% comment %} <p class="text-muted mb-0">ثبت خرابی بر اساس سفارش، واحد بسته‌بندی و بخش رنگی</p> {% endcomment %}
     </div>
     <a href="{% url 'inventory:production_issue_queue' %}" class="btn btn-outline-primary">
       <i class="bi bi-clipboard2-check me-1"></i> صف تحویل مواد
@@ -14,7 +14,7 @@
 
   <div class="card shadow-sm border-0 mb-4">
     <div class="card-header bg-white">
-      <h2 class="h5 mb-0">ثبت خرابی جدید</h2>
+      <h2 class="h5 mb-0">ثبت جدید</h2>
     </div>
     <div class="card-body">
       <form method="post" action="{% url 'product_defects' %}" id="defectForm">
@@ -30,29 +30,29 @@
             </select>
           </div>
           <div class="col-md-4">
-            <label class="form-label" for="id_packaging_unit">واحد بسته‌بندی / بارکد</label>
+            <label class="form-label" for="id_packaging_unit">آیتم</label>
             <select name="packaging_unit_id" id="id_packaging_unit" class="form-select" required disabled data-units-url="{% url 'ajax_order_units_for_defect' order_id=0 %}">
               <option value="">ابتدا سفارش را انتخاب کنید</option>
             </select>
           </div>
           <div class="col-md-4">
-            <label class="form-label" for="id_color_part">بخش رنگی</label>
+            <label class="form-label" for="id_color_part">بخش</label>
             <select name="color_part" id="id_color_part" class="form-select" required disabled data-color-parts-url="{% url 'ajax_unit_color_parts_for_defect' unit_id=0 %}">
-              <option value="">ابتدا واحد بسته‌بندی را انتخاب کنید</option>
+              {% comment %} <option value="">ابتدا انتخاب کنید</option> {% endcomment %}
             </select>
           </div>
           <div class="col-md-2">
-            <label class="form-label" for="id_quantity">تعداد خراب</label>
+            <label class="form-label" for="id_quantity">تعداد</label>
             <input id="id_quantity" class="form-control" name="quantity" type="number" min="1" value="1" required>
           </div>
           <div class="col-md-10">
-            <label class="form-label" for="id_description">شرح خرابی</label>
-            <textarea id="id_description" class="form-control" name="description" rows="2" required placeholder="شرح خرابی و اقدام لازم"></textarea>
+            <label class="form-label" for="id_description">توضیحات</label>
+            <textarea id="id_description" class="form-control" name="description" rows="2"></textarea>
           </div>
           <div class="col-md-6">
-            <label class="form-label" for="id_raw_material">ماده جایگزین (اختیاری)</label>
+            <label class="form-label" for="id_raw_material">ماده جایگزین</label>
             <select id="id_raw_material" class="form-select" name="raw_material_id">
-              <option value="">بدون درخواست مواد</option>
+              <option value=""></option>
               {% for material in raw_materials %}
                 <option value="{{ material.id }}">{{ material.name }} ({{ material.get_unit_display }})</option>
               {% endfor %}
@@ -64,16 +64,16 @@
           </div>
         </div>
         <div class="d-flex justify-content-end gap-2 mt-4">
-          <button type="submit" class="btn btn-danger"><i class="bi bi-exclamation-octagon me-1"></i> ثبت خرابی</button>
+          <button type="submit" class="btn btn-danger"><i class="bi bi-exclamation-octagon me-1"></i>ثبت</button>
         </div>
       </form>
     </div>
   </div>
 
   <div class="card shadow-sm border-0">
-    <div class="card-header bg-white">
-      <h2 class="h5 mb-0">سابقه خرابی‌ها</h2>
-    </div>
+    {% comment %} <div class="card-header bg-white">
+      <h2 class="h5 mb-0"></h2>
+    </div> {% endcomment %}
     <div class="table-responsive">
       <table class="table align-middle mb-0">
         <thead class="table-light">

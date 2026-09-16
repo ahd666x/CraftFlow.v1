@@ -2110,8 +2110,6 @@ def report_stages(request):
     # ---------- base queryset ----------
     base_items = OrderItem.objects.select_related(
         'order__user', 'product__category'
-    ).prefetch_related(
-        'logs', 'packaging_units'
     )
 
     # ---------- text search ----------
@@ -2162,10 +2160,18 @@ def report_stages(request):
 
     # ---------- summary (based on filtered base_items before stage/pack/ship filters) ----------
     total = base_items.count()
+    # Single aggregated query instead of one COUNT per station (11 → 1)
+    stage_done_counts = (
+        ProductionLog.objects
+        .filter(order_item_id__in=base_items.values('pk'))
+        .values('stage')
+        .annotate(done=Count('order_item_id', distinct=True))
+    )
+    done_map = {row['stage']: row['done'] for row in stage_done_counts}
+
     summary = {}
     for code, name in STATION_CHOICES:
-        done_count = base_items.filter(logs__stage=code).distinct().count()
-        summary[code] = {'name': name, 'done': done_count, 'total': total}
+        summary[code] = {'name': name, 'done': done_map.get(code, 0), 'total': total}
 
     # ---------- stage filters (excluding packaging & shipping) ----------
     stage_pending = request.GET.get('stage_pending')
@@ -2215,23 +2221,61 @@ def report_stages(request):
         items = items.filter(total_units=0)
 
     # ---------- build report data ----------
+    # Pagination must come AFTER the annotation-based packaging/shipping
+    # filters, but the annotations themselves stay on the queryset so the
+    # filtering keeps working. Only the *display* loop runs on the slice.
     items = items.order_by('-id')
+    paginator = Paginator(items, 200)
+    page_number = request.GET.get('page')
+    items_page = paginator.get_page(page_number)
+    items_list = list(items_page)
+    item_ids = [item.id for item in items_list]
+
+    # --- batch-fetch production logs for the current page (1 query) ---
+    # .values('created_at') returns the PersianDateField as a jdatetime.date,
+    # so .month/.day yield the Shamsi components exactly like the model access.
+    logs_qs = (
+        ProductionLog.objects
+        .filter(order_item_id__in=item_ids)
+        .order_by('id')
+        .values('order_item_id', 'stage', 'created_at')
+    )
+    log_map = {}
+    for row in logs_qs:
+        per_stage = log_map.setdefault(row['order_item_id'], {})
+        if row['stage'] not in per_stage:  # keep first (matches .first() semantics)
+            ct = row['created_at']
+            per_stage[row['stage']] = f"{ct.month:02d}/{ct.day:02d}" if ct else None
+
+    # --- batch-fetch packaging stats for the current page (1 query) ---
+    pack_stats = (
+        PackagingUnit.objects
+        .filter(order_item_id__in=item_ids)
+        .values('order_item_id')
+        .annotate(
+            total=Count('id'),
+            packed=Count('id', filter=Q(is_packed=True)),
+            shipped=Count('id', filter=Q(is_shipped=True)),
+        )
+    )
+    pack_map = {row['order_item_id']: row for row in pack_stats}
+
     report_data = []
-    for item in items:
+    for item in items_list:
+        item_logs = log_map.get(item.id, {})
         stage_status = {}
         for code, name in STATION_CHOICES:
-            log = item.logs.filter(stage=code).first()
-            if log and log.created_at:
-                jdate = log.created_at
-                stage_status[code] = f"{jdate.month:02d}/{jdate.day:02d}"
-            else:
-                stage_status[code] = None
+            stage_status[code] = item_logs.get(code)
 
-        # total_units is already annotated, but we also have the actual attributes from the model
-        total_units = item.packaging_units.count()
-        packed_units = item.packaging_units.filter(is_packed=True).count()
-        shipped_units = item.packaging_units.filter(is_shipped=True).count()
-        items = items.order_by('-id')
+        stats = pack_map.get(item.id)
+        if stats:
+            total_units = stats['total']
+            packed_units = stats['packed']
+            shipped_units = stats['shipped']
+        else:
+            total_units = 0
+            packed_units = 0
+            shipped_units = 0
 
         report_data.append({
             'item': item,
@@ -2253,6 +2297,7 @@ def report_stages(request):
 
     context = {
         'report_data': report_data,
+        'page_obj': items_page,
         'station_choices': STATION_CHOICES,
         'summary': summary,
         'search_query': q,
@@ -2623,8 +2668,22 @@ def report_material_consumption(request):
 
     report_rows = sorted(rows.values(), key=lambda r: (r['product'].name, r['process'].name if r['process'] else ''))
 
+    material_totals = {}
+    for row in report_rows:
+        for mat in row['materials'].values():
+            rm = mat['raw_material']
+            material_totals.setdefault(rm.id, {'raw_material': rm, 'qty': Decimal('0')})
+            material_totals[rm.id]['qty'] += mat['qty']
+        for mat in row['defect_materials'].values():
+            rm = mat['raw_material']
+            material_totals.setdefault(rm.id, {'raw_material': rm, 'qty': Decimal('0')})
+            material_totals[rm.id]['qty'] += mat['qty']
+    
+    material_totals_list = sorted(material_totals.values(), key=lambda m: m['raw_material'].name)
+
     context = {
         'report_rows': report_rows,
+        'material_totals': material_totals_list,
         'processes': PaintingProcess.objects.filter(is_active=True).order_by('name'),
         'date_from': date_from or '', 'date_to': date_to or '',
         'selected_process': process_id or '', 'rokeshi_filter': rokeshi_filter or '',
@@ -3276,29 +3335,166 @@ def scan_packaging_unit(request, pk):
 
         if request.method == 'POST':
             color_part = request.POST.get('color_part', '').strip()
-            try:
-                quantity = int(request.POST.get('quantity', 1) or 1)
-            except (TypeError, ValueError):
-                quantity = 0
             description = request.POST.get('description', '').strip() or 'خرابی ثبت‌شده هنگام اسکن بسته‌بندی'
-            if not color_part or color_part not in available_parts or quantity < 1:
-                messages.error(request, 'بخش رنگی و تعداد خراب معتبر را انتخاب کنید.')
+            if not color_part or color_part not in available_parts:
+                messages.error(request, 'بخش رنگی خراب را انتخاب کنید.')
             else:
                 related_task = ProductionTask.objects.filter(
                     order_item=item, station_name='paint', color_part=color_part
                 ).order_by('-step_order').first()
                 ProductionDefect.objects.create(
                     task=related_task, order=item.order, order_item=item,
-                    packaging_unit=unit, color_part=color_part, quantity=quantity,
+                    packaging_unit=unit, color_part=color_part, quantity=1,
                     description=description, reported_by=request.user,
                 )
                 messages.success(request, f'خرابی برای بخش «{label_map.get(color_part, color_part)}» ثبت شد.')
-                return redirect('product_defects')
+                return redirect('item_detail', pk=item.id)
 
         return render(request, 'scan_defect_report.html', {
             'unit': unit, 'item': item,
             'color_parts': [(p, label_map.get(p, p)) for p in available_parts],
         })
+
+    if worker_stage == 'paint' and not request.user.groups.filter(name='انبار').exists():
+        from inventory.models import MaterialIssue, RawMaterial
+
+        reported_defects = list(
+            ProductionDefect.objects.filter(
+                packaging_unit=unit, status='reported'
+            ).select_related(
+                'task__painting_stage__process', 'order_item', 'order'
+            ).order_by('created_at')
+        )
+        raw_materials = list(
+            RawMaterial.objects.filter(is_active=True).order_by('category__name', 'name')
+        )
+        context = {
+            'unit': unit,
+            'item': unit.order_item,
+            'defects': reported_defects,
+            'raw_materials': raw_materials,
+            'next_url': next_url,
+        }
+
+        if request.method == 'POST':
+            defect_ids = []
+            for value in request.POST.getlist('defect_ids'):
+                try:
+                    defect_id = int(value)
+                except (TypeError, ValueError):
+                    continue
+                if defect_id not in defect_ids:
+                    defect_ids.append(defect_id)
+            if not defect_ids or not reported_defects:
+                messages.error(request, 'خرابی ثبت‌شده‌ای برای درخواست مواد انتخاب نشده است.')
+                return render(request, 'scan_material_request_for_defect.html', context)
+
+            defects_by_id = {
+                defect.id: defect
+                for defect in ProductionDefect.objects.filter(
+                    pk__in=defect_ids, packaging_unit=unit, status='reported'
+                ).select_related(
+                    'task__painting_stage__process', 'order_item', 'order'
+                )
+            }
+            defects = [
+                defects_by_id[defect_id]
+                for defect_id in defect_ids
+                if defect_id in defects_by_id
+            ]
+            if len(defects) != len(defect_ids):
+                messages.error(request, 'یکی از خرابی‌های انتخاب‌شده معتبر نیست یا وضعیت آن تغییر کرده است.')
+                return render(request, 'scan_material_request_for_defect.html', context)
+
+            errors = []
+            raw_ids_by_defect = {}
+            quantities_by_defect = {}
+            raw_ids = []
+            for defect in defects:
+                raw_id = request.POST.get(f'raw_material_{defect.id}', '').strip()
+                qty_str = request.POST.get(f'quantity_{defect.id}', '').strip()
+                if not raw_id or not qty_str:
+                    errors.append(defect.id)
+                    continue
+                try:
+                    raw_id_int = int(raw_id)
+                except (TypeError, ValueError):
+                    errors.append(defect.id)
+                    continue
+                try:
+                    quantity = Decimal(qty_str)
+                    if not quantity.is_finite() or quantity <= 0:
+                        raise ValueError
+                except (TypeError, ValueError, ArithmeticError):
+                    errors.append(defect.id)
+                    continue
+                raw_ids_by_defect[str(defect.id)] = raw_id_int
+                quantities_by_defect[str(defect.id)] = quantity
+                raw_ids.append(raw_id_int)
+
+            if errors:
+                messages.error(request, 'برای هر خرابی انتخاب‌شده، ماده اولیه و مقدار معتبر وارد کنید.')
+                return render(request, 'scan_material_request_for_defect.html', context)
+
+            raw_materials_by_id = {
+                str(material.id): material
+                for material in RawMaterial.objects.filter(
+                    pk__in=raw_ids, is_active=True
+                )
+            }
+            if any(str(raw_id) not in raw_materials_by_id for raw_id in raw_ids):
+                messages.error(request, 'ماده اولیه انتخاب‌شده معتبر یا فعال نیست.')
+                return render(request, 'scan_material_request_for_defect.html', context)
+
+            with transaction.atomic():
+                locked_defects = {
+                    str(defect.id): defect
+                    for defect in ProductionDefect.objects.select_for_update().filter(
+                        pk__in=defect_ids, packaging_unit=unit, status='reported'
+                    )
+                }
+                duplicate_request = False
+                for defect in defects:
+                    locked_defect = locked_defects.get(str(defect.id))
+                    if locked_defect is None:
+                        messages.error(request, 'وضعیت یکی از خرابی‌ها تغییر کرده است؛ درخواست ثبت نشد.')
+                        return render(request, 'scan_material_request_for_defect.html', context)
+                    raw_material = raw_materials_by_id[str(raw_ids_by_defect[str(defect.id)])]
+                    if MaterialIssue.objects.filter(
+                        defect=locked_defect,
+                        raw_material=raw_material,
+                        purpose='rework',
+                        status__in=['requested', 'partial'],
+                    ).exists():
+                        duplicate_request = True
+
+                if duplicate_request:
+                    messages.error(request, 'برای یکی از خرابی‌ها قبلاً درخواست مواد ثبت شده است.')
+                    return render(request, 'scan_material_request_for_defect.html', context)
+
+                for defect in defects:
+                    locked_defect = locked_defects[str(defect.id)]
+                    raw_material = raw_materials_by_id[str(raw_ids_by_defect[str(defect.id)])]
+                    MaterialIssue.objects.create(
+                        task=locked_defect.task,
+                        defect=locked_defect,
+                        packaging_unit=unit,
+                        order_item=unit.order_item,
+                        color_part=locked_defect.color_part,
+                        raw_material=raw_material,
+                        requested_quantity=quantities_by_defect[str(defect.id)],
+                        purpose='rework',
+                        status='requested',
+                        requested_by=request.user,
+                        note=f'درخواست جبران خرابی #{locked_defect.id} — {locked_defect.get_color_part_display()}',
+                    )
+                    locked_defect.status = 'material_requested'
+                    locked_defect.save(update_fields=['status'])
+
+            messages.success(request, 'درخواست مواد ثبت شد و به صف تحویل انبار ارسال شد.')
+            return redirect('item_detail', pk=item.id)
+
+        return render(request, 'scan_material_request_for_defect.html', context)
 
     # ---------- شاخه ۲: گروه «انبار» -> ثبت تحویل ماده اولیه ----------
     if is_warehouse_user(request.user):

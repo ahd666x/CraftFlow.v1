@@ -13,7 +13,7 @@ from django.db.transaction import atomic
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 
-from product.decorators import admin_or_manager_required
+from product.decorators import admin_or_manager_required, warehouse_or_manager_required
 from .models import (
     Supplier, RawMaterialCategory, RawMaterial,
     StockMovement, PurchaseOrder, PurchaseOrderItem
@@ -40,7 +40,7 @@ def _inventory_context(active_tab='dashboard'):
 # ============================================================
 
 @login_required
-@admin_or_manager_required
+@warehouse_or_manager_required
 def inventory_dashboard(request):
     total_materials = RawMaterial.objects.filter(is_active=True).count()
     total_suppliers = Supplier.objects.filter(is_active=True).count()
@@ -107,7 +107,7 @@ def _task_material_requirements(task):
 
 
 @login_required
-@admin_or_manager_required
+@warehouse_or_manager_required
 def production_issue_queue(request):
     """A warehouse-first queue: one line is one material required by one production task."""
     from product.models import ProductionTask
@@ -188,7 +188,7 @@ def production_issue_queue(request):
 
 
 @login_required
-@admin_or_manager_required
+@warehouse_or_manager_required
 @require_http_methods(['POST'])
 def issue_material(request, issue_id):
     """Confirm hand-over and create the inventory consumption record in the same transaction."""
@@ -233,7 +233,7 @@ def issue_material(request, issue_id):
 
 
 @login_required
-@admin_or_manager_required
+@warehouse_or_manager_required
 @require_http_methods(['POST'])
 def cancel_material_issue(request, issue_id):
     if request.headers.get('X-Requested-With') != 'XMLHttpRequest':

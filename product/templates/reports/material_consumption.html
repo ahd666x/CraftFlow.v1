@@ -51,6 +51,7 @@
     .material-item { display: flex; justify-content: space-between; padding: 0.15rem 0; }
     .material-name { color: #334155; }
     .material-qty { color: #2563eb; font-weight: 600; }
+    .total-qty { color: #059669; font-weight: 700; }
     .defect-badge { background-color: #fef3c7; color: #92400e; padding: 0.2rem 0.5rem; border-radius: 20px; font-size: 0.75rem; font-weight: 500; }
     .btn-glass {
         background: rgba(255,255,255,0.7); backdrop-filter: blur(6px);
@@ -86,12 +87,9 @@
 <div class="container-fluid py-4">
     <!-- Header -->
     <div class="d-flex align-items-center mb-4">
-        <div class="bg-white p-3 rounded-3 shadow-sm me-3">
-            <i class="bi bi-box-seam fs-3 text-primary"></i>
-        </div>
+
         <div>
             <h4 class="mb-0 fw-bold">گزارش مصرف مواد اولیه</h4>
-            <p class="text-muted small mb-0">مصرف مواد بر اساس محصول، روند نقشی و نوع رنگ (روکشی/پوششی)</p>
         </div>
     </div>
 
@@ -201,6 +199,23 @@
         <i class="bi bi-inbox display-3 text-muted mb-3"></i>
         <h5 class="text-muted">موردی یافت نشد</h5>
         <p class="text-muted">با تغییر فیلترها می‌توانید نتایج را بررسی کنید.</p>
+    </div>
+    {% endif %}
+
+    <!-- Material Totals Summary at Bottom -->
+    {% if material_totals %}
+    <div class="filter-panel mt-4">
+        <h6 class="fw-bold mb-3">مجموع مصرف مواد اولیه (طبق فیلترهای اعمال شده)</h6>
+        <div class="row g-2">
+            {% for mat in material_totals %}
+            <div class="col-md-4 col-sm-6">
+                <div class="d-flex justify-content-between align-items-center p-2 bg-light rounded">
+                    <span class="small text-muted">{{ mat.raw_material.name }}</span>
+                    <span class="total-qty small">{{ mat.qty|floatformat:2 }} {{ mat.raw_material.get_unit_display }}</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
     </div>
     {% endif %}
 </div>

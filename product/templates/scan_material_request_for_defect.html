@@ -1,0 +1,59 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container mt-4">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+    <div>
+      <h3>درخواست مواد</h3>
+      <p class="text-muted mb-0">سفارش #{{ item.order.id }} — واحد #{{ unit.unit_number }} — بارکد #{{ unit.id }}</p>
+    </div>
+    <a href="{% url 'item_detail' item.id %}" class="btn btn-outline-secondary">بازگشت به آیتم</a>
+  </div>
+
+  {% if not defects %}
+    <div class="alert alert-info">
+      هیچ خرابی ثبت‌شده‌ای برای این واحد وجود ندارد. ابتدا اپراتور مونتاژ باید خرابی را ثبت کند.
+    </div>
+  {% else %}
+    <form method="post">
+      {% csrf_token %}
+      <div class="alert alert-warning">
+        فقط خرابی‌هایی را انتخاب کنید که پس از بررسی، برای جبران آن‌ها مواد اولیه نیاز است.
+      </div>
+
+      {% for defect in defects %}
+        <div class="card mb-3 border-danger">
+          <div class="card-header bg-danger text-white d-flex justify-content-between align-items-center gap-2">
+            <strong>خرابی بخش {{ defect.get_color_part_display|default:defect.color_part }}</strong>
+            <span class="small">{{ defect.created_at|date:"Y/m/d H:i" }}</span>
+          </div>
+          <div class="card-body">
+            <div class="form-check mb-3">
+              <input class="form-check-input" type="checkbox" name="defect_ids" value="{{ defect.id }}" id="defect_{{ defect.id }}" checked>
+              <label class="form-check-label" for="defect_{{ defect.id }}"> بررسی شده و مواد نیاز دارد</label>
+            </div>
+            <p class="mb-3">{{ defect.description }}</p>
+            <div class="row g-3">
+              <div class="col-md-8">
+                <label class="form-label" for="raw_material_{{ defect.id }}">ماده اولیه مورد نیاز</label>
+                <select name="raw_material_{{ defect.id }}" id="raw_material_{{ defect.id }}" class="form-select" required>
+                  <option value="">انتخاب کنید…</option>
+                  {% for raw in raw_materials %}
+                    <option value="{{ raw.id }}">{{ raw.name }} — {{ raw.category.name }} (موجودی: {{ raw.current_stock }} {{ raw.get_unit_display }})</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label" for="quantity_{{ defect.id }}">مقدار مورد نیاز</label>
+                <input type="number" name="quantity_{{ defect.id }}" id="quantity_{{ defect.id }}" class="form-control" min="0.01" step="0.01" required>
+              </div>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+
+      <button type="submit" class="btn btn-primary">ثبت درخواست و ارسال به صف انبار</button>
+      <a href="{% url 'item_detail' item.id %}" class="btn btn-outline-secondary">انصراف</a>
+    </form>
+  {% endif %}
+</div>
+{% endblock %}
