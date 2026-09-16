@@ -389,8 +389,8 @@
                                 <span class="name">{{ task.order_item.product.name }}</span>
                             </td>
                             <td class="col-order">{{ task.order_item.order.id }}/{{ task.order_item.id }}</td>
-                            <td class="col-rep" title="{{ task.order_item.order.user.get_full_name|default:task.order_item.order.user.username }}">
-                                {{ task.order_item.order.user.get_full_name|default:task.order_item.order.user.username|truncatechars:8 }}
+                            <td class="col-rep" title="{% if task.order_item.order.user %}{{ task.order_item.order.user.get_full_name|default:task.order_item.order.user.username }}{% endif %}">
+                                {% if task.order_item.order.user %}{{ task.order_item.order.user.get_full_name|default:task.order_item.order.user.username|truncatechars:8 }}{% else %}—{% endif %}
                             </td>
                             <td class="col-stage"><span class="stage-badge">{{ task.painting_stage.name|default:"-"|truncatechars:10 }}</span></td>
                             <td class="col-color"><span class="color-badge">{{ task.color_part|default:"-" }}{% if task.color_part %} ({{ task|task_color_code }}){% endif %}</span></td>
@@ -457,8 +457,8 @@
                             <span class="name">{{ task.order_item.product.name }}</span>
                         </td>
                         <td class="col-order">{{ task.order_item.order.id }}/{{ task.order_item.id }}</td>
-                        <td class="col-rep" title="{{ task.order_item.order.user.get_full_name|default:task.order_item.order.user.username }}">
-                            {{ task.order_item.order.user.get_full_name|default:task.order_item.order.user.username|truncatechars:8 }}
+                        <td class="col-rep" title="{% if task.order_item.order.user %}{{ task.order_item.order.user.get_full_name|default:task.order_item.order.user.username }}{% endif %}">
+                            {% if task.order_item.order.user %}{{ task.order_item.order.user.get_full_name|default:task.order_item.order.user.username|truncatechars:8 }}{% else %}—{% endif %}
                         </td>
                         <td class="col-stage"><span class="stage-badge">{{ task.painting_stage.name|default:"-"|truncatechars:10 }}</span></td>
                         <td class="col-color"><span class="color-badge">{{ task.color_part|default:"-" }}{% if task.color_part %} ({{ task|task_color_code }}){% endif %}</span></td>

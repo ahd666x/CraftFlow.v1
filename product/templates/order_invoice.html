@@ -164,7 +164,7 @@
                 <div>👤 نام: {{ order.customer.name }}</div>
                 <!-- <div>📞 تلفن: {{ order.customer.phone|default:"---" }}</div> -->
                 <!-- <div>📍 آدرس: {{ order.customer.address|default:"---" }}</div> -->
-                <div>🕴 نماینده: {{ order.user.get_full_name|default:order.user.username }}</div>
+                <div>🕴 نماینده: {% if order.user %}{{ order.user.get_full_name|default:order.user.username }}{% else %}—{% endif %}</div>
             </div>
             <div class="order-info">
                 <strong>جزئیات سفارش:</strong>

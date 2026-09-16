@@ -80,7 +80,7 @@
                                 {{ o.order.id }}/{{ o.id }}
                             </a>
                         </td>
-                        <td>{{ o.order.user.username }}</td>
+                        <td>{% if o.order.user %}{{ o.order.user.username }}{% else %}—{% endif %}</td>
                         <td class="text-nowrap">{{ o.order.created_at|date:"Y/m/d" }}</td>
                         <td>{{ o.product.category.name }}</td>
                         <td>{{ o.product.name }}</td>

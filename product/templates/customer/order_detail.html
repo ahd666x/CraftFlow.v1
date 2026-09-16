@@ -45,7 +45,7 @@
         </div>
 
         <div class="row">
-            <div class="col-md-3"><strong>نماینده:</strong> {{ order.user.get_full_name|default:order.user.username }}</div>
+            <div class="col-md-3"><strong>نماینده:</strong> {% if order.user %}{{ order.user.get_full_name|default:order.user.username }}{% else %}—{% endif %}</div>
             <div class="col-md-3"><strong>مشتری:</strong> {{ order.customer.name }}</div>
             <div class="col-md-3"><strong>تاریخ ثبت:</strong> {{ order.created_at }}</div>
             <!-- <div class="col-md-3"><strong>وضعیت:</strong> 

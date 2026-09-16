@@ -5,7 +5,9 @@
 {% block title %}گزارش تولید{% endblock %}
 
 {% block extra_css %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/persian-datepicker@1.2.0/dist/css/persian-datepicker.min.css">
 <style>
+    :root {
     :root {
         --bs-card-bg: #ffffff;
         --bs-card-shadow: 0 4px 24px rgba(0,0,0,0.04);
@@ -132,6 +134,14 @@
                             <option value="{{ cat.id }}" {% if selected_category == cat.id|stringformat:"s" %}selected{% endif %}>{{ cat.name }}</option>
                         {% endfor %}
                     </select>
+                </div>
+                <div class="col-md-2 col-sm-6">
+                    <label class="form-label small text-muted">از تاریخ سفارش</label>
+                    <input type="text" name="date_from" class="form-control form-control-glass persian-date" placeholder="اختیاری" value="{{ date_from|default:'' }}" autocomplete="off">
+                </div>
+                <div class="col-md-2 col-sm-6">
+                    <label class="form-label small text-muted">تا تاریخ سفارش</label>
+                    <input type="text" name="date_to" class="form-control form-control-glass persian-date" placeholder="اختیاری" value="{{ date_to|default:'' }}" autocomplete="off">
                 </div>
                 <div class="col-md-2 col-sm-6">
                     <label class="form-label small text-muted">محصول</label>
@@ -354,6 +364,8 @@
     {% endif %}
 </div>
 
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/persian-datepicker@1.2.0/dist/js/persian-datepicker.min.js"></script>
 <script>
 (function() {
     // ===== بارگذاری محصولات =====
@@ -409,39 +421,21 @@
     });
     updateStageVisibility();
 
-    // ===== میکروپرسش تاریخ شمسی =====
-    // از CDN Persian Date Picker استفاده می‌شود
-    (function() {
-        if (typeof jQuery === 'undefined') return;
-        // بارگذاری یکبار از CDN
-        if (!document.getElementById('pdatepicker-css')) {
-            var css = document.createElement('link');
-            css.id = 'pdatepicker-css';
-            css.rel = 'stylesheet';
-            css.href = 'https://cdn.jsdelivr.net/npm/persian-datepicker@1.2.0/dist/css/persian-datepicker.min.css';
-            document.head.appendChild(css);
-        }
-        if (!document.getElementById('pdatepicker-js')) {
-            var script = document.createElement('script');
-            script.id = 'pdatepicker-js';
-            script.src = 'https://cdn.jsdelivr.net/npm/persian-datepicker@1.2.0/dist/js/persian-datepicker.min.js';
-            script.onload = function() {
-                document.querySelectorAll('.persian-date').forEach(function(input) {
-                    new PersianDatepicker(input, {
-                        format: 'YYYY/MM/DD',
-                        autoClose: true,
-                        initialValueType: 'persian',
-                        calendar: {
-                            persian: {
-                                locale: 'fa'
-                            }
-                        }
-                    });
-                });
-            };
-            document.head.appendChild(script);
-        }
-    })();
+    // ===== تاریخ شمسی - بعد از لود کامل DOM =====
+    document.addEventListener('DOMContentLoaded', function() {
+        document.querySelectorAll('.persian-date').forEach(function(input) {
+            new PersianDatepicker(input, {
+                format: 'YYYY/MM/DD',
+                autoClose: true,
+                initialValueType: 'persian',
+                calendar: {
+                    persian: {
+                        locale: 'fa'
+                    }
+                }
+            });
+        });
+    });
 })();
 </script>
 {% endblock %}

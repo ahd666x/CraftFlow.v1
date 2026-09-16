@@ -241,7 +241,7 @@
                     {% endif %}
                 </td>
                 <td>
-                    {{ item.order.user.get_full_name|default:item.order.user.username }}
+                    {% if item.order.user %}{{ item.order.user.get_full_name|default:item.order.user.username }}{% else %}—{% endif %}
                 </td>
                 <td>
                     {% for color in item.ordercolor.all %}

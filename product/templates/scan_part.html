@@ -84,7 +84,7 @@
                             <tr class="item-select-row" style="cursor:pointer;" data-item-id="{{ row.item.id }}">
                                 <td>{{ row.order.id }}/{{ row.item.id }}</td>
                                 {% comment %} <td>{{ row.order.customer.name }}</td> {% endcomment %}
-                                <td>{{ row.order.user.get_full_name|default:row.order.user.username }}</td>
+                                <td>{% if row.order.user %}{{ row.order.user.get_full_name|default:row.order.user.username }}{% else %}—{% endif %}</td>
                                 <td>
                                     {% if row.item.product.category %}
                                         {{ row.item.product.category.name }} -

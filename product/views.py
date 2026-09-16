@@ -2283,7 +2283,7 @@ def report_stages(request):
             'total_units': total_units,
             'packed_units': packed_units,
             'shipped_units': shipped_units,
-            'representative': item.order.user.get_full_name() or item.order.user.username,
+            'representative': item.order.user.get_full_name() if item.order.user else (item.order.user.username if item.order.user else '—'),
             'category_name': item.product.category.name,
         })
 
