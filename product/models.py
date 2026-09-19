@@ -142,6 +142,7 @@ class Order(models.Model):
         from .models import ProductionTask
 
         tasks_to_create = []
+        has_bom = False
         with transaction.atomic():
             # Phase 1: regular station tasks per BOM part (global sequential step_order)
             current_step = 0
@@ -161,6 +162,7 @@ class Order(models.Model):
                     size_diff['width_diff'] = diff_cm * 10
 
                 for bom_entry in item.product.bom.all():
+                    has_bom = True
                     part = bom_entry.part
                     total_qty = bom_entry.quantity * item.quantity
 
@@ -181,25 +183,42 @@ class Order(models.Model):
 
                     new_f3 = update_barcode_size(part.f3, length, width, order_item_id)
 
-                    dynamic_part, created = Part.objects.get_or_create(
-                        base_part=part,
-                        material=material,
-                        length=length,
-                        width=width,
-                        defaults={
-                            'name': part.name,
-                            'grain': part.grain,
-                            'pname': part.pname,
-                            'turn': part.turn,
-                            'f26': part.f26,
-                            'f18': part.f18,
-                            'f4': part.f4,
-                            'f5': part.f5,
-                            'f3': new_f3,
-                            'f2': part.f2,
-                            'routing_code': part.routing_code,
-                        }
-                    )
+                    try:
+                        dynamic_part = Part.objects.filter(
+                            base_part=part,
+                            material=material,
+                            length=length,
+                            width=width
+                        ).first()
+                        if dynamic_part:
+                            created = False
+                        else:
+                            dynamic_part = Part.objects.create(
+                                base_part=part,
+                                material=material,
+                                length=length,
+                                width=width,
+                                name=part.name,
+                                grain=part.grain,
+                                pname=part.pname,
+                                turn=part.turn,
+                                f26=part.f26,
+                                f18=part.f18,
+                                f4=part.f4,
+                                f5=part.f5,
+                                f3=new_f3,
+                                f2=part.f2,
+                                routing_code=part.routing_code,
+                            )
+                            created = True
+                    except Part.MultipleObjectsReturned:
+                        dynamic_part = Part.objects.filter(
+                            base_part=part,
+                            material=material,
+                            length=length,
+                            width=width
+                        ).first()
+                        created = False
 
                     if not created and dynamic_part.f3 != new_f3:
                         dynamic_part.f3 = new_f3
@@ -228,8 +247,11 @@ class Order(models.Model):
                 ProductionTask.objects.bulk_create(tasks_to_create)
                 self.status = 'planned'
                 self.save()
-                return True
-        return False
+                return {'success': True}
+            elif not has_bom:
+                return {'success': False, 'error': 'محصولات این سفارش فرمول ساخت (BOM) ندارند. ابتدا در ویرایش محصول قطعات را اضافه کنید.'}
+            else:
+                return {'success': False, 'error': 'تسک‌ها قبلاً ایجاد شده‌اند.'}
 
 
 
@@ -243,7 +265,7 @@ class Product(models.Model):
     default_colors = models.JSONField(default=dict,blank=True,verbose_name="رنگ‌های پیش‌فرض")   ####default="{}"
     base_price = models.DecimalField(max_digits=12, decimal_places=0, default=0,verbose_name="قیمت")
     price_increment_per_cm = models.DecimalField(max_digits=5,decimal_places=2,default=0,verbose_name="درصد افزایش قیمت به ازای هر سانتی‌متر",)
-
+    image = models.ImageField(upload_to='product_images/', blank=True, null=True, verbose_name="عکس محصول")
 
     def __str__(self):
         return f"{self.category} - {self.name}"
@@ -587,6 +609,9 @@ class ProductionTask(models.Model):
         verbose_name="بخش رنگی (بدنه، درب، ...)"
     )
     completed_quantity = models.PositiveIntegerField(default=0, verbose_name="تعداد انجام‌شده")
+    custom_title = models.CharField(max_length=200, blank=True, verbose_name="عنوان دلخواه")
+    custom_duration_minutes = models.PositiveIntegerField(null=True, blank=True, verbose_name="مدت زمان دلخواه (دقیقه)")
+    custom_note = models.CharField(max_length=255, blank=True, verbose_name="یادداشت دلخواه")
 
     class Meta:
         verbose_name = "وظیفه تولید"

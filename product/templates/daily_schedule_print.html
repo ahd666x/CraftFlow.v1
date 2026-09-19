@@ -383,10 +383,16 @@
                         <tr>
                             <td>{{ forloop.parent.loop.index }}.{{ forloop.counter }}</td>
                             <td class="col-product" style="text-align:right;">
-                                {% if task.order_item.product.category %}
+                                {% if task.custom_title %}
+                                <span class="name">{{ task.custom_title }}</span>
+                                {% else %}
+                                    {% if task.order_item and task.order_item.product.category %}
                                     <span class="cat">{{ task.order_item.product.category.name }}</span>
+                                    {% endif %}
+                                    {% if task.order_item and task.order_item.product %}
+                                    <span class="name">{{ task.order_item.product.name }}</span>
+                                    {% endif %}
                                 {% endif %}
-                                <span class="name">{{ task.order_item.product.name }}</span>
                             </td>
                             <td class="col-order">{{ task.order_item.order.id }}/{{ task.order_item.id }}</td>
                             <td class="col-rep" title="{% if task.order_item.order.user %}{{ task.order_item.order.user.get_full_name|default:task.order_item.order.user.username }}{% endif %}">
@@ -451,10 +457,16 @@
                     <tr>
                         <td>{{ forloop.counter }}</td>
                         <td class="col-product" style="text-align:right;">
-                            {% if task.order_item.product.category %}
+                            {% if task.custom_title %}
+                            <span class="name">{{ task.custom_title }}</span>
+                            {% else %}
+                                {% if task.order_item and task.order_item.product.category %}
                                 <span class="cat">{{ task.order_item.product.category.name }}</span>
+                                {% endif %}
+                                {% if task.order_item and task.order_item.product %}
+                                <span class="name">{{ task.order_item.product.name }}</span>
+                                {% endif %}
                             {% endif %}
-                            <span class="name">{{ task.order_item.product.name }}</span>
                         </td>
                         <td class="col-order">{{ task.order_item.order.id }}/{{ task.order_item.id }}</td>
                         <td class="col-rep" title="{% if task.order_item.order.user %}{{ task.order_item.order.user.get_full_name|default:task.order_item.order.user.username }}{% endif %}">

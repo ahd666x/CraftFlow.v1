@@ -192,6 +192,47 @@
         background: #fffbeb;
         box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.35);
     }
+    .btn-hide-task {
+        padding: 2px 6px;
+        font-size: 10px;
+        line-height: 1;
+        vertical-align: middle;
+    }
+    .btn-hide-task.is-hidden {
+        color: #1d4ed8;
+        border-color: #93c5fd;
+        background: #dbeafe;
+    }
+    .kanban-card.hidden-task {
+        display: none;
+    }
+    .kanban-cards.show-hidden .kanban-card.hidden-task {
+        display: flex;
+        flex-direction: column;
+        opacity: 0.45;
+        border-style: dashed !important;
+    }
+    .btn-toggle-hidden {
+        background: #eef2f6;
+        border: 1px solid #cbd5e1;
+        border-radius: 20px;
+        font-size: 0.7rem;
+        padding: 0.15rem 0.65rem;
+        color: #475569;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        white-space: nowrap;
+    }
+    .btn-toggle-hidden:hover {
+        background: #e2e8f0;
+    }
+    .btn-toggle-hidden.active {
+        background: #dbeafe;
+        border-color: #93c5fd;
+        color: #1d4ed8;
+    }
 
     /* دکمه‌های بالای صفحه */
     .top-bar {
@@ -270,8 +311,11 @@
         <a href="{% url 'daily_schedule_print' %}?date={{ selected_date_str }}" target="_blank" class="btn btn-outline-secondary ms-2">
             <i class="bi bi-printer"></i> چاپ
         </a>
-        <button type="button" class="btn btn-outline-warning ms-2" id="resetScheduleBtn">
+        {% comment %} <button type="button" class="btn btn-outline-warning ms-2" id="resetScheduleBtn">
             <i class="bi bi-arrow-clockwise"></i> بازگشت به زمان‌بندی اولیه
+        </button> {% endcomment %}
+        <button type="button" class="btn btn-success ms-2" data-bs-toggle="modal" data-bs-target="#customTaskModal">
+            <i class="bi bi-plus-circle"></i> کارت اضافه
         </button>
     </div>
 </div>
@@ -286,19 +330,28 @@
             <span class="worker-name">
                 <i class="bi bi-inbox"></i> {{ col.label }}
             </span>
-            <span class="badge-count">{{ col.tasks|length }}</span>
+            <div class="d-flex align-items-center gap-2">
+                <button type="button" class="btn-toggle-hidden" id="toggleHiddenBtn" title="نمایش / مخفی کردن موارد مخفی‌شده">
+                    <i class="bi bi-eye-slash"></i> <span id="hiddenCountBadge">0</span> مخفی
+                </button>
+                <span class="badge-count">{{ col.tasks|length }}</span>
+            </div>
         </div>
         <div class="kanban-cards">
-            {% for task in col.tasks %}
+{% for task in col.tasks %}
             <div class="kanban-card {% if task.painting_stage and task.painting_stage.required_skill not in col.skills %}skill-mismatch{% endif %}"
                  draggable="true" data-task-id="{{ task.id }}">
                 <div class="product-name">
                     <span class="prod-text">
-                        {% if task.order_item and task.order_item.product.category %}
-                        <span class="cat">{{ task.order_item.product.category.name }}</span>
-                        {% endif %}
-                        {% if task.order_item and task.order_item.product %}
-                        <span class="name">{{ task.order_item.product.name }}</span>
+                        {% if task.custom_title %}
+                        <span class="name"> {{ task.custom_title }}</span>
+                        {% else %}
+                            {% if task.order_item and task.order_item.product.category %}
+                            <span class="cat">{{ task.order_item.product.category.name }}</span>
+                            {% endif %}
+                            {% if task.order_item and task.order_item.product %}
+                            <span class="name">{{ task.order_item.product.name }}</span>
+                            {% endif %}
                         {% endif %}
                     </span>
                     {% if task.order_item and task.order_item.order %}
@@ -316,11 +369,18 @@
                     <span class="label">رنگ:</span>
                     <span class="color-tag">{{ task.color_part|default:"-" }}{% if task.color_part %} ({{ task|task_color_code }}){% endif %}</span>
                 </div>
+                {% if task.custom_note %}
                 <div class="info-row">
-                    <span class="stage-tag">{{ task.painting_stage.name|default:"مرحله نامشخص" }}</span>
-                    {% if not col.is_unscheduled %}
-                    <button type="button" class="btn-delete-task btn btn-sm btn-outline-danger ms-1" data-task-id="{{ task.id }}" title="حذف مرحله" style="padding:2px 6px;font-size:10px;line-height:1;vertical-align:middle;">✕</button>
-                    {% endif %}
+                    <span class="label">یادداشت:</span>
+                    <span class="value">{{ task.custom_note }}</span>
+                </div>
+                {% endif %}
+                <div class="info-row">
+                    <span class="stage-tag">{% if task.custom_title %}{{ task.custom_note|default:"کار دلخواه" }}{% else %}{{ task.painting_stage.name|default:"مرحله نامشخص" }}{% endif %}</span>
+                    <button type="button" class="btn-hide-task btn btn-sm btn-outline-secondary ms-1" data-task-id="{{ task.id }}" title="مخفی کردن این مورد">
+                        <i class="bi bi-eye-slash"></i>
+                    </button>
+                    <button type="button" class="btn-delete-task btn btn-sm btn-outline-danger ms-1" data-task-id="{{ task.id }}" title="حذف کارت" style="padding:2px 6px;font-size:10px;line-height:1;vertical-align:middle;">✕</button>
                 </div>
             </div>
             {% empty %}
@@ -349,11 +409,15 @@
                  draggable="true" data-task-id="{{ task.id }}">
                 <div class="product-name">
                     <span class="prod-text">
-                        {% if task.order_item and task.order_item.product.category %}
-                        <span class="cat">{{ task.order_item.product.category.name }}</span>
-                        {% endif %}
-                        {% if task.order_item and task.order_item.product %}
-                        <span class="name">{{ task.order_item.product.name }}</span>
+                        {% if task.custom_title %}
+                        <span class="name"> {{ task.custom_title }}</span>
+                        {% else %}
+                            {% if task.order_item and task.order_item.product.category %}
+                            <span class="cat">{{ task.order_item.product.category.name }}</span>
+                            {% endif %}
+                            {% if task.order_item and task.order_item.product %}
+                            <span class="name">{{ task.order_item.product.name }}</span>
+                            {% endif %}
                         {% endif %}
                     </span>
                     {% if task.order_item and task.order_item.order %}
@@ -372,7 +436,7 @@
                     <span class="color-tag">{{ task.color_part|default:"-" }}{% if task.color_part %} ({{ task|task_color_code }}){% endif %}</span>
                 </div>
                 <div class="info-row">
-                    <span class="stage-tag">{{ task.painting_stage.name|default:"مرحله نامشخص" }}</span>
+                    <span class="stage-tag">{% if task.custom_title %}{{ task.custom_note|default:"کار دلخواه" }}{% else %}{{ task.painting_stage.name|default:"مرحله نامشخص" }}{% endif %}</span>
                     <button type="button" class="btn-delete-task btn btn-sm btn-outline-danger ms-1" data-task-id="{{ task.id }}" title="حذف مرحله" style="padding:2px 6px;font-size:10px;line-height:1;vertical-align:middle;">✕</button>
                 </div>
                 <div class="info-row">
@@ -380,7 +444,7 @@
                     <span class="time-badge">
                         <i class="bi bi-clock"></i>
                         {{ task.scheduled_start|date:"H:i" }} - {{ task.scheduled_end|date:"H:i" }}
-                        ({{ task.painting_stage.duration_minutes|default:"?" }} دقیقه)
+                        ({{ task.painting_stage.duration_minutes|default:task.custom_duration_minutes|default:"?" }} دقیقه)
                     </span>
                     {% endif %}
                 </div>
@@ -393,6 +457,47 @@
     {% endif %}
     {% endfor %}
 </div>
+
+<div class="modal fade" id="customTaskModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form id="customTaskForm">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title">کارت جدید</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">عنوان کارت *</label>
+                        <input type="text" name="title" class="form-control" required placeholder="مثلاً: تمیزکاری دستگاه">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">توضیح</label>
+                        <input type="text" name="note" class="form-control" placeholder="مثلاً: قبل از شروع نقاشی">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">مدت زمان (دقیقه)</label>
+                        <input type="number" name="duration_minutes" class="form-control" value="60" min="5" step="5">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label"> به کارگر </label>
+                        <select name="worker_id" class="form-select">
+                            <option value=""> </option>
+                            {% for wp in workers %}
+                            <option value="{{ wp.user_id }}">{{ wp.user.get_full_name|default:wp.user.username }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+                    <button type="submit" class="btn btn-primary">ایجاد کارت</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block painting_js %}
@@ -401,6 +506,94 @@ $(function () {
     var csrf = '{{ csrf_token }}';
     var dragged = null;
     var movedTaskIds = new Set();
+
+    // ===== مدیریت مخفی‌سازی تسک‌های بدون برنامه‌ریزی =====
+    var HIDDEN_KEY = 'hiddenPaintTasks';
+    var SHOW_HIDDEN_KEY = 'showHiddenPaintTasks';
+    var hiddenTaskIds = new Set();
+    var showHidden = false;
+
+    function loadHiddenState() {
+        try {
+            var raw = localStorage.getItem(HIDDEN_KEY);
+            if (raw) {
+                JSON.parse(raw).forEach(function (id) { hiddenTaskIds.add(String(id)); });
+            }
+        } catch (e) {}
+        try {
+            showHidden = localStorage.getItem(SHOW_HIDDEN_KEY) === '1';
+        } catch (e) {}
+    }
+
+    function saveHiddenIds() {
+        try {
+            localStorage.setItem(HIDDEN_KEY, JSON.stringify(Array.from(hiddenTaskIds)));
+        } catch (e) {}
+    }
+
+    function applyHiddenState() {
+        var container = document.querySelector('.kanban-col.unscheduled-col .kanban-cards');
+        if (!container) return;
+
+        container.classList.toggle('show-hidden', showHidden);
+
+        var visibleCount = 0;
+        var cards = container.querySelectorAll('.kanban-card');
+        cards.forEach(function (card) {
+            var taskId = String(card.dataset.taskId);
+            var isHidden = hiddenTaskIds.has(taskId);
+            card.classList.toggle('hidden-task', isHidden);
+
+            var hideBtn = card.querySelector('.btn-hide-task');
+            if (hideBtn) {
+                hideBtn.classList.toggle('is-hidden', isHidden);
+                hideBtn.title = isHidden ? 'نمایش این مورد' : 'مخفی کردن این مورد';
+                var icon = hideBtn.querySelector('i');
+                if (icon) {
+                    icon.className = isHidden ? 'bi bi-eye' : 'bi bi-eye-slash';
+                }
+            }
+
+            if (isHidden) {
+                visibleCount++;
+            }
+        });
+
+        var badge = document.getElementById('hiddenCountBadge');
+        if (badge) badge.textContent = visibleCount;
+
+        var toggleBtn = document.getElementById('toggleHiddenBtn');
+        if (toggleBtn) toggleBtn.classList.toggle('active', showHidden);
+    }
+
+    loadHiddenState();
+    applyHiddenState();
+
+    document.addEventListener('click', function (e) {
+        var hideBtn = e.target.closest('.btn-hide-task');
+        if (hideBtn) {
+            e.preventDefault();
+            e.stopPropagation();
+            var taskId = String(hideBtn.dataset.taskId);
+            if (hiddenTaskIds.has(taskId)) {
+                hiddenTaskIds.delete(taskId);
+            } else {
+                hiddenTaskIds.add(taskId);
+            }
+            saveHiddenIds();
+            applyHiddenState();
+            return;
+        }
+    });
+
+    var toggleHiddenBtn = document.getElementById('toggleHiddenBtn');
+    if (toggleHiddenBtn) {
+        toggleHiddenBtn.addEventListener('click', function () {
+            showHidden = !showHidden;
+            try { localStorage.setItem(SHOW_HIDDEN_KEY, showHidden ? '1' : '0'); } catch (e) {}
+            applyHiddenState();
+        });
+    }
 
     function loadMovedTaskIds() {
         try {
@@ -466,6 +659,13 @@ $(function () {
             saveMovedTaskIds();
             dragged.classList.add('moved-by-drag');
 
+            if (!isUnscheduled) {
+                hiddenTaskIds.delete(taskId.toString());
+                saveHiddenIds();
+                dragged.classList.remove('hidden-task');
+            }
+            applyHiddenState();
+
             document.querySelectorAll('.kanban-col').forEach(function (c) {
                 var count = c.querySelectorAll('.kanban-card').length;
                 c.querySelector('.badge-count').textContent = count;
@@ -524,7 +724,7 @@ $(function () {
                                     }
                                     return;
                                 }
-                                var msg = 'خطا در تخصیص — صفحه را رفرش کنید';
+                                var msg = 'خطا  — صفحه را رفرش کنید';
                                 try {
                                     var resp = JSON.parse(xhr.responseText);
                                     if (resp && resp.error) msg = 'خطا: ' + resp.error;
@@ -533,7 +733,7 @@ $(function () {
                             }
                         },
                         error: function (xhr) {
-                            var msg = 'خطا در تخصیص — صفحه را رفرش کنید';
+                            var msg = 'خطا  — صفحه را رفرش کنید';
                             try {
                                 var resp = JSON.parse(xhr.responseText);
                                 if (resp && resp.error) msg = 'خطا: ' + resp.error;
@@ -548,7 +748,7 @@ $(function () {
     });
 
     $('#resetScheduleBtn').on('click', function () {
-        if (!confirm('آیا از بازنشانی زمان‌بندی این روز اطمینان دارید؟\nتمام تخصیص‌های دستی حذف و زمان‌بندی مجدد انجام می‌شود.')) {
+        if (!confirm('آیا از بازنشانی زمان‌بندی این روز اطمینان  حذف و زمان‌بندی مجدد انجام می‌شود.')) {
             return;
         }
 
@@ -576,6 +776,32 @@ $(function () {
             error: function () {
                 alert('خطای ارتباط با سرور');
                 btn.prop('disabled', false).html(originalHtml);
+            }
+        });
+    });
+
+    $('#customTaskForm').on('submit', function (e) {
+        e.preventDefault();
+        var $form = $(this);
+        var $btn = $form.find('button[type=submit]');
+        $btn.prop('disabled', true);
+        $.ajax({
+            url: '{% url "painting_create_custom_task" %}',
+            method: 'POST',
+            headers: {'X-Requested-With': 'XMLHttpRequest'},
+            data: $form.serialize() + '&date={{ selected_date_str }}',
+            success: function (data) {
+                if (data.success) {
+                    if (data.warning) alert(data.warning);
+                    window.location.reload();
+                } else {
+                    alert(data.error || 'خطا در ایجاد کارت');
+                    $btn.prop('disabled', false);
+                }
+            },
+            error: function () {
+                alert('خطای ارتباط با سرور');
+                $btn.prop('disabled', false);
             }
         });
     });
@@ -608,7 +834,7 @@ $(function () {
                             badge.textContent = count;
                         }
                     });
-                    alert(data.message || 'مرحله حذف شد.');
+                    
                 } else {
                     alert(data.error || 'خطا در حذف مرحله.');
                     btn.prop('disabled', false).html('✕');

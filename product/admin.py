@@ -187,7 +187,7 @@ class ProductAdmin(admin.ModelAdmin):
 
     fieldsets = (
         ('اطلاعات اصلی', {
-            'fields': ('category', 'name', 'color', 'parts_list_key', 'description')
+            'fields': ('category', 'name', 'color', 'parts_list_key', 'description', 'image')
         }),
         ('اندازه و قیمت', {
             'fields': (
@@ -264,10 +264,11 @@ class OrderAdmin(admin.ModelAdmin):
     @admin.action(description="ایجاد دستور تولید")
     def generate_tasks_action(self, request, queryset):
         for order in queryset:
-            if order.generate_tasks():
+            result = order.generate_tasks()
+            if result.get('success'):
                 self.message_user(request, f"  {order.id} ok ")
             else:
-                self.message_user(request, f"سفارش {order.id} قبلاً صادر شده است.", level='warning')
+                self.message_user(request, f"سفارش {order.id}: {result.get('error', 'خطای ناشناخته')}", level='warning')
 
 
 @admin.register(ProductionTask)

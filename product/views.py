@@ -6,7 +6,7 @@ import math
 import os
 import re
 import xml.etree.ElementTree as ET
-from datetime import timedelta
+from datetime import datetime, time, timedelta
 from xml.dom import minidom
 
 import pandas as pd
@@ -1008,9 +1008,10 @@ def admin_tasks_management(request):
 @require_POST
 def order_generate_tasks(request, order_id):
     order = get_object_or_404(Order, pk=order_id)
-    if order.generate_tasks():
+    result = order.generate_tasks()
+    if result.get('success'):
         return JsonResponse({'success': True})
-    return JsonResponse({'success': False, 'error': 'تسک‌ها قبلاً ایجاد شده‌اند.'})
+    return JsonResponse({'success': False, 'error': result.get('error', 'تسک‌ها قبلاً ایجاد شده‌اند.')})
 
 
 
@@ -3068,6 +3069,74 @@ def admin_product_list(request):
     return render(request, 'admin_product_list.html', context)
 
 
+# -------------------------------------------------------------------
+#      کاتالوگ محصولات (لیست قیمت) — نمایش عکس، قیمت و لیست قطعات
+# -------------------------------------------------------------------
+@login_required
+@admin_or_manager_required
+def product_catalog(request):
+    """کاتالوگ محصولات: نمایش عکس، نام، قیمت و لیست قطعات (BOM) هر محصول."""
+    products = Product.objects.select_related('category').prefetch_related(
+        'bom'
+    )
+
+    categories = ProductCategory.objects.all()
+
+    # جستجو
+    q = request.GET.get('q')
+    if q:
+        products = products.filter(
+            Q(name__icontains=q) | Q(category__name__icontains=q)
+        )
+
+    # فیلتر دسته‌بندی
+    category_id = request.GET.get('category')
+    if category_id:
+        products = products.filter(category_id=category_id)
+
+    products = products.order_by('category__name', 'name')
+
+    context = {
+        'products': products,
+        'categories': categories,
+        'selected_category': category_id,
+        'search_query': q,
+        'today': jdatetime.date.today().strftime('%Y/%m/%d'),
+    }
+    return render(request, 'product_catalog.html', context)
+
+
+@login_required
+@admin_or_manager_required
+def product_catalog_pdf(request):
+    """ذخیره / دانلود کاتالوگ محصولات به‌صورت PDF."""
+    q = request.GET.get('q')
+    category_id = request.GET.get('category')
+
+    products = Product.objects.select_related('category').prefetch_related(
+        'bom__part__material'
+    )
+    if q:
+        products = products.filter(
+            Q(name__icontains=q) | Q(category__name__icontains=q)
+        )
+    if category_id:
+        products = products.filter(category_id=category_id)
+    products = products.order_by('category__name', 'name')
+
+    from .pdf_utils import render_pdf
+    return render_pdf(
+        'product_catalog_pdf.html',
+        {
+            'products': products,
+            'today': jdatetime.date.today().strftime('%Y/%m/%d'),
+            'representative_name': request.user.get_full_name() or request.user.username,
+        },
+        filename='catalog.pdf',
+    )
+
+
+
 
 
 
@@ -4915,7 +4984,7 @@ def daily_schedule_print(request):
             date_entries = []
             for task_date, worker_tasks in sorted(date_tasks.items()):
                 duration = sum(
-                    t.painting_stage.duration_minutes if t.painting_stage else 0
+                    t.painting_stage.duration_minutes if t.painting_stage else (t.custom_duration_minutes or 0)
                     for t in worker_tasks
                 )
                 total_duration += duration
@@ -4987,7 +5056,7 @@ def daily_schedule_print(request):
                 skills = []
 
             total_duration = sum(
-                t.painting_stage.duration_minutes if t.painting_stage else 0
+                t.painting_stage.duration_minutes if t.painting_stage else (t.custom_duration_minutes or 0)
                 for t in worker_tasks
             )
 
@@ -5779,7 +5848,7 @@ def painting_schedule_view(request):
         'assigned_tasks': sum(1 for t in tasks if t.assigned_worker_id),
         'unassigned_tasks': len(unassigned_tasks),
         'ready_unscheduled': ready_unscheduled.count(),
-        'total_duration': sum(t.painting_stage.duration_minutes if t.painting_stage else 0 for t in tasks),
+        'total_duration': sum(t.painting_stage.duration_minutes if t.painting_stage else (t.custom_duration_minutes or 0) for t in tasks),
     }
 
     context = {
@@ -5793,6 +5862,7 @@ def painting_schedule_view(request):
         'yesterday': (selected_date - jdatetime.timedelta(days=1)).strftime('%Y-%m-%d'),
         'tomorrow': (selected_date + jdatetime.timedelta(days=1)).strftime('%Y-%m-%d'),
         'schedule_date': selected_date.strftime('%Y-%m-%d'),
+        'workers': workers,
         **painting_nav_context(),
     }
     return render(request, 'painting_management/schedule.html', context)
@@ -5928,6 +5998,70 @@ def painting_add_to_schedule(request):
         'message': message,
         'redirect': reverse('painting_schedule') + f'?date={scheduled_date.strftime("%Y-%m-%d")}',
     })
+
+
+@login_required
+@admin_or_manager_required
+def painting_create_custom_task(request):
+    """ایجاد یک کارت دلخواه (بدون سفارش واقعی) و تخصیص اختیاری به یک کارگر"""
+    if request.method != 'POST' or request.headers.get('X-Requested-With') != 'XMLHttpRequest':
+        return JsonResponse({'success': False, 'error': 'درخواست نامعتبر'})
+
+    title = request.POST.get('title', '').strip()
+    note = request.POST.get('note', '').strip()
+    worker_id = request.POST.get('worker_id') or None
+    date_str = request.POST.get('date') or None
+
+    try:
+        duration = int(request.POST.get('duration_minutes') or 60)
+    except (TypeError, ValueError):
+        duration = 60
+    if duration <= 0:
+        duration = 60
+
+    if not title:
+        return JsonResponse({'success': False, 'error': 'عنوان کارت الزامی است'})
+
+    with transaction.atomic():
+        customer, _ = Customer.objects.get_or_create(
+            user=request.user,
+            name='کار متفرقه',
+            defaults={'phone': '', 'address': ''}
+        )
+        order = Order.objects.create(
+            user=request.user,
+            customer=customer,
+            number='دلخواه',
+            status='draft',
+        )
+        task = ProductionTask.objects.create(
+            order=order,
+            part=None,
+            station_name='paint',
+            step_order=1,
+            quantity=1,
+            status='pending',
+            painting_stage=None,
+            order_item=None,
+            color_part='',
+            custom_title=title,
+            custom_duration_minutes=duration,
+            custom_note=note,
+        )
+
+    if worker_id:
+        result = assign_task_to_worker(task.id, worker_id, target_date=date_str)
+        if not result.get('ok'):
+            return JsonResponse({
+                'success': True,
+                'task_id': task.id,
+                'assigned': False,
+                'warning': result.get('error', 'تخصیص خودکار ناموفق بود؛ کارت بدون برنامه‌ریزی ایجاد شد.'),
+            })
+        return JsonResponse({'success': True, 'task_id': task.id, 'assigned': True})
+
+    return JsonResponse({'success': True, 'task_id': task.id, 'assigned': False})
+
 
 @login_required
 @admin_or_manager_required

@@ -1,6 +1,8 @@
 # product/decorators.py
 from django.contrib.auth.decorators import user_passes_test
 from django.shortcuts import redirect
+from django.http import JsonResponse
+from functools import wraps
 
 
 def admin_or_manager_required(view_func=None, redirect_url='/orderlist/'):
@@ -11,8 +13,16 @@ def admin_or_manager_required(view_func=None, redirect_url='/orderlist/'):
             return True
         return user.groups.filter(name__in=['1', '2', '3']).exists()
 
-    decorator = user_passes_test(check_user, login_url=redirect_url)
-    
+    def decorator(view_func):
+        @wraps(view_func)
+        def _wrapped_view(request, *args, **kwargs):
+            if not check_user(request.user):
+                if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.content_type == 'application/json':
+                    return JsonResponse({'success': False, 'error': 'دسترسی غیرمجاز. کاربر باید ادمین یا مدیر باشد.'}, status=403)
+                return redirect(redirect_url)
+            return view_func(request, *args, **kwargs)
+        return _wrapped_view
+
     if view_func:
         return decorator(view_func)
     return decorator
@@ -28,7 +38,17 @@ def staff_or_representative_required(view_func=None, redirect_url='/customer/ord
         # چک کردن عضویت در گروه‌های مجاز
         return user.groups.filter(name__in=['1']).exists()
 
-    decorator = user_passes_test(check_user, login_url=redirect_url)
+    def decorator(view_func):
+        @wraps(view_func)
+        def _wrapped_view(request, *args, **kwargs):
+            if not check_user(request.user):
+                # برای درخواست‌های AJAX، JSON برگردان به جای ریدایرکت
+                if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.content_type == 'application/json':
+                    return JsonResponse({'success': False, 'error': 'دسترسی غیرمجاز. کاربر باید عضو گروه مجاز باشد.'}, status=403)
+                return redirect(redirect_url)
+            return view_func(request, *args, **kwargs)
+        return _wrapped_view
+
     if view_func:
         return decorator(view_func)
     return decorator

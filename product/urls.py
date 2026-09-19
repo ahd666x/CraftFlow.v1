@@ -116,8 +116,10 @@ urlpatterns = [
     # path('shop/order/<int:order_id>/', views.shop_order_tracking, name='shop_order_tracking'),
 
 
-    path('products/', views.admin_product_list, name='admin_product_list'),
-    path('product/<int:product_id>/bom/edit/', views.product_bom_edit, name='product_bom_edit'),
+     path('products/', views.admin_product_list, name='admin_product_list'),
+     path('catalog/', views.product_catalog, name='product_catalog'),
+     path('catalog/pdf/', views.product_catalog_pdf, name='product_catalog_pdf'),
+     path('product/<int:product_id>/bom/edit/', views.product_bom_edit, name='product_bom_edit'),
     path('export-all/', views.export_all_data, name='export_all_data'),
     path('import-data/', views.import_data, name='import_data'),
     path('scan/packaging/<int:pk>/', views.scan_packaging_unit, name='scan_packaging_unit'),
@@ -179,6 +181,7 @@ urlpatterns = [
     path('painting/schedule/', views.painting_schedule_view, name='painting_schedule'),
     path('painting/ready-list/', views.painting_ready_list, name='painting_ready_list'),
     path('painting/add-to-schedule/', views.painting_add_to_schedule, name='painting_add_to_schedule'),
+    path('painting/create-custom-task/', views.painting_create_custom_task, name='painting_create_custom_task'),
     path('painting/assign-process/', views.painting_assign_process, name='painting_assign_process'),
     path('painting/auto-assign/', views.painting_auto_assign, name='painting_auto_assign'),
     path('painting/available-workers/', views.painting_get_available_workers, name='painting_available_workers'),

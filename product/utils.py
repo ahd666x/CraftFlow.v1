@@ -682,7 +682,7 @@ def _run_cascade_schedule(gregorian_date, initial_entries, exclude_task_ids=None
         if not any(row[2] is None for row in timelines[wid]):
             timelines[wid].append([bounds['break_start'], bounds['break_end'], None])
 
-        duration = cur_task.painting_stage.duration_minutes if cur_task.painting_stage else DEFAULT_TASK_DURATION_MINUTES
+        duration = cur_task.painting_stage.duration_minutes if cur_task.painting_stage else (cur_task.custom_duration_minutes or DEFAULT_TASK_DURATION_MINUTES)
 
         start_candidate = bounds['start']
         if min_start and min_start > start_candidate:
@@ -860,6 +860,10 @@ def _task_matches_rule(task, rule):
     """
     بررسی می‌کند که آیا یک تسک (ProductionTask) با قانون داده‌شده مطابقت دارد.
     """
+    is_custom_task = not task.painting_stage and not task.order_item
+    if is_custom_task:
+        return False
+
     if rule.painting_stage is not None:
         if task.painting_stage_id != rule.painting_stage_id:
             return False
@@ -1128,6 +1132,7 @@ class PaintingScheduler:
           - has_exclusive: آیا کارگر قانون محدودکننده‌ای دارد؟
           - matches_exclusive: آیا تسک با حداقل یک قانون محدودکننده‌ی این کارگر مطابقت دارد؟
         """
+        is_custom_task = not task.painting_stage and not task.order_item
         info = {}
         for w in self.workers:
             wid = w.get('user_id')
@@ -1137,6 +1142,9 @@ class PaintingScheduler:
                     'has_exclusive': False,
                     'matches_exclusive': False,
                 }
+
+        if is_custom_task:
+            return info
 
         for rule in self.assignment_rules:
             if not rule.is_active:
@@ -1159,8 +1167,9 @@ class PaintingScheduler:
 
     def _select_worker(self, task, item_ready):
         try:
-            skill = task.painting_stage.required_skill if task.painting_stage else 'painter'
-            duration = task.painting_stage.duration_minutes if task.painting_stage else DEFAULT_TASK_DURATION_MINUTES
+            is_custom_task = not task.painting_stage and not task.order_item
+            skill = task.painting_stage.required_skill if task.painting_stage else None
+            duration = task.painting_stage.duration_minutes if task.painting_stage else (task.custom_duration_minutes or DEFAULT_TASK_DURATION_MINUTES)
             is_short_task = duration <= 30
 
             product = task.order_item.product if task.order_item and task.order_item.product else None
@@ -1168,7 +1177,7 @@ class PaintingScheduler:
 
             item_id = task.order_item_id
             color_part = task.color_part or ''
-            item_key = (item_id, color_part)
+            item_key = ('custom', task.id) if is_custom_task else (item_id, color_part)
             item_allowed_workers = None
             if item_id and len(self._item_workers.get(item_key, set())) >= 2:
                 item_allowed_workers = self._item_workers.get(item_key, set())
@@ -1714,6 +1723,9 @@ def assign_task_to_worker(task_id, worker_id, target_date=None, allow_overtime=F
         if task.status == 'done':
             return {'ok': False, 'error': 'این تسک قبلاً انجام شده است'}
 
+        # تسک‌های دلخواه مرحله یا آیتم استاندارد ندارند و مستقیماً به کارگر انتخاب‌شده اختصاص می‌یابند.
+        is_custom_task = not task.painting_stage and not task.order_item
+
         # ۲. کارگر مقصد
         workers = _get_worker_cache()
         worker_data = next((w for w in workers if w['user_id'] == worker_id), None)
@@ -1721,29 +1733,30 @@ def assign_task_to_worker(task_id, worker_id, target_date=None, allow_overtime=F
             return {'ok': False, 'error': 'کارگر یافت نشد یا غیرفعال است'}
 
         # ۳. مهارت
-        required_skill = task.painting_stage.required_skill if task.painting_stage else 'painter'
-        if required_skill not in (worker_data.get('skills') or []):
+        required_skill = task.painting_stage.required_skill if task.painting_stage else None
+        if required_skill and required_skill not in (worker_data.get('skills') or []):
             return {
                 'ok': False,
                 'error': f'کارگر مهارت "{required_skill}" را ندارد. مهارت‌های فعلی: {", ".join((worker_data.get("skills") or []))}'
             }
 
-        # ۳-ب. قوانین تخصیص
-        active_rules = _get_active_assignment_rules()
-        for rule in active_rules:
-            if rule.worker.user_id == worker_id and rule.rule_type == 'exclusion' and _task_matches_rule(task, rule):
-                return {'ok': False, 'error': 'این کارگر طبق قانون منع شده است.'}
+        # ۳-ب. قوانین تخصیص؛ کارت‌های دلخواه مستقیماً و بدون محدودیت مرحله/محصول اختصاص می‌یابند.
+        if not is_custom_task:
+            active_rules = _get_active_assignment_rules()
+            for rule in active_rules:
+                if rule.worker.user_id == worker_id and rule.rule_type == 'exclusion' and _task_matches_rule(task, rule):
+                    return {'ok': False, 'error': 'این کارگر طبق قانون منع شده است.'}
 
-        has_exclusive = any(
-            r.is_active and r.worker.user_id == worker_id and r.rule_type == 'exclusive' for r in active_rules
-        )
-        if has_exclusive:
-            matches_exclusive = any(
-                r.is_active and r.worker.user_id == worker_id and r.rule_type == 'exclusive' and _task_matches_rule(task, r)
-                for r in active_rules
+            has_exclusive = any(
+                r.is_active and r.worker.user_id == worker_id and r.rule_type == 'exclusive' for r in active_rules
             )
-            if not matches_exclusive:
-                return {'ok': False, 'error': 'این کارگر فقط مجاز به تسک‌های مطابق قانونش است.'}
+            if has_exclusive:
+                matches_exclusive = any(
+                    r.is_active and r.worker.user_id == worker_id and r.rule_type == 'exclusive' and _task_matches_rule(task, r)
+                    for r in active_rules
+                )
+                if not matches_exclusive:
+                    return {'ok': False, 'error': 'این کارگر فقط مجاز به تسک‌های مطابق قانونش است.'}
 
         # ۴. استثناهای محصول/آیتم
         worker_profile = WorkerProfile.objects.filter(user_id=worker_id).first()
@@ -1900,7 +1913,7 @@ def reschedule_worker_tasks_on_date(worker_id, target_date, allow_overtime=False
                 assigned_worker_id=worker_id,
                 scheduled_start__date=gregorian,
                 status__in=['pending', 'waiting'],
-            ).select_related('painting_stage', 'order_item').order_by('order_item_id', 'step_order')
+            ).select_related('painting_stage', 'order_item').order_by('order_item_id', 'step_order', 'id')
         )
 
         if not tasks:
@@ -1916,18 +1929,25 @@ def reschedule_worker_tasks_on_date(worker_id, target_date, allow_overtime=False
                 start_of_day = default_bounds['start']
 
                 for task in tasks:
-                    cursor_key = (task.order_item_id, task.color_part)
+                    if task.order_item_id and task.color_part:
+                        cursor_key = (task.order_item_id, task.color_part)
+                        db_ready = _get_item_ready_time(
+                            task.order_item_id, task.color_part, task.step_order, exclude_task_id=task.id
+                        )
+                    elif task.order_item_id:
+                        cursor_key = ('item', task.order_item_id, task.id)
+                        db_ready = None
+                    else:
+                        cursor_key = ('custom', task.id)
+                        db_ready = None
 
-                    db_ready = _get_item_ready_time(
-                        task.order_item_id, task.color_part, task.step_order, exclude_task_id=task.id
-                    )
                     local = local_ready.get(cursor_key)
                     candidates = [v for v in [db_ready, local] if v is not None]
                     item_ready = max(candidates) if candidates else None
 
                     initial_entries.append((task, worker_id, item_ready))
 
-                    duration = task.painting_stage.duration_minutes if task.painting_stage else DEFAULT_TASK_DURATION_MINUTES
+                    duration = task.painting_stage.duration_minutes if task.painting_stage else (task.custom_duration_minutes or DEFAULT_TASK_DURATION_MINUTES)
                     drying = task.painting_stage.drying_time_minutes if task.painting_stage else 0
 
                     effective_ready = item_ready if (item_ready and item_ready > start_of_day) else start_of_day

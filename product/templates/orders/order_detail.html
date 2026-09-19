@@ -110,8 +110,8 @@
                             <th>اندازه</th>
                             <th>رنگ</th>
                             <th>توضیحات</th>
-                            <th>قیمت واحد</th>
-                            <th>جمع کل</th>
+                            {% comment %} <th>قیمت واحد</th>
+                            <th>جمع کل</th> {% endcomment %}
                             {% for code, name in station_choices %}
                                 <th class="text-center">{{ name }}</th>
                             {% endfor %}
@@ -131,8 +131,8 @@
                             <td>{{ item.size|default:"-" }}</td>
                             <td>{{ item.color_summary }}</td>
                             <td><small>{{ item.notes|default:"-" }}</small></td>
-                            <td><small>{{ item.unit_price|floatformat:0|default:"0" }}</small></td>
-                            <td><small>{{ item.line_total|floatformat:0|default:"0" }}</small></td>
+                            {% comment %} <td><small>{{ item.unit_price|floatformat:0|default:"0" }}</small></td>
+                            <td><small>{{ item.line_total|floatformat:0|default:"0" }}</small></td> {% endcomment %}
                             {% for code, name in station_choices %}
                                 <td class="text-center fs-5">
                                     {% if item.stages|get_item:code %}
