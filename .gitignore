@@ -1,6 +1,8 @@
 venv/
 __pycache__/
 *.env
+.env
+.env.*
 *.log
 cnc_archive/
 dr_archive/
@@ -9,5 +11,3 @@ staticfiles/
 media/
 .vscode/
 .kilo/
- 
- 
