@@ -614,7 +614,15 @@ class ProductionTask(models.Model):
         ('done', 'تکمیل شده'),
     )
 
-    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='tasks', verbose_name="سفارش")
+    order = models.ForeignKey(
+        Order,
+        on_delete=models.CASCADE,
+        related_name='tasks',
+        null=True,
+        blank=True,
+        verbose_name="سفارش",
+        help_text="خالی = کارت دلخواه نقاشی (بدون سفارش)",
+    )
     part = models.ForeignKey(Part, on_delete=models.PROTECT, verbose_name="قطعه", null=True, blank=True)
     station_name = models.CharField(max_length=50, choices=STATION_CHOICES, verbose_name="ایستگاه کاری")
     step_order = models.PositiveIntegerField(verbose_name="اولویت مرحله")
@@ -668,8 +676,9 @@ class ProductionTask(models.Model):
         ]
 
     def __str__(self):
-        target = self.part or self.order_item or "—"
-        return f"{self.get_station_name_display()} | {target} (سفارش {self.order.id})"
+        target = self.part or self.order_item or self.custom_title or "—"
+        order_label = self.order_id if self.order_id else "دلخواه"
+        return f"{self.get_station_name_display()} | {target} (سفارش {order_label})"
 
     def save(self, *args, **kwargs):
         old_status = None
@@ -719,7 +728,10 @@ class ProductionTask(models.Model):
                 logger = logging.getLogger(__name__)
                 logger.exception("خطا در مصرف خودکار مواد اولیه برای تسک %s", self.pk)
 
-            if self.station_name == 'paint' and self.order_item_id:
+            next_step = None
+            if self.order_id is None:
+                pass
+            elif self.station_name == 'paint' and self.order_item_id:
                 next_step = ProductionTask.objects.filter(
                     order=self.order,
                     station_name='paint',
@@ -741,10 +753,12 @@ class ProductionTask(models.Model):
             self.update_order_status()
 
     def update_order_status(self):
+        if self.order_id is None:
+            return
         order = self.order
         all_tasks = order.tasks.all()
         total = all_tasks.count()
-        done = all_tasks.filter(status='done' ).count() 
+        done = all_tasks.filter(status='done').count()
 
         if total == 0:
             return

@@ -1328,13 +1328,13 @@
 
                         {% if first_product and first_product.image %}
 
-                            
+                            <img
                                 href="{% url 'product_edit' first_product.id %}"
                                 class="catalog-intro-image"
                             >
 
                                 <img
-                                    src="{{ first_product.image.url }}"
+                                    src="{% static 'selvi/cover.jpg' %}"
                                     alt="{{ first_product.name }}"
                                 >
 

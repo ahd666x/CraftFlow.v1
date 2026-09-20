@@ -23,7 +23,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         dry_run = options.get('dry_run', False)
 
-        done_tasks = ProductionTask.objects.filter(status='done')
+        done_tasks = ProductionTask.objects.filter(status='done', order__isnull=False)
         total = done_tasks.count()
         self.stdout.write(f'تعداد تسک‌های done: {total}')
 

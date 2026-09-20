@@ -177,9 +177,13 @@
                                     <input type="checkbox" class="form-check-input task-checkbox" name="task_ids" value="{{ task.id }}">
                                 </td>
                                 <td>
-                                    <a href="{% url 'order_detail' task.order.id %}" target="_blank">
-                                        #{{ task.order.id }}
-                                    </a>
+                                    {% if task.order_id %}
+                                        <a href="{% url 'order_detail' task.order_id %}" target="_blank">
+                                            #{{ task.order_id }}
+                                        </a>
+                                    {% else %}
+                                        <span class="badge bg-secondary">کارت دلخواه</span>
+                                    {% endif %}
                                 </td>
                                 <td>
                                     {% if task.order_item %}
@@ -187,7 +191,7 @@
                                             آیتم #{{ task.order_item.id }} ({{ task.order_item.product.category.name }} {{ task.order_item.product.name }})
                                         </a>
                                     {% else %}
-                                        {{ task.part.name|default:"-" }}
+                                        {% if task.custom_title %}{{ task.custom_title }}{% else %}{{ task.part.name|default:"-" }}{% endif %}
                                     {% endif %}
                                 </td>
                                 <td>{{ task.part.name|default:"-" }}</td>

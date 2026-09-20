@@ -631,10 +631,12 @@ def admin_order_tasks(request, order_id):
 @admin_or_manager_required
 def admin_delete_task(request, task_id):
     task = get_object_or_404(ProductionTask, pk=task_id)
-    order_id = task.order.id
+    order_id = task.order_id
     if request.method == 'POST':
         task.delete()
         messages.success(request, 'تسک با موفقیت حذف شد.')
+    if order_id is None:
+        return redirect('admin_tasks_management')
     return redirect('admin_order_tasks', order_id=order_id)
 
 
@@ -973,7 +975,7 @@ def admin_tasks_management(request):
 
         return redirect('admin_tasks_management')
 
-    orders = Order.objects.all().order_by('-id')[:100]
+    orders = Order.objects.order_by('-id')[:100]
     users = User.objects.filter(is_superuser=False).order_by('username')
 
     context = {
@@ -1142,8 +1144,12 @@ def dashboard(request):
 @login_required
 @staff_or_representative_required
 def order_list(request):
-    orders = Order.objects.select_related('customer', 'user').prefetch_related('items__packaging_units').all().order_by('-id')
-
+    orders = (
+        Order.objects
+        .select_related('customer', 'user')
+        .prefetch_related('items__packaging_units')
+        .order_by('-id')
+    )
     status = request.GET.get('status')
     if status:
         orders = orders.filter(status=status)
@@ -2104,7 +2110,11 @@ def download_dr_file(request, barcode):
 @admin_or_manager_required
 @staff_or_representative_required
 def report_orders(request):
-    data = Order.objects.values('status').annotate(count=Count('id'))
+    data = (
+        Order.objects
+        .values('status')
+        .annotate(count=Count('id'))
+    )
     return render(request, 'reports/orders.html', {'data': data})
 
 
@@ -6093,7 +6103,7 @@ def painting_add_to_schedule(request):
 @login_required
 @admin_or_manager_required
 def painting_create_custom_task(request):
-    """ایجاد یک کارت دلخواه (بدون سفارش واقعی) و تخصیص اختیاری به یک کارگر"""
+    """ایجاد یک کارت دلخواه (بدون سفارش) و تخصیص اختیاری به یک کارگر"""
     if request.method != 'POST' or request.headers.get('X-Requested-With') != 'XMLHttpRequest':
         return JsonResponse({'success': False, 'error': 'درخواست نامعتبر'})
 
@@ -6112,32 +6122,20 @@ def painting_create_custom_task(request):
     if not title:
         return JsonResponse({'success': False, 'error': 'عنوان کارت الزامی است'})
 
-    with transaction.atomic():
-        customer, _ = Customer.objects.get_or_create(
-            user=request.user,
-            name='کار متفرقه',
-            defaults={'phone': '', 'address': ''}
-        )
-        order = Order.objects.create(
-            user=request.user,
-            customer=customer,
-            number='دلخواه',
-            status='draft',
-        )
-        task = ProductionTask.objects.create(
-            order=order,
-            part=None,
-            station_name='paint',
-            step_order=1,
-            quantity=1,
-            status='pending',
-            painting_stage=None,
-            order_item=None,
-            color_part='',
-            custom_title=title,
-            custom_duration_minutes=duration,
-            custom_note=note,
-        )
+    task = ProductionTask.objects.create(
+        order=None,
+        part=None,
+        station_name='paint',
+        step_order=1,
+        quantity=1,
+        status='pending',
+        painting_stage=None,
+        order_item=None,
+        color_part='',
+        custom_title=title,
+        custom_duration_minutes=duration,
+        custom_note=note,
+    )
 
     if worker_id:
         result = assign_task_to_worker(task.id, worker_id, target_date=date_str)

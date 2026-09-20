@@ -40,8 +40,10 @@ logger = logging.getLogger(__name__)
 def log_production_event(task, event_type, user=None, old_status='', new_status='',
                          old_worker=None, new_worker=None, quantity=0):
     """ثبت متمرکز رویداد تولید - همیشه از این تابع استفاده شود، نه ساخت مستقیم ProductionEvent"""
+    if task is None or task.order_id is None:
+        return None
     try:
-        ProductionEvent.objects.create(
+        return ProductionEvent.objects.create(
             task=task,
             order=task.order,
             order_item=task.order_item,

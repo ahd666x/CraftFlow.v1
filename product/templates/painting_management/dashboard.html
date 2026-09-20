@@ -101,7 +101,7 @@
                 <tbody>
                     {% for task in recent_tasks %}
                     <tr>
-                        <td>{{ task.order.id }}</td>
+                        <td>{{ task.order_id|default:"—" }}</td>
                         <td>
                             {% if task.order_item %}
                                 {{ task.order_item.product.name|default:"-" }}

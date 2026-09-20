@@ -1,0 +1,29 @@
+﻿python : Traceback (most recent call last):
+At line:4 char:1
++ python manage.py detach_custom_task_orders --dry-run 2>&1 | out-file  ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Traceback (most recent call last)::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  File "C:\Users\Hossein Nezhad\Desktop\CraftFlow V1\CraftFlow\manage.py", line 22, in <module>
+    main()
+  File "C:\Users\Hossein Nezhad\Desktop\CraftFlow V1\CraftFlow\manage.py", line 18, in main
+    execute_from_command_line(sys.argv)
+  File "C:\Python310\lib\site-packages\django\core\management\__init__.py", line 442, in execute_from_command_line
+    utility.execute()
+  File "C:\Python310\lib\site-packages\django\core\management\__init__.py", line 436, in execute
+    self.fetch_command(subcommand).run_from_argv(self.argv)
+  File "C:\Python310\lib\site-packages\django\core\management\base.py", line 420, in run_from_argv
+    self.execute(*args, **cmd_options)
+  File "C:\Python310\lib\site-packages\django\core\management\base.py", line 464, in execute
+    output = self.handle(*args, **options)
+  File "C:\Users\Hossein Nezhad\Desktop\CraftFlow 
+V1\CraftFlow\product\management\commands\detach_custom_task_orders.py", line 27, in handle
+    self.stdout.write(self.style.SUCCESS('\u0633\u0641\u0627\u0631\u0634 
+\u0633\u0627\u062e\u062a\u06af\u06cc\u200c\u0627\u06cc \u0628\u0631\u0627\u06cc 
+\u067e\u0627\u06a9\u200c\u0633\u0627\u0632\u06cc \u0648\u062c\u0648\u062f \u0646\u062f\u0627\u0631\u062f.'))
+  File "C:\Python310\lib\site-packages\django\core\management\base.py", line 185, in write
+    self._out.write(style_func(msg))
+  File "C:\Python310\lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+UnicodeEncodeError: 'charmap' codec can't encode characters in position 0-4: character maps to <undefined>

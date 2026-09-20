@@ -18,7 +18,7 @@ from product.utils import (
 )
 from product.models import (
     Product, ProductCategory, ProductBOM, Part, Material,
-    Order, OrderItem, Color, ProductionTask, Customer, WorkerProfile,
+    Order, OrderItem, Color, ProductionTask, ProductionEvent, Customer, WorkerProfile,
     PaintingProcess, PaintingStage, PaintingMaterialRequirement,
     PaintingProcessMaterial, ProductionDefect, PackagingUnit,
     PaintingColorMaterialVariant, STATION_CHOICES, ProductionLog,
@@ -1465,3 +1465,50 @@ class ReportStagesNPlusOneTests(TestCase):
             response.context['report_data'][0]['representative'],
             'representative-user',
         )
+
+
+class CustomPaintCardTests(TestCase):
+    """کارت‌های دلخواه نقاشی بدون سفارش (order=None)"""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_superuser('customcard', password='testpass')
+
+    def setUp(self):
+        self.client.login(username='customcard', password='testpass')
+
+    def test_create_custom_card_does_not_create_order(self):
+        before = Order.objects.count()
+        response = self.client.post(
+            reverse('painting_create_custom_task'),
+            {'title': 'تمیزکاری دستگاه', 'duration_minutes': '30'},
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['success'])
+        self.assertEqual(Order.objects.count(), before)
+        task = ProductionTask.objects.get(custom_title='تمیزکاری دستگاه')
+        self.assertIsNone(task.order_id)
+        self.assertIn('دلخواه', str(task))
+
+    def test_completing_custom_card_is_safe(self):
+        task = ProductionTask.objects.create(
+            order=None, station_name='paint', step_order=1, quantity=1,
+            status='pending', custom_title='کار تست',
+        )
+        task.status = 'done'
+        task.save()
+        task.refresh_from_db()
+        self.assertEqual(task.status, 'done')
+        self.assertFalse(ProductionEvent.objects.filter(task=task).exists())
+
+    def test_admin_delete_custom_card_redirects_to_task_list(self):
+        task = ProductionTask.objects.create(
+            order=None, station_name='paint', step_order=1, quantity=1,
+            status='pending', custom_title='حذفی',
+        )
+        response = self.client.post(reverse('admin_delete_task', args=[task.id]))
+        self.assertRedirects(
+            response, reverse('admin_tasks_management'), fetch_redirect_response=False
+        )
+        self.assertFalse(ProductionTask.objects.filter(pk=task.id).exists())

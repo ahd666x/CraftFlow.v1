@@ -37,6 +37,7 @@ class Command(BaseCommand):
         # ========== کوئری پایه: تسک‌های نقاشی که فاقد order_item یا painting_stage هستند ==========
         ghost_tasks = ProductionTask.objects.filter(
             station_name='paint',
+            custom_title='',          # کارت‌های دلخواه شبح نیستند
         ).filter(
             Q(order_item__isnull=True) | Q(painting_stage__isnull=True)
         )
