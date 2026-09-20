@@ -27,6 +27,7 @@ SECRET_KEY = config('SECRET_KEY')
 
 
 DEBUG = config('DEBUG', default=False, cast=bool)
+# DEBUG =  True
 ALLOWED_HOSTS = ['selvichoob.ir', '45.159.149.122' , '*' ]
 
 

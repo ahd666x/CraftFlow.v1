@@ -220,9 +220,31 @@ class Order(models.Model):
                         ).first()
                         created = False
 
-                    if not created and dynamic_part.f3 != new_f3:
-                        dynamic_part.f3 = new_f3
-                        dynamic_part.save(update_fields=['f3'])
+                    if not created:
+                        # هماهنگ‌سازی فیلدهای توصیفی قطعهٔ داینامیک با آخرین
+                        # مقادیر قطعهٔ اصلی (base_part) در هر بار صدور دستور تولید.
+                        # material/length/width در lookup بالا هستند و تغییرشان
+                        # خودش رکورد جدید می‌سازد، پس اینجا لازم نیست دوباره sync شوند.
+                        sync_fields = {
+                            'f3': new_f3,
+                            'routing_code': part.routing_code,
+                            'name': part.name,
+                            'grain': part.grain,
+                            'pname': part.pname,
+                            'turn': part.turn,
+                            'f26': part.f26,
+                            'f18': part.f18,
+                            'f4': part.f4,
+                            'f5': part.f5,
+                            'f2': part.f2,
+                        }
+                        update_fields = []
+                        for field_name, new_value in sync_fields.items():
+                            if getattr(dynamic_part, field_name) != new_value:
+                                setattr(dynamic_part, field_name, new_value)
+                                update_fields.append(field_name)
+                        if update_fields:
+                            dynamic_part.save(update_fields=update_fields)
 
                     stations = [s.strip() for s in dynamic_part.routing_code.split('.') if s.strip()]
                     stations.insert(0, "cut")
