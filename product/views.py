@@ -75,6 +75,7 @@ from .utils import (
     get_painting_process_for_color,
     get_color_hex_map,
     get_color_code_choices,
+    auto_assign_paint_tasks,
 )
 logger = logging.getLogger(__name__)
 
