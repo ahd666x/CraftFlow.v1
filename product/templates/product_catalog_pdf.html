@@ -161,11 +161,16 @@
         <div class="collection-hero">
             <div class="hero-content">
                 <div class="hero-eyebrow">مجموعه {{ col.index|stringformat:"02d" }} از {{ total_collections|stringformat:"02d" }}</div>
-                <div class="hero-title">{{ col.category.name|default:"سایر" }}</div>
+                <div class="hero-title">{{ col.name }}</div>
                 <div class="hero-tagline">طراحی ساده، فضای بزرگ‌تر</div>
                 <div class="hero-desc">
-                    مجموعه «{{ col.category.name|default:"سایر" }}» با ترکیب کارایی و طراحی مدرن، فضایی منظر و باکیفیت
-                    برای منزل شما می‌سازد؛ {{ col.products|length }} محصول در این مجموعه موجود است.
+                    {% if col.category_names %}
+                        مجموعه «{{ col.category_names|join:"، " }}» با ترکیب کارایی و طراحی مدرن، فضایی منظر و باکیفیت
+                        برای منزل شما می‌سازد؛ {{ col.products|length }} محصول در این مجموعه موجود است.
+                    {% else %}
+                        این مجموعه با ترکیب کارایی و طراحی مدرن، فضایی منظر و باکیفیت
+                        برای منزل شما می‌سازد؛ {{ col.products|length }} محصول در این مجموعه موجود است.
+                    {% endif %}
                 </div>
                 <ul class="hero-features">
                     <li>• فضای نگهداری کاربردی</li>
@@ -176,7 +181,7 @@
             </div>
             <div class="hero-image-box">
                 {% if col.hero_image %}
-                    <img src="{{ col.hero_image.url }}" alt="{{ col.category.name }}">
+                    <img src="{{ col.hero_image.url }}" alt="{{ col.name }}">
                 {% else %}
                     <div class="no-img">—</div>
                 {% endif %}
@@ -186,7 +191,7 @@
         <!-- ===== عنوان بخش کالکشن ===== -->
         <div class="section-title">
             <div class="divider"></div>
-            <div class="page-info">{{ col.category.name|default:"سایر" }} / {{ col.products|length|stringformat:"02d" }}</div>
+            <div class="page-info">{{ col.category_names|join:"، "|default:"سایر" }} / {{ col.products|length|stringformat:"02d" }}</div>
             <h4>کالکشن</h4>
         </div>
 

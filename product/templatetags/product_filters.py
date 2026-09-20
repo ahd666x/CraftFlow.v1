@@ -66,6 +66,21 @@ def persian_date(value):
 
 
 @register.filter
+def persian_datetime(value):
+    """تبدیل datetime میلادی به رشته‌ی شمسی همراه با ساعت: YYYY/MM/DD HH:MM"""
+    if not value:
+        return ''
+    try:
+        d = value.date() if hasattr(value, 'date') else value
+        date_str = jdatetime.date.fromgregorian(date=d).strftime('%Y/%m/%d')
+        if hasattr(value, 'hour'):
+            return f"{date_str} {value.strftime('%H:%M')}"
+        return date_str
+    except Exception:
+        return str(value)
+
+
+@register.filter
 def task_color_code(task):
     """دریافت کد رنگ متناظر با color_part یک وظیفه تولید"""
     if not hasattr(task, 'order_item') or not task.order_item:

@@ -174,7 +174,7 @@
         e.preventDefault();
         var isEdit = $('#formAction').val() === 'edit';
         var id = $('#materialId').val();
-        var url = isEdit ? '/inventory/materials/' + id + '/edit/' : '/inventory/materials/create/';
+        var url = isEdit ? '{% url "inventory:material_edit" material_id=0 %}'.replace('0', id) : '{% url "inventory:material_create" %}';
 
         $.ajax({
             url: url,
@@ -191,7 +191,7 @@
 
     $('.edit-material').on('click', function() {
         var id = $(this).data('id');
-        $.getJSON('/inventory/materials/' + id + '/detail/', function(data) {
+        $.getJSON('{% url "inventory:material_detail" material_id=0 %}'.replace('0', id), function(data) {
             $('#modalTitle').text('ویرایش ماده اولیه');
             $('#formAction').val('edit');
             $('#materialId').val(data.id);
@@ -210,7 +210,7 @@
     $('.delete-material').on('click', function() {
         var id = $(this).data('id');
         var name = $(this).data('name');
-        currentDeleteUrl = '/inventory/materials/' + id + '/delete/';
+        currentDeleteUrl = '{% url "inventory:material_delete" material_id=0 %}'.replace('0', id);
         $('#deleteItemName').text('ماده اولیه: ' + name);
         deleteModal.show();
     });
@@ -229,7 +229,7 @@
 
     $('#btnFilter').on('click', function() {
         var category = $('#categoryFilter').val();
-        var url = '/inventory/materials/?category=' + category;
+        var url = '{% url "inventory:material_list" %}?category=' + category;
         window.location.href = url;
     });
 
@@ -239,7 +239,7 @@
             category: $('#categoryFilter').val() || '',
             page: page
         };
-        $.get('/inventory/materials/', params, function(data) {
+        $.get('{% url "inventory:material_list" %}', params, function(data) {
             if (data.table_html) {
                 $('#materialTableBody').html(data.table_html);
             }

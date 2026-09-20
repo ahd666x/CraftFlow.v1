@@ -3101,7 +3101,7 @@ def product_catalog(request):
     if category_id:
         products_qs = products_qs.filter(category_id=category_id)
 
-    products = list(products_qs.order_by('category__name', 'name'))
+    products = list(products_qs.order_by('name', 'category__name'))
 
     for product in products:
         product.display_code = f"P-{product.id:04d}"
@@ -3125,10 +3125,9 @@ def product_catalog(request):
     collections = {}
     order = []
     for product in products:
-        cat = product.category
-        key = cat.id if cat else 0
+        key = product.name
         if key not in collections:
-            collections[key] = {'category': cat, 'products': []}
+            collections[key] = {'name': product.name, 'products': []}
             order.append(key)
         collections[key]['products'].append(product)
 
@@ -3139,6 +3138,9 @@ def product_catalog(request):
             (p.image for p in col['products'] if p.image),
             None,
         )
+        col['category_names'] = sorted({
+            p.category.name for p in col['products'] if p.category
+        })
 
     context = {
         'collection_list': collection_list,
@@ -3174,7 +3176,7 @@ def product_catalog_pdf(request):
     if category_id:
         products_qs = products_qs.filter(category_id=category_id)
 
-    products = list(products_qs.order_by('category__name', 'name'))
+    products = list(products_qs.order_by('name', 'category__name'))
 
     for product in products:
         product.display_code = f"P-{product.id:04d}"
@@ -3197,10 +3199,9 @@ def product_catalog_pdf(request):
     collections = {}
     order = []
     for product in products:
-        cat = product.category
-        key = cat.id if cat else 0
+        key = product.name
         if key not in collections:
-            collections[key] = {'category': cat, 'products': []}
+            collections[key] = {'name': product.name, 'products': []}
             order.append(key)
         collections[key]['products'].append(product)
 
@@ -3208,6 +3209,7 @@ def product_catalog_pdf(request):
     for idx, col in enumerate(collection_list, start=1):
         col['index'] = idx
         col['hero_image'] = next((p.image for p in col['products'] if p.image), None)
+        col['category_names'] = sorted({p.category.name for p in col['products'] if p.category})
 
     return render_pdf(
         'product_catalog_pdf.html',

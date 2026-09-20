@@ -907,7 +907,14 @@ def purchase_order_item_delete(request, item_id):
 @admin_or_manager_required
 def low_stock_report(request):
     materials = RawMaterial.objects.filter(is_active=True).annotate(
-        stock=Coalesce(Sum('movements__quantity'), Value(0, output_field=DecimalField()))
+        stock=Coalesce(
+            Sum(Case(
+                When(movements__movement_type='consumption', then=-F('movements__quantity')),
+                default=F('movements__quantity'),
+                output_field=DecimalField()
+            )),
+            Value(0, output_field=DecimalField())
+        )
     ).filter(stock__lte=F('min_stock_alert')).order_by('stock')
 
     context = {
@@ -932,15 +939,21 @@ def raw_material_receive_scan(request):
     """
     if request.method == 'POST':
         barcode = request.POST.get('barcode', '').strip()
-        pack_count = int(request.POST.get('pack_count', 1))
+        try:
+            pack_count = int(request.POST.get('pack_count', 1))
+        except (TypeError, ValueError):
+            pack_count = 1
         note = request.POST.get('note', '')
 
         if not barcode:
             messages.error(request, 'بارکد وارد نشده است.')
             return redirect('inventory:raw_material_receive_scan')
 
-        # پیدا کردن ماده اولیه با بارکد
-        raw_material = get_object_or_404(RawMaterial, barcode=barcode)
+        try:
+            raw_material = RawMaterial.objects.get(barcode=barcode)
+        except RawMaterial.DoesNotExist:
+            messages.error(request, f'ماده اولیه با بارکد «{barcode}» یافت نشد.')
+            return redirect('inventory:raw_material_receive_scan')
 
         # محاسبه مقدار بر اساس تعداد بسته و pack_size
         if raw_material.pack_size and raw_material.pack_size > 0:

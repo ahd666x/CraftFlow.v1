@@ -33,7 +33,7 @@ class RawMaterialForm(forms.ModelForm):
             'category': forms.Select(attrs={'class': 'form-select'}),
             'name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'نام ماده اولیه'}),
             'code': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'کد (اختیاری)'}),
-            'barcode': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'بارکد (اختیاری، برای اسکن دریافت}'}),
+            'barcode': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'بارکد (اختیاری، برای اسکن دریافت)'}),
             'unit': forms.Select(attrs={'class': 'form-select'}),
             'min_stock_alert': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': '0'}),
             'pack_size': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': '0', 'placeholder': 'مثلاً 4 برای قوطی ۴ لیتری'}),

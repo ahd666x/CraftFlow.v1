@@ -106,20 +106,29 @@
         .filter-row, .filter-row.row-search { grid-template-columns: 1fr; }
     }
 
+    /* overflow باید visible باشد وگرنه sticky کار نمی‌کند */
     .table-report {
         background: var(--bs-card-bg); border-radius: 16px;
-        box-shadow: var(--bs-card-shadow); overflow: hidden;
+        box-shadow: var(--bs-card-shadow); overflow: visible;
     }
+
+    /* هدر پین‌شده: اگر نوار ناوبری سایت هنگام اسکرول ثابت می‌ماند،
+       مقدار --stages-sticky-top را برابر ارتفاع آن بگذارید (مثلاً 56px) */
     .table-report thead th {
+        position: sticky;
+        top: var(--stages-sticky-top, 0);
+        z-index: 5;
         background-color: #f1f5f9; color: #334155;
-        font-weight: 600; border-bottom: 2px solid #e2e8f0;
+        font-weight: 600;
+        border-bottom: 0;
+        box-shadow: inset 0 -2px 0 #e2e8f0; /* جایگزین border که با sticky اسکرول می‌شد */
         white-space: nowrap; font-size: 0.85rem; padding: 0.6rem 0.4rem;
     }
     .table-report tbody td {
         vertical-align: middle; border-color: #f1f5f9;
         font-size: 0.8rem; padding: 0.5rem 0.4rem;
     }
-    .table-report tbody tr:hover { background-color: #f8fafc; }
+    /* قاعدهٔ قبلی .table-report tbody tr:hover حذف شد؛ table-hover جایگزین آن است */
     .stage-badge {
         font-size: 0.7rem; padding: 0.2rem 0.4rem;
         border-radius: 20px; font-weight: 500;
@@ -354,7 +363,7 @@
     <!-- جدول گزارش -->
     {% if report_data %}
     <div class="table-report p-3">
-        <table class="table table-report align-middle mb-0">
+        <table class="table table-hover table-report align-middle mb-0">
             <thead>
                 <tr>
                     <th>سفارش</th>

@@ -1,7 +1,7 @@
-{% load humanize %}
+{% load humanize product_filters %}
 {% for movement in movements %}
 <tr>
-    <td>{{ movement.created_at|date:"Y/m/d H:i" }}</td>
+    <td>{{ movement.created_at|persian_datetime }}</td>
     <td>{{ movement.raw_material.name }}</td>
     <td>
         <span class="badge bg-{% if movement.movement_type == 'purchase' %}success{% elif movement.movement_type == 'consumption' %}danger{% elif movement.movement_type == 'adjustment' %}warning{% else %}info{% endif %}">

@@ -1409,14 +1409,14 @@
 
 
                                 <h2 class="collection-title">
-                                    {{ col.category.name|default:"سایر" }}
+                                    {{ col.name }}
                                 </h2>
 
 
                                 <p class="collection-description">
-                                    مجموعه‌ای هماهنگ از محصولات
-                                    این دسته‌بندی، طراحی‌شده برای
-                                    استفاده در یک فضای واحد.
+                                    {% if col.category_names %}
+                                        شامل: {{ col.category_names|join:"، " }}
+                                    {% endif %}
                                 </p>
 
                             </header>
@@ -1462,10 +1462,10 @@
                                             <div class="catalog-product-info">
 
 
-                                                {% if col.category.name %}
+                                                {% if product.category.name %}
 
                                                     <div class="catalog-product-category">
-                                                        {{ col.category.name }}
+                                                        {{ product.category.name }}
                                                     </div>
 
                                                 {% endif %}
@@ -1531,11 +1531,11 @@
                                     </div>
 
 
-                                    {% if col.category.name %}
+                                    {% if col.category_names %}
 
                                         <div class="collection-info-item">
-                                            <span class="collection-info-label">دسته</span>
-                                            <strong>{{ col.category.name }}</strong>
+                                            <span class="collection-info-label">دسته‌ها</span>
+                                            <strong>{{ col.category_names|join:"، " }}</strong>
                                         </div>
 
                                     {% endif %}
@@ -1641,9 +1641,9 @@
 
                     <ul class="catalog-bottom-list">
 
-                        {% for col in collection_list %}
+                        {% for cat in categories %}
 
-                            <li>{{ col.category.name|default:"سایر" }}</li>
+                            <li>{{ cat.name }}</li>
 
                         {% endfor %}
 

@@ -97,7 +97,7 @@
                     <div class="mb-3">
                         <label class="form-label">مقدار <span class="text-danger">*</span></label>
                         <input type="number" name="quantity" class="form-control" step="0.01" required>
-                        <div class="form-text">مثبت = ورود، منفی = خروج</div>
+                        <div class="form-text">مقدار همیشه مثبت است؛ نوع حرکت (ورود/خروج) جهت آن را تعیین می‌کند</div>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">قیمت واحد (ریال)</label>
@@ -149,7 +149,7 @@
     $('#movementForm').on('submit', function(e) {
         e.preventDefault();
         $.ajax({
-            url: '/inventory/movements/create/',
+            url: '{% url "inventory:movement_create" %}',
             method: 'POST',
             headers: {'X-Requested-With': 'XMLHttpRequest', 'X-CSRFToken': getCsrfToken()},
             data: $(this).serialize(),
@@ -164,7 +164,7 @@
     $('#btnFilter').on('click', function() {
         var type = $('#typeFilter').val();
         var material = $('#materialFilter').val();
-        var url = '/inventory/movements/?type=' + type + '&material=' + material;
+        var url = '{% url "inventory:movement_list" %}?type=' + type + '&material=' + material;
         window.location.href = url;
     });
 })();

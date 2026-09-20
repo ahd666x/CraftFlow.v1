@@ -1,5 +1,6 @@
 {% extends "inventory/base.html" %}
 {% load static %}
+{% load product_filters %}
 
 {% block title %}اسکن بارکد و دریافت مواد اولیه{% endblock %}
 
@@ -119,7 +120,7 @@
                                         {% endif %}
                                     </td>
                                     <td class="fw-bold text-success">{{ movement.quantity }} {{ movement.raw_material.get_unit_display }}</td>
-                                    <td>{{ movement.created_at|date:"Y/m/d H:i" }}</td>
+                                    <td>{{ movement.created_at|persian_datetime }}</td>
                                     <td>{{ movement.created_by.get_full_name|default:movement.created_by.username }}</td>
                                     <td class="text-muted small">{{ movement.note|default:"—" }}</td>
                                 </tr>

@@ -208,7 +208,7 @@
         e.preventDefault();
         var isEdit = $('#formAction').val() === 'edit';
         var id = $('#poId').val();
-        var url = isEdit ? '/inventory/purchase-orders/' + id + '/edit/' : '/inventory/purchase-orders/create/';
+        var url = isEdit ? '{% url "inventory:purchase_order_edit" order_id=0 %}'.replace('0', id) : '{% url "inventory:purchase_order_create" %}';
 
         $.ajax({
             url: url,
@@ -225,7 +225,7 @@
 
     $('.edit-po').on('click', function() {
         var id = $(this).data('id');
-        $.getJSON('/inventory/purchase-orders/' + id + '/detail/', function(data) {
+        $.getJSON('{% url "inventory:purchase_order_detail" order_id=0 %}'.replace('0', id), function(data) {
             $('#modalTitle').text('ویرایش سفارش خرید');
             $('#formAction').val('edit');
             $('#poId').val(data.id);
@@ -239,7 +239,7 @@
     $('.delete-po').on('click', function() {
         var id = $(this).data('id');
         var name = $(this).data('name');
-        currentDeleteUrl = '/inventory/purchase-orders/' + id + '/delete/';
+        currentDeleteUrl = '{% url "inventory:purchase_order_delete" order_id=0 %}'.replace('0', id);
         $('#deleteItemName').text('سفارش خرید: ' + name);
         deleteModal.show();
     });
@@ -265,7 +265,7 @@
     });
 
     function loadPOItems(orderId) {
-        $.getJSON('/inventory/purchase-orders/' + orderId + '/detail/', function(data) {
+        $.getJSON('{% url "inventory:purchase_order_detail" order_id=0 %}'.replace('0', orderId), function(data) {
             var tbody = $('#poItemsTableBody');
             tbody.empty();
             data.items.forEach(function(item) {

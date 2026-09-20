@@ -1,8 +1,9 @@
+{% load product_filters %}
 {% for order in orders %}
 <tr data-id="{{ order.id }}">
     <td>{{ order.id }}</td>
     <td>{{ order.supplier.name }}</td>
-    <td>{{ order.created_at|date:"Y/m/d" }}</td>
+    <td>{{ order.created_at|persian_date }}</td>
     <td>
         <span class="badge bg-{% if order.status == 'received' %}success{% elif order.status == 'ordered' %}warning{% else %}secondary{% endif %}">
             {{ order.get_status_display }}

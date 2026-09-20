@@ -1,5 +1,6 @@
 {% extends "inventory/base.html" %}
 {% load static %}
+{% load product_filters %}
 {% load worker_filters %}
 {% block title %}صف تحویل مواد به تولید{% endblock %}
 
@@ -171,7 +172,7 @@
                 <span class="text-muted small">
                   {% if issue.issued_by %}<i class="bi bi-person"></i> تحویل‌دهنده: {{ issue.issued_by.get_full_name|default:issue.issued_by.username }}{% endif %}
                   {% if issue.received_by %}<br><i class="bi bi-person-check"></i> تحویل‌گیرنده: {{ issue.received_by.get_full_name|default:issue.received_by.username }}{% endif %}
-                  {% if issue.issued_at %}<br><i class="bi bi-clock"></i> {{ issue.issued_at|date:"Y/m/d H:i" }}{% endif %}
+                  {% if issue.issued_at %}<br><i class="bi bi-clock"></i> {{ issue.issued_at|persian_datetime }}{% endif %}
                 </span>
               {% endif %}
             </td>
