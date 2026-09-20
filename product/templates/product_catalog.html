@@ -1,4 +1,4 @@
-{% extends 'base.html' %}
+{% extends "base.html" %}
 {% load static %}
 {% load product_filters %}
 
@@ -6,122 +6,1688 @@
 
 {% block extra_css %}
 <style>
-    .product-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-        gap: 1.5rem;
+    /* =========================================================
+       SELVI CHOOB — PRODUCT CATALOG
+       Collection / Editorial / Mosaic
+       ========================================================= */
+
+    :root {
+        --catalog-bg: #f3f1ec;
+        --catalog-paper: #faf9f6;
+        --catalog-white: #ffffff;
+
+        --catalog-ink: #202421;
+        --catalog-dark: #151817;
+
+        --catalog-muted: #747873;
+        --catalog-soft: #9a9d98;
+
+        --catalog-line: rgba(32, 36, 33, 0.12);
+
+        --catalog-accent: #8a7258;
+        --catalog-accent-light: #b59b7b;
+
+        --font-fa:
+            "Vazirmatn",
+            "IRANSans",
+            "Tahoma",
+            "Segoe UI",
+            sans-serif;
+
+        --font-en:
+            "Inter",
+            "Segoe UI",
+            Arial,
+            sans-serif;
     }
-    .product-card {
-        background: #fff;
-        border-radius: 12px;
-        box-shadow: 0 2px 8px rgba(0,0,0,.08);
-        overflow: hidden;
-        transition: transform .15s;
-        display: flex;
-        flex-direction: column;
-        height: 100%;
+
+
+    /* =========================================================
+       RESET
+       ========================================================= */
+
+    .catalog-page,
+    .catalog-page * {
+        box-sizing: border-box;
     }
-    .product-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,.15); transform: translateY(-2px); }
-    .card-img {
+
+    .catalog-page {
         width: 100%;
-        height: 180px;
-        object-fit: cover;
-        background: #e9ecef;
+        min-height: 100vh;
+
+        background: var(--catalog-bg);
+        color: var(--catalog-ink);
+
+        direction: rtl;
+
+        font-family: var(--font-fa);
+        line-height: 1.7;
+
+        overflow: hidden;
     }
-    .card-img.placeholder {
+
+    .catalog-page a {
+        color: inherit;
+        text-decoration: none;
+    }
+
+    .catalog-page img {
+        display: block;
+        max-width: 100%;
+    }
+
+    .catalog-container {
+        width: min(1600px, calc(100% - 64px));
+        margin: 0 auto;
+    }
+
+
+    /* =========================================================
+       TOP BAR
+       ========================================================= */
+
+    .catalog-topbar {
+        height: 72px;
+
         display: flex;
         align-items: center;
-        justify-content: center;
-        color: #999;
-        font-size: .9rem;
-    }
-    .card-body { padding: 1rem; flex-grow: 1; display: flex; flex-direction: column; }
-    .card-title { font-size: 1.1rem; font-weight: 600; margin-bottom: .25rem; }
-    .card-category { color: #6c757d; font-size: .85rem; margin-bottom: .5rem; }
-    .card-price { font-size: 1.2rem; font-weight: 700; color: #1a237e; margin: .5rem 0; }
-    .parts-list { margin-top: auto; }
-    .parts-list h6 { font-size: .8rem; color: #495057; margin-bottom: .35rem; }
-    .part-item {
-        font-size: .8rem;
-        padding: .2rem 0;
-        border-bottom: 1px dashed #e9ecef;
-        display: flex;
         justify-content: space-between;
+
+        border-bottom: 1px solid var(--catalog-line);
+
+        font-family: var(--font-en);
+        direction: ltr;
     }
-    .part-item:last-child { border-bottom: none; }
-    .badge-price { background: #e8eaf6; color: #1a237e; }
+
+    .catalog-brand {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+
+        font-size: 18px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+    }
+
+    .catalog-brand-mark {
+        width: 30px;
+        height: 30px;
+
+        display: grid;
+        place-items: center;
+
+        background: var(--catalog-dark);
+        color: #fff;
+
+        font-size: 11px;
+        font-weight: 700;
+    }
+
+    .catalog-top-meta {
+        display: flex;
+        align-items: center;
+        gap: 30px;
+
+        color: var(--catalog-muted);
+
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+    }
+
+
+    /* =========================================================
+       INTRO / COVER
+       ========================================================= */
+
+    .catalog-intro {
+        display: grid;
+        grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.5fr);
+
+        min-height: min(720px, calc(100vh - 72px));
+
+        border-bottom: 1px solid var(--catalog-line);
+    }
+
+    .catalog-intro-content {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+
+        padding: 70px 50px 55px 0;
+    }
+
+    .catalog-eyebrow {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+
+        color: var(--catalog-accent);
+
+        font-family: var(--font-en);
+        font-size: 11px;
+        font-weight: 600;
+
+        letter-spacing: 0.15em;
+        text-transform: uppercase;
+    }
+
+    .catalog-eyebrow::before {
+        content: "";
+
+        width: 32px;
+        height: 1px;
+
+        background: var(--catalog-accent);
+    }
+
+    .catalog-intro-title {
+        margin: 0;
+
+        max-width: 650px;
+
+        font-size: clamp(42px, 5vw, 82px);
+        font-weight: 300;
+
+        line-height: 1.05;
+        letter-spacing: -0.04em;
+    }
+
+    .catalog-intro-title strong {
+        font-weight: 700;
+    }
+
+    .catalog-intro-description {
+        max-width: 540px;
+
+        margin: 30px 0 0;
+
+        color: var(--catalog-muted);
+
+        font-size: 15px;
+        line-height: 2;
+    }
+
+    .catalog-intro-footer {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+
+        gap: 30px;
+    }
+
+    .catalog-intro-note {
+        max-width: 280px;
+
+        color: var(--catalog-soft);
+
+        font-size: 11px;
+        line-height: 1.9;
+    }
+
+    .catalog-intro-number {
+        direction: ltr;
+
+        font-family: var(--font-en);
+
+        font-size: 70px;
+        font-weight: 300;
+
+        line-height: 0.8;
+
+        color: rgba(32, 36, 33, 0.08);
+    }
+
+
+    /* =========================================================
+       INTRO IMAGE
+       ========================================================= */
+
+    .catalog-intro-image {
+        position: relative;
+
+        min-height: 600px;
+
+        background: #dedbd4;
+
+        overflow: hidden;
+        display: block;
+    }
+
+    .catalog-intro-image img {
+        width: 100%;
+        height: 100%;
+
+        object-fit: cover;
+
+        transition:
+            transform 1.2s cubic-bezier(.2, .65, .2, 1);
+    }
+
+    .catalog-intro-image:hover img {
+        transform: scale(1.025);
+    }
+
+    .catalog-intro-image-overlay {
+        position: absolute;
+        inset: auto 0 0 0;
+
+        padding: 50px;
+
+        color: #fff;
+
+        background:
+            linear-gradient(
+                to top,
+                rgba(0, 0, 0, .48),
+                rgba(0, 0, 0, 0)
+            );
+    }
+
+    .catalog-intro-image-label {
+        font-family: var(--font-en);
+
+        font-size: 10px;
+        letter-spacing: 0.18em;
+
+        text-transform: uppercase;
+
+        opacity: .75;
+    }
+
+    .catalog-intro-image-name {
+        margin-top: 8px;
+
+        font-size: 25px;
+        font-weight: 500;
+    }
+
+
+    /* =========================================================
+       COLLECTION
+       ========================================================= */
+
+    .catalog-collections {
+        padding: 100px 0;
+    }
+
+    .catalog-collection {
+        margin-bottom: 140px;
+    }
+
+    .catalog-collection:last-child {
+        margin-bottom: 0;
+    }
+
+
+    /* =========================================================
+       COLLECTION HEADER
+       ========================================================= */
+
+    .collection-header {
+        display: grid;
+        grid-template-columns: 100px minmax(0, 1fr) minmax(250px, .7fr);
+
+        align-items: end;
+
+        gap: 40px;
+
+        margin-bottom: 38px;
+
+        border-top: 1px solid var(--catalog-line);
+
+        padding-top: 22px;
+    }
+
+    .collection-index {
+        direction: ltr;
+
+        font-family: var(--font-en);
+
+        font-size: 13px;
+        font-weight: 500;
+
+        color: var(--catalog-soft);
+
+        letter-spacing: .1em;
+    }
+
+    .collection-title {
+        margin: 0;
+
+        font-size: clamp(34px, 4vw, 58px);
+        font-weight: 400;
+
+        line-height: 1;
+
+        letter-spacing: -0.04em;
+    }
+
+    .collection-description {
+        margin: 0;
+
+        color: var(--catalog-muted);
+
+        font-size: 12px;
+        line-height: 1.9;
+    }
+
+
+    /* =========================================================
+       MOSAIC
+       ========================================================= */
+
+    .collection-mosaic {
+        display: grid;
+
+        grid-template-columns:
+            minmax(0, 1.55fr)
+            minmax(0, .75fr)
+            minmax(0, .75fr);
+
+        grid-template-rows:
+            minmax(240px, 1fr)
+            minmax(240px, 1fr);
+
+        gap: 10px;
+
+        aspect-ratio: 16 / 9;
+
+        min-height: 570px;
+    }
+
+    /* اگر یک مجموعه فقط ۱ یا ۲ محصول داشته باشد، موزاییک را به یک ردیف ساده تبدیل کن */
+    .collection-mosaic.mosaic-few {
+        grid-template-rows: minmax(340px, 1fr);
+        aspect-ratio: auto;
+        min-height: 340px;
+    }
+    .collection-mosaic.mosaic-few .catalog-product {
+        grid-row: auto !important;
+        grid-column: auto !important;
+    }
+
+
+    /* =========================================================
+       PRODUCT TILE
+       ========================================================= */
+
+    .catalog-product {
+        position: relative;
+
+        min-width: 0;
+        min-height: 0;
+
+        overflow: hidden;
+
+        background: #dedbd5;
+    }
+
+    .collection-mosaic:not(.mosaic-few) .catalog-product:nth-child(1) {
+        grid-row: 1 / 3;
+    }
+
+    .collection-mosaic:not(.mosaic-few) .catalog-product:nth-child(4) {
+        grid-column: 2 / 4;
+    }
+
+    .catalog-product-link {
+        position: absolute;
+        inset: 0;
+
+        display: block;
+    }
+
+    .catalog-product-image {
+        position: absolute;
+        inset: 0;
+
+        width: 100%;
+        height: 100%;
+
+        object-fit: cover;
+
+        transition:
+            transform .9s cubic-bezier(.2, .65, .2, 1);
+    }
+
+    .catalog-product:hover .catalog-product-image {
+        transform: scale(1.035);
+    }
+
+
+    /* =========================================================
+       TILE OVERLAY
+       ========================================================= */
+
+    .catalog-product::after {
+        content: "";
+
+        position: absolute;
+        inset: 0;
+
+        pointer-events: none;
+
+        background:
+            linear-gradient(
+                to top,
+                rgba(0, 0, 0, .72) 0%,
+                rgba(0, 0, 0, .18) 38%,
+                rgba(0, 0, 0, 0) 65%
+            );
+
+        opacity: .85;
+
+        transition: opacity .4s ease;
+    }
+
+    .catalog-product:hover::after {
+        opacity: 1;
+    }
+
+
+    /* =========================================================
+       PRODUCT INFORMATION
+       ========================================================= */
+
+    .catalog-product-info {
+        position: absolute;
+        z-index: 2;
+
+        right: 0;
+        left: 0;
+        bottom: 0;
+
+        padding: 28px;
+
+        color: #fff;
+    }
+
+    .catalog-product-category {
+        margin-bottom: 6px;
+
+        font-family: var(--font-en);
+
+        font-size: 9px;
+        font-weight: 600;
+
+        letter-spacing: .16em;
+        text-transform: uppercase;
+
+        opacity: .7;
+    }
+
+    .catalog-product-name {
+        margin: 0;
+
+        font-size: 21px;
+        font-weight: 500;
+
+        line-height: 1.3;
+    }
+
+    .catalog-product-meta {
+        display: flex;
+        align-items: center;
+
+        flex-wrap: wrap;
+
+        gap: 14px;
+
+        margin-top: 9px;
+
+        font-family: var(--font-en);
+
+        font-size: 9px;
+
+        direction: ltr;
+
+        opacity: .72;
+    }
+
+    .catalog-product-code {
+        letter-spacing: .08em;
+    }
+
+    .catalog-product-dimensions {
+        direction: rtl;
+        font-family: var(--font-fa);
+    }
+
+    .catalog-product-price {
+        direction: rtl;
+        font-family: var(--font-fa);
+        font-weight: 600;
+    }
+
+    .catalog-product-arrow {
+        position: absolute;
+
+        left: 28px;
+        bottom: 30px;
+
+        width: 34px;
+        height: 34px;
+
+        display: grid;
+        place-items: center;
+
+        border: 1px solid rgba(255,255,255,.45);
+
+        border-radius: 50%;
+
+        font-family: var(--font-en);
+        font-size: 13px;
+
+        opacity: 0;
+
+        transform: translateX(8px);
+
+        transition:
+            opacity .35s ease,
+            transform .35s ease;
+    }
+
+    .catalog-product:hover .catalog-product-arrow {
+        opacity: 1;
+        transform: translateX(0);
+    }
+
+
+    /* =========================================================
+       COLLECTION FOOTER
+       ========================================================= */
+
+    .collection-footer {
+        display: grid;
+        grid-template-columns: 1fr auto;
+
+        align-items: center;
+
+        gap: 30px;
+
+        margin-top: 14px;
+
+        padding: 20px 0;
+
+        border-bottom: 1px solid var(--catalog-line);
+    }
+
+    .collection-info {
+        display: flex;
+        align-items: center;
+
+        flex-wrap: wrap;
+
+        gap: 26px;
+    }
+
+    .collection-info-item {
+        display: flex;
+        align-items: center;
+
+        gap: 8px;
+
+        color: var(--catalog-muted);
+
+        font-size: 11px;
+    }
+
+    .collection-info-label {
+        color: var(--catalog-soft);
+    }
+
+    .collection-colors {
+        display: flex;
+        align-items: center;
+
+        gap: 5px;
+    }
+
+    .collection-color {
+        width: 15px;
+        height: 15px;
+
+        border-radius: 50%;
+
+        border: 1px solid rgba(0,0,0,.12);
+    }
+
+
+    /* =========================================================
+       EMPTY STATE
+       ========================================================= */
+
+    .catalog-empty {
+        min-height: 400px;
+
+        display: flex;
+        flex-direction: column;
+
+        align-items: center;
+        justify-content: center;
+
+        text-align: center;
+
+        border: 1px solid var(--catalog-line);
+    }
+
+    .catalog-empty-number {
+        font-family: var(--font-en);
+
+        font-size: 80px;
+        font-weight: 200;
+
+        line-height: 1;
+
+        color: rgba(32,36,33,.08);
+    }
+
+    .catalog-empty-title {
+        margin: 20px 0 0;
+
+        font-size: 24px;
+        font-weight: 400;
+    }
+
+    .catalog-empty-text {
+        margin: 8px 0 0;
+
+        color: var(--catalog-muted);
+
+        font-size: 12px;
+    }
+
+
+    /* =========================================================
+       BOTTOM INFORMATION
+       ========================================================= */
+
+    .catalog-bottom {
+        padding: 90px 0 50px;
+
+        border-top: 1px solid var(--catalog-line);
+    }
+
+    .catalog-bottom-grid {
+        display: grid;
+
+        grid-template-columns: 1.5fr 1fr 1fr;
+
+        gap: 70px;
+    }
+
+    .catalog-bottom-title {
+        margin: 0 0 14px;
+
+        font-size: 13px;
+        font-weight: 600;
+    }
+
+    .catalog-bottom-text {
+        margin: 0;
+
+        max-width: 430px;
+
+        color: var(--catalog-muted);
+
+        font-size: 11px;
+
+        line-height: 2;
+    }
+
+    .catalog-bottom-list {
+        display: flex;
+        flex-direction: column;
+
+        gap: 8px;
+
+        margin: 0;
+        padding: 0;
+
+        list-style: none;
+
+        color: var(--catalog-muted);
+
+        font-size: 11px;
+    }
+
+    .catalog-bottom-list li {
+        display: flex;
+        align-items: center;
+
+        gap: 8px;
+    }
+
+    .catalog-bottom-list li::before {
+        content: "";
+
+        width: 4px;
+        height: 4px;
+
+        border-radius: 50%;
+
+        background: var(--catalog-accent);
+    }
+
+
+    /* =========================================================
+       FOOTER
+       ========================================================= */
+
+    .catalog-footer {
+        display: flex;
+
+        align-items: center;
+        justify-content: space-between;
+
+        padding: 25px 0;
+
+        border-top: 1px solid var(--catalog-line);
+
+        color: var(--catalog-soft);
+
+        font-family: var(--font-en);
+
+        font-size: 9px;
+
+        letter-spacing: .08em;
+
+        direction: ltr;
+    }
+
+
+    /* =========================================================
+       DESKTOP — LARGE SCREENS
+       ========================================================= */
+
+    @media (min-width: 1500px) {
+
+        .catalog-container {
+            width: min(1700px, calc(100% - 100px));
+        }
+
+        .collection-mosaic {
+            min-height: 680px;
+        }
+
+        .catalog-product-info {
+            padding: 34px;
+        }
+
+        .catalog-product-name {
+            font-size: 24px;
+        }
+    }
+
+
+    /* =========================================================
+       TABLET / SMALL DESKTOP
+       ========================================================= */
+
+    @media (max-width: 1100px) {
+
+        .catalog-container {
+            width: min(100% - 40px, 1000px);
+        }
+
+        .catalog-intro {
+            grid-template-columns: 1fr 1fr;
+
+            min-height: 620px;
+        }
+
+        .catalog-intro-content {
+            padding: 50px 35px 40px 0;
+        }
+
+        .catalog-intro-image {
+            min-height: 500px;
+        }
+
+        .collection-header {
+            grid-template-columns: 70px 1fr;
+
+            gap: 20px;
+        }
+
+        .collection-description {
+            grid-column: 2;
+        }
+
+        .collection-mosaic:not(.mosaic-few) {
+            grid-template-columns: 1.2fr 1fr;
+
+            grid-template-rows:
+                minmax(300px, 1fr)
+                minmax(220px, 1fr)
+                minmax(220px, 1fr);
+
+            aspect-ratio: auto;
+
+            min-height: 800px;
+        }
+
+        .collection-mosaic:not(.mosaic-few) .catalog-product:nth-child(1) {
+            grid-row: 1 / 3;
+        }
+
+        .collection-mosaic:not(.mosaic-few) .catalog-product:nth-child(2) {
+            grid-column: 2;
+        }
+
+        .collection-mosaic:not(.mosaic-few) .catalog-product:nth-child(3) {
+            grid-column: 2;
+        }
+
+        .collection-mosaic:not(.mosaic-few) .catalog-product:nth-child(4) {
+            grid-column: 1 / 3;
+        }
+
+        .collection-mosaic:not(.mosaic-few) .catalog-product:nth-child(n+5) {
+            grid-column: auto;
+        }
+
+        .catalog-bottom-grid {
+            grid-template-columns: 1fr 1fr;
+        }
+
+        .catalog-bottom-grid > :first-child {
+            grid-column: 1 / -1;
+        }
+    }
+
+
+    /* =========================================================
+       MOBILE
+       ========================================================= */
+
+    @media (max-width: 700px) {
+
+        .catalog-container {
+            width: calc(100% - 28px);
+        }
+
+        .catalog-topbar {
+            height: 60px;
+        }
+
+        .catalog-brand {
+            font-size: 15px;
+        }
+
+        .catalog-brand-mark {
+            width: 26px;
+            height: 26px;
+        }
+
+        .catalog-top-meta {
+            gap: 12px;
+
+            font-size: 9px;
+        }
+
+        .catalog-top-meta span:first-child {
+            display: none;
+        }
+
+
+        /* ---------- INTRO ---------- */
+
+        .catalog-intro {
+            display: flex;
+            flex-direction: column;
+
+            min-height: auto;
+        }
+
+        .catalog-intro-content {
+            min-height: 470px;
+
+            padding: 50px 0 35px;
+        }
+
+        .catalog-eyebrow {
+            font-size: 9px;
+        }
+
+        .catalog-intro-title {
+            font-size: clamp(40px, 13vw, 65px);
+        }
+
+        .catalog-intro-description {
+            max-width: 100%;
+
+            margin-top: 22px;
+
+            font-size: 12px;
+        }
+
+        .catalog-intro-footer {
+            margin-top: 50px;
+        }
+
+        .catalog-intro-number {
+            font-size: 55px;
+        }
+
+        .catalog-intro-image {
+            min-height: 72vw;
+            max-height: 600px;
+        }
+
+        .catalog-intro-image-overlay {
+            padding: 25px;
+        }
+
+        .catalog-intro-image-name {
+            font-size: 20px;
+        }
+
+
+        /* ---------- COLLECTION ---------- */
+
+        .catalog-collections {
+            padding: 65px 0;
+        }
+
+        .catalog-collection {
+            margin-bottom: 90px;
+        }
+
+        .collection-header {
+            display: grid;
+
+            grid-template-columns: 45px 1fr;
+
+            gap: 12px;
+
+            margin-bottom: 25px;
+
+            padding-top: 16px;
+        }
+
+        .collection-title {
+            font-size: 36px;
+        }
+
+        .collection-description {
+            grid-column: 2;
+
+            font-size: 11px;
+        }
+
+
+        /* ---------- MOBILE MOSAIC ---------- */
+
+        .collection-mosaic:not(.mosaic-few) {
+            grid-template-columns: 1fr 1fr;
+
+            grid-template-rows:
+                minmax(300px, 90vw)
+                minmax(180px, 55vw)
+                minmax(180px, 55vw)
+                minmax(230px, 65vw);
+
+            gap: 6px;
+
+            min-height: 0;
+
+            aspect-ratio: auto;
+        }
+
+        /* محصول اول: تمام عرض */
+        .collection-mosaic:not(.mosaic-few) .catalog-product:nth-child(1) {
+            grid-column: 1 / 3;
+            grid-row: 1;
+
+            min-height: 300px;
+        }
+
+        /* محصول دوم و سوم: دو ستون */
+        .collection-mosaic:not(.mosaic-few) .catalog-product:nth-child(2) {
+            grid-column: 1;
+            grid-row: 2;
+        }
+
+        .collection-mosaic:not(.mosaic-few) .catalog-product:nth-child(3) {
+            grid-column: 2;
+            grid-row: 2;
+        }
+
+        /* محصول چهارم: تمام عرض */
+        .collection-mosaic:not(.mosaic-few) .catalog-product:nth-child(4) {
+            grid-column: 1 / 3;
+            grid-row: 3;
+        }
+
+        /* محصول پنجم */
+        .collection-mosaic:not(.mosaic-few) .catalog-product:nth-child(5) {
+            grid-column: 1 / 3;
+            grid-row: 4;
+        }
+
+        /* محصولات بیشتر: دو ستونه */
+        .collection-mosaic:not(.mosaic-few) .catalog-product:nth-child(n+6) {
+            grid-column: auto;
+            grid-row: auto;
+
+            min-height: 230px;
+        }
+
+        .catalog-product-info {
+            padding: 18px;
+        }
+
+        .catalog-product-name {
+            font-size: 17px;
+        }
+
+        .catalog-product-category {
+            font-size: 8px;
+        }
+
+        .catalog-product-meta {
+            gap: 8px;
+
+            font-size: 8px;
+        }
+
+        .catalog-product-arrow {
+            display: none;
+        }
+
+
+        /* ---------- COLLECTION FOOTER ---------- */
+
+        .collection-footer {
+            display: block;
+
+            padding: 16px 0;
+        }
+
+        .collection-info {
+            gap: 15px;
+        }
+
+        .collection-info-item {
+            font-size: 10px;
+        }
+
+
+        /* ---------- BOTTOM ---------- */
+
+        .catalog-bottom {
+            padding: 60px 0 35px;
+        }
+
+        .catalog-bottom-grid {
+            grid-template-columns: 1fr;
+
+            gap: 35px;
+        }
+
+        .catalog-bottom-grid > :first-child {
+            grid-column: auto;
+        }
+
+        .catalog-bottom-title {
+            margin-bottom: 8px;
+        }
+
+        .catalog-footer {
+            font-size: 8px;
+        }
+    }
+
+
+    /* =========================================================
+       VERY SMALL MOBILE
+       ========================================================= */
+
+    @media (max-width: 420px) {
+
+        .catalog-container {
+            width: calc(100% - 20px);
+        }
+
+        .catalog-top-meta {
+            display: none;
+        }
+
+        .catalog-intro-content {
+            min-height: 420px;
+        }
+
+        .catalog-intro-title {
+            font-size: 39px;
+        }
+
+        .catalog-intro-description {
+            font-size: 11px;
+        }
+
+        .collection-title {
+            font-size: 31px;
+        }
+
+        .collection-mosaic:not(.mosaic-few) {
+            grid-template-rows:
+                105vw
+                55vw
+                55vw
+                68vw;
+        }
+
+        .catalog-product-name {
+            font-size: 15px;
+        }
+
+        .catalog-product-info {
+            padding: 14px;
+        }
+    }
+
+
+    /* =========================================================
+       PRINT / PDF
+       ========================================================= */
+
+    @media print {
+
+        .catalog-page {
+            background: #fff;
+        }
+
+        .catalog-topbar {
+            height: 55px;
+        }
+
+        .catalog-intro {
+            min-height: 0;
+
+            page-break-after: always;
+        }
+
+        .catalog-intro-image {
+            min-height: 600px;
+        }
+
+        .catalog-collection {
+            page-break-inside: avoid;
+
+            margin-bottom: 70px;
+        }
+
+        .catalog-product:hover .catalog-product-image {
+            transform: none;
+        }
+
+        .catalog-product-arrow {
+            display: none;
+        }
+
+        .catalog-bottom {
+            page-break-before: always;
+        }
+    }
 </style>
 {% endblock %}
 
+
 {% block content %}
-<div class="container-fluid py-4">
-    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
-        <h2 class="mb-0"><i class="bi bi-grid-3x3-gap me-2"></i>کاتالوگ محصولات</h2>
-        <div class="d-flex gap-2">
-            <a href="{% url 'product_catalog_pdf' %}?category={{ selected_category }}&q={{ search_query }}" class="btn btn-outline-danger">
-                <i class="bi bi-file-pdf me-1"></i> دانلود PDF
-            </a>
-        </div>
+
+<div class="catalog-page">
+
+    <!-- =====================================================
+         TOP BAR
+         ===================================================== -->
+
+    <div class="catalog-container">
+
+        <header class="catalog-topbar">
+
+            <div class="catalog-brand">
+
+                <span class="catalog-brand-mark">SC</span>
+
+                <span>SELVI CHOOB</span>
+
+            </div>
+
+
+            <div class="catalog-top-meta">
+
+                <span>PRODUCT CATALOG</span>
+
+                <span>{{ today }}</span>
+
+            </div>
+
+        </header>
+
     </div>
 
-    <!-- فیلترها -->
-    <form method="get" class="row g-3 mb-4">
-        <div class="col-md-5">
-            <input type="text" name="q" value="{{ search_query }}" class="form-control" placeholder="جستجو در کاتالوگ...">
-        </div>
-        <div class="col-md-3">
-            <select name="category" class="form-select">
-                <option value="">همه دسته‌ها</option>
-                {% for cat in categories %}
-                    <option value="{{ cat.id }}" {% if cat.id|stringformat:"s" == selected_category %}selected{% endif %}>{{ cat.name }}</option>
-                {% endfor %}
-            </select>
-        </div>
-        <div class="col-md-2">
-            <button type="submit" class="btn btn-primary w-100">اعمال فیلتر</button>
-        </div>
-    </form>
 
-    {% if products %}
-    <div class="product-grid">
-        {% for product in products %}
-        <div class="product-card">
-            <div class="card-img">
-                {% if product.image %}
-                    <img src="{{ product.image.url }}" alt="{{ product.name }}" class="card-img">
-                {% else %}
-                    <div class="placeholder">بدون عکس</div>
-                {% endif %}
-            </div>
-            <div class="card-body">
-                <div class="card-title">{{ product.name }}</div>
-                <div class="card-category">{{ product.category.name }}</div>
-                <div class="card-price">
-                    <span class="badge badge-price fs-6"><i class="bi bi-currency-exchange me-1"></i>{{ product.base_price|intcomma }} ریال</span>
-                </div>
-                {% if product.default_size %}
-                <div class="text-muted small mb-2">سایز پیش‌فرض: {{ product.default_size }}</div>
-                {% endif %}
-                <div class="parts-list">
-                    <h6>لیست قطعات ({{ product.bom.count }})</h6>
-                    {% for bom in product.bom.all %}
-                    <div class="part-item">
-                        <span>{{ bom.part.f2|default:bom.part.name }}</span>
-                        <span class="text-muted">×{{ bom.quantity }} ({{ bom.part.material.name }})</span>
+    <!-- =====================================================
+         INTRO / COVER
+         ===================================================== -->
+
+    {% if collection_list %}
+
+        {% with first_collection=collection_list.0 %}
+            {% with first_product=first_collection.products.0 %}
+
+                <section class="catalog-container">
+
+                    <div class="catalog-intro">
+
+                        <div class="catalog-intro-content">
+
+                            <div>
+
+                                <div class="catalog-eyebrow">
+                                    Furniture Collection
+                                </div>
+
+
+                                <h1 class="catalog-intro-title">
+                                    طراحی برای
+                                    <strong>زندگی</strong>
+                                </h1>
+
+
+                                <p class="catalog-intro-description">
+                                    مجموعه‌ای از محصولات چوبی با تمرکز بر
+                                    فرم، تناسب، متریال و جزئیات اجرایی.
+                                    هر محصول با رویکردی ساده و کاربردی طراحی
+                                    شده تا در کنار سایر اعضای مجموعه،
+                                    یک فضای هماهنگ ایجاد کند.
+                                </p>
+
+                            </div>
+
+
+                            <div class="catalog-intro-footer">
+
+                                <div class="catalog-intro-note">
+                                    مجموعه محصولات منتخب
+                                    <br>
+                                    طراحی و تولید سلوی چوب
+                                </div>
+
+
+                                <div class="catalog-intro-number">
+                                    {{ total_collections|stringformat:"02d" }}
+                                </div>
+
+                            </div>
+
+                        </div>
+
+
+                        {% if first_product and first_product.image %}
+
+                            
+                                href="{% url 'product_edit' first_product.id %}"
+                                class="catalog-intro-image"
+                            >
+
+                                <img
+                                    src="{{ first_product.image.url }}"
+                                    alt="{{ first_product.name }}"
+                                >
+
+                                <div class="catalog-intro-image-overlay">
+
+                                    <div class="catalog-intro-image-label">
+                                        Featured Product
+                                    </div>
+
+                                    <div class="catalog-intro-image-name">
+                                        {{ first_product.name }}
+                                    </div>
+
+                                </div>
+
+                            </a>
+
+                        {% else %}
+
+                            <div class="catalog-intro-image">
+
+                                <div class="catalog-intro-image-overlay">
+
+                                    <div class="catalog-intro-image-label">
+                                        Selvi Choob Collection
+                                    </div>
+
+                                </div>
+
+                            </div>
+
+                        {% endif %}
+
                     </div>
-                    {% empty %}
-                    <div class="text-muted small">بدون قطعه تعریف شده</div>
-                    {% endfor %}
-                </div>
-            </div>
-        </div>
-        {% endfor %}
-    </div>
-    {% else %}
-    <div class="text-center py-5 text-muted">
-        <i class="bi bi-inbox fs-1 mb-3 d-block"></i>
-        محصولی یافت نشد.
-    </div>
+
+                </section>
+
+            {% endwith %}
+        {% endwith %}
+
     {% endif %}
+
+
+
+    <!-- =====================================================
+         COLLECTIONS
+         ===================================================== -->
+
+    <main class="catalog-container">
+
+        <section class="catalog-collections">
+
+
+            {% for col in collection_list %}
+
+                {% with products=col.products %}
+
+                    {% if products %}
+
+                        <article class="catalog-collection">
+
+
+                            <!-- =================================
+                                 COLLECTION HEADER
+                                 ================================= -->
+
+                            <header class="collection-header">
+
+                                <div class="collection-index">
+                                    {{ forloop.counter|stringformat:"02d" }}
+                                </div>
+
+
+                                <h2 class="collection-title">
+                                    {{ col.category.name|default:"سایر" }}
+                                </h2>
+
+
+                                <p class="collection-description">
+                                    مجموعه‌ای هماهنگ از محصولات
+                                    این دسته‌بندی، طراحی‌شده برای
+                                    استفاده در یک فضای واحد.
+                                </p>
+
+                            </header>
+
+
+
+                            <!-- =================================
+                                 MOSAIC
+                                 ================================= -->
+
+                            <div class="collection-mosaic {% if products|length < 3 %}mosaic-few{% endif %}">
+
+
+                                {% for product in products %}
+
+                                    <article class="catalog-product">
+
+                                        
+                                            href="{% url 'product_edit' product.id %}"
+                                            class="catalog-product-link"
+                                            aria-label="مشاهده {{ product.name }}"
+                                        >
+
+                                            {% if product.image %}
+
+                                                <img
+                                                    class="catalog-product-image"
+                                                    src="{{ product.image.url }}"
+                                                    alt="{{ product.name }}"
+                                                    loading="{% if forloop.parentloop.first and forloop.first %}eager{% else %}lazy{% endif %}"
+                                                >
+
+                                            {% else %}
+
+                                                <div
+                                                    class="catalog-product-image"
+                                                    style="background: linear-gradient(135deg, #ddd9d1, #c9c4ba);"
+                                                ></div>
+
+                                            {% endif %}
+
+
+                                            <div class="catalog-product-info">
+
+
+                                                {% if col.category.name %}
+
+                                                    <div class="catalog-product-category">
+                                                        {{ col.category.name }}
+                                                    </div>
+
+                                                {% endif %}
+
+
+                                                <h3 class="catalog-product-name">
+                                                    {{ product.name }}
+                                                </h3>
+
+
+                                                <div class="catalog-product-meta">
+
+                                                    <span class="catalog-product-code">
+                                                        {{ product.display_code }}
+                                                    </span>
+
+
+                                                    {% if product.default_size %}
+
+                                                        <span class="catalog-product-dimensions">
+                                                            {{ product.default_size }}
+                                                        </span>
+
+                                                    {% endif %}
+
+
+                                                    <span class="catalog-product-price">
+                                                        {{ product.base_price|intcomma }} ریال
+                                                    </span>
+
+                                                </div>
+
+
+                                                <span class="catalog-product-arrow">↗</span>
+
+
+                                            </div>
+
+                                        </a>
+
+                                    </article>
+
+                                {% endfor %}
+
+
+                            </div>
+
+
+
+                            <!-- =================================
+                                 COLLECTION INFO
+                                 ================================= -->
+
+                            <footer class="collection-footer">
+
+
+                                <div class="collection-info">
+
+
+                                    <div class="collection-info-item">
+                                        <span class="collection-info-label">محصولات</span>
+                                        <strong>{{ products|length }}</strong>
+                                    </div>
+
+
+                                    {% if col.category.name %}
+
+                                        <div class="collection-info-item">
+                                            <span class="collection-info-label">دسته</span>
+                                            <strong>{{ col.category.name }}</strong>
+                                        </div>
+
+                                    {% endif %}
+
+
+                                    {% with first_product=products.0 %}
+
+                                        {% if first_product.display_colors %}
+
+                                            <div class="collection-info-item">
+
+                                                <span class="collection-info-label">رنگ‌ها</span>
+
+
+                                                <div class="collection-colors">
+
+                                                    {% for c in first_product.display_colors|slice:":8" %}
+
+                                                        <span
+                                                            class="collection-color"
+                                                            style="background-color: {{ c.hex }};"
+                                                            title="کد {{ c.code }}"
+                                                        ></span>
+
+                                                    {% endfor %}
+
+                                                </div>
+
+                                            </div>
+
+                                        {% endif %}
+
+                                    {% endwith %}
+
+
+                                </div>
+
+
+                            </footer>
+
+
+                        </article>
+
+                    {% endif %}
+
+                {% endwith %}
+
+            {% empty %}
+
+
+                <!-- =============================================
+                     EMPTY
+                     ============================================= -->
+
+                <div class="catalog-empty">
+
+                    <div class="catalog-empty-number">00</div>
+
+                    <h2 class="catalog-empty-title">
+                        محصولی برای نمایش وجود ندارد
+                    </h2>
+
+                    <p class="catalog-empty-text">
+                        هنوز محصولی در کاتالوگ ثبت نشده است.
+                    </p>
+
+                </div>
+
+
+            {% endfor %}
+
+
+        </section>
+
+
+        <!-- =====================================================
+             BOTTOM INFORMATION
+             ===================================================== -->
+
+        <section class="catalog-bottom">
+
+
+            <div class="catalog-bottom-grid">
+
+
+                <div>
+
+                    <h3 class="catalog-bottom-title">درباره مجموعه</h3>
+
+                    <p class="catalog-bottom-text">
+                        این کاتالوگ مجموعه‌ای از محصولات طراحی و
+                        تولیدشده را در قالب مجموعه‌های هماهنگ نمایش
+                        می‌دهد. هدف، ارائه تصویری یکپارچه از فرم،
+                        متریال و کاربرد محصولات در فضای داخلی است.
+                    </p>
+
+                </div>
+
+
+                <div>
+
+                    <h3 class="catalog-bottom-title">دسته‌بندی</h3>
+
+                    <ul class="catalog-bottom-list">
+
+                        {% for col in collection_list %}
+
+                            <li>{{ col.category.name|default:"سایر" }}</li>
+
+                        {% endfor %}
+
+                    </ul>
+
+                </div>
+
+
+                <div>
+
+                    <h3 class="catalog-bottom-title">سلوی چوب</h3>
+
+                    <ul class="catalog-bottom-list">
+
+                        <li>طراحی محصول</li>
+                        <li>تولید مبلمان</li>
+                        <li>طراحی سفارشی</li>
+                        <li>اجرای پروژه</li>
+
+                    </ul>
+
+                </div>
+
+
+            </div>
+
+        </section>
+
+
+        <!-- =====================================================
+             FOOTER
+             ===================================================== -->
+
+        <footer class="catalog-footer">
+
+            <span>SELVI CHOOB / PRODUCT CATALOG</span>
+
+            <span>{{ today }}</span>
+
+        </footer>
+
+
+    </main>
+
 </div>
+
 {% endblock %}

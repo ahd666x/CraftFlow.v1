@@ -2,6 +2,7 @@
 <tr data-id="{{ material.id }}">
     <td>{{ material.name }}</td>
     <td>{{ material.code|default:"-" }}</td>
+    <td>{{ material.barcode|default:"-" }}</td>
     <td>{{ material.category.name }}</td>
     <td>{{ material.get_unit_display }}</td>
     <td>
@@ -23,5 +24,5 @@
     </td>
 </tr>
 {% empty %}
-<tr><td colspan="8" class="text-center py-4 text-muted">هیچ ماده اولیه‌ای یافت نشد</td></tr>
+<tr><td colspan="9" class="text-center py-4 text-muted">هیچ ماده اولیه‌ای یافت نشد</td></tr>
 {% endfor %}

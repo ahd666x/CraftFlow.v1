@@ -1,6 +1,7 @@
 # forms.py
 from django import forms
 from .models import Order, OrderItem, Color, ProductCategory, PaintingProcess, PaintingStage, PaintingMaterialRequirement, PaintingColorMaterialVariant, WorkerProfile, Customer
+from .utils import get_color_code_choices
 from django.contrib.auth.models import User
 
 import ast
@@ -30,13 +31,13 @@ class OrderEditForm(forms.ModelForm):
 
 class ColorSelectionForm(forms.Form):
     PART_CHOICES = Color.PART_CHOICES
-    CODE_CHOICES = Color.CODE_CHOICES
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        code_choices = get_color_code_choices()
         for part_value, part_label in self.PART_CHOICES:
             self.fields[f'color_{part_value}'] = forms.ChoiceField(
-                choices=[('', '---------')] + list(self.CODE_CHOICES),
+                choices=[('', '---------')] + list(code_choices),
                 label=part_label,
                 required=False,
                 widget=forms.Select(attrs={'class': 'form-select'})
@@ -425,7 +426,7 @@ class ProductCreateForm(forms.ModelForm):
             self.fields[field_name] = forms.ChoiceField(
                 label=label,
                 required=False,
-                choices=[('', '---------')] + Color.CODE_CHOICES,
+                choices=[('', '---------')] + get_color_code_choices(),
                 initial=initial,
                 widget=forms.Select(attrs={'class': 'form-select'})
             )

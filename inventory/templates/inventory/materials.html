@@ -35,6 +35,7 @@
             <tr>
                 <th>نام</th>
                 <th>کد</th>
+                <th>بارکد</th>
                 <th>دسته</th>
                 <th>واحد</th>
                 <th>موجودی</th>
@@ -93,6 +94,10 @@
                         <input type="text" name="code" class="form-control">
                     </div>
                     <div class="mb-3">
+                        <label class="form-label">بارکد</label>
+                        <input type="text" name="barcode" class="form-control" placeholder="بارکد برای اسکن دریافت (اختیاری)">
+                    </div>
+                    <div class="mb-3">
                         <label class="form-label">واحد <span class="text-danger">*</span></label>
                         <select name="unit" class="form-select" required>
                             <option value="kg">کیلوگرم</option>
@@ -104,6 +109,10 @@
                     <div class="mb-3">
                         <label class="form-label">حداقل موجودی هشدار</label>
                         <input type="number" name="min_stock_alert" class="form-control" step="0.01" value="0">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">حجم/وزن هر بسته (pack_size)</label>
+                        <input type="number" name="pack_size" class="form-control" step="0.01" min="0" placeholder="مثال: 4 برای قوطی ۴ لیتری، 0 = بسته‌بندی ثابت ندارد">
                     </div>
                     <div class="mb-3 form-check">
                         <input type="checkbox" name="is_active" id="id_is_active" class="form-check-input" checked>
@@ -188,9 +197,11 @@
             $('#materialId').val(data.id);
             $('#materialForm [name="name"]').val(data.name);
             $('#materialForm [name="code"]').val(data.code);
+            $('#materialForm [name="barcode"]').val(data.barcode);
             $('#materialForm [name="category"]').val(data.category);
             $('#materialForm [name="unit"]').val(data.unit);
             $('#materialForm [name="min_stock_alert"]').val(data.min_stock_alert);
+            $('#materialForm [name="pack_size"]').val(data.pack_size || '');
             $('#id_is_active').prop('checked', data.is_active);
             new bootstrap.Modal(document.getElementById('materialModal')).show();
         });

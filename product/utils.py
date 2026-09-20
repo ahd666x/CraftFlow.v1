@@ -28,6 +28,8 @@ from .models import (
     WorkerProfile,
     PaintingAssignmentRule,
     Material,
+    Color,
+    ColorCode,
     Holiday,
     create_paint_tasks,
 )
@@ -254,14 +256,50 @@ def consume_material_for_paint_task(task):
 # ===================================================================
 #   کش‌های سراسری
 # ===================================================================
+
+FALLBACK_HEX_MAP = {
+    '1': '#efe9df', '2': '#ded2ba', '3': '#c9b896', '4': '#b89968',
+    '5': '#9c7b4f', '6': '#7a5c3a', '7': '#5c4530', '8': '#3f3226',
+    '9': '#2b2119', '10': '#1a1512',
+    'جناغی': '#8a6a45', 'بتنی': '#9c9c94',
+}
+FALLBACK_MATERIAL_MAP = {
+    '1': 'kham', '2': 'kham', '3': 'kham', '4': 'kham', '5': 'kham',
+    '6': 'kham', '7': 'kham', '8': 'balot', '9': 'gerdo', '10': 'gerdo',
+    'بتنی': 'botoni', 'جناغی': 'kham', '11': 'balot',
+}
+
 _PAINT_PROCESS_CACHE = None
 _PAINT_WORKER_CACHE = None
+_COLOR_HEX_CACHE = None
+_COLOR_MATERIAL_CACHE = None
+_COLOR_CODE_CHOICES_CACHE = None
+
+
+def get_color_code_choices():
+    """Return ([code, code] pairs) from ColorCode records.
+
+    Falls back to Color.CODE_CHOICES when no ColorCode records exist yet
+    (e.g. before the seed data migration has run).  The result is cached
+    and invalidated by ``invalidate_caches``.
+    """
+    global _COLOR_CODE_CHOICES_CACHE
+    if _COLOR_CODE_CHOICES_CACHE is None:
+        qs = ColorCode.objects.filter(is_active=True).order_by('code')
+        if qs.exists():
+            _COLOR_CODE_CHOICES_CACHE = [(str(c.code), str(c.code)) for c in qs]
+        else:
+            _COLOR_CODE_CHOICES_CACHE = list(Color.CODE_CHOICES)
+    return _COLOR_CODE_CHOICES_CACHE
 
 
 def invalidate_caches():
-    global _PAINT_PROCESS_CACHE, _PAINT_WORKER_CACHE
+    global _PAINT_PROCESS_CACHE, _PAINT_WORKER_CACHE, _COLOR_HEX_CACHE, _COLOR_MATERIAL_CACHE, _COLOR_CODE_CHOICES_CACHE
     _PAINT_PROCESS_CACHE = None
     _PAINT_WORKER_CACHE = None
+    _COLOR_HEX_CACHE = None
+    _COLOR_MATERIAL_CACHE = None
+    _COLOR_CODE_CHOICES_CACHE = None
     logger.info("کش‌های نقاشی پاک شدند.")
 
 
@@ -273,6 +311,36 @@ def _get_process_cache():
             for code in (p.color_codes or []):
                 _PAINT_PROCESS_CACHE[str(code)] = p
     return _PAINT_PROCESS_CACHE
+
+
+def get_color_hex_map():
+    """Build a cache mapping color code → hex_code from ColorCode records.
+
+    Falls back to FALLBACK_HEX_MAP for codes that have no ColorCode entry.
+    The cache is invalidated whenever a Color or ColorCode instance is saved
+    (via ``invalidate_caches``).
+    """
+    global _COLOR_HEX_CACHE
+    if _COLOR_HEX_CACHE is None:
+        _COLOR_HEX_CACHE = dict(FALLBACK_HEX_MAP)
+        for code, hex_code in ColorCode.objects.filter(is_active=True, hex_code__gt='').values_list('code', 'hex_code'):
+            if code and hex_code:
+                _COLOR_HEX_CACHE[str(code)] = hex_code
+    return _COLOR_HEX_CACHE
+
+
+def get_color_material_map():
+    """Build a cache mapping color code → material_name from ColorCode records.
+
+    Falls back to FALLBACK_MATERIAL_MAP for codes that have no ColorCode entry.
+    """
+    global _COLOR_MATERIAL_CACHE
+    if _COLOR_MATERIAL_CACHE is None:
+        _COLOR_MATERIAL_CACHE = dict(FALLBACK_MATERIAL_MAP)
+        for code, material_name in ColorCode.objects.filter(is_active=True, material_name__gt='').values_list('code', 'material_name'):
+            if code and material_name:
+                _COLOR_MATERIAL_CACHE[str(code)] = material_name
+    return _COLOR_MATERIAL_CACHE
 
 
 def _get_worker_cache():
@@ -363,14 +431,11 @@ def is_working_day(jalali_date):
 
 
 def get_material_for_color(color_code, mapping=None):
-    default_map = {
-        '1': 'kham', '2': 'kham', '3': 'kham', '4': 'kham', '5': 'kham',
-        '6': 'kham', '7': 'kham', '8': 'balot', '9': 'gerdo', '10': 'gerdo',
-        'بتنی': 'botoni', 'جناغی': 'kham', '11': 'balot',
-    }
     if not isinstance(mapping, dict):
         mapping = None
-    name = mapping.get(color_code) if mapping else default_map.get(str(color_code))
+    name = mapping.get(color_code) if mapping else None
+    if not name:
+        name = get_color_material_map().get(str(color_code))
     if name:
         material, _ = Material.objects.get_or_create(name=name, thickness=16)
         return material
@@ -2050,6 +2115,10 @@ post_save.connect(_invalidate_on_change, sender=PaintingProcess)
 post_delete.connect(_invalidate_on_change, sender=PaintingProcess)
 post_save.connect(_invalidate_on_change, sender=WorkerProfile)
 post_delete.connect(_invalidate_on_change, sender=WorkerProfile)
+post_save.connect(_invalidate_on_change, sender=PaintingAssignmentRule)
+post_delete.connect(_invalidate_on_change, sender=PaintingAssignmentRule)
+post_save.connect(_invalidate_on_change, sender=ColorCode)
+post_delete.connect(_invalidate_on_change, sender=ColorCode)
 
 
 # ===================================================================

@@ -1,84 +1,270 @@
+{% load static %}
+{% load product_filters %}
 <!DOCTYPE html>
 <html lang="fa" dir="rtl">
 <head>
 <meta charset="UTF-8">
 <style>
-@page { size: A4; margin: 10mm; }
-body { font-family: vazir-regular; direction: rtl; text-align: right; font-size: 9pt; color: #222; }
-h1 { font-family: vazir-bold; font-size: 15pt; margin: 0 0 4px 0; }
-h2 { font-family: vazir-bold; font-size: 11pt; margin: 6px 0; color: #1a237e; }
-h3 { font-family: vazir-medium; font-size: 8pt; margin: 4px 0; color: #495057; }
-.header { border-bottom: 2px solid #1a237e; padding-bottom: 6px; margin-bottom: 12px; }
-.meta { font-size: 8pt; color: #555; margin-bottom: 10px; }
-.category { font-family: vazir-semi-bold; color: #6c757d; }
-.price { font-family: vazir-bold; color: #1a237e; font-size: 9pt; }
-table { width: 100%; border-collapse: collapse; margin-top: 4px; font-size: 8pt; }
-th, td { border: 1px solid #ccc; padding: 3px; text-align: center; }
-th { background: #e8eaf6; color: #1a237e; }
-.prod-title { font-family: vazir-medium; font-size: 9pt; }
-.prod-name { font-family: vazir-bold; font-size: 10pt; }
-.card { border: 1px solid #ddd; border-radius: 6px; padding: 8px; margin-bottom: 12px; page-break-inside: avoid; }
-.image { width: 100%; max-height: 120px; object-fit: cover; border-radius: 4px; margin-bottom: 6px; }
-.no-img { background: #e9ecef; text-align: center; color: #999; padding: 20px; font-size: 8pt; }
-.footer { margin-top: 14px; border-top: 1px solid #ddd; padding-top: 6px; font-size: 7pt; color: #888; text-align: center; }
+    @page { size: A4; margin: 15mm; }
+    body {
+        font-family: vazir-regular, Tahoma, sans-serif;
+        direction: rtl;
+        text-align: right;
+        font-size: 9pt;
+        color: #1f1c17;
+        background: #f7f4ef;
+        margin: 0;
+        padding: 0;
+    }
+    .wrapper { width: 100%; max-width: 780px; margin: 0 auto; }
+
+    .brand-bar {
+        border-bottom: 1px solid #e4ded2;
+        padding: 12px 0 16px;
+        margin-bottom: 20px;
+    }
+    .brand-bar .logo {
+        font-weight: 800;
+        font-size: 15px;
+        letter-spacing: 3px;
+        color: #1f1c17;
+    }
+    .brand-bar .logo sub {
+        display: block;
+        font-size: 6px;
+        letter-spacing: 3px;
+        color: #8a8378;
+        font-weight: 500;
+    }
+    .brand-bar .breadcrumb-mini {
+        font-size: 7px;
+        letter-spacing: 1.5px;
+        color: #8a8378;
+        text-transform: uppercase;
+    }
+
+    .collection-hero {
+        background: #efe9df;
+        border-radius: 6px;
+        margin-bottom: 26px;
+        page-break-inside: avoid;
+    }
+    .hero-content {
+        padding: 20px;
+    }
+    .hero-eyebrow {
+        font-size: 7px;
+        letter-spacing: 2px;
+        color: #a9895f;
+        font-weight: 700;
+        margin-bottom: 6px;
+    }
+    .hero-title {
+        font-size: 20px;
+        font-weight: 800;
+        letter-spacing: 1px;
+        margin: 4px 0;
+    }
+    .hero-tagline {
+        font-size: 9px;
+        color: #8a8378;
+        font-weight: 600;
+        margin-bottom: 10px;
+    }
+    .hero-desc {
+        font-size: 9px;
+        color: #5c574c;
+        line-height: 1.7;
+        margin-bottom: 12px;
+    }
+    .hero-features { margin: 0; padding: 0; }
+    .hero-features li {
+        font-size: 8px;
+        color: #1f1c17;
+        margin-bottom: 3px;
+    }
+
+    .hero-image-box {
+        background: #ded4c2;
+        border-radius: 6px;
+        min-height: 180px;
+        text-align: center;
+        padding: 20px;
+    }
+    .hero-image-box img {
+        max-width: 100%;
+        max-height: 180px;
+    }
+    .hero-image-box .no-img {
+        font-size: 36px;
+        color: #cfc6b2;
+    }
+
+    .section-title {
+        border-bottom: 1px solid #e4ded2;
+        padding-bottom: 5px;
+        margin-bottom: 14px;
+    }
+    .section-title h4 {
+        font-size: 8px;
+        letter-spacing: 3px;
+        font-weight: 800;
+        color: #1f1c17;
+        text-transform: uppercase;
+        margin: 0;
+        display: inline-block;
+    }
+    .section-title .divider {
+        border-top: 1px solid #e4ded2;
+        margin: 6px 0;
+    }
+    .section-title .page-info {
+        font-size: 7px;
+        letter-spacing: 1px;
+        color: #8a8378;
+    }
+
+    .product-card {
+        border-bottom: 1px solid #e4ded2;
+        margin-bottom: 14px;
+        page-break-inside: avoid;
+    }
+
+    .catalog-footer {
+        border-top: 1px solid #e4ded2;
+        padding-top: 10px;
+        margin-top: 20px;
+        font-size: 7px;
+        color: #8a8378;
+        letter-spacing: 1px;
+    }
+
+    .catalog-empty {
+        text-align: center;
+        padding: 40px;
+        color: #8a8378;
+    }
 </style>
 </head>
 <body>
-<pdf:language name="persian"/>
-<div class="header">
-    <h1>کاتالوگ محصولات — سلوی چوب</h1>
-    <div class="meta">
-        تاریخ: {{ today }} &nbsp;|&nbsp;
-        تهیه‌شده توسط: {{ representative_name }}
-    </div>
-</div>
+<div class="wrapper">
 
-{% for product in products %}
-<div class="card">
-    <div class="prod-name">{{ product.name }}</div>
-    <div class="category">{{ product.category.name }}</div>
-    {% if product.image %}
-    <img src="{{ product.image.url }}" class="image" alt="{{ product.name }}">
-    {% else %}
-    <div class="no-img">بدون عکس</div>
-    {% endif %}
-    <div class="meta">
-        {% if product.default_size %}سایز: {{ product.default_size }} &nbsp;|&nbsp; {% endif %}
-        <span class="price">قیمت واحد: {{ product.base_price|floatformat:"0" }} ریال</span>
+    <!-- ===== هدر برند ===== -->
+    <div class="brand-bar">
+        <div class="logo">سلوی چوب<sub>SELVI CHOOB</sub></div>
+        {% comment %} <div class="breadcrumb-mini">کاتالوگ محصولات / طراحی ماندگار</div> {% endcomment %}
     </div>
 
-    {% if product.bom.all %}
-    <h3>لیست قطعات</h3>
-    <table>
-        <thead>
-            <tr>
-                <th>ردیف</th>
-                <th>نام قطعه</th>
-                <th>جنس</th>
-                <th>ابعاد (L×W)</th>
-                <th>تعداد</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for bom in product.bom.all %}
-            <tr>
-                <td>{{ forloop.counter }}</td>
-                <td>{{ bom.part.f2|default:bom.part.name }}</td>
-                <td>{{ bom.part.material.name }}</td>
-                <td>{{ bom.part.length }} × {{ bom.part.width }}</td>
-                <td>{{ bom.quantity }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-    {% else %}
-    <div class="meta">بدون قطعه تعریف شده</div>
-    {% endif %}
-</div>
-{% endfor %}
+    {% if collection_list %}
+        {% for col in collection_list %}
+        <!-- ===== بنر معرفی دسته ===== -->
+        <div class="collection-hero">
+            <div class="hero-content">
+                <div class="hero-eyebrow">مجموعه {{ col.index|stringformat:"02d" }} از {{ total_collections|stringformat:"02d" }}</div>
+                <div class="hero-title">{{ col.category.name|default:"سایر" }}</div>
+                <div class="hero-tagline">طراحی ساده، فضای بزرگ‌تر</div>
+                <div class="hero-desc">
+                    مجموعه «{{ col.category.name|default:"سایر" }}» با ترکیب کارایی و طراحی مدرن، فضایی منظر و باکیفیت
+                    برای منزل شما می‌سازد؛ {{ col.products|length }} محصول در این مجموعه موجود است.
+                </div>
+                <ul class="hero-features">
+                    <li>• فضای نگهداری کاربردی</li>
+                    <li>• متریال باکیفیت</li>
+                    <li>• طراحی مدرن</li>
+                    <li>• رنگ‌بندی قابل سفارشی‌سازی</li>
+                </ul>
+            </div>
+            <div class="hero-image-box">
+                {% if col.hero_image %}
+                    <img src="{{ col.hero_image.url }}" alt="{{ col.category.name }}">
+                {% else %}
+                    <div class="no-img">—</div>
+                {% endif %}
+            </div>
+        </div>
 
-<div class="footer">
-    کلیه قیمت‌ها به‌روزرسانی شده و شامل مالیات نیستند.
+        <!-- ===== عنوان بخش کالکشن ===== -->
+        <div class="section-title">
+            <div class="divider"></div>
+            <div class="page-info">{{ col.category.name|default:"سایر" }} / {{ col.products|length|stringformat:"02d" }}</div>
+            <h4>کالکشن</h4>
+        </div>
+
+        <!-- ===== محصولات -->
+        {% for product in col.products %}
+        <div class="product-card">
+            <!-- Photo column (35%) -->
+            <div style="width:35%;float:right;padding-left:12px;">
+                <div style="width:100%;height:110px;background:#eee8db;border-radius:4px;text-align:center;display:flex;align-items:center;justify-content:center;color:#cfc6b2;font-size:22px;">
+                    {% if product.image %}
+                        <img src="{{ product.image.url }}" alt="{{ product.name }}" style="width:100%;height:110px;object-fit:cover;">
+                    {% else %}
+                        —
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Info column (65%) -->
+            <div style="width:65%;float:right;">
+                <div style="font-size:12px;font-weight:800;margin-bottom:3px;">{{ product.name }}</div>
+                <div style="font-size:7px;color:#8a8378;letter-spacing:1px;margin-bottom:5px;">{{ product.display_code }}</div>
+
+                {% if product.description %}
+                <div style="font-size:8px;color:#6b665a;line-height:1.6;margin-bottom:6px;">{{ product.description|truncatechars:100 }}</div>
+                {% endif %}
+
+                <div style="font-size:10px;font-weight:800;margin-bottom:8px;">قیمت: {{ product.base_price|intcomma }} ریال</div>
+
+                <!-- Specs as inline blocks (avoid table nesting issues in xhtml2pdf) -->
+                <div style="font-size:7px;">
+                    {% if product.default_size %}
+                    <div style="margin-bottom:4px;">
+                        <span style="font-size:6px;color:#8a8378;letter-spacing:1px;">ابعاد: </span>
+                        <span style="color:#1f1c17;font-weight:600;">{{ product.default_size }}</span>
+                    </div>
+                    {% endif %}
+                    {% if product.display_material %}
+                    <div style="margin-bottom:4px;">
+                        <span style="font-size:6px;color:#8a8378;letter-spacing:1px;">متریال: </span>
+                        <span style="color:#1f1c17;font-weight:600;">{{ product.display_material }}</span>
+                    </div>
+                    {% endif %}
+                    {% if product.color %}
+                    <div style="margin-bottom:4px;">
+                        <span style="font-size:6px;color:#8a8378;letter-spacing:1px;">رنگ پایه: </span>
+                        <span style="color:#1f1c17;font-weight:600;">{{ product.color }}</span>
+                    </div>
+                    {% endif %}
+                    {% if product.display_colors %}
+                    <div style="margin-bottom:4px;">
+                        <span style="font-size:6px;color:#8a8378;letter-spacing:1px;">گزینه‌های رنگ: </span>
+                        <span style="color:#1f1c17;font-weight:600;">
+                            {% for c in product.display_colors %}
+                            <span style="display:inline-block;width:10px;height:10px;border-radius:50%;border:1px solid #0000001a;background:{{ c.hex }};" title="کد {{ c.code }}"></span>
+                            {% endfor %}
+                        </span>
+                    </div>
+                    {% endif %}
+                </div>
+                <div style="clear:both;"></div>
+            </div>
+            <div style="clear:both;"></div>
+        </div>
+        {% endfor %}
+
+        {% endfor %}
+
+        <div class="catalog-footer">
+            {{ total_products }} محصول / {{ total_collections }} مجموعه
+            <span style="float:right;">تهیه‌شده توسط: {{ representative_name|default:" " }} — {{ today }}</span>
+        </div>
+
+    {% else %}
+    <div class="catalog-empty">
+        محصولی یافت نشد.
+    </div>
+    {% endif %}
+
 </div>
 </body>
 </html>

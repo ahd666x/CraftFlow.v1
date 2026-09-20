@@ -28,13 +28,15 @@ class RawMaterialCategoryForm(forms.ModelForm):
 class RawMaterialForm(forms.ModelForm):
     class Meta:
         model = RawMaterial
-        fields = ['category', 'name', 'code', 'unit', 'min_stock_alert', 'is_active']
+        fields = ['category', 'name', 'code', 'barcode', 'unit', 'min_stock_alert', 'pack_size', 'is_active']
         widgets = {
             'category': forms.Select(attrs={'class': 'form-select'}),
             'name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'نام ماده اولیه'}),
             'code': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'کد (اختیاری)'}),
+            'barcode': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'بارکد (اختیاری، برای اسکن دریافت}'}),
             'unit': forms.Select(attrs={'class': 'form-select'}),
             'min_stock_alert': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': '0'}),
+            'pack_size': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': '0', 'placeholder': 'مثلاً 4 برای قوطی ۴ لیتری'}),
             'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
 

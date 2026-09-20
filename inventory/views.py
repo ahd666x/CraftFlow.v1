@@ -1,8 +1,9 @@
 import json
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, user_passes_test
+from django.contrib.auth.models import User
 from django.core.paginator import Paginator
 from django.db.models import Q, Sum, Count, F, Case, When, Value, CharField, ProtectedError, DecimalField
 from django.db.models.functions import Coalesce
@@ -11,18 +12,21 @@ from django.shortcuts import get_object_or_404, render, redirect
 from django.template.loader import render_to_string
 from django.db.transaction import atomic
 from django.utils import timezone
-from django.views.decorators.http import require_http_methods
+from django.views.decorators.http import require_http_methods, require_POST
 
 from product.decorators import admin_or_manager_required, warehouse_or_manager_required
 from .models import (
     Supplier, RawMaterialCategory, RawMaterial,
-    StockMovement, PurchaseOrder, PurchaseOrderItem
-    , MaterialIssue
+    StockMovement, PurchaseOrder, PurchaseOrderItem,
+    MaterialIssue
 )
 from .forms import (
     SupplierForm, RawMaterialCategoryForm, RawMaterialForm,
     StockMovementForm, PurchaseOrderForm, PurchaseOrderItemForm
 )
+
+from . import services
+from .services import HandoverError
 
 
 # ============================================================
@@ -178,14 +182,118 @@ def production_issue_queue(request):
     paginator = Paginator(issues_qs, 25)
     issues = paginator.get_page(request.GET.get('page'))
 
+    # Warehouse users for handover receiver dropdown
+    warehouse_users = User.objects.filter(is_active=True).order_by('first_name', 'last_name', 'username')
+
     return render(request, 'inventory/production_issue_queue.html', {
         **_inventory_context('production_queue'),
         'issues': issues,
         'issues_total': paginator.count,
         'station': station,
         'stations': ProductionTask.STATION_CHOICES,
+        'warehouse_users': warehouse_users,
     })
 
+
+# ============================================================
+# Group Handover API (New)
+# ============================================================
+
+CENT = Decimal('0.01')
+
+
+def _json_body(request):
+    try:
+        data = json.loads(request.body or b'{}')
+    except (ValueError, TypeError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _to_quantity(value):
+    try:
+        qty = Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError):
+        raise HandoverError('مقدار یکی از ردیف‌ها نامعتبر است.')
+    if not qty.is_finite() or qty <= 0:
+        raise HandoverError('مقدار تحویل هر ردیف باید بزرگ‌تر از صفر باشد.')
+    try:
+        return qty.quantize(CENT)
+    except InvalidOperation:
+        raise HandoverError('مقدار یکی از ردیف‌ها نامعتبر است.')
+
+
+def _parse_items(payload):
+    raw_items = payload.get('items') if payload else None
+    if not isinstance(raw_items, list) or not raw_items:
+        raise HandoverError('هیچ موردی انتخاب نشده است.')
+
+    items, seen = [], set()
+    for row in raw_items:
+        if not isinstance(row, dict):
+            raise HandoverError('داده ارسالی نامعتبر است.')
+        try:
+            issue_id = int(row.get('issue_id'))
+        except (TypeError, ValueError):
+            raise HandoverError('شناسه یکی از درخواست‌ها نامعتبر است.')
+        if issue_id in seen:
+            raise HandoverError(f'درخواست #{issue_id} بیش از یک‌بار انتخاب شده است.')
+        seen.add(issue_id)
+        items.append((issue_id, _to_quantity(row.get('quantity'))))
+    return items
+
+
+@login_required
+@warehouse_or_manager_required
+@require_POST
+def handover_preview(request):
+    """خلاصهٔ جمع مواد انتخاب‌شده + محاسبهٔ قوطی و باقی‌مانده (بدون ثبت)."""
+    payload = _json_body(request)
+    try:
+        items = _parse_items(payload)
+        rows = services.preview_handover(items)
+    except HandoverError as exc:
+        return JsonResponse({'success': False, 'error': str(exc)})
+    return JsonResponse({'success': True, 'rows': rows})
+
+
+@login_required
+@warehouse_or_manager_required
+@require_POST
+def handover_create(request):
+    """ثبت نهایی تحویل گروهی به یک تحویل‌گیرنده."""
+    payload = _json_body(request)
+    try:
+        items = _parse_items(payload)
+
+        try:
+            receiver_id = int(payload.get('received_by'))
+        except (TypeError, ValueError):
+            receiver_id = None
+        receiver = User.objects.filter(pk=receiver_id, is_active=True).first() if receiver_id else None
+        if receiver is None:
+            raise HandoverError('تحویل‌گیرنده را انتخاب کنید.')
+
+        handover = services.execute_handover(
+            issued_by=request.user,
+            received_by=receiver,
+            items=items,
+            note=str(payload.get('note') or '').strip()[:255],
+        )
+    except HandoverError as exc:
+        return JsonResponse({'success': False, 'error': str(exc)})
+
+    receiver_name = receiver.get_full_name() or receiver.username
+    messages.success(
+        request,
+        f'تحویل {len(items)} ردیف به «{receiver_name}» ثبت شد (تحویل شماره {handover.id}).'
+    )
+    return JsonResponse({'success': True, 'handover_id': handover.id})
+
+
+# ============================================================
+# Legacy Single-Issue Hand-over (kept for backward compat)
+# ============================================================
 
 @login_required
 @warehouse_or_manager_required
@@ -485,9 +593,11 @@ def raw_material_detail_api(request, material_id):
         'id': material.id,
         'name': material.name,
         'code': material.code,
+        'barcode': material.barcode,
         'category': material.category_id,
         'unit': material.unit,
         'min_stock_alert': str(material.min_stock_alert),
+        'pack_size': str(material.pack_size),
         'is_active': material.is_active,
     })
 
@@ -805,3 +915,113 @@ def low_stock_report(request):
         'materials': materials,
     }
     return render(request, 'inventory/low_stock.html', context)
+
+
+# ============================================================
+# Raw Material Barcode Scan for Receiving
+# ============================================================
+
+@login_required
+@warehouse_or_manager_required
+def raw_material_receive_scan(request):
+    """صفحه اسکن بارکد برای دریافت مواد اولیه خریداری شده - ساده و سریع
+    
+    با اسکن بارکد، مواد اولیه به انبار اضافه می‌شود.
+    مقدار به صورت خودکار از pack_size materiais خوانده می‌شود.
+    نیاز به پر کردن فیلدهای قیمت و تامین‌کننده نیست.
+    """
+    if request.method == 'POST':
+        barcode = request.POST.get('barcode', '').strip()
+        pack_count = int(request.POST.get('pack_count', 1))
+        note = request.POST.get('note', '')
+
+        if not barcode:
+            messages.error(request, 'بارکد وارد نشده است.')
+            return redirect('inventory:raw_material_receive_scan')
+
+        # پیدا کردن ماده اولیه با بارکد
+        raw_material = get_object_or_404(RawMaterial, barcode=barcode)
+
+        # محاسبه مقدار بر اساس تعداد بسته و pack_size
+        if raw_material.pack_size and raw_material.pack_size > 0:
+            quantity = Decimal(str(pack_count)) * raw_material.pack_size
+        else:
+            # اگر pack_size تعریف نشده باشد، 1 واحد در نظر گرفته می‌شود
+            quantity = Decimal(str(pack_count))
+
+        # ایجاد moviment ورودی انبار (بدون نیاز به سفارش خرید)
+        StockMovement.objects.create(
+            raw_material=raw_material,
+            movement_type='purchase',
+            quantity=quantity,
+            unit_price=None,  # قیمت الزامی نیست
+            supplier=None,    # تامین‌کننده الزامی نیست
+            note=note or f'دریافت با اسکن بارکد - {pack_count} بسته',
+            created_by=request.user,
+        )
+
+        messages.success(
+            request,
+            f'ماده «{raw_material.name}» با {pack_count} بسته ({quantity} {raw_material.get_unit_display()}) به انبار اضافه شد.'
+        )
+        return redirect('inventory:raw_material_receive_scan')
+
+    # GET request - نمایش فرم اسکن
+    recent_movements = StockMovement.objects.filter(
+        movement_type='purchase'
+    ).select_related('raw_material').order_by('-created_at')[:10]
+
+    context = {
+        **_inventory_context('raw_material_receive_scan'),
+        'recent_movements': recent_movements,
+    }
+    return render(request, 'inventory/raw_material_receive_scan.html', context)
+
+
+@login_required
+@warehouse_or_manager_required
+@require_http_methods(['POST'])
+def raw_material_receive_scan_api(request):
+    """API برای اسکن بارکد و دریافت سریع مواد اولیه"""
+    if request.headers.get('X-Requested-With') != 'XMLHttpRequest':
+        return HttpResponseForbidden()
+
+    barcode = request.POST.get('barcode', '').strip()
+    pack_count = int(request.POST.get('pack_count', 1))
+
+    if not barcode:
+        return JsonResponse({'success': False, 'error': 'بارکد وارد نشده است.'})
+
+    try:
+        raw_material = RawMaterial.objects.get(barcode=barcode)
+    except RawMaterial.DoesNotExist:
+        return JsonResponse({'success': False, 'error': f'ماده اولیه با بارکد «{barcode}» یافت نشد.'})
+
+    # محاسبه مقدار بر اساس تعداد بسته و pack_size
+    if raw_material.pack_size and raw_material.pack_size > 0:
+        quantity = Decimal(str(pack_count)) * raw_material.pack_size
+    else:
+        quantity = Decimal(str(pack_count))
+
+    # ایجاد moviment ورودی انبار
+    movement = StockMovement.objects.create(
+        raw_material=raw_material,
+        movement_type='purchase',
+        quantity=quantity,
+        unit_price=None,
+        supplier=None,
+        note=f'دریافت با اسکن بارکد - {pack_count} بسته',
+        created_by=request.user,
+    )
+
+    return JsonResponse({
+        'success': True,
+        'movement_id': movement.id,
+        'material_name': raw_material.name,
+        'material_unit': raw_material.get_unit_display(),
+        'pack_count': pack_count,
+        'quantity': str(quantity),
+        'pack_size': str(raw_material.pack_size) if raw_material.pack_size else '0',
+        'current_stock': str(raw_material.current_stock),
+        'message': f'{raw_material.name} - {pack_count} بسته ({quantity} {raw_material.get_unit_display()})'
+    })

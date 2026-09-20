@@ -3,7 +3,7 @@ from django.contrib import admin
 from django.urls import reverse
 from django.utils.html import format_html
 from .models import (
-    Color, ProductCategory, WorkerProfile, Customer, ProductBOM, Product,
+    Color, ColorCode, ProductCategory, WorkerProfile, Customer, ProductBOM, Product,
     Order, ProductionTask, Part, OrderItem, ProductionLog , PackagingUnit ,
     ProductionEvent,
 )
@@ -12,6 +12,7 @@ from .models import ShipmentLog
 from .models import PaintingProcess, PaintingStage, PaintingProcessMaterial
 from .models import PaintingAssignmentRule
 from .models import PaintingMaterialRequirement, PaintingColorMaterialVariant
+from .utils import get_color_code_choices
 
 # @admin.register(PackagingUnit)
 # class PackagingUnitAdmin(admin.ModelAdmin):
@@ -75,11 +76,34 @@ class PackagingUnitAdmin(admin.ModelAdmin):
 
 
 
+@admin.register(ColorCode)
+class ColorCodeAdmin(admin.ModelAdmin):
+    list_display = ['code', 'hex_color_preview', 'hex_code', 'material_name', 'description', 'is_active']
+    list_editable = ['hex_code', 'material_name', 'is_active']
+    search_fields = ['code', 'material_name', 'description']
+    list_filter = ['is_active']
+
+    def hex_color_preview(self, obj):
+        if obj.hex_code:
+            return format_html(
+                '<span style="display:inline-block;width:18px;height:18px;border-radius:50%;background:{};border:1px solid #ccc;"></span>',
+                obj.hex_code
+            )
+        return '—'
+    hex_color_preview.short_description = 'نمایش رنگ'
+
+
 @admin.register(Color)
 class ColorAdmin(admin.ModelAdmin):
-    list_display = ['part', 'code', 'orderitem_link']
-    list_filter = ['part']
-    search_fields = ['part', 'code', 'orderitem__id']
+    list_display = ['part', 'code', 'hex_code', 'material_name', 'orderitem_link']
+    list_filter = ['part', 'code']
+    search_fields = ['part', 'code', 'hex_code', 'material_name', 'orderitem__id']
+
+    def get_form(self, request, obj=None, **kwargs):
+        form = super().get_form(request, obj, **kwargs)
+        if 'code' in form.base_fields:
+            form.base_fields['code'].choices = [('', '----------')] + get_color_code_choices()
+        return form
 
     def orderitem_link(self, obj):
         url = reverse('admin:product_orderitem_change', args=[obj.orderitem.id])
@@ -450,6 +474,12 @@ class PaintingColorMaterialVariantAdmin(admin.ModelAdmin):
     list_filter = ['process_material__process', 'color_code']
     search_fields = ['process_material__process__name', 'process_material__raw_material__name', 'raw_material__name']
     autocomplete_fields = ['process_material', 'raw_material']
+
+    def get_form(self, request, obj=None, **kwargs):
+        form = super().get_form(request, obj, **kwargs)
+        if 'color_code' in form.base_fields:
+            form.base_fields['color_code'].choices = [('', '---------')] + get_color_code_choices()
+        return form
 
 
 @admin.register(PaintingStage)

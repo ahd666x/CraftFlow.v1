@@ -29,6 +29,10 @@ urlpatterns = [
     path('production-queue/<int:issue_id>/cancel/', views.cancel_material_issue, name='cancel_material_issue'),
     path('production-queue/<int:issue_id>/issue/', views.issue_material, name='issue_material'),
 
+    # Group Handover API
+    path('handover/preview/', views.handover_preview, name='handover_preview'),
+    path('handover/create/', views.handover_create, name='handover_create'),
+
     path('purchase-orders/', views.purchase_order_list, name='purchase_order_list'),
     path('purchase-orders/<int:order_id>/detail/', views.purchase_order_detail_api, name='purchase_order_detail'),
     path('purchase-orders/create/', views.purchase_order_create, name='purchase_order_create'),
@@ -39,4 +43,8 @@ urlpatterns = [
     path('purchase-orders/items/<int:item_id>/delete/', views.purchase_order_item_delete, name='purchase_order_item_delete'),
 
     path('low-stock/', views.low_stock_report, name='low_stock_report'),
+
+    # Raw Material Barcode Scan for Receiving
+    path('raw-material/receive/scan/', views.raw_material_receive_scan, name='raw_material_receive_scan'),
+    path('raw-material/receive/scan/api/', views.raw_material_receive_scan_api, name='raw_material_receive_scan_api'),
 ]

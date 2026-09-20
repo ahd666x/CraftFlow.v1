@@ -73,6 +73,8 @@ from .utils import (
     auto_create_material_issues,
     _parse_default_colors,
     get_painting_process_for_color,
+    get_color_hex_map,
+    get_color_code_choices,
 )
 logger = logging.getLogger(__name__)
 
@@ -3075,33 +3077,77 @@ def admin_product_list(request):
 @login_required
 @admin_or_manager_required
 def product_catalog(request):
-    """کاتالوگ محصولات: نمایش عکس، نام، قیمت و لیست قطعات (BOM) هر محصول."""
-    products = Product.objects.select_related('category').prefetch_related(
-        'bom'
+    """کاتالوگ محصولات به سبک بروشور — هر دسته‌بندی با بنر معرفی و گرید محصولات."""
+    from .utils import _parse_default_colors
+
+    COLOR_SWATCH_MAP = {
+        '1': '#efe9df', '2': '#ded2ba', '3': '#c9b896', '4': '#b89968',
+        '5': '#9c7b4f', '6': '#7a5c3a', '7': '#5c4530', '8': '#3f3226',
+        '9': '#2b2119', '10': '#1a1512',
+        'جناغی': '#8a6a45', 'بتنی': '#9c9c94',
+    }
+
+    products_qs = Product.objects.select_related('category').prefetch_related(
+        'bom__part__material'
     )
 
-    categories = ProductCategory.objects.all()
-
-    # جستجو
     q = request.GET.get('q')
     if q:
-        products = products.filter(
+        products_qs = products_qs.filter(
             Q(name__icontains=q) | Q(category__name__icontains=q)
         )
 
-    # فیلتر دسته‌بندی
     category_id = request.GET.get('category')
     if category_id:
-        products = products.filter(category_id=category_id)
+        products_qs = products_qs.filter(category_id=category_id)
 
-    products = products.order_by('category__name', 'name')
+    products = list(products_qs.order_by('category__name', 'name'))
+
+    for product in products:
+        product.display_code = f"P-{product.id:04d}"
+        first_bom = product.bom.first()
+        product.display_material = (
+            first_bom.part.material.name
+            if first_bom and first_bom.part and first_bom.part.material
+            else None
+        )
+        colors = _parse_default_colors(product)
+        seen = []
+        for code in colors.values():
+            code = str(code)
+            if code and code != 'nan' and code not in seen:
+                seen.append(code)
+        product.display_colors = [
+            {'code': c, 'hex': COLOR_SWATCH_MAP.get(c, '#cbbfa8')}
+            for c in seen
+        ]
+
+    collections = {}
+    order = []
+    for product in products:
+        cat = product.category
+        key = cat.id if cat else 0
+        if key not in collections:
+            collections[key] = {'category': cat, 'products': []}
+            order.append(key)
+        collections[key]['products'].append(product)
+
+    collection_list = [collections[k] for k in order]
+    for idx, col in enumerate(collection_list, start=1):
+        col['index'] = idx
+        col['hero_image'] = next(
+            (p.image for p in col['products'] if p.image),
+            None,
+        )
 
     context = {
-        'products': products,
-        'categories': categories,
+        'collection_list': collection_list,
+        'total_collections': len(collection_list),
+        'categories': ProductCategory.objects.all(),
         'selected_category': category_id,
         'search_query': q,
         'today': jdatetime.date.today().strftime('%Y/%m/%d'),
+        'total_products': len(products),
     }
     return render(request, 'product_catalog.html', context)
 
@@ -3109,26 +3155,66 @@ def product_catalog(request):
 @login_required
 @admin_or_manager_required
 def product_catalog_pdf(request):
-    """ذخیره / دانلود کاتالوگ محصولات به‌صورت PDF."""
+    """ذخیره / دانلود کاتالوگ محصولات به‌صورت PDF — همان طرح بروشور صفحه HTML."""
+    from .utils import _parse_default_colors, get_color_hex_map
+    from .pdf_utils import render_pdf
+
+    color_hex_map = get_color_hex_map()
+
     q = request.GET.get('q')
     category_id = request.GET.get('category')
 
-    products = Product.objects.select_related('category').prefetch_related(
+    products_qs = Product.objects.select_related('category').prefetch_related(
         'bom__part__material'
     )
     if q:
-        products = products.filter(
+        products_qs = products_qs.filter(
             Q(name__icontains=q) | Q(category__name__icontains=q)
         )
     if category_id:
-        products = products.filter(category_id=category_id)
-    products = products.order_by('category__name', 'name')
+        products_qs = products_qs.filter(category_id=category_id)
 
-    from .pdf_utils import render_pdf
+    products = list(products_qs.order_by('category__name', 'name'))
+
+    for product in products:
+        product.display_code = f"P-{product.id:04d}"
+        first_bom = product.bom.first()
+        product.display_material = (
+            first_bom.part.material.name
+            if first_bom and first_bom.part and first_bom.part.material else None
+        )
+        colors = _parse_default_colors(product)
+        seen_codes = []
+        for code in colors.values():
+            code = str(code)
+            if code and code != 'nan' and code not in seen_codes:
+                seen_codes.append(code)
+        product.display_colors = [
+            {'code': c, 'hex': color_hex_map.get(c, '#cbbfa8')}
+            for c in seen_codes
+        ]
+
+    collections = {}
+    order = []
+    for product in products:
+        cat = product.category
+        key = cat.id if cat else 0
+        if key not in collections:
+            collections[key] = {'category': cat, 'products': []}
+            order.append(key)
+        collections[key]['products'].append(product)
+
+    collection_list = [collections[k] for k in order]
+    for idx, col in enumerate(collection_list, start=1):
+        col['index'] = idx
+        col['hero_image'] = next((p.image for p in col['products'] if p.image), None)
+
     return render_pdf(
         'product_catalog_pdf.html',
         {
-            'products': products,
+            'collection_list': collection_list,
+            'total_collections': len(collection_list),
+            'total_products': len(products),
             'today': jdatetime.date.today().strftime('%Y/%m/%d'),
             'representative_name': request.user.get_full_name() or request.user.username,
         },
@@ -5404,6 +5490,8 @@ def painting_process_material_variants_api(request, process_material_id):
     from inventory.models import RawMaterial
     from .models import Color, PaintingColorMaterialVariant, PaintingProcessMaterial
 
+    code_choices = get_color_code_choices()
+
     process_material = get_object_or_404(PaintingProcessMaterial, pk=process_material_id)
 
     if request.method == 'GET':
@@ -5419,7 +5507,7 @@ def painting_process_material_variants_api(request, process_material_id):
             'is_color_variant': process_material.is_color_variant,
             'color_choices': [
                 {'code': code, 'label': label}
-                for code, label in Color.CODE_CHOICES
+                for code, label in code_choices
             ],
             'variants': [
                 {
@@ -5429,7 +5517,7 @@ def painting_process_material_variants_api(request, process_material_id):
                     'raw_material_name': str(variants[code].raw_material) if code in variants else '',
                     'unit': variants[code].raw_material.get_unit_display() if code in variants else '',
                 }
-                for code, label in Color.CODE_CHOICES
+                for code, label in code_choices
             ],
         })
 
@@ -5442,8 +5530,7 @@ def painting_process_material_variants_api(request, process_material_id):
             return JsonResponse({'success': False, 'error': 'داده ارسالی معتبر نیست'})
 
         color_code = str(data.get('color_code', '')).strip()
-        color_choices = dict(Color.CODE_CHOICES)
-        if color_code not in color_choices:
+        if color_code not in dict(code_choices):
             return JsonResponse({'success': False, 'error': 'کد رنگ معتبر نیست'})
 
         raw_material_id = data.get('raw_material_id')

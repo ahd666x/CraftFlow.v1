@@ -7,11 +7,7 @@
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
   <div>
     <h1 class="h3 mb-1">صف تحویل مواد به تولید</h1>
-    {% comment %} <p class="text-muted mb-0">برنامه تولید ← درخواست مواد ← تأیید تحویل انبار</p> {% endcomment %}
   </div>
-  {% comment %} <a href="{% url 'product_defects' %}" class="btn btn-outline-danger">
-    <i class="bi bi-exclamation-octagon"></i> ثبت و پیگیری خرابی‌ها
-  </a> {% endcomment %}
 </div>
 
 <div class="row g-3 mb-3">
@@ -47,27 +43,19 @@
 </div>
 
 <div class="card-modern" id="issuesCard">
-  {% comment %} <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-    <span><i class="bi bi-box-arrow-left"></i> درخواست‌های انبار</span>
-    <div class="d-flex gap-2">
-      <button type="button" class="btn btn-sm btn-outline-primary" id="refreshBtn" title="بروزرسانی خودکار">
-        <i class="bi bi-arrow-clockwise"></i> تازه‌سازی
-      </button>
-      <span class="badge bg-secondary align-self-center" id="issueCount">{{ issues_total }} آیتم</span>
-    </div>
-  </div> {% endcomment %}
   <div class="card-body p-0">
     <div class="table-responsive">
       <table class="table table-hover align-middle mb-0" id="issuesTable">
         <thead class="table-light">
           <tr>
-            <th style="width:35%"> سفارش</th>
-            <th style="width:18%">ماده اولیه</th>
+            <th style="width:40px">
+              <input type="checkbox" id="selectAllIssues" class="form-check-input" title="انتخاب/لغو همه">
+            </th>
+            <th style="width:30%"> سفارش</th>
+            <th style="width:15%">ماده اولیه</th>
             <th style="width:12%">مقدار</th>
             <th style="width:10%">موجودی</th>
             <th style="width:10%">وضعیت</th>
-            <!-- <th style="width:10%">اولویت</th> -->
-            <!-- <th style="width:10%">انتظار (روز)</th> -->
             <th style="width:15%"></th>
           </tr>
         </thead>
@@ -75,6 +63,11 @@
           {% for issue in issues %}
           {% with remaining=issue.requested_quantity|sub:issue.issued_quantity %}
           <tr data-issue="{{ issue.id }}" class="{% if issue.status == 'requested' and issue.raw_material.current_stock < remaining %}table-danger{% elif issue.status == 'partial' %}table-warning{% endif %}">
+            <td>
+              <input type="checkbox" class="form-check-input issue-checkbox" value="{{ issue.id }}"
+                     data-max-qty="{{ remaining|floatformat:2 }}"
+                     {% if issue.status not in 'requested,partial' %}disabled{% endif %}>
+            </td>
             <td>
               {% if issue.defect %}
                 <span class="badge bg-danger"><i class="bi bi-exclamation-octagon"></i> خرابی</span>
@@ -155,24 +148,6 @@
                 {{ issue.get_status_display }}
               </span>
             </td>
-            <!-- <td>
-                {% if issue.raw_material.current_stock < remaining and issue.status != 'issued' %}
-                  <span class="badge bg-danger"><i class="bi bi-exclamation-triangle"></i> بحرانی</span>
-                {% elif issue.status == 'requested' %}
-                  <span class="badge bg-info text-dark">عادی</span>
-                {% else %}
-                  <span class="badge bg-secondary">—</span>
-                {% endif %}
-            </td>
-            <td>
-              {% if issue.created_at %}
-                {% with days_waited=issue.created_at|timesince %}
-                  <span class="{% if issue.status == 'requested' and issue.raw_material.current_stock < remaining %}text-danger fw-bold{% endif %}">
-                    {{ days_waited }}
-                  </span>
-                {% endwith %}
-              {% else %}—{% endif %}
-            </td> -->
             <td>
               {% if issue.status in 'requested,partial' %}
                 <form method="post" action="{% url 'inventory:issue_material' issue.id %}" class="d-flex gap-1 issue-form">
@@ -192,21 +167,19 @@
                     <i class="bi bi-x-lg"></i>
                   </button>
                 </form>
-{% else %}
-                  <span class="text-muted small">
-                    {% if issue.issued_by %}<i class="bi bi-person"></i> تحویل‌دهنده: {{ issue.issued_by.get_full_name|default:issue.issued_by.username }}{% endif %}
-                    {% if issue.received_by %}<br><i class="bi bi-person-check"></i> تحویل‌گیرنده: {{ issue.received_by.get_full_name|default:issue.received_by.username }}{% endif %}
-                    {% if issue.issued_at %}<br><i class="bi bi-clock"></i> {{ issue.issued_at|date:"Y/m/d H:i" }}{% endif %}
-                  </span>
-                {% endif %}
-              </td>
-            </tr>
+              {% else %}
+                <span class="text-muted small">
+                  {% if issue.issued_by %}<i class="bi bi-person"></i> تحویل‌دهنده: {{ issue.issued_by.get_full_name|default:issue.issued_by.username }}{% endif %}
+                  {% if issue.received_by %}<br><i class="bi bi-person-check"></i> تحویل‌گیرنده: {{ issue.received_by.get_full_name|default:issue.received_by.username }}{% endif %}
+                  {% if issue.issued_at %}<br><i class="bi bi-clock"></i> {{ issue.issued_at|date:"Y/m/d H:i" }}{% endif %}
+                </span>
+              {% endif %}
+            </td>
+          </tr>
           {% endwith %}
         {% empty %}
           <tr>
-            <td colspan="6" class="text-center text-muted py-5">
-              {% comment %} <i class="bi bi-inbox-fill fs-1"></i>
-              <div class="mt-2">درخواستی در انتظار تحویل نیست.</div> {% endcomment %}
+            <td colspan="7" class="text-center text-muted py-5">
             </td>
           </tr>
         {% endfor %}
@@ -239,6 +212,47 @@
   </ul>
 </nav>
 {% endif %}
+
+<!-- Group Handover Sticky Bar -->
+<div id="handoverBar" class="handover-bar d-none" role="region" aria-label="نوار تحویل گروهی">
+  <div class="handover-bar-inner">
+    <div class="handover-summary">
+      <span class="handover-count"><i class="bi bi-box-seam"></i> <strong id="selectedCount">0</strong> ردیف انتخاب‌شده</span>
+      <span class="handover-materials" id="materialSummary"></span>
+    </div>
+    <div class="handover-actions">
+      <button type="button" class="btn btn-outline-secondary btn-sm" id="clearSelectionBtn">
+        <i class="bi bi-x-circle"></i> لغو انتخاب
+      </button>
+      <button type="button" class="btn btn-primary btn-sm" id="previewHandoverBtn" disabled>
+        <i class="bi bi-eye"></i> ثبت
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Handover Preview Modal -->
+<div class="modal fade" id="handoverPreviewModal" tabindex="-1" aria-labelledby="handoverPreviewModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title" id="handoverPreviewModalLabel"> </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="بستن"></button>
+      </div>
+      <div class="modal-body">
+        <div id="handoverPreviewContent">
+          <!-- Preview content will be injected here -->
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+        <button type="button" class="btn btn-success" id="confirmHandoverBtn" disabled>
+          <i class="bi bi-check-lg"></i> تأیید و ثبت نهایی
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block inventory_js %}
@@ -259,7 +273,17 @@
           const doc = parser.parseFromString(html, 'text/html');
           const newTable = doc.querySelector('#issuesTable tbody');
           const newCount = doc.querySelector('#issueCount');
-          if (newTable) document.querySelector('#issuesTable tbody').innerHTML = newTable.innerHTML;
+          if (newTable) {
+            // Preserve checkbox selections
+            const selectedIds = Array.from(document.querySelectorAll('.issue-checkbox:checked')).map(cb => cb.value);
+            document.querySelector('#issuesTable tbody').innerHTML = newTable.innerHTML;
+            // Restore selections
+            selectedIds.forEach(id => {
+              const cb = document.querySelector(`.issue-checkbox[value="${id}"]`);
+              if (cb) cb.checked = true;
+            });
+            updateHandoverBar();
+          }
           if (newCount) document.querySelector('#issueCount').textContent = newCount.textContent;
         })
         .catch(console.error);
@@ -313,7 +337,308 @@
     row.style.cursor = 'pointer';
   });
 
+  // ============================================================
+  // Group Handover Logic
+  // ============================================================
+  const selectAllCheckbox = document.getElementById('selectAllIssues');
+  const handoverBar = document.getElementById('handoverBar');
+  const selectedCountEl = document.getElementById('selectedCount');
+  const materialSummaryEl = document.getElementById('materialSummary');
+  const clearSelectionBtn = document.getElementById('clearSelectionBtn');
+  const previewHandoverBtn = document.getElementById('previewHandoverBtn');
+  const confirmHandoverBtn = document.getElementById('confirmHandoverBtn');
+  const previewContent = document.getElementById('handoverPreviewContent');
+  const modalEl = document.getElementById('handoverPreviewModal');
+  let modalInstance = null;
+  let lastPreviewData = null;
+
+  function getSelectedIssues() {
+    const checkboxes = document.querySelectorAll('.issue-checkbox:checked');
+    return Array.from(checkboxes).map(cb => ({
+      issue_id: parseInt(cb.value, 10),
+      quantity: parseFloat(cb.dataset.maxQty)
+    }));
+  }
+
+  function updateHandoverBar() {
+    const items = getSelectedIssues();
+    const count = items.length;
+    selectedCountEl.textContent = count;
+
+    if (count === 0) {
+      handoverBar.classList.add('d-none');
+      materialSummaryEl.textContent = '';
+      previewHandoverBtn.disabled = true;
+      return;
+    }
+
+    handoverBar.classList.remove('d-none');
+    previewHandoverBtn.disabled = false;
+
+    // Group by material for summary
+    const materialMap = {};
+    items.forEach(item => {
+      const row = document.querySelector(`tr[data-issue="${item.issue_id}"]`);
+      if (!row) return;
+      const materialName = row.querySelector('td:nth-child(3) strong')?.textContent?.trim() || 'نامشخص';
+      const unit = row.querySelector('td:nth-child(3) .text-muted')?.textContent?.trim() || '';
+      const key = materialName + '|' + unit;
+      if (!materialMap[key]) {
+        materialMap[key] = { name: materialName, unit: unit, total: 0 };
+      }
+      materialMap[key].total += item.quantity;
+    });
+
+    const summaryParts = Object.values(materialMap).map(m =>
+      `${m.name}: ${m.total.toFixed(2)} ${m.unit}`
+    ).join('، ');
+    materialSummaryEl.textContent = summaryParts;
+  }
+
+  function toggleSelectAll() {
+    const checkboxes = document.querySelectorAll('.issue-checkbox:not(:disabled)');
+    checkboxes.forEach(cb => cb.checked = selectAllCheckbox.checked);
+    updateHandoverBar();
+  }
+
+  function handleCheckboxChange() {
+    const allCheckboxes = document.querySelectorAll('.issue-checkbox:not(:disabled)');
+    const checkedCheckboxes = document.querySelectorAll('.issue-checkbox:checked');
+    selectAllCheckbox.checked = allCheckboxes.length > 0 && allCheckboxes.length === checkedCheckboxes.length;
+    selectAllCheckbox.indeterminate = checkedCheckboxes.length > 0 && checkedCheckboxes.length < allCheckboxes.length;
+    updateHandoverBar();
+  }
+
+  // Event delegation for checkboxes (works after auto-refresh)
+  document.getElementById('issuesTable').addEventListener('change', e => {
+    if (e.target.matches('.issue-checkbox')) {
+      handleCheckboxChange();
+    }
+  });
+
+  selectAllCheckbox?.addEventListener('change', toggleSelectAll);
+  clearSelectionBtn?.addEventListener('click', () => {
+    document.querySelectorAll('.issue-checkbox:checked').forEach(cb => cb.checked = false);
+    selectAllCheckbox.checked = false;
+    selectAllCheckbox.indeterminate = false;
+    updateHandoverBar();
+  });
+
+  // Preview button
+  previewHandoverBtn?.addEventListener('click', async () => {
+    const items = getSelectedIssues();
+    if (items.length === 0) return;
+
+    previewHandoverBtn.disabled = true;
+    previewHandoverBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> در حال محاسبه...';
+
+    try {
+      const response = await fetch('{% url "inventory:handover_preview" %}', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrfToken,
+          'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: JSON.stringify({ items })
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'خطا');
+      }
+      lastPreviewData = { items, rows: data.rows };
+      renderPreview(data.rows);
+      confirmHandoverBtn.disabled = false;
+      if (!modalInstance) modalInstance = new bootstrap.Modal(modalEl);
+      modalInstance.show();
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      previewHandoverBtn.disabled = false;
+      previewHandoverBtn.innerHTML = '<i class="bi bi-eye"></i> ثبت';
+    }
+  });
+
+  function renderPreview(rows) {
+    if (!rows.length) {
+      previewContent.innerHTML = '<div class="text-center text-muted py-4">هیچ ماده‌ای برای تحویل وجود ندارد.</div>';
+      return;
+    }
+
+    let html = `
+      <div class="table-responsive mb-3">
+        <table class="table table-sm table-bordered align-middle">
+          <thead class="table-light">
+            <tr>
+              <th>ماده اولیه</th>
+              <th>واحد</th>
+              <th class="text-end">مجموع نیاز</th>
+              <th class="text-end">باقی‌مانده سالن</th>
+              <th class="text-end">کسر از باقی‌مانده</th>
+              <th class="text-end">خروج از انبار</th>
+              <th class="text-end">حجم بسته</th>
+              <th class="text-end">تعداد بسته</th>
+              <th class="text-end">خروج فیزیکی</th>
+              <th class="text-end">باقی‌مانده جدید</th>
+              <th class="text-end">موجودی انبار</th>
+              <th>وضعیت</th>
+            </tr>
+          </thead>
+          <tbody>
+    `;
+
+    rows.forEach(r => {
+      const enoughClass = r.enough ? 'text-success' : 'text-danger fw-bold';
+      const enoughText = r.enough ? '✓ کافی' : '✗ کمبود';
+      html += `
+        <tr class="${r.enough ? '' : 'table-danger'}">
+          <td><strong>${r.name}</strong></td>
+          <td>${r.unit}</td>
+          <td class="text-end">${parseFloat(r.need).toFixed(2)}</td>
+          <td class="text-end">${parseFloat(r.leftover).toFixed(2)}</td>
+          <td class="text-end">${parseFloat(r.from_leftover).toFixed(2)}</td>
+          <td class="text-end">${parseFloat(r.from_stock).toFixed(2)}</td>
+          <td class="text-end">${parseFloat(r.pack_size).toFixed(2)}</td>
+          <td class="text-end">${r.packs}</td>
+          <td class="text-end">${parseFloat(r.physical).toFixed(2)}</td>
+          <td class="text-end">${parseFloat(r.new_leftover).toFixed(2)}</td>
+          <td class="text-end">${parseFloat(r.stock).toFixed(2)}</td>
+          <td class="${enoughClass}">${enoughText}</td>
+        </tr>
+      `;
+    });
+
+    html += `
+          </tbody>
+        </table>
+      </div>
+      <div class="row mb-3">
+        <div class="col-md-6">
+          <label class="form-label fw-bold">تحویل‌گیرنده <span class="text-danger">*</span></label>
+          <select class="form-select" id="handoverReceiverSelect" required>
+            <option value="">-- انتخاب کارمند --</option>
+            {% for user in warehouse_users %}
+              <option value="{{ user.id }}">{{ user.get_full_name|default:user.username }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">یادداشت</label>
+          <input type="text" class="form-control" id="handoverNoteInput">
+        </div>
+      </div>
+      <div id="previewAlert" class="alert alert-warning d-none" role="alert"></div>
+    `;
+
+    previewContent.innerHTML = html;
+  }
+
+  // Confirm button
+  confirmHandoverBtn?.addEventListener('click', async () => {
+    if (!lastPreviewData) return;
+
+    const receiverId = document.getElementById('handoverReceiverSelect')?.value;
+    const note = document.getElementById('handoverNoteInput')?.value || '';
+    const alertEl = document.getElementById('previewAlert');
+
+    if (!receiverId) {
+      alertEl.textContent = 'لطفاً تحویل‌گیرنده را انتخاب کنید.';
+      alertEl.classList.remove('d-none');
+      return;
+    }
+    alertEl.classList.add('d-none');
+
+    confirmHandoverBtn.disabled = true;
+    confirmHandoverBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> در حال ثبت...';
+
+    try {
+      const response = await fetch('{% url "inventory:handover_create" %}', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrfToken,
+          'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: JSON.stringify({
+          items: lastPreviewData.items,
+          received_by: parseInt(receiverId, 10),
+          note: note
+        })
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'خطا در ثبت تحویل');
+      }
+      modalInstance.hide();
+      window.location.reload();
+    } catch (err) {
+      alertEl.textContent = err.message;
+      alertEl.classList.remove('d-none');
+    } finally {
+      confirmHandoverBtn.disabled = false;
+      confirmHandoverBtn.innerHTML = '<i class="bi bi-check-lg"></i> تأیید و ثبت نهایی';
+    }
+  });
+
+  // Reset modal state on hide
+  modalEl?.addEventListener('hidden.bs.modal', () => {
+    lastPreviewData = null;
+    confirmHandoverBtn.disabled = true;
+  });
+
   startAutoRefresh();
 })();
 </script>
+
+<style>
+.handover-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 1030;
+  background: #fff;
+  border-top: 1px solid #dee2e6;
+  box-shadow: 0 -2px 8px rgba(0,0,0,.08);
+  padding: 0.5rem 1rem;
+}
+.handover-bar-inner {
+  max-width: 1400px;
+  margin: 0 auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.handover-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.handover-count {
+  font-size: 0.95rem;
+}
+.handover-materials {
+  font-size: 0.8rem;
+  color: #6c757d;
+  max-width: 600px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.handover-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+@media (max-width: 576px) {
+  .handover-bar-inner {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .handover-actions {
+    justify-content: center;
+  }
+}
+</style>
 {% endblock %}

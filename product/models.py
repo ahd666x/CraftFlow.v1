@@ -437,6 +437,30 @@ class OrderItem(models.Model):
 
 
 
+class ColorCode(models.Model):
+    """
+    تعریف کد رنگ — جدول lookup برای نگاشت کد رنگ به هگز و متریال.
+    این جدول در ادمین مدیریت می‌شود و امکان افزودن کدهای جدید (مثلاً ۱۳)
+    به‌صورت داینامیک را فراهم می‌آورد.
+    """
+    code = models.CharField(max_length=20, unique=True, verbose_name="کد رنگ")
+    hex_code = models.CharField(max_length=7, blank=True, verbose_name="کد هگز رنگ")
+    material_name = models.CharField(max_length=50, blank=True, verbose_name="نام متریال پیش‌فرض")
+    description = models.CharField(max_length=100, blank=True, verbose_name="توضیحات")
+    is_active = models.BooleanField(default=True, verbose_name="فعال")
+
+    def __str__(self):
+        return f"{self.code} ({self.hex_code})"
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        from .utils import invalidate_caches
+        invalidate_caches()
+
+    class Meta:
+        verbose_name = "تعریف کد رنگ"
+        verbose_name_plural = "تعریف‌های کد رنگ"
+
 
 class Color(models.Model):
     PART_CHOICES = [
@@ -454,9 +478,29 @@ class Color(models.Model):
     part = models.CharField(max_length=20, choices=PART_CHOICES, verbose_name="قطعه")
     code = models.CharField(max_length=20, choices=CODE_CHOICES, verbose_name="کد رنگ")
     orderitem = models.ForeignKey(OrderItem, on_delete=models.CASCADE, related_name='ordercolor', verbose_name="آیتم سفارش")
+    hex_code = models.CharField(max_length=7, blank=True, verbose_name="کد هگز رنگ")
+    material_name = models.CharField(max_length=50, blank=True, verbose_name="نام متریال پیش‌فرض")
 
     def __str__(self):
         return f"{self.part}:{self.code}"
+
+    def _resolve_color_code(self):
+        try:
+            return ColorCode.objects.get(code=str(self.code), is_active=True)
+        except ColorCode.DoesNotExist:
+            return None
+
+    def save(self, *args, **kwargs):
+        if not self.hex_code or not self.material_name:
+            cc = self._resolve_color_code()
+            if cc:
+                if not self.hex_code:
+                    self.hex_code = cc.hex_code
+                if not self.material_name:
+                    self.material_name = cc.material_name
+        super().save(*args, **kwargs)
+        from .utils import invalidate_caches
+        invalidate_caches()
 
     class Meta:
         verbose_name = "رنگ"

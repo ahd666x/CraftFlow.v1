@@ -437,6 +437,9 @@
                 </div>
                 <div class="info-row">
                     <span class="stage-tag">{% if task.custom_title %}{{ task.custom_note|default:"کار دلخواه" }}{% else %}{{ task.painting_stage.name|default:"مرحله نامشخص" }}{% endif %}</span>
+                    {% comment %} <button type="button" class="btn-hide-task btn btn-sm btn-outline-secondary ms-1" data-task-id="{{ task.id }}" title="مخفی کردن این مورد">
+                        <i class="bi bi-eye-slash"></i>
+                    </button> {% endcomment %}
                     <button type="button" class="btn-delete-task btn btn-sm btn-outline-danger ms-1" data-task-id="{{ task.id }}" title="حذف مرحله" style="padding:2px 6px;font-size:10px;line-height:1;vertical-align:middle;">✕</button>
                 </div>
                 <div class="info-row">
@@ -507,7 +510,7 @@ $(function () {
     var dragged = null;
     var movedTaskIds = new Set();
 
-    // ===== مدیریت مخفی‌سازی تسک‌های بدون برنامه‌ریزی =====
+    // ===== مدیریت مخفی‌سازی تسک‌ها =====
     var HIDDEN_KEY = 'hiddenPaintTasks';
     var SHOW_HIDDEN_KEY = 'showHiddenPaintTasks';
     var hiddenTaskIds = new Set();
@@ -532,13 +535,13 @@ $(function () {
     }
 
     function applyHiddenState() {
-        var container = document.querySelector('.kanban-col.unscheduled-col .kanban-cards');
-        if (!container) return;
-
-        container.classList.toggle('show-hidden', showHidden);
+        var unscheduledContainer = document.querySelector('.kanban-col.unscheduled-col .kanban-cards');
+        if (unscheduledContainer) {
+            unscheduledContainer.classList.toggle('show-hidden', showHidden);
+        }
 
         var visibleCount = 0;
-        var cards = container.querySelectorAll('.kanban-card');
+        var cards = document.querySelectorAll('.kanban-card');
         cards.forEach(function (card) {
             var taskId = String(card.dataset.taskId);
             var isHidden = hiddenTaskIds.has(taskId);
@@ -635,6 +638,41 @@ $(function () {
         });
     });
 
+    function updateCardTimeInfo(card, isUnscheduled, startTime, endTime) {
+        var timeBadge = card.querySelector('.info-row .time-badge');
+        if (timeBadge) {
+            timeBadge.closest('.info-row').remove();
+        }
+        if (!isUnscheduled && startTime && endTime) {
+            var infoRow = document.createElement('div');
+            infoRow.className = 'info-row';
+            infoRow.innerHTML = '<span class="time-badge"><i class="bi bi-clock"></i> ' + startTime + ' - ' + endTime + '</span>';
+            var infoRows = card.querySelectorAll('.info-row');
+            if (infoRows.length > 0) {
+                infoRows[infoRows.length - 1].after(infoRow);
+            } else {
+                card.appendChild(infoRow);
+            }
+        }
+    }
+
+    function updateAllBadgeCounts() {
+        document.querySelectorAll('.kanban-col').forEach(function (c) {
+            var count = c.querySelectorAll('.kanban-card').length;
+            var badge = c.querySelector('.badge-count');
+            if (badge) badge.textContent = count;
+        });
+    }
+
+    function moveCardToColumn(card, targetCol) {
+        var targetContainer = targetCol.querySelector('.kanban-cards');
+        var empty = targetContainer.querySelector('.kanban-empty');
+        if (empty) empty.remove();
+        targetContainer.appendChild(card);
+        var count = targetContainer.querySelectorAll('.kanban-card').length;
+        targetCol.querySelector('.badge-count').textContent = count;
+    }
+
     document.querySelectorAll('.kanban-col').forEach(function (col) {
         col.addEventListener('dragover', function (e) {
             e.preventDefault();
@@ -650,10 +688,7 @@ $(function () {
 
             var taskId = parseInt(dragged.dataset.taskId, 10);
             var isUnscheduled = col.dataset.unscheduled === 'true';
-            var container = col.querySelector('.kanban-cards');
-            var empty = container.querySelector('.kanban-empty');
-            if (empty) empty.remove();
-            container.appendChild(dragged);
+            var originalCol = dragged.closest('.kanban-col');
 
             movedTaskIds.add(taskId);
             saveMovedTaskIds();
@@ -665,6 +700,8 @@ $(function () {
                 dragged.classList.remove('hidden-task');
             }
             applyHiddenState();
+
+            moveCardToColumn(dragged, col);
 
             document.querySelectorAll('.kanban-col').forEach(function (c) {
                 var count = c.querySelectorAll('.kanban-card').length;
@@ -682,15 +719,23 @@ $(function () {
                     },
                     success: function (data, status, xhr) {
                         if (!data || !data.success) {
+                            moveCardToColumn(dragged, originalCol);
+                            updateAllBadgeCounts();
+                            applyHiddenState();
                             var msg = 'خطا در حذف برنامه‌ریزی — صفحه را رفرش کنید';
                             try {
                                 var resp = JSON.parse(xhr.responseText);
                                 if (resp && resp.error) msg = 'خطا: ' + resp.error;
                             } catch (err) {}
                             alert(msg);
+                        } else {
+                            updateCardTimeInfo(dragged, true, null, null);
                         }
                     },
                     error: function (xhr) {
+                        moveCardToColumn(dragged, originalCol);
+                        updateAllBadgeCounts();
+                        applyHiddenState();
                         var msg = 'خطا در حذف برنامه‌ریزی — صفحه را رفرش کنید';
                         try {
                             var resp = JSON.parse(xhr.responseText);
@@ -724,15 +769,23 @@ $(function () {
                                     }
                                     return;
                                 }
+                                moveCardToColumn(dragged, originalCol);
+                                updateAllBadgeCounts();
+                                applyHiddenState();
                                 var msg = 'خطا  — صفحه را رفرش کنید';
                                 try {
                                     var resp = JSON.parse(xhr.responseText);
                                     if (resp && resp.error) msg = 'خطا: ' + resp.error;
                                 } catch (err) {}
                                 alert(msg);
+                            } else {
+                                updateCardTimeInfo(dragged, false, data.scheduled_start, data.scheduled_end);
                             }
                         },
                         error: function (xhr) {
+                            moveCardToColumn(dragged, originalCol);
+                            updateAllBadgeCounts();
+                            applyHiddenState();
                             var msg = 'خطا  — صفحه را رفرش کنید';
                             try {
                                 var resp = JSON.parse(xhr.responseText);
