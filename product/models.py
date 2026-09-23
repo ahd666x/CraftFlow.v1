@@ -1150,6 +1150,10 @@ class PaintingColorMaterialVariant(models.Model):
     def __str__(self):
         return f"{self.process_material} → {self.color_code}: {self.raw_material}"
 
+    def get_color_code_display(self):
+        from .utils import get_color_code_choices
+        return dict(get_color_code_choices()).get(self.color_code, self.color_code)
+
     def clean(self):
         if self.process_material_id and not self.process_material.is_color_variant:
             raise ValidationError({
