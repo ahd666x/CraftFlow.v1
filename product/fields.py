@@ -12,6 +12,30 @@ class PersianDateField(models.DateField):
     """
     description = "Persian date field (stores as Gregorian)"
 
+    def formfield(self, **kwargs):
+        from django import forms
+
+        class PersianFormDateField(forms.CharField):
+            def to_python(self, value):
+                if not value:
+                    return None
+                if isinstance(value, jdatetime.date):
+                    return value
+                try:
+                    y, m, d = map(int, str(value).strip().replace('/', '-').split('-'))
+                    return jdatetime.date(y, m, d)
+                except (ValueError, TypeError):
+                    raise forms.ValidationError('فرمت تاریخ نامعتبر است (مثال: ۱۴۰۴-۰۱-۰۱)')
+
+            def prepare_value(self, value):
+                if isinstance(value, jdatetime.date):
+                    return value.strftime('%Y-%m-%d')
+                return value
+
+        defaults = {'form_class': PersianFormDateField}
+        defaults.update(kwargs)
+        return super().formfield(**defaults)
+
     def from_db_value(self, value, expression, connection):
         if value is None:
             return None
