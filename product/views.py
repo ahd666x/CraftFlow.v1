@@ -36,7 +36,8 @@ from .models import *
 from .forms import *
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
-from django.db.models import Q, Count, F, OuterRef, Subquery, IntegerField, Exists
+from django.db.models import Q, Count, F, OuterRef, Subquery, IntegerField, Exists, Value
+from django.db.models.functions import Coalesce
 from django.shortcuts import render
 from .decorators import staff_or_representative_required
 from .models import OrderItem, ProductCategory, Product, STATION_CHOICES, PackagingUnit
@@ -2225,21 +2226,21 @@ def report_stages(request):
 
     items = items.annotate(
         total_units=Count('packaging_units', distinct=True),
-        packed_count=Subquery(
+        packed_count=Coalesce(Subquery(
             pack_units.filter(is_packed=True).values('order_item')
             .annotate(cnt=Count('id')).values('cnt'),
             output_field=IntegerField()
-        ),
-        shipped_count=Subquery(
+        ), Value(0)),
+        shipped_count=Coalesce(Subquery(
             ship_units.filter(is_shipped=True).values('order_item')
             .annotate(cnt=Count('id')).values('cnt'),
             output_field=IntegerField()
-        ),
-        in_stock_count=Subquery(
+        ), Value(0)),
+        in_stock_count=Coalesce(Subquery(
             packed_not_shipped_units.values('order_item')
             .annotate(cnt=Count('id')).values('cnt'),
             output_field=IntegerField()
-        ),
+        ), Value(0)),
     )
 
     # Apply packaging filter
