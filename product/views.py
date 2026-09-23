@@ -452,44 +452,44 @@ def worker_to_dict(worker):
 @login_required
 @admin_or_manager_required
 def admin_edit_order_item(request, item_id):
-    """
-    ویرایش یک آیتم سفارش توسط ادمین/مدیران (بدون محدودیت)
-    """
     item = get_object_or_404(OrderItem, pk=item_id)
     order = item.order
-    
-    # رنگ‌های فعلی
+
     existing_colors = {c.part: c.code for c in item.ordercolor.all()}
-    
+
     if request.method == 'POST':
-        item_form = EditOrderItemForm(request.POST, instance=item)
+        item_form = AdminEditOrderItemForm(request.POST, instance=item)
         color_form = ColorSelectionForm(request.POST)
-        
+
         if item_form.is_valid() and color_form.is_valid():
             with transaction.atomic():
                 updated_item = item_form.save(commit=False)
-                # اگر محصول تغییر کرده، قیمت را به‌روز کن
-                if 'product' in item_form.changed_data:
+                manual_price = item_form.cleaned_data.get('unit_price')
+                if manual_price not in (None, ''):
+                    updated_item.unit_price = manual_price
+                    updated_item._skip_price_calc = True
+                elif 'product' in item_form.changed_data:
                     updated_item.unit_price = updated_item.product.base_price
+                    updated_item._skip_price_calc = True
                 updated_item.save()
-                
-                # حذف رنگ‌های قبلی و ایجاد جدید
+
                 item.ordercolor.all().delete()
                 for part_value, _ in Color.PART_CHOICES:
                     code = color_form.cleaned_data.get(f'color_{part_value}')
                     if code:
                         Color.objects.create(part=part_value, code=code, orderitem=item)
-                
+
                 messages.success(request, '✅ آیتم با موفقیت ویرایش شد.')
                 return redirect('admin_edit_order', order_id=order.id)
         else:
             messages.error(request, '⚠️ خطا در ویرایش آیتم.')
     else:
-        item_form = EditOrderItemForm(
+        item_form = AdminEditOrderItemForm(
             instance=item,
             initial={
                 'category': item.product.category.id,
                 'product': item.product.id,
+                'unit_price': item.unit_price,
             }
         )
         item_form.fields['product'].widget.attrs['data-initial-product'] = item.product.id
@@ -497,7 +497,7 @@ def admin_edit_order_item(request, item_id):
             f'color_{part}': existing_colors.get(part, '')
             for part, _ in Color.PART_CHOICES
         })
-    
+
     context = {
         'item_form': item_form,
         'color_form': color_form,

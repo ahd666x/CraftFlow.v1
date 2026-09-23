@@ -50,7 +50,6 @@
                     if (selectedId) {
                         $product.val(selectedId);
                     }
-                    resetColorFields(sel);
                 }
             });
         }

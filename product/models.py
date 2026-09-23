@@ -439,18 +439,16 @@ class OrderItem(models.Model):
         return int(round(final_price))
     
     def save(self, *args, **kwargs):
-        """ذخیره آیتم با محاسبه خودکار قیمت"""
-        # محاسبه قیمت قبل از ذخیره
-        if self.product:
+        """ذخیره آیتم با محاسبه خودکار قیمت (مگر اینکه صراحتاً غیرفعال شده باشد)"""
+        if self.product and not getattr(self, '_skip_price_calc', False):
             try:
                 self.unit_price = self.calculate_price()
             except Exception as e:
-                # اگر خطایی رخ داد، از قیمت پایه استفاده کن
                 if self.product and self.product.base_price is not None:
                     self.unit_price = int(self.product.base_price)
                 else:
                     self.unit_price = 0
-        
+
         super().save(*args, **kwargs)
         
 

@@ -125,6 +125,8 @@ class CustomerForm(forms.ModelForm):
 
 
 
+
+
 from django import forms
 from django.contrib.auth.models import User
 from .models import Customer
@@ -237,6 +239,15 @@ class PartForm(forms.ModelForm):
 
 
 
+
+
+
+
+
+
+
+
+
 # class CustomerInfoForm(forms.ModelForm):
 #     # فیلد اضافی برای شماره سفارش (در مدل Order است، نه Customer)
 #     number = forms.CharField(
@@ -263,11 +274,26 @@ class PartForm(forms.ModelForm):
 
 
 
+
+
+
+
+
+
+
+
+
 class CustomerInfoForm(forms.Form):
     name = forms.CharField(max_length=100, label="نام مشتری", widget=forms.TextInput(attrs={'class': 'form-control'}))
     phone = forms.CharField(max_length=20, required=False, label="تلفن", widget=forms.TextInput(attrs={'class': 'form-control'}))
     address = forms.CharField(required=False, label="آدرس", widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 2}))
     number = forms.CharField(max_length=10, required=False, label="شماره سفارش", widget=forms.TextInput(attrs={'class': 'form-control'}))
+
+
+
+
+
+
 
 
 
@@ -367,6 +393,25 @@ class EditOrderItemForm(forms.ModelForm):
         return product
 
 
+class AdminEditOrderItemForm(EditOrderItemForm):
+    unit_price = forms.DecimalField(
+        max_digits=12,
+        decimal_places=0,
+        required=False,
+        label='قیمت واحد (ریال)',
+        widget=forms.NumberInput(attrs={'class': 'form-control'}),
+    )
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -448,6 +493,7 @@ class PartForm(forms.ModelForm):
             'grain': forms.HiddenInput(),
             'pname': forms.HiddenInput(),
             'turn': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+
             'f26': forms.TextInput(attrs={'class': 'form-control'}),
             'f18': forms.TextInput(attrs={'class': 'form-control'}),
             'f4': forms.TextInput(attrs={'class': 'form-control'}),
@@ -613,6 +659,9 @@ class WorkerProfileForm(forms.ModelForm):
             return parsed if isinstance(parsed, dict) else {}
         except (json.JSONDecodeError, TypeError):
             raise forms.ValidationError('فرمت JSON نامعتبر است. مثال: {"painter":3}')
+
+
+
 
 
 
