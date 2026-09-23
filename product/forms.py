@@ -541,10 +541,12 @@ class PaintingProcessForm(forms.ModelForm):
         self.fields['description'].required = False
 
     def clean_color_codes(self):
-        import json
         value = self.cleaned_data.get('color_codes')
         if not value:
             return []
+        if isinstance(value, list):
+            return value
+        import json
         try:
             parsed = json.loads(value)
             return parsed if isinstance(parsed, list) else [parsed]
@@ -639,10 +641,12 @@ class WorkerProfileForm(forms.ModelForm):
         self.fields['skill_priority'].required = False
 
     def clean_skills(self):
-        import json
         value = self.cleaned_data.get('skills')
         if not value:
             return []
+        if isinstance(value, list):
+            return value
+        import json
         try:
             parsed = json.loads(value)
             return parsed if isinstance(parsed, list) else [parsed]
@@ -650,10 +654,12 @@ class WorkerProfileForm(forms.ModelForm):
             raise forms.ValidationError('فرمت JSON نامعتبر است. مثال: ["painter","sealer"]')
 
     def clean_skill_priority(self):
-        import json
         value = self.cleaned_data.get('skill_priority')
         if not value:
             return {}
+        if isinstance(value, dict):
+            return value
+        import json
         try:
             parsed = json.loads(value)
             return parsed if isinstance(parsed, dict) else {}
