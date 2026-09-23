@@ -1,5 +1,6 @@
 # product/templatetags/product_filters.py
 from django import template
+from django.utils import timezone
 from django.contrib.humanize.templatetags.humanize import intcomma as humanize_intcomma
 import jdatetime
 
@@ -58,6 +59,8 @@ def persian_date(value):
     if not value:
         return ''
     try:
+        if timezone.is_aware(value):
+            value = timezone.localtime(value, timezone.get_current_timezone())
         if hasattr(value, 'date'):
             value = value.date()
         return jdatetime.date.fromgregorian(date=value).strftime('%Y/%m/%d')
@@ -71,6 +74,8 @@ def persian_datetime(value):
     if not value:
         return ''
     try:
+        if timezone.is_aware(value):
+            value = timezone.localtime(value, timezone.get_current_timezone())
         d = value.date() if hasattr(value, 'date') else value
         date_str = jdatetime.date.fromgregorian(date=d).strftime('%Y/%m/%d')
         if hasattr(value, 'hour'):

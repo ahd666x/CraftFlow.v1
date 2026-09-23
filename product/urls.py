@@ -139,15 +139,11 @@ urlpatterns = [
     path('customer/orders/item/<int:item_id>/delete/', views.customer_delete_order_item, name='customer_delete_order_item'),
 
 
-    path('orders/<int:order_id>/combined-print/', views.order_combined_print, name='order_combined_print'),
+path('orders/<int:order_id>/combined-print/', views.order_combined_print, name='order_combined_print'),
 
 
-    path('customer/orders/detail/<int:order_id>/', views.customer_order_detail, name='customer_order_detail'),
     path('customer/orders/edit-info/<int:order_id>/', views.customer_edit_order_info, name='customer_edit_order_info'),
     path('customer/orders/add-item/<int:order_id>/', views.customer_add_item, name='customer_add_item'),
-    path('customer/orders/item/<int:item_id>/edit/', views.customer_edit_order_item, name='customer_edit_order_item'),
-    path('customer/orders/item/<int:item_id>/delete/', views.customer_delete_order_item, name='customer_delete_order_item'),
-
 
     path('ajax/load-product-colors/<int:product_id>/', views.ajax_load_product_colors, name='ajax_load_product_colors'),
     path('products/create/', views.product_create, name='product_create'),

@@ -472,6 +472,7 @@ def admin_edit_order_item(request, item_id):
                     updated_item.unit_price = updated_item.product.base_price
                     updated_item._skip_price_calc = True
                 updated_item.save()
+                updated_item.sync_packaging_units()
 
                 item.ordercolor.all().delete()
                 for part_value, _ in Color.PART_CHOICES:
@@ -2223,7 +2224,7 @@ def report_stages(request):
     )
 
     items = items.annotate(
-        total_units=Count('packaging_units'),
+        total_units=Count('packaging_units', distinct=True),
         packed_count=Subquery(
             pack_units.filter(is_packed=True).values('order_item')
             .annotate(cnt=Count('id')).values('cnt'),
@@ -3266,18 +3267,6 @@ def get_model_by_name(name):
     return None
 
 
-def _gregorian_to_shamsi_str(g_date):
-    """تبدیل یک datetime.date میلادی (یا jdatetime.date) به رشته YYYY-MM-DD شمسی"""
-    if isinstance(g_date, jdatetime.date):
-        return g_date.strftime('%Y-%m-%d')
-    if hasattr(g_date, 'year'):
-        try:
-            return jdatetime.date.fromgregorian(date=g_date).strftime('%Y-%m-%d')
-        except:
-            return ''
-    return str(g_date)
-
-
 def convert_dates_for_import(model, data):
     for field in model._meta.get_fields():
         if isinstance(field, (models.DateField, models.DateTimeField)):
@@ -4055,6 +4044,7 @@ def customer_edit_order_item(request, item_id):
                     item.product = new_product
                     item.unit_price = new_product.base_price
                 item_form.save()
+                item.sync_packaging_units()
 
                 # به‌روزرسانی رنگ‌ها
                 item.ordercolor.all().delete()
@@ -4066,7 +4056,14 @@ def customer_edit_order_item(request, item_id):
                 messages.success(request, "آیتم با موفقیت ویرایش شد.")
                 return redirect('customer_order_detail', order_id=item.order.id)
     else:
-        item_form = EditOrderItemForm(instance=item)
+        item_form = EditOrderItemForm(
+            instance=item,
+            initial={
+                'category': item.product.category.id,
+                'product': item.product.id,
+            }
+        )
+        item_form.fields['product'].widget.attrs['data-initial-product'] = item.product.id
         color_form = ColorSelectionForm(initial={
             f'color_{part}': existing_colors.get(part, '')
             for part, _ in Color.PART_CHOICES
@@ -4079,7 +4076,8 @@ def customer_edit_order_item(request, item_id):
     })
 
 
-
+# -------------------------------------------------------------------
+# مشتری: جزئیات سفارش
 # -------------------------------------------------------------------
 # مشتری: جزئیات سفارش
 # -------------------------------------------------------------------
@@ -4175,57 +4173,6 @@ def customer_add_item(request, order_id):
         else:
             messages.error(request, 'لطفاً خطاهای فرم را بررسی کنید.')
     return redirect('customer_order_detail', order_id=order.id)
-
-
-# -------------------------------------------------------------------
-# مشتری: ویرایش یک آیتم
-# -------------------------------------------------------------------
-@login_required
-def customer_edit_order_item(request, item_id):
-    item = get_object_or_404(OrderItem, pk=item_id)
-    if item.order.user != request.user:
-        messages.error(request, "شما اجازه ویرایش این آیتم را ندارید.")
-        return redirect('customer_order_list')
-    if not (item.order.status == 'draft' and item.order.created_at == jdatetime.date.today()):
-        messages.error(request, "فقط سفارش‌های پیش‌نویس امروز قابل ویرایش هستند.")
-        return redirect('customer_order_detail', order_id=item.order.id)
-
-    # رنگ‌های فعلی
-    existing_colors = {c.part: c.code for c in item.ordercolor.all()}
-
-    if request.method == 'POST':
-        item_form = EditOrderItemForm(request.POST, instance=item)
-        color_form = ColorSelectionForm(request.POST)
-        if item_form.is_valid() and color_form.is_valid():
-            with transaction.atomic():
-                item_form.save()
-                # حذف رنگ‌های قبلی و ایجاد جدید
-                item.ordercolor.all().delete()
-                for part_value, _ in Color.PART_CHOICES:
-                    code = color_form.cleaned_data.get(f'color_{part_value}')
-                    if code:
-                        Color.objects.create(part=part_value, code=code, orderitem=item)
-                messages.success(request, "آیتم ویرایش شد.")
-                return redirect('customer_order_detail', order_id=item.order.id)
-    else:
-        item_form = EditOrderItemForm(
-            instance=item,
-            initial={
-                'category': item.product.category.id,
-                'product': item.product.id,
-            }
-        )
-        item_form.fields['product'].widget.attrs['data-initial-product'] = item.product.id
-        color_form = ColorSelectionForm(initial={
-            f'color_{part}': existing_colors.get(part, '')
-            for part, _ in Color.PART_CHOICES
-        })
-
-    return render(request, 'customer/edit_order_item.html', {
-        'item_form': item_form,
-        'color_form': color_form,
-        'item': item,
-    })
 
 
 # -------------------------------------------------------------------
