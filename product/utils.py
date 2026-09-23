@@ -209,51 +209,9 @@ def get_painting_material_requirements_for_item_colorpart(order_item, color_part
 
 
 def consume_material_for_paint_task(task):
-    """
-    برای یک تسک نقاشی (station_name='paint') که painting_stage دارد،
-    مواد اولیه مربوط به آن مرحله را از طریق PaintingMaterialRequirement
-    مصرف می‌کند. یک تسک نقاشی ممکن است چند ماده اولیه هم‌زمان مصرف کند
-    (مثلاً هم رنگ هم تینر)، بنابراین چک idempotency برای هر ماده به‌صورت
-    جداگانه (per-task + per-raw_material) انجام می‌شود.
+    """DEPRECATED: مصرف نقاشی اکنون فقط از طریق inventory.services.execute_handover ثبت می‌شود."""
+    return []
 
-    این تابع فقط برای ایستگاه paint فعال می‌شود؛ برای بقیه ایستگاه‌ها
-    از consume_material_for_task فعلی استفاده می‌شود.
-    """
-    if task.station_name != 'paint' or not task.painting_stage_id:
-        return []
-
-    from .models import PaintingMaterialRequirement
-    from inventory.models import StockMovement
-
-    created = []
-    requirements = get_painting_material_requirements_for_task(task)
-
-    qty = Decimal(task.quantity or 0)
-
-    for req in requirements:
-        if StockMovement.objects.filter(
-            reference_task=task,
-            movement_type='consumption',
-            raw_material=req.raw_material,
-        ).exists():
-            continue
-
-        consumption = qty * req.consumption_per_unit
-        if consumption <= 0:
-            continue
-
-        created.append(
-            StockMovement.objects.create(
-                raw_material=req.raw_material,
-                movement_type='consumption',
-                quantity=consumption,
-                reference_task=task,
-                note=f'مصرف خودکار نقاشی - تسک #{task.id} ({task.painting_stage.name})',
-                created_by=task.scanned_by,
-            )
-        )
-
-    return created
 
 # ===================================================================
 #   کش‌های سراسری

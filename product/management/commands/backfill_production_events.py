@@ -3,7 +3,7 @@ from datetime import datetime, time as dt_time
 from django.utils import timezone
 from django.db import transaction
 from product.models import ProductionTask, ProductionEvent
-from product.utils import consume_material_for_task, consume_material_for_paint_task
+from product.utils import consume_material_for_task
 import sys
 import io
 
@@ -75,16 +75,16 @@ class Command(BaseCommand):
             consumed = 0
             skipped = 0
             for task in done_tasks:
-                if task.station_name == 'paint':
-                    result = consume_material_for_paint_task(task)
-                else:
+                if task.station_name != 'paint':
                     result = consume_material_for_task(task)
+                else:
+                    result = []
                 if result:
                     consumed += 1
                 else:
                     skipped += 1
 
             self.stdout.write(
-                f'مصرف مواد: {consumed} تسک پردازش‌شده (نقاشی و غیرنقاشی)، '
+                f'مصرف مواد: {consumed} تسک غیرنقاشی پردازش‌شده، '
                 f'{skipped} از قبل وجود داشت یا قابل مصرف نبود.'
             )

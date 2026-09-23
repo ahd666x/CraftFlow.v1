@@ -741,16 +741,14 @@ class ProductionTask(models.Model):
                 logger = logging.getLogger(__name__)
                 logger.exception("خطا در ثبت ProductionEvent (نادیده گرفته شد تا جریان اصلی مختل نشود)")
 
-            try:
-                from .utils import consume_material_for_task, consume_material_for_paint_task
-                if self.station_name == 'paint':
-                    consume_material_for_paint_task(self)
-                else:
+            if self.station_name != 'paint':
+                try:
+                    from .utils import consume_material_for_task
                     consume_material_for_task(self)
-            except Exception:
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.exception("خطا در مصرف خودکار مواد اولیه برای تسک %s", self.pk)
+                except Exception:
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.exception("خطا در مصرف خودکار مواد اولیه برای تسک %s", self.pk)
 
             next_step = None
             if self.order_id is None:
