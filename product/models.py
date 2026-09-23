@@ -136,6 +136,9 @@ class Order(models.Model):
 
 
     def generate_tasks(self):
+        if self.tasks.exists():
+            return {'success': False, 'error': 'دستور تولید برای این سفارش قبلاً صادر شده است.'}
+
         from .utils import (
             get_material_for_color,
             parse_size_string,
