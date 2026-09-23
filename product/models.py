@@ -190,7 +190,8 @@ class Order(models.Model):
                         base_part=part,
                         material=material,
                         length=length,
-                        width=width
+                        width=width,
+                        f3__endswith=f'.item{order_item_id}',
                     )
                     count = existing_qs.count()
                     if count == 0:
