@@ -164,10 +164,10 @@ def production_issue_queue(request):
 
     if q:
         issues_qs = issues_qs.filter(
-            Q(task__order_id__icontains=q) |
+            Q(task__order__id__icontains=q) |
             Q(task__order_item__product__name__icontains=q) |
             Q(raw_material__name__icontains=q) |
-            Q(defect__order_id__icontains=q) |
+            Q(defect__order__id__icontains=q) |
             Q(defect__order_item__product__name__icontains=q) |
             Q(defect__packaging_unit__order_item__product__name__icontains=q) |
             Q(defect__packaging_unit__unit_number__icontains=q) |
@@ -176,7 +176,7 @@ def production_issue_queue(request):
             Q(defect__color_part__icontains=q) |
             Q(order_item__id__icontains=q) |
             Q(order_item__product__name__icontains=q) |
-            Q(order_item__order_id__icontains=q)
+            Q(order_item__order__id__icontains=q)
         )
 
     paginator = Paginator(issues_qs, 25)
@@ -301,7 +301,12 @@ def handover_create(request):
 def issue_material(request, issue_id):
     """Confirm hand-over and create the inventory consumption record in the same transaction."""
     with atomic():
-        issue = get_object_or_404(MaterialIssue.objects.select_for_update().select_related('raw_material'), pk=issue_id)
+        issue = get_object_or_404(
+            MaterialIssue.objects
+            .select_for_update()
+            .select_related('raw_material', 'defect__order_item', 'order_item__order'),
+            pk=issue_id
+        )
         quantity = Decimal(request.POST.get('quantity', str(issue.requested_quantity)))
         remaining = issue.requested_quantity - issue.issued_quantity
         if issue.status not in ['requested', 'partial']:
@@ -318,13 +323,20 @@ def issue_material(request, issue_id):
                     note=f'تحویل انبار #{issue.id} — {issue.get_purpose_display()}'
                 )
             else:
+                item = issue.order_item
+                if item is None and issue.defect_id:
+                    item = issue.defect.order_item
+                if item is not None:
+                    note = f'تحویل انبار #{issue.id} — نقاشی — سفارش {item.order_id}/آیتم {item.id}'
+                else:
+                    note = f'تحویل انبار #{issue.id} — {issue.get_purpose_display()}'
                 movement = StockMovement.objects.create(
                     raw_material=issue.raw_material, movement_type='consumption', quantity=quantity,
                     reference_task=None,
-                    reference_order_item=issue.order_item,
+                    reference_order_item=item,
                     reference_color_part=issue.color_part,
                     created_by=request.user,
-                    note=f'تحویل انبار #{issue.id} — نقاشی — سفارش {issue.order_item.order_id}/آیتم {issue.order_item_id}',
+                    note=note,
                 )
             issue.stock_movement = movement
             issue.issued_quantity += quantity
