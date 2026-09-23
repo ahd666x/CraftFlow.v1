@@ -125,7 +125,7 @@ class Command(BaseCommand):
         self.stdout.write(f"  - دسته: {item.product.category.name if item.product.category else '-'}")
         self.stdout.write(f"  - مشتری: {item.order.customer.name if item.order.customer else '-'}")
         self.stdout.write(f"  - تعداد: {item.quantity}")
-        self.stdout.write(f"  - نماینده: {item.order.user.get_full_name() or item.order.user.username}")
+        self.stdout.write(f"  - نماینده: {item.order.user.get_full_name() or item.order.user.username if item.order.user else '—'}")
 
         # رنگ‌ها
         self.stdout.write("\n🎨 رنگ‌های ثبت‌شده:")
@@ -202,7 +202,7 @@ class Command(BaseCommand):
 
         self.stdout.write(f"📌 اطلاعات سفارش:")
         self.stdout.write(f"  - مشتری: {order.customer.name if order.customer else '-'}")
-        self.stdout.write(f"  - نماینده: {order.user.get_full_name() or order.user.username}")
+        self.stdout.write(f"  - نماینده: {order.user.get_full_name() or order.user.username if order.user else '—'}")
         self.stdout.write(f"  - تاریخ: {order.created_at}")
         self.stdout.write(f"  - وضعیت: {order.get_status_display()}")
         self.stdout.write(f"  - تعداد آیتم‌ها: {order.items.count()}")

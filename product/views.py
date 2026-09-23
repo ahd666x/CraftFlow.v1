@@ -1554,7 +1554,7 @@ def export_autocut_xml(request, order_id):
             order_item = order.items.filter(product__bom__part=part).first()
             product_name = order_item.product.name if order_item else ""
             product_category = order_item.product.category if order_item else ""
-            customer_name = order.user.username if order.user.username else ""
+            customer_name = order.user.username if order.user else ""
 
             shape = ET.SubElement(objective, f"{{{NS}}}Shape", {
                 "Name": f"P{idx:03d}",
@@ -1652,9 +1652,9 @@ def export_multiple_autocut(request):
             order = task.order
             # پیدا کردن OrderItem مربوطه برای گرفتن نام محصول و مشتری
             order_item = order.items.filter(product__bom__part=part).first()
-            product_name = order_item.pname if order_item else ""
-            product_category = order_item.grain if order_item else ""
-            customer_name = order.user.username if order.user.username else ""
+            product_name = order_item.product.name if order_item else ""
+            product_category = order_item.product.category if order_item else ""
+            customer_name = order.user.username if order.user else ""
             
             shape = ET.SubElement(objective, f"{{{NS}}}Shape", {
                 "Name":  f"P{shape_counter:03d}",
@@ -2524,7 +2524,9 @@ def report_production_unified(request):
             'total_units': total_units,
             'packed_units': packed_units,
             'shipped_units': shipped_units,
-            'representative': item.order.user.get_full_name() or item.order.user.username,
+            'representative': (
+                item.order.user.get_full_name() or item.order.user.username if item.order.user else '—'
+            ),
             'category_name': item.product.category.name if item.product.category else '',
         })
 
@@ -4302,7 +4304,8 @@ def report_shipped(request):
             except User.DoesNotExist:
                 pass
         else:
-            representative_name = units.first().order_item.order.user.get_full_name() or units.first().order_item.order.user.username
+            first_unit = units.first()
+            representative_name = first_unit.order_item.order.user.get_full_name() or first_unit.order_item.order.user.username if first_unit.order_item.order.user else '—'
         total_price = sum(unit.order_item.unit_price for unit in units)
 
     # ---------- درخواست چاپ برگه ترخیص ----------
@@ -4843,7 +4846,7 @@ def customer_shipment_detail(request, plate, date):
     # اطلاعات نماینده و مشتری
     first_unit = units.first()
     representative = first_unit.order_item.order.user
-    representative_name = representative.get_full_name() or representative.username
+    representative_name = representative.get_full_name() or representative.username if representative else '—'
     customer_name = first_unit.order_item.order.customer.name
     
     # محاسبه جمع کل
