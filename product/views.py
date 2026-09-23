@@ -1654,7 +1654,6 @@ def export_multiple_autocut(request):
             product_name = order_item.pname if order_item else ""
             product_category = order_item.grain if order_item else ""
             customer_name = order.user.username if order.user.username else ""
-            print( part.pname)
             
             shape = ET.SubElement(objective, f"{{{NS}}}Shape", {
                 "Name":  f"P{shape_counter:03d}",
@@ -5485,13 +5484,30 @@ def painting_process_materials_api(request, process_id):
     if request.method == 'DELETE':
         entry_id = request.GET.get('id')
         entry = get_object_or_404(PaintingProcessMaterial, pk=entry_id, process=process)
-        # حذف کامل: چون این ماده دیگر جزو کاتالوگ این روند نیست،
-        # مقادیر مصرف ثبت‌شده برای آن هم بی‌معنی می‌شوند.
-        PaintingMaterialRequirement.objects.filter(
+        affected = PaintingMaterialRequirement.objects.filter(
             process=process, raw_material_id=entry.raw_material_id
-        ).delete()
+        ).select_related('product')
+        affected_count = affected.count()
+        confirm = request.GET.get('confirm') == 'true'
+
+        if affected_count > 0 and not confirm:
+            product_names = list(
+                affected.values_list('product__name', flat=True).distinct()[:10]
+            )
+            return JsonResponse({
+                'success': False,
+                'requires_confirmation': True,
+                'affected_count': affected_count,
+                'affected_products': product_names,
+                'error': (
+                    f'این ماده در فرمول مصرف {affected_count} محصول/بخش رنگی استفاده شده است. '
+                    'حذف کاتالوگ باعث حذف این فرمول‌ها هم می‌شود.'
+                ),
+            })
+
+        affected.delete()
         entry.delete()
-        return JsonResponse({'success': True})
+        return JsonResponse({'success': True, 'deleted_requirements': affected_count})
 
     return JsonResponse({'success': False, 'error': 'روش غیرمجاز'})
 
@@ -5578,6 +5594,13 @@ def painting_process_material_variants_api(request, process_material_id):
         )
         variant.delete()
         return JsonResponse({'success': True})
+
+
+@login_required
+@admin_or_manager_required
+def ajax_color_codes(request):
+    from .utils import get_color_code_choices
+    return JsonResponse({'codes': [c for c, _ in get_color_code_choices()]})
 
     return JsonResponse({'success': False, 'error': 'روش غیرمجاز'})
 

@@ -44,11 +44,8 @@
                                 </select>
                             </td>
                             <td style="padding:12px 8px;border:1px solid #ddd;">
-                                <select name="code" style="width:100%;padding:6px;border:1px solid #ddd;border-radius:4px;">
-                                    <option value="1">1</option><option value="2">2</option><option value="3">3</option>
-                                    <option value="4">4</option><option value="5">5</option><option value="6">6</option>
-                                    <option value="7">7</option><option value="8">8</option><option value="9">9</option>
-                                    <option value="10">10</option>
+                                <select name="code" id="colorCodeSelect-${itemId}" style="width:100%;padding:6px;border:1px solid #ddd;border-radius:4px;">
+                                    <option value="">در حال بارگذاری...</option>
                                 </select>
                             </td>
                         </tr>
@@ -61,6 +58,18 @@
             </div>
         `;
         document.body.appendChild(modal);
+        
+        // بارگذاری کدهای رنگ به صورت داینامیک
+        fetch('/painting/api/color-codes/')
+            .then(r => r.json())
+            .then(data => {
+                const select = modal.querySelector('select[name="code"]');
+                select.innerHTML = data.codes.map(c => `<option value="${c}">${c}</option>`).join('');
+            })
+            .catch(() => {
+                const select = modal.querySelector('select[name="code"]');
+                select.innerHTML = '<option value="">خطا در بارگذاری کدهای رنگ</option>';
+            });
     }
 
     function closeModal() {

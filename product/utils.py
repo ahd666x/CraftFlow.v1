@@ -281,7 +281,7 @@ _COLOR_CODE_CHOICES_CACHE = None
 def get_color_code_choices():
     """Return ([code, code] pairs) from ColorCode records.
 
-    Falls back to Color.CODE_CHOICES when no ColorCode records exist yet
+    Falls back to a hardcoded list when no ColorCode records exist yet
     (e.g. before the seed data migration has run).  The result is cached
     and invalidated by ``invalidate_caches``.
     """
@@ -291,7 +291,7 @@ def get_color_code_choices():
         if qs.exists():
             _COLOR_CODE_CHOICES_CACHE = [(str(c.code), str(c.code)) for c in qs]
         else:
-            _COLOR_CODE_CHOICES_CACHE = list(Color.CODE_CHOICES)
+            _COLOR_CODE_CHOICES_CACHE = [(str(i), str(i)) for i in range(1, 11)] + [('جناغی', 'جناغی'), ('بتنی', 'بتنی')]
     return _COLOR_CODE_CHOICES_CACHE
 
 

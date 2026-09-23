@@ -180,7 +180,7 @@
                     <h6 class="mt-3">رنگ‌ها</h6>
                     <div class="row g-2">
                         {% for field in add_color_form %}
-                            <div class="col-md-3">
+                            <div class="col-md-3 color-field" data-part="{{ field.name|slice:'6:' }}">
                                 {{ field.label_tag }} {{ field }}
                             </div>
                         {% endfor %}
@@ -202,9 +202,23 @@
 <!-- اسکریپت بارگذاری محصولات بر اساس دسته -->
 <script>
 $(document).ready(function() {
+    function applyColorFields(defaults) {
+        var allowed = Object.keys(defaults || {});
+        document.querySelectorAll('.color-field').forEach(function (el) {
+            var part = el.getAttribute('data-part');
+            var select = el.querySelector('select');
+            var isAllowed = allowed.indexOf(part) !== -1;
+            el.style.display = isAllowed ? '' : 'none';
+            if (select) {
+                select.value = isAllowed ? (defaults[part] || '') : '';
+            }
+        });
+    }
+
     function loadProducts(categoryId, selectedId) {
         if (!categoryId) {
             $('#id_product').html('<option value="">---------</option>');
+            applyColorFields({});
             return;
         }
         $.ajax({
@@ -221,13 +235,32 @@ $(document).ready(function() {
         });
     }
 
+    function loadProductColors(productId) {
+        if (!productId) {
+            applyColorFields({});
+            return;
+        }
+        $.ajax({
+            url: '/ajax/load-product-colors/' + productId + '/',
+            success: function(data) {
+                applyColorFields(data.defaults || {});
+            }
+        });
+    }
+
     $('#id_category').change(function() {
         loadProducts($(this).val());
     });
 
+    $('#id_product').change(function() {
+        loadProductColors($(this).val());
+    });
+
     // بارگذاری اولیه
     var initialCat = $('#id_category').val();
-    if (initialCat) loadProducts(initialCat, "{{ add_item_form.product.value|default:'' }}");
+    var initialProduct = $('#id_product').val();
+    if (initialCat) loadProducts(initialCat, initialProduct);
+    if (initialProduct) loadProductColors(initialProduct);
 });
 </script>
 {% endblock %}

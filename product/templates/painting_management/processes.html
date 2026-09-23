@@ -433,20 +433,30 @@ $(function () {
 
     // Delete material
     $(document).on('click', '.delete-process-material-btn', function () {
-        if (!confirm('این ماده  حذف شود؟ تمام مقادیر مصرف ثبت‌شده برای این ماده در این روند هم حذف می‌شوند.')) return;
         var id = $(this).data('id');
-        $.ajax({
-            url: getProcessMaterialsUrl(currentProcessId) + '?id=' + id,
-            method: 'DELETE',
-            headers: {'X-CSRFToken': '{{ csrf_token }}'},
-            success: function (data) {
-                if (data.success) {
-                    loadProcessMaterials(currentProcessId);
-                } else {
-                    alert('خطا: ' + data.error);
+        function doDelete(confirmFlag) {
+            var url = getProcessMaterialsUrl(currentProcessId) + '?id=' + id + (confirmFlag ? '&confirm=true' : '');
+            $.ajax({
+                url: url,
+                method: 'DELETE',
+                headers: {'X-CSRFToken': '{{ csrf_token }}'},
+                success: function (data) {
+                    if (data.success) {
+                        loadProcessMaterials(currentProcessId);
+                    } else if (data.requires_confirmation) {
+                        var names = (data.affected_products || []).join('، ');
+                        var msg = data.error + (names ? ('\nمحصولات: ' + names) : '') +
+                            '\n\nآیا مطمئنید می‌خواهید ادامه دهید؟';
+                        if (confirm(msg)) {
+                            doDelete(true);
+                        }
+                    } else {
+                        alert('خطا: ' + data.error);
+                    }
                 }
-            }
-        });
+            });
+        }
+        doDelete(false);
     });
 
     $('#processMaterialsModal').on('hidden.bs.modal', function () {

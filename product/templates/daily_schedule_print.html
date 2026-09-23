@@ -21,6 +21,11 @@
             color: #1e293b;
         }
 
+        /* ===== متغیر اندازه فونت جدول (قابل تنظیم توسط کاربر) ===== */
+        :root {
+            --table-font-size: 9px;
+        }
+
         /* ===== هدر ===== */
         .header {
             text-align: center;
@@ -60,6 +65,69 @@
             background: #2563eb;
             color: #fff;
             border-color: #2563eb;
+        }
+        .no-print .btn-success {
+            background: #16a34a;
+            color: #fff;
+            border-color: #16a34a;
+        }
+
+        /* ===== کنترل فونت ===== */
+        .font-controls {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            margin: 0 4px;
+            padding: 2px 6px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            background: #f1f5f9;
+            vertical-align: middle;
+        }
+        .font-controls .font-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 22px;
+            height: 22px;
+            border: 1px solid #94a3b8;
+            border-radius: 4px;
+            background: #fff;
+            color: #0f172a;
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            line-height: 1;
+            padding: 0;
+        }
+        .font-controls .font-btn:hover {
+            background: #e2e8f0;
+        }
+        .font-controls .font-btn:active {
+            background: #cbd5e1;
+        }
+        .font-controls .font-value {
+            display: inline-block;
+            min-width: 30px;
+            text-align: center;
+            font-size: 10px;
+            font-weight: 700;
+            color: #0f172a;
+        }
+        .font-controls .font-reset {
+            font-size: 9px;
+            padding: 2px 5px;
+            border: 1px solid #94a3b8;
+            border-radius: 4px;
+            background: #fff;
+            color: #475569;
+            cursor: pointer;
+            margin-right: 2px;
+        }
+        .font-controls .font-reset:hover {
+            background: #fee2e2;
+            color: #991b1b;
+            border-color: #fca5a5;
         }
 
         /* ===== شبکه دوستونی کارگران ===== */
@@ -104,9 +172,9 @@
         /* ===== جدول تسک‌ها ===== */
         .task-table {
             width: 100%;
-            table-layout: fixed; /* جلوگیری از کشیده‌شدن ستون محصول توسط محتوا */
+            table-layout: fixed;
             border-collapse: collapse;
-            font-size: 9.5px;
+            font-size: var(--table-font-size);
             margin-top: 3px;
         }
         .task-table th {
@@ -115,20 +183,24 @@
             border: 1px solid #cbd5e1;
             text-align: center;
             font-weight: 600;
-            font-size: 8.5px;
-            overflow: hidden;
+            font-size: calc(var(--table-font-size) - 0.5px);
+            white-space: normal;
+            overflow-wrap: anywhere;
+            word-break: break-word;
         }
         .task-table td {
             padding: 3px 3px;
             border: 1px solid #cbd5e1;
             text-align: center;
             vertical-align: middle;
-            font-size: 9px;
+            font-size: var(--table-font-size);
             line-height: 1.35;
-            overflow: hidden;
+            white-space: normal;
+            overflow-wrap: anywhere;
+            word-break: break-word;
         }
 
-        /* ===== ستون محصول (عرض با درصد کنترل می‌شود، نه max-width) ===== */
+        /* ===== ستون محصول ===== */
         .task-table .col-product {
             word-break: break-word;
             white-space: normal;
@@ -137,51 +209,63 @@
         .task-table .col-product .cat {
             font-weight: 400;
             color: #555;
-            font-size: 8px;
+            font-size: calc(var(--table-font-size) - 1px);
             display: inline-block;
         }
         .task-table .col-product .name {
             font-weight: 600;
-            font-size: 9px;
+            font-size: var(--table-font-size);
         }
 
         /* ===== سایر ستون‌ها ===== */
         .task-table .col-order {
             white-space: nowrap;
             font-weight: 600;
-            font-size: 9px;
+            font-size: var(--table-font-size);
         }
         .task-table .col-rep {
-            font-size: 8.5px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
+            font-size: calc(var(--table-font-size) - 0.5px);
+            white-space: normal;
+            word-break: break-word;
+            line-height: 1.3;
         }
         .task-table .col-stage .stage-badge {
             background: #e0f2fe;
             color: #0369a1;
             padding: 1px 5px;
             border-radius: 8px;
-            font-size: 8px;
-            display: inline-block;
-            white-space: nowrap;
+            font-size: calc(var(--table-font-size) - 1px);
+            display: block;
+            width: fit-content;
+            max-width: 100%;
+            margin: 0 auto;
+            white-space: normal;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+            line-height: 1.4;
         }
         .task-table .col-color .color-badge {
             background: #fef3c7;
             color: #92400e;
             padding: 1px 5px;
             border-radius: 8px;
-            font-size: 8px;
-            display: inline-block;
-            white-space: nowrap;
+            font-size: calc(var(--table-font-size) - 1px);
+            display: block;
+            width: fit-content;
+            max-width: 100%;
+            margin: 0 auto;
+            white-space: normal;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+            line-height: 1.4;
         }
         .task-table .col-time {
             white-space: nowrap;
-            font-size: 9px;
+            font-size: var(--table-font-size);
         }
         .task-table .col-notes {
             background: #f8fafc;
-            font-size: 7px;
+            font-size: calc(var(--table-font-size) - 1px);
             color: #cbd5e1;
         }
         .task-table .col-notes span {
@@ -235,7 +319,6 @@
                 font-size: 14.5px;
             }
             .workers-grid {
-                /* اجبار دو ستون در چاپ، مستقل از عرض صفحه‌ی قابل‌چاپ */
                 grid-template-columns: 1fr 1fr !important;
                 gap: 4px;
             }
@@ -248,36 +331,37 @@
                 font-size: 10.5px;
                 padding: 2px 6px;
             }
+            /* اندازه فونت جدول در چاپ از متغیر کاربر تبعیت می‌کند */
             .task-table {
-                font-size: 8.5px;
+                font-size: var(--table-font-size) !important;
             }
             .task-table th {
-                font-size: 7.5px;
+                font-size: calc(var(--table-font-size) - 0.5px) !important;
                 padding: 2px 2px;
             }
             .task-table td {
-                font-size: 8.5px;
+                font-size: var(--table-font-size) !important;
                 padding: 2px 2px;
             }
             .task-table .col-product .cat {
-                font-size: 7px;
+                font-size: calc(var(--table-font-size) - 1px) !important;
             }
             .task-table .col-product .name {
-                font-size: 8px;
+                font-size: var(--table-font-size) !important;
             }
             .task-table .col-rep {
-                font-size: 7.5px;
+                font-size: calc(var(--table-font-size) - 0.5px) !important;
             }
             .task-table .col-stage .stage-badge,
             .task-table .col-color .color-badge {
-                font-size: 7.5px;
+                font-size: calc(var(--table-font-size) - 1px) !important;
                 padding: 1px 4px;
             }
             .task-table .col-time {
-                font-size: 8px;
+                font-size: var(--table-font-size) !important;
             }
             .task-table .col-notes {
-                font-size: 6.5px;
+                font-size: calc(var(--table-font-size) - 1px) !important;
             }
             .total-time {
                 font-size: 8.5px;
@@ -289,14 +373,13 @@
                 margin-top: 5px;
                 padding-top: 3px;
             }
-            /* جلوگیری از شکستن صفحه */
             .worker-card {
                 page-break-inside: avoid;
                 break-inside: avoid;
             }
         }
 
-        /* ===== واکنش‌گرایی برای صفحه‌نمایش (فقط روی صفحه‌نمایش، نه چاپ) ===== */
+        /* ===== واکنش‌گرایی ===== */
         @media screen and (max-width: 768px) {
             .workers-grid {
                 grid-template-columns: 1fr;
@@ -311,20 +394,11 @@
         .hide-time .col-time {
             display: none;
         }
-        .hide-time .col-time ~ * {
-            /* nothing special */
-        }
     </style>
 </head>
 <body>
 
-    <!-- ===== هدر ===== -->
-    {% comment %} <div class="header">
-        <h1>📋 برنامه روزانه کارگران نقاشی</h1>
-        <div class="date">تاریخ: {{ selected_date_str }}</div>
-    </div> {% endcomment %}
-
-    <!-- ===== دکمه‌ها ===== -->
+    <!-- ===== دکمه‌ها + کنترل فونت ===== -->
     <div class="no-print">
         <button onclick="window.print()" class="btn btn-primary">🖨️ چاپ</button>
         {% if not all_days %}
@@ -336,6 +410,14 @@
         {% endif %}
         <a href="{% url 'painting_schedule' %}" class="btn">بازگشت</a>
         <button type="button" class="btn btn-outline-secondary" onclick="toggleTimeColumn()">⏱ زمان</button>
+
+        <!-- ===== کنترل اندازه فونت ===== -->
+        <span class="font-controls" title="اندازه فونت جدول (ذخیره خودکار)">
+            <button type="button" class="font-btn" onclick="changeFontSize(-0.5)" title="کوچک‌تر">A−</button>
+            <span class="font-value" id="fontSizeValue">9</span>
+            <button type="button" class="font-btn" onclick="changeFontSize(0.5)" title="بزرگ‌تر">A+</button>
+            <button type="button" class="font-reset" onclick="resetFontSize()" title="بازنشانی به ۹">بازنشانی</button>
+        </span>
     </div>
 
     {% if all_days %}
@@ -359,21 +441,21 @@
                     <colgroup>
                         <col style="width:5%;">
                         <col style="width:18%;">
-                        <col style="width:14%;">
                         <col style="width:13%;">
-                        <col style="width:16%;">
-                        <col style="width:12%;">
-                        <col style="width:16%;">
-                        <col style="width:6%;">
+                        <col style="width:13%;">
+                        <col style="width:18%;">
+                        <col style="width:15%;">
+                        <col style="width:13%;">
+                        <col style="width:5%;">
                     </colgroup>
                     <thead>
                         <tr>
-                            <th>#</th>
+                            <th>#</th>  
                             <th class="col-product">محصول</th>
                             <th>سفارش</th>
                             <th class="col-rep">نماینده</th>
                             <th class="col-stage">مرحله</th>
-                            <th class="col-color">قطعه / کد رنگ</th>
+                            <th class="col-color">قطعه</th>
                             <th class="col-time">زمان</th>
                             <th class="col-notes">توضیحات</th>
                         </tr>
@@ -381,7 +463,7 @@
                     <tbody>
                         {% for task in entry.tasks %}
                         <tr>
-                            <td>{{ forloop.parent.loop.index }}.{{ forloop.counter }}</td>
+                            <td>{{ forloop.parentloop.counter }}.{{ forloop.counter }}</td>
                             <td class="col-product" style="text-align:right;">
                                 {% if task.custom_title %}
                                 <span class="name">{{ task.custom_title }}</span>
@@ -396,10 +478,14 @@
                             </td>
                             <td class="col-order">{{ task.order_item.order.id }}/{{ task.order_item.id }}</td>
                             <td class="col-rep" title="{% if task.order_item.order.user %}{{ task.order_item.order.user.get_full_name|default:task.order_item.order.user.username }}{% endif %}">
-                                {% if task.order_item.order.user %}{{ task.order_item.order.user.get_full_name|default:task.order_item.order.user.username|truncatechars:8 }}{% else %}—{% endif %}
+                                {% if task.order_item.order.user %}{{ task.order_item.order.user.get_full_name|default:task.order_item.order.user.username }}{% else %}—{% endif %}
                             </td>
-                            <td class="col-stage"><span class="stage-badge">{{ task.painting_stage.name|default:"-"|truncatechars:10 }}</span></td>
-                            <td class="col-color"><span class="color-badge">{{ task.color_part|default:"-" }}{% if task.color_part %} ({{ task|task_color_code }}){% endif %}</span></td>
+                            <td class="col-stage" title="{{ task.painting_stage.name|default:'-' }}">
+                                <span class="stage-badge">{{ task.painting_stage.name|default:"-" }}</span>
+                            </td>
+                            <td class="col-color" title="{{ task.color_part|default:'-' }}{% if task.color_part %} ({{ task|task_color_code }}){% endif %}">
+                                <span class="color-badge">{{ task.color_part|default:"-" }}{% if task.color_part %} ({{ task|task_color_code }}){% endif %}</span>
+                            </td>
                             <td class="col-time">
                                 {% if task.scheduled_start %}
                                     {{ task.scheduled_start|date:"H:i" }}–{{ task.scheduled_end|date:"H:i" }}
@@ -433,12 +519,12 @@
                 <colgroup>
                     <col style="width:5%;">
                     <col style="width:18%;">
-                    <col style="width:14%;">
                     <col style="width:13%;">
-                    <col style="width:16%;">
-                    <col style="width:12%;">
-                    <col style="width:16%;">
-                    <col style="width:6%;">
+                    <col style="width:13%;">
+                    <col style="width:18%;">
+                    <col style="width:15%;">
+                    <col style="width:13%;">
+                    <col style="width:5%;">
                 </colgroup>
                 <thead>
                     <tr>
@@ -447,7 +533,7 @@
                         <th>سفارش</th>
                         <th class="col-rep">نماینده</th>
                         <th class="col-stage">مرحله</th>
-                        <th class="col-color">قطعه / کد رنگ</th>
+                        <th class="col-color">قطعه</th>
                         <th class="col-time">زمان</th>
                         <th class="col-notes">توضیحات</th>
                     </tr>
@@ -470,10 +556,14 @@
                         </td>
                         <td class="col-order">{{ task.order_item.order.id }}/{{ task.order_item.id }}</td>
                         <td class="col-rep" title="{% if task.order_item.order.user %}{{ task.order_item.order.user.get_full_name|default:task.order_item.order.user.username }}{% endif %}">
-                            {% if task.order_item.order.user %}{{ task.order_item.order.user.get_full_name|default:task.order_item.order.user.username|truncatechars:8 }}{% else %}—{% endif %}
+                            {% if task.order_item.order.user %}{{ task.order_item.order.user.get_full_name|default:task.order_item.order.user.username }}{% else %}—{% endif %}
                         </td>
-                        <td class="col-stage"><span class="stage-badge">{{ task.painting_stage.name|default:"-"|truncatechars:10 }}</span></td>
-                        <td class="col-color"><span class="color-badge">{{ task.color_part|default:"-" }}{% if task.color_part %} ({{ task|task_color_code }}){% endif %}</span></td>
+                        <td class="col-stage" title="{{ task.painting_stage.name|default:'-' }}">
+                            <span class="stage-badge">{{ task.painting_stage.name|default:"-" }}</span>
+                        </td>
+                        <td class="col-color" title="{{ task.color_part|default:'-' }}{% if task.color_part %} ({{ task|task_color_code }}){% endif %}">
+                            <span class="color-badge">{{ task.color_part|default:"-" }}{% if task.color_part %} ({{ task|task_color_code }}){% endif %}</span>
+                        </td>
                         <td class="col-time">
                             {% if task.scheduled_start %}
                                 {{ task.scheduled_start|date:"H:i" }}–{{ task.scheduled_end|date:"H:i" }}
@@ -509,6 +599,77 @@
     {% endif %}
 
     <script>
+        /* ===== کنترل اندازه فونت جدول با ذخیره در localStorage ===== */
+        (function() {
+            const STORAGE_KEY = 'paintingTableFontSize';
+            const DEFAULT_SIZE = 9;
+            const MIN_SIZE = 6;
+            const MAX_SIZE = 20;
+            const STEP = 0.5;
+
+            const root = document.documentElement;
+            const valueEl = document.getElementById('fontSizeValue');
+
+            function applyFontSize(size) {
+                // محدود کردن به بازه مجاز
+                size = Math.max(MIN_SIZE, Math.min(MAX_SIZE, size));
+                // رُند کردن به نزدیک‌ترین مضرب STEP برای جلوگیری از اعشار طولانی
+                size = Math.round(size * 2) / 2;
+                root.style.setProperty('--table-font-size', size + 'px');
+                if (valueEl) valueEl.textContent = size;
+                return size;
+            }
+
+            function saveFontSize(size) {
+                try {
+                    localStorage.setItem(STORAGE_KEY, String(size));
+                } catch (e) {
+                    /* اگر localStorage در دسترس نبود، بی‌صدا رد شو */
+                    console.warn('localStorage unavailable:', e);
+                }
+            }
+
+            function loadFontSize() {
+                try {
+                    const saved = localStorage.getItem(STORAGE_KEY);
+                    if (saved !== null) {
+                        const parsed = parseFloat(saved);
+                        if (!isNaN(parsed)) return parsed;
+                    }
+                } catch (e) {
+                    console.warn('localStorage unavailable:', e);
+                }
+                return DEFAULT_SIZE;
+            }
+
+            // ===== در دسترس قرار دادن توابع برای onclick =====
+            window.changeFontSize = function(delta) {
+                const current = parseFloat(
+                    getComputedStyle(root).getPropertyValue('--table-font-size')
+                ) || DEFAULT_SIZE;
+                const next = applyFontSize(current + delta);
+                saveFontSize(next);
+            };
+
+            window.resetFontSize = function() {
+                const next = applyFontSize(DEFAULT_SIZE);
+                saveFontSize(next);
+            };
+
+            // ===== اعمال هنگام بارگذاری =====
+            function init() {
+                const saved = loadFontSize();
+                applyFontSize(saved);
+            }
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', init);
+            } else {
+                init();
+            }
+        })();
+
+        /* ===== مخفی/نمایان کردن ستون زمان ===== */
         function toggleTimeColumn() {
             document.querySelectorAll('.task-table').forEach(function(table) {
                 table.classList.toggle('hide-time');

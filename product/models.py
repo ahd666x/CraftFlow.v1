@@ -8,8 +8,11 @@ from io import BytesIO
 from django.core.files.base import ContentFile
 from django.conf import settings
 import qrcode
+import logging
 from decimal import Decimal
 from datetime import time
+
+logger = logging.getLogger(__name__)
 
 
 
@@ -183,41 +186,40 @@ class Order(models.Model):
 
                     new_f3 = update_barcode_size(part.f3, length, width, order_item_id)
 
-                    try:
-                        dynamic_part = Part.objects.filter(
+                    existing_qs = Part.objects.filter(
+                        base_part=part,
+                        material=material,
+                        length=length,
+                        width=width
+                    )
+                    count = existing_qs.count()
+                    if count == 0:
+                        dynamic_part = Part.objects.create(
                             base_part=part,
                             material=material,
                             length=length,
-                            width=width
-                        ).first()
-                        if dynamic_part:
-                            created = False
-                        else:
-                            dynamic_part = Part.objects.create(
-                                base_part=part,
-                                material=material,
-                                length=length,
-                                width=width,
-                                name=part.name,
-                                grain=part.grain,
-                                pname=part.pname,
-                                turn=part.turn,
-                                f26=part.f26,
-                                f18=part.f18,
-                                f4=part.f4,
-                                f5=part.f5,
-                                f3=new_f3,
-                                f2=part.f2,
-                                routing_code=part.routing_code,
+                            width=width,
+                            name=part.name,
+                            grain=part.grain,
+                            pname=part.pname,
+                            turn=part.turn,
+                            f26=part.f26,
+                            f18=part.f18,
+                            f4=part.f4,
+                            f5=part.f5,
+                            f3=new_f3,
+                            f2=part.f2,
+                            routing_code=part.routing_code,
+                        )
+                        created = True
+                    else:
+                        if count > 1:
+                            logger.warning(
+                                "چند Part داینامیک تکراری برای base_part=%s material=%s %sx%s یافت شد؛ "
+                                "از اولین مورد استفاده می‌شود. لطفاً دستی بررسی و ادغام شود.",
+                                part.id, material.id, length, width
                             )
-                            created = True
-                    except Part.MultipleObjectsReturned:
-                        dynamic_part = Part.objects.filter(
-                            base_part=part,
-                            material=material,
-                            length=length,
-                            width=width
-                        ).first()
+                        dynamic_part = existing_qs.first()
                         created = False
 
                     if not created:
@@ -491,12 +493,9 @@ class Color(models.Model):
         ('صفحه', 'صفحه'),
         ('رینگ', 'رینگ'),
     ]
-    CODE_CHOICES = [(str(i), str(i)) for i in range(1, 11)]
-    CODE_CHOICES.append(('جناغی' , 'جناغی'))
-    CODE_CHOICES.append(('بتنی' , 'بتنی'))
 
     part = models.CharField(max_length=20, choices=PART_CHOICES, verbose_name="قطعه")
-    code = models.CharField(max_length=20, choices=CODE_CHOICES, verbose_name="کد رنگ")
+    code = models.CharField(max_length=20, verbose_name="کد رنگ")
     orderitem = models.ForeignKey(OrderItem, on_delete=models.CASCADE, related_name='ordercolor', verbose_name="آیتم سفارش")
     hex_code = models.CharField(max_length=7, blank=True, verbose_name="کد هگز رنگ")
     material_name = models.CharField(max_length=50, blank=True, verbose_name="نام متریال پیش‌فرض")
@@ -715,8 +714,9 @@ class ProductionTask(models.Model):
                 self.completed_quantity = self.quantity
             if kwargs.get('update_fields'):
                 uf = list(kwargs['update_fields'])
-                if 'completed_quantity' not in uf:
-                    uf.append('completed_quantity')
+                for extra_field in ('completed_quantity', 'completed_at', 'status'):
+                    if extra_field not in uf:
+                        uf.append(extra_field)
                 kwargs['update_fields'] = tuple(uf)
 
         super().save(*args, **kwargs)
@@ -1130,7 +1130,6 @@ class PaintingColorMaterialVariant(models.Model):
     )
     color_code = models.CharField(
         max_length=20,
-        choices=Color.CODE_CHOICES,
         verbose_name="کد رنگ سفارش",
     )
     raw_material = models.ForeignKey(
@@ -1147,13 +1146,18 @@ class PaintingColorMaterialVariant(models.Model):
         ordering = ['process_material__process__name', 'process_material__raw_material__name', 'color_code']
 
     def __str__(self):
-        return f"{self.process_material} → {self.get_color_code_display()}: {self.raw_material}"
-
+        return f"{self.process_material} → {self.color_code}: {self.raw_material}"
 
     def clean(self):
         if self.process_material_id and not self.process_material.is_color_variant:
             raise ValidationError({
                 'process_material': 'اسلات انتخاب‌شده به کد رنگ سفارش وابسته نیست.',
+            })
+        from .utils import get_color_code_choices
+        valid_codes = {code for code, _ in get_color_code_choices()}
+        if self.color_code and str(self.color_code) not in valid_codes:
+            raise ValidationError({
+                'color_code': 'کد رنگ نامعتبر است یا در تعریف‌های کد رنگ فعال نیست.',
             })
 
     def save(self, *args, **kwargs):

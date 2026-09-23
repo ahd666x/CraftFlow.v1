@@ -176,6 +176,7 @@ urlpatterns = [
     path('painting/api/process-materials/<int:process_material_id>/color-variants/', views.painting_process_material_variants_api, name='painting_process_material_variants_api'),
     path('painting/api/product-colorpart-materials/', views.product_color_part_materials_api, name='product_color_part_materials_api'),
     path('painting/api/raw-materials/search/', views.search_raw_materials_api, name='painting_raw_materials_search'),
+    path('painting/api/color-codes/', views.ajax_color_codes, name='ajax_color_codes'),
     path('painting/workers/', views.painting_workers_view, name='painting_workers'),
     path('painting/workers/<int:worker_id>/excluded-items/', views.painting_worker_excluded_items, name='painting_worker_excluded_items'),
     path('painting/schedule/', views.painting_schedule_view, name='painting_schedule'),
