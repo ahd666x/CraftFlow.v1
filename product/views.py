@@ -481,12 +481,17 @@ def admin_edit_order_item(request, item_id):
         if item_form.is_valid() and color_form.is_valid():
             with transaction.atomic():
                 updated_item = item_form.save(commit=False)
+                new_product = item_form.cleaned_data['product']
+                product_changed = updated_item.product_id != new_product.id
+                if product_changed:
+                    updated_item.product = new_product
                 manual_price = item_form.cleaned_data.get('unit_price')
-                if manual_price not in (None, ''):
+                if 'unit_price' in item_form.changed_data and manual_price not in (None, ''):
                     updated_item.unit_price = manual_price
                     updated_item._skip_price_calc = True
-                elif 'product' in item_form.changed_data:
-                    updated_item.unit_price = updated_item.product.base_price
+                elif product_changed or 'size' in item_form.changed_data:
+                    pass
+                else:
                     updated_item._skip_price_calc = True
                 updated_item.save()
                 updated_item.sync_packaging_units()
