@@ -122,7 +122,7 @@ class Command(BaseCommand):
 
         for task in scheduled_tasks:
             # تاریخ شمسی
-            shamsi_date = jdatetime.date.fromgregorian(date=task.scheduled_start.date())
+            shamsi_date = jdatetime.date.fromgregorian(date=timezone.localtime(task.scheduled_start).date())
             date_key = shamsi_date.strftime('%Y-%m-%d')
 
             if date_key not in days_data:
@@ -140,8 +140,8 @@ class Command(BaseCommand):
             # اطلاعات تسک
             task_info = {
                 'id': task.id,
-                'start': task.scheduled_start.isoformat(),
-                'end': task.scheduled_end.isoformat() if task.scheduled_end else None,
+                'start': timezone.localtime(task.scheduled_start).isoformat(),
+                'end': timezone.localtime(task.scheduled_end).isoformat() if task.scheduled_end else None,
                 'duration_minutes': task.painting_stage.duration_minutes if task.painting_stage else None,
                 'drying_minutes': task.painting_stage.drying_time_minutes if task.painting_stage else None,
                 'order_id': task.order_id,

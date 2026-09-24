@@ -631,7 +631,7 @@ def _maybe_enqueue_successor(t, new_end, ref_date, changes, task_objects, queue)
     if succ_start is not None and succ_start >= required_ready:
         return
 
-    if succ_start is not None and succ_start.date() != ref_date:
+    if succ_start is not None and timezone.localtime(succ_start).date() != ref_date:
         raise _CascadeCrossDayConflict(succ)
 
     task_objects.setdefault(succ.pk, succ)
@@ -1788,7 +1788,7 @@ def assign_task_to_worker(task_id, worker_id, target_date=None, allow_overtime=F
 
         # ۵. تعیین روز مرجع
         if task.scheduled_start:
-            ref_date = task.scheduled_start.date()
+            ref_date = timezone.localtime(task.scheduled_start).date()
         elif target_date_obj:
             ref_date = target_date_obj
         else:
@@ -1899,8 +1899,8 @@ def assign_task_to_worker(task_id, worker_id, target_date=None, allow_overtime=F
         final_start, final_end = changes[task.pk][1], changes[task.pk][2]
         return {
             'ok': True,
-            'scheduled_start': final_start.strftime('%H:%M'),
-            'scheduled_end': final_end.strftime('%H:%M'),
+            'scheduled_start': timezone.localtime(final_start).strftime('%H:%M'),
+            'scheduled_end': timezone.localtime(final_end).strftime('%H:%M'),
             'shifted_tasks_count': len(changes) - 1 + source_tasks_count + dest_tasks_count,
         }
 

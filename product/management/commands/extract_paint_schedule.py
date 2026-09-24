@@ -5,6 +5,7 @@ import os
 
 import jdatetime
 from django.core.management.base import BaseCommand
+from django.utils import timezone
 
 from product.models import ProductionTask, WorkerProfile
 
@@ -35,7 +36,7 @@ class Command(BaseCommand):
                 task.assigned_worker.get_full_name() or task.assigned_worker.username
                 if task.assigned_worker else 'تخصیص‌نیافته'
             )
-            shamsi_date = jdatetime.date.fromgregorian(date=task.scheduled_start.date())
+            shamsi_date = jdatetime.date.fromgregorian(date=timezone.localtime(task.scheduled_start).date())
             date_key = shamsi_date.strftime('%Y-%m-%d')
 
             if worker_id not in grouped:
@@ -62,8 +63,8 @@ class Command(BaseCommand):
                 lines.append(f'  📅 تاریخ: {date_key}')
                 for task in date_tasks:
                     total_tasks += 1
-                    start_str = task.scheduled_start.strftime('%H:%M') if task.scheduled_start else '---'
-                    end_str = task.scheduled_end.strftime('%H:%M') if task.scheduled_end else '---'
+                    start_str = timezone.localtime(task.scheduled_start).strftime('%H:%M') if task.scheduled_start else '---'
+                    end_str = timezone.localtime(task.scheduled_end).strftime('%H:%M') if task.scheduled_end else '---'
                     stage_name = task.painting_stage.name if task.painting_stage else '-'
                     order_number = task.order.number if task.order else str(task.order_id)
                     lines.append(
@@ -116,7 +117,7 @@ class Command(BaseCommand):
                     if task.scheduled_start < earliest_start:
                         violations.append(
                             f'❌ سفارش‌آیتم {order_item_id} / بخش {color_part} | مرحله {task.step_order}: '
-                            f'زمان شروع ({task.scheduled_start.strftime("%Y-%m-%d %H:%M")}) کمتر از '
+                            f'زمان شروع ({timezone.localtime(task.scheduled_start).strftime("%Y-%m-%d %H:%M")}) کمتر از '
                             f'زمان پایان مراحل قبلی + خشک‌شدن است.'
                         )
 
@@ -124,7 +125,7 @@ class Command(BaseCommand):
                     if task.scheduled_start >= task.scheduled_end:
                         violations.append(
                             f'❌ سفارش‌آیتم {order_item_id} / بخش {color_part} | مرحله {task.step_order}: '
-                            f'زمان شروع ({task.scheduled_start}) برابر یا بعد از زمان پایان است.'
+                            f'زمان شروع ({timezone.localtime(task.scheduled_start)}) برابر یا بعد از زمان پایان است.'
                         )
 
                 for earlier in tasks_in_group:

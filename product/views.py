@@ -4720,7 +4720,7 @@ def daily_schedule_print(request):
             station_name='paint',
             scheduled_start__isnull=False,
         ).aggregate(max_date=Max('scheduled_start'))
-        end_date_gregorian = max_date_qs['max_date'].date() if max_date_qs['max_date'] else gregorian_date
+        end_date_gregorian = timezone.localtime(max_date_qs['max_date']).date() if max_date_qs['max_date'] else gregorian_date
 
         tasks = list(
             ProductionTask.objects.filter(
@@ -4742,7 +4742,7 @@ def daily_schedule_print(request):
             worker_id = task.assigned_worker_id
             if worker_id is None:
                 continue
-            task_date = task.scheduled_start.date()
+            task_date = timezone.localtime(task.scheduled_start).date()
             worker_date_tasks.setdefault(worker_id, {}).setdefault(task_date, []).append(task)
 
         worker_ids = list(worker_date_tasks.keys())
