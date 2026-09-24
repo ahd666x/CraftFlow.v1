@@ -377,6 +377,14 @@
                 page-break-inside: avoid;
                 break-inside: avoid;
             }
+            .all-days-entry {
+                page-break-inside: avoid;
+                break-inside: avoid;
+            }
+            .hide-time .col-time,
+            .hide-time .col-time-col {
+                display: none !important;
+            }
         }
 
         /* ===== واکنش‌گرایی ===== */
@@ -391,7 +399,10 @@
             }
         }
 
-        .hide-time .col-time {
+         .hide-time .col-time {
+            display: none;
+        }
+        .hide-time .col-time-col {
             display: none;
         }
     </style>
@@ -430,7 +441,7 @@
                 <span style="background:#4b5563;color:#fff;padding:3px 10px;border-radius:6px;font-size:11px;margin-right:8px;">تعداد تسک‌ها: {{ col.task_count }}</span>
             </div>
             {% for entry in col.date_entries %}
-            <div style="margin-bottom:6px;border:1px solid #9ca3af;border-radius:4px;padding:4px;">
+            <div class="all-days-entry" style="margin-bottom:6px;border:1px solid #9ca3af;border-radius:4px;padding:4px;">
                 <div style="background:#e5e7eb;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:700;margin-bottom:3px;">
                     📅 {{ entry.date|date:"j \\M \\Y" }} ({{ entry.date_str }})
                     <span style="float:left;font-weight:400;font-size:9px;color:#64748b;">
@@ -445,7 +456,7 @@
                         <col style="width:13%;">
                         <col style="width:18%;">
                         <col style="width:15%;">
-                        <col style="width:13%;">
+                        <col class="col-time-col" style="width:13%;">
                         <col style="width:5%;">
                     </colgroup>
                     <thead>
@@ -523,7 +534,7 @@
                     <col style="width:13%;">
                     <col style="width:18%;">
                     <col style="width:15%;">
-                    <col style="width:13%;">
+                    <col class="col-time-col" style="width:13%;">
                     <col style="width:5%;">
                 </colgroup>
                 <thead>
@@ -669,12 +680,87 @@
             }
         })();
 
-        /* ===== مخفی/نمایان کردن ستون زمان ===== */
-        function toggleTimeColumn() {
-            document.querySelectorAll('.task-table').forEach(function(table) {
-                table.classList.toggle('hide-time');
-            });
-        }
+        /* ===== مخفی/نمایش ستون زمان ===== */
+        (function() {
+            const STORAGE_KEY = 'paintingTableHideTime';
+            const ORIGINAL_WIDTHS = [5, 18, 13, 13, 18, 15, 13, 5];
+            const TIME_COL_INDEX = 6; // شاخص ستون زمان (0-based)
+
+            function setTimeHidden(tables, hide) {
+                tables.forEach(function(table) {
+                    if (hide) {
+                        table.classList.add('hide-time');
+                    } else {
+                        table.classList.remove('hide-time');
+                    }
+                    updateColgroup(table, hide);
+                });
+            }
+
+            function updateColgroup(table, hide) {
+                const cols = table.querySelectorAll('colgroup col');
+                if (cols.length !== ORIGINAL_WIDTHS.length) return;
+
+                if (hide) {
+                    const timeWidth = ORIGINAL_WIDTHS[TIME_COL_INDEX];
+                    let totalOther = 0;
+                    for (let i = 0; i < cols.length; i++) {
+                        if (i !== TIME_COL_INDEX) totalOther += ORIGINAL_WIDTHS[i];
+                    }
+                    cols.forEach(function(col, i) {
+                        if (i === TIME_COL_INDEX) {
+                            col.style.display = 'none';
+                        } else {
+                            const newWidth = ORIGINAL_WIDTHS[i] + (ORIGINAL_WIDTHS[i] / totalOther) * timeWidth;
+                            col.style.width = newWidth.toFixed(1) + '%';
+                        }
+                    });
+                } else {
+                    cols.forEach(function(col, i) {
+                        col.style.display = '';
+                        col.style.width = ORIGINAL_WIDTHS[i] + '%';
+                    });
+                }
+            }
+
+            function saveState(hide) {
+                try {
+                    localStorage.setItem(STORAGE_KEY, hide ? '1' : '0');
+                } catch (e) {
+                    console.warn('localStorage unavailable:', e);
+                }
+            }
+
+            function loadState() {
+                try {
+                    return localStorage.getItem(STORAGE_KEY) === '1';
+                } catch (e) {
+                    return false;
+                }
+            }
+
+            window.toggleTimeColumn = function() {
+                var tables = document.querySelectorAll('.task-table');
+                if (tables.length === 0) return;
+                var currentlyHidden = tables[0].classList.contains('hide-time');
+                var newState = !currentlyHidden;
+                setTimeHidden(tables, newState);
+                saveState(newState);
+            };
+
+            function initTimeColumn() {
+                var hide = loadState();
+                if (hide) {
+                    setTimeHidden(document.querySelectorAll('.task-table'), true);
+                }
+            }
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', initTimeColumn);
+            } else {
+                initTimeColumn();
+            }
+        })();
     </script>
 </body>
 </html>

@@ -9,5 +9,6 @@ dr_archive/
 *.sqlite3
 staticfiles/
 media/
+media/qr/
 .vscode/
 .kilo/
