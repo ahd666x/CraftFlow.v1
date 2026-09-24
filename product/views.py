@@ -2177,19 +2177,18 @@ def report_stages(request):
 
     # Order.created_at is a PersianDateField (handles jdatetime.date natively).
     # PackagingUnit.packed_at / shipped_at are DateTimeField -- pass Gregorian date.
-    if date_from:
-        if date_target == 'pack':
-            base_items = base_items.filter(packaging_units__packed_at__date__gte=date_from.togregorian())
-        elif date_target == 'ship':
-            base_items = base_items.filter(packaging_units__shipped_at__date__gte=date_from.togregorian())
-        else:
+    if date_target in ('pack', 'ship') and (date_from or date_to):
+        field = 'packed_at' if date_target == 'pack' else 'shipped_at'
+        date_units = PackagingUnit.objects.filter(order_item=OuterRef('pk'))
+        if date_from:
+            date_units = date_units.filter(**{f'{field}__date__gte': date_from.togregorian()})
+        if date_to:
+            date_units = date_units.filter(**{f'{field}__date__lte': date_to.togregorian()})
+        base_items = base_items.filter(Exists(date_units))
+    else:
+        if date_from:
             base_items = base_items.filter(order__created_at__gte=date_from)
-    if date_to:
-        if date_target == 'pack':
-            base_items = base_items.filter(packaging_units__packed_at__date__lte=date_to.togregorian())
-        elif date_target == 'ship':
-            base_items = base_items.filter(packaging_units__shipped_at__date__lte=date_to.togregorian())
-        else:
+        if date_to:
             base_items = base_items.filter(order__created_at__lte=date_to)
 
     # ---------- summary (based on filtered base_items before stage filters) ----------
@@ -2220,30 +2219,17 @@ def report_stages(request):
     packaging_status = request.GET.get('packaging_status')
     shipping_status = request.GET.get('shipping_status')
 
-    # We'll build annotations using subqueries for precise calculations
-    pack_units = PackagingUnit.objects.filter(order_item=OuterRef('pk'))
-    ship_units = PackagingUnit.objects.filter(order_item=OuterRef('pk'))
-    packed_not_shipped_units = PackagingUnit.objects.filter(
-        order_item=OuterRef('pk'), is_packed=True, is_shipped=False
-    )
+    def _unit_count(**flt):
+        return Coalesce(Subquery(
+            PackagingUnit.objects.filter(order_item=OuterRef('pk'), **flt)
+            .values('order_item').annotate(cnt=Count('id')).values('cnt'),
+            output_field=IntegerField()), Value(0))
 
     items = items.annotate(
-        total_units=Count('packaging_units', distinct=True),
-        packed_count=Coalesce(Subquery(
-            pack_units.filter(is_packed=True).values('order_item')
-            .annotate(cnt=Count('id')).values('cnt'),
-            output_field=IntegerField()
-        ), Value(0)),
-        shipped_count=Coalesce(Subquery(
-            ship_units.filter(is_shipped=True).values('order_item')
-            .annotate(cnt=Count('id')).values('cnt'),
-            output_field=IntegerField()
-        ), Value(0)),
-        in_stock_count=Coalesce(Subquery(
-            packed_not_shipped_units.values('order_item')
-            .annotate(cnt=Count('id')).values('cnt'),
-            output_field=IntegerField()
-        ), Value(0)),
+        total_units=_unit_count(),
+        packed_count=_unit_count(is_packed=True),
+        shipped_count=_unit_count(is_shipped=True),
+        in_stock_count=_unit_count(is_packed=True, is_shipped=False),
     )
 
     # Apply packaging filter
@@ -2254,7 +2240,7 @@ def report_stages(request):
     elif packaging_status == 'pending':
         items = items.filter(total_units__gt=0, packed_count__lt=F('total_units'))
     elif packaging_status == 'none':
-        items = items.filter(total_units=0)
+        items = items.filter(packed_count=0)
     elif packaging_status == 'in_stock':
         items = items.filter(in_stock_count__gt=0)
 
@@ -2264,7 +2250,7 @@ def report_stages(request):
     elif shipping_status == 'pending':
         items = items.filter(total_units__gt=0, shipped_count__lt=F('total_units'))
     elif shipping_status == 'none':
-        items = items.filter(total_units=0)
+        items = items.filter(shipped_count=0)
 
     # ---------- build report data ----------
     # Pagination must come AFTER the annotation-based packaging/shipping
