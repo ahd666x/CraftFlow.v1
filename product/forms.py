@@ -1,4 +1,5 @@
 # forms.py
+import json
 from django import forms
 from .models import Order, OrderItem, Color, ProductCategory, PaintingProcess, PaintingStage, PaintingMaterialRequirement, PaintingColorMaterialVariant, WorkerProfile, Customer
 from .utils import get_color_code_choices
@@ -544,14 +545,14 @@ class PaintingProcessForm(forms.ModelForm):
         value = self.cleaned_data.get('color_codes')
         if not value:
             return []
-        if isinstance(value, list):
-            return value
-        import json
-        try:
-            parsed = json.loads(value)
-            return parsed if isinstance(parsed, list) else [parsed]
-        except (json.JSONDecodeError, TypeError):
-            raise forms.ValidationError('فرمت JSON نامعتبر است. مثال: ["8","9"]')
+        if isinstance(value, str):
+            try:
+                value = json.loads(value)
+            except (json.JSONDecodeError, TypeError):
+                raise forms.ValidationError('فرمت JSON نامعتبر است. مثال: ["8","9"]')
+        if not isinstance(value, list):
+            value = [value]
+        return [str(c).strip() for c in value if str(c).strip()]
 
     def clean(self):
         cleaned = super().clean()
@@ -644,27 +645,27 @@ class WorkerProfileForm(forms.ModelForm):
         value = self.cleaned_data.get('skills')
         if not value:
             return []
-        if isinstance(value, list):
-            return value
-        import json
-        try:
-            parsed = json.loads(value)
-            return parsed if isinstance(parsed, list) else [parsed]
-        except (json.JSONDecodeError, TypeError):
-            raise forms.ValidationError('فرمت JSON نامعتبر است. مثال: ["painter","sealer"]')
+        if isinstance(value, str):
+            try:
+                value = json.loads(value)
+            except (json.JSONDecodeError, TypeError):
+                raise forms.ValidationError('فرمت JSON نامعتبر است. مثال: ["painter","sealer"]')
+        if not isinstance(value, list):
+            value = [value]
+        return [str(s).strip() for s in value if str(s).strip()]
 
     def clean_skill_priority(self):
         value = self.cleaned_data.get('skill_priority')
         if not value:
             return {}
-        if isinstance(value, dict):
-            return value
-        import json
-        try:
-            parsed = json.loads(value)
-            return parsed if isinstance(parsed, dict) else {}
-        except (json.JSONDecodeError, TypeError):
-            raise forms.ValidationError('فرمت JSON نامعتبر است. مثال: {"painter":3}')
+        if isinstance(value, str):
+            try:
+                value = json.loads(value)
+            except (json.JSONDecodeError, TypeError):
+                raise forms.ValidationError('فرمت JSON نامعتبر است. مثال: {"painter":3}')
+        if not isinstance(value, dict):
+            return {}
+        return value
 
 
 
