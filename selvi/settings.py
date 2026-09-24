@@ -12,7 +12,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 from pathlib import Path
 import os
-from decouple import config
+from decouple import config, Csv
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -27,8 +27,8 @@ SECRET_KEY = config('SECRET_KEY')
 
 
 DEBUG = config('DEBUG', default=False, cast=bool)
-# DEBUG =  True
-ALLOWED_HOSTS = ['selvichoob.ir', '45.159.149.122' , '*' ]
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='selvichoob.ir,45.159.149.122,localhost,127.0.0.1', cast=Csv())
+CSRF_TRUSTED_ORIGINS = config('CSRF_TRUSTED_ORIGINS', default='https://selvichoob.ir', cast=Csv())
 
 
 
@@ -94,6 +94,11 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'db.sqlite3',
+        'OPTIONS': {
+            'timeout': 20,
+            'transaction_mode': 'IMMEDIATE',
+            'init_command': 'PRAGMA journal_mode=WAL;',
+        },
     }
 }
 
@@ -136,7 +141,10 @@ STATIC_URL = '/static/'
 
 STATICFILES_DIRS = [BASE_DIR/"static"]
 
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+STORAGES = {
+    'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+    'staticfiles': {'BACKEND': 'whitenoise.storage.CompressedStaticFilesStorage'},
+}
 
 
 # Default primary key field type
@@ -152,7 +160,7 @@ LOGOUT_REDIRECT_URL = '/'
 
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 MEDIA_URL = '/media/'
-MEDIA_ROOT = '/root/selvi/selvi/media'
+MEDIA_ROOT = config('MEDIA_ROOT', default='/root/selvi/selvi/media')
 
 
 
