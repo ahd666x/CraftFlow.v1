@@ -9,7 +9,7 @@ from django.core.files.base import ContentFile
 from django.conf import settings
 import qrcode
 import logging
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from datetime import time
 
 logger = logging.getLogger(__name__)
@@ -136,8 +136,8 @@ class Order(models.Model):
 
 
     def generate_tasks(self):
-        if self.tasks.exists():
-            return {'success': False, 'error': 'دستور تولید برای این سفارش قبلاً صادر شده است.'}
+        if self.tasks.exclude(station_name='paint').exists():
+            return {'success': False, 'error': 'تسک‌ها قبلاً ایجاد شده‌اند.'}
 
         from .utils import (
             get_material_for_color,
@@ -187,6 +187,10 @@ class Order(models.Model):
                             part.length, part.width, size_diff, bom_entry.size_adjustment_rule
                         )
 
+                    # Quantize to the DB precision so float lookups match stored values
+                    length = Decimal(str(length)).quantize(Decimal('0.1'), rounding=ROUND_HALF_UP)
+                    width = Decimal(str(width)).quantize(Decimal('0.1'), rounding=ROUND_HALF_UP)
+
                     new_f3 = update_barcode_size(part.f3, length, width, order_item_id)
 
                     existing_qs = Part.objects.filter(
@@ -194,7 +198,7 @@ class Order(models.Model):
                         material=material,
                         length=length,
                         width=width,
-                        f3__endswith=f'.item{order_item_id}',
+                        f3=new_f3,
                     )
                     count = existing_qs.count()
                     if count == 0:

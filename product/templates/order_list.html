@@ -265,12 +265,13 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // ========== ایجاد دستور تولید با AJAX ==========
+// ========== ایجاد دستور تولید با AJAX ==========
     document.querySelectorAll('.generate-tasks').forEach(btn => {
         btn.addEventListener('click', function(e) {
             e.stopPropagation();
             const orderId = this.dataset.order;
             if (confirm('آیا مطمئنید که می‌خواهید دستور تولید صادر شود؟')) {
+                this.disabled = true;
                 fetch(`/orders/${orderId}/generate-tasks/`, {
                     method: 'POST',
                     headers: {
@@ -282,12 +283,17 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (data.success) {
                         location.reload();
                     } else {
-                        alert('خطا: ' + (data.error || 'نامشخص'));
+                        alert('خطا: ' + (data.error || 'نامspecified'));
+                        this.disabled = false;
                     }
                 })
-                .catch(err => alert('خطای شبکه'));
+                .catch(err => {
+                    alert('خطای شبکه');
+                    this.disabled = false;
+                });
             }
         });
+    });
     });
 });
 </script>
