@@ -5530,7 +5530,7 @@ def painting_process_material_variants_api(request, process_material_id):
             'created': created,
             'id': variant.id,
             'color_code': variant.color_code,
-            'color_label': variant.get_color_code_display(),
+            'color_label': dict(code_choices).get(variant.color_code, variant.color_code),
             'raw_material_id': variant.raw_material_id,
             'raw_material_name': str(variant.raw_material),
             'unit': variant.raw_material.get_unit_display(),
