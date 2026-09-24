@@ -72,7 +72,7 @@ class StockMovementForm(forms.ModelForm):
         if movement_type == 'purchase' and not supplier:
             raise ValidationError('برای خرید/ورود باید تامین‌کننده انتخاب شود.')
 
-        if movement_type == 'consumption' and raw_material:
+        if movement_type == 'consumption' and raw_material and quantity is not None:
             current = raw_material.current_stock
             if current < quantity:
                 raise ValidationError(f'موجودی کافی نیست. موجودی فعلی: {current}')

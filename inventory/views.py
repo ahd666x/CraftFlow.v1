@@ -916,7 +916,10 @@ def raw_material_receive_scan(request):
         try:
             pack_count = int(request.POST.get('pack_count', 1))
         except (TypeError, ValueError):
-            pack_count = 1
+            pack_count = 0
+        if pack_count < 1 or pack_count > 1000:
+            messages.error(request, 'تعداد بسته باید بین ۱ تا ۱۰۰۰ باشد.')
+            return redirect('inventory:raw_material_receive_scan')
         note = request.POST.get('note', '')
 
         if not barcode:
@@ -974,7 +977,12 @@ def raw_material_receive_scan_api(request):
         return HttpResponseForbidden()
 
     barcode = request.POST.get('barcode', '').strip()
-    pack_count = int(request.POST.get('pack_count', 1))
+    try:
+        pack_count = int(request.POST.get('pack_count', 1))
+    except (TypeError, ValueError):
+        pack_count = 0
+    if pack_count < 1 or pack_count > 1000:
+        return JsonResponse({'success': False, 'error': 'تعداد بسته باید بین ۱ تا ۱۰۰۰ باشد.'}, status=400)
 
     if not barcode:
         return JsonResponse({'success': False, 'error': 'بارکد وارد نشده است.'})

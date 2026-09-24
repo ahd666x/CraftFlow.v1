@@ -17,6 +17,12 @@ from django.db.models import Count, Prefetch, Q
 from django.http import Http404, HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import (get_list_or_404, get_object_or_404, redirect,
                                render)
+from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib import messages
+from django.db import transaction
+from django.urls import reverse
+from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect, get_object_or_404
@@ -75,6 +81,13 @@ from .utils import (
     auto_assign_paint_tasks,
 )
 logger = logging.getLogger(__name__)
+
+
+def _safe_next(request, default='dashboard'):
+    nxt = request.GET.get('next') or request.POST.get('next') or ''
+    if nxt and url_has_allowed_host_and_scheme(nxt, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
+        return nxt
+    return default
 
 
 @login_required
@@ -669,9 +682,16 @@ def scan_item_tasks_ajax(request, item_id):
 @login_required
 @require_POST
 def mark_task_done(request, task_id):
+    if not hasattr(request.user, 'workerprofile') and not request.user.is_superuser:
+        return JsonResponse({'success': False, 'error': 'پروفایل کاری ندارید.'}, status=403)
     task = get_object_or_404(ProductionTask, pk=task_id)
+    if not request.user.is_superuser and task.station_name != request.user.workerprofile.stage:
+        return JsonResponse({'success': False, 'error': 'این تسک مربوط به ایستگاه شما نیست.'}, status=403)
 
     with transaction.atomic():
+        task = ProductionTask.objects.select_for_update().get(pk=task_id)
+        if task.status != 'pending':
+            return JsonResponse({'success': False, 'error': 'این مرحله هنوز آماده نیست یا قبلاً انجام شده است.'}, status=400)
         task.completed_quantity += 1
         if task.completed_quantity > task.quantity:
             task.completed_quantity = task.quantity
@@ -2968,6 +2988,7 @@ def order_detail(request, order_id):
 
 
 
+@login_required
 def ajax_load_product_colors(request, product_id):
     product = get_object_or_404(Product, pk=product_id)
     raw_value = product.default_colors
@@ -3260,7 +3281,7 @@ def scan_packaging_unit(request, pk):
     unit = get_object_or_404(PackagingUnit, pk=pk)
     worker_stage = request.user.workerprofile.stage if hasattr(request.user, 'workerprofile') else None
     item = unit.order_item
-    next_url = request.GET.get('next', 'dashboard')
+    next_url = _safe_next(request)
 
     # ---------- شاخه ۱: مونتاژ -> ثبت خرابی با انتخاب بخش رنگی ----------
     if worker_stage in ('mon', 'assembly2'):
@@ -3564,6 +3585,7 @@ def scan_packaging_unit(request, pk):
     return render(request, 'scan_packaging_unit.html', context)
 
 
+@require_POST
 @login_required
 def undo_packaging_unit(request, pk):
     unit = get_object_or_404(PackagingUnit, pk=pk)
@@ -3607,7 +3629,7 @@ def undo_packaging_unit(request, pk):
             ProductionLog.objects.filter(order_item=unit.order_item, stage='shipping').delete()
             messages.success(request, f'🚚 ارسال واحد {unit.unit_number} لغو شد.')
 
-    next_url = request.GET.get('next', 'dashboard')
+    next_url = _safe_next(request)
     return redirect(next_url)
 
 
@@ -3885,6 +3907,7 @@ def customer_add_item(request, order_id):
 # -------------------------------------------------------------------
 # مشتری: حذف یک آیتم سفارش
 # -------------------------------------------------------------------
+@require_POST
 @login_required
 def customer_delete_order_item(request, item_id):
     item = get_object_or_404(OrderItem, pk=item_id)
@@ -3911,6 +3934,7 @@ def customer_delete_order_item(request, item_id):
 #    پرینت همه برگه های سفارش
 # -------------------------------------------------------------------
 @login_required
+@admin_or_manager_required
 def order_combined_print(request, order_id):
     order = get_object_or_404(
         Order.objects.prefetch_related(
@@ -6267,6 +6291,7 @@ def painting_assignment_rules_view(request):
     return render(request, 'painting_management/assignment_rules.html', context)
 
 
+@require_POST
 @login_required
 @admin_or_manager_required
 def delete_all_tasks(request, order_id):
@@ -6286,6 +6311,7 @@ def delete_all_tasks(request, order_id):
     return redirect('order_detail', order_id=order.id)
 
 
+@require_POST
 @login_required
 @admin_or_manager_required
 def delete_paint_tasks(request, item_id):
@@ -6309,6 +6335,7 @@ def delete_paint_tasks(request, item_id):
     return redirect('item_detail', pk=item.id)
 
 
+@require_POST
 @login_required
 @admin_or_manager_required
 def delete_all_paint_tasks_for_order(request, order_id):
