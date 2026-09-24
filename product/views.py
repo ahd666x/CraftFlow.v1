@@ -2649,7 +2649,7 @@ def report_material_consumption(request):
     rows = {}
 
     def _row_key(item, process, packaging_unit=None):
-        return (item.product_id, process.id if process else None, packaging_unit.id if packaging_unit else None)
+         return (item.id, process.id if process else None, packaging_unit.id if packaging_unit else None)
 
     def _get_row(item, process, packaging_unit=None):
         key = _row_key(item, process, packaging_unit)
