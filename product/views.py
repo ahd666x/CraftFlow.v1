@@ -883,6 +883,23 @@ def archive_download(request, archive_type, filename):
         return response
 
 
+def _apply_task_status(task, new_status, user):
+    """Apply a status change to a task, honoring the done/revert rules in save()."""
+    old_status = task.status
+    task.status = new_status
+    if new_status == 'done' and old_status != 'done':
+        task.completed_at = jdatetime.date.today()
+        task.completed_quantity = task.quantity
+        log_production_event(
+            task=task,
+            event_type='status_changed',
+            user=user,
+            old_status=old_status,
+            new_status=new_status,
+        )
+    task.save(update_fields=['status', 'completed_at', 'completed_quantity'])
+
+
 @login_required
 @admin_or_manager_required
 def admin_tasks_management(request):
@@ -967,6 +984,13 @@ def admin_tasks_management(request):
                         )
                     task.save(update_fields=['status', 'completed_at', 'completed_quantity'])
                 messages.success(request, f'وضعیت {count} وظیفه به «{dict(ProductionTask.TASK_STATUS)[new_status]}» تغییر یافت.')
+        elif action == 'single_status':
+            task_id = request.POST.get('task_id')
+            new_status = request.POST.get('status')
+            if task_id and new_status in dict(ProductionTask.TASK_STATUS):
+                task = get_object_or_404(ProductionTask, pk=task_id)
+                _apply_task_status(task, new_status, request.user)
+                messages.success(request, f'وضعیت وظیفه #{task_id} به «{dict(ProductionTask.TASK_STATUS)[new_status]}» تغییر یافت.')
         elif action == 'bulk_worker':
             worker_id = request.POST.get('bulk_worker')
             if worker_id:

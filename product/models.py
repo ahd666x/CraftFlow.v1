@@ -708,6 +708,22 @@ class ProductionTask(models.Model):
         if self.pk:
             old_status = ProductionTask.objects.filter(pk=self.pk).values_list('status', flat=True).first()
 
+        # safety-net: completed quantity reaching the target always means done
+        if self.pk and old_status != 'done' and self.completed_quantity >= self.quantity and self.status != 'done':
+            self.status = 'done'
+
+        # Reverting a done task back to pending/waiting
+        reverted = old_status == 'done' and self.status in ('pending', 'waiting')
+        if reverted:
+            self.completed_quantity = 0
+            self.completed_at = None
+            if kwargs.get('update_fields'):
+                uf = list(kwargs['update_fields'])
+                for extra_field in ('completed_quantity', 'completed_at', 'status'):
+                    if extra_field not in uf:
+                        uf.append(extra_field)
+                kwargs['update_fields'] = tuple(uf)
+
         if self.status == 'done' and old_status != 'done':
             if not self.completed_at:
                 self.completed_at = jdatetime.date.today()
@@ -721,6 +737,9 @@ class ProductionTask(models.Model):
                 kwargs['update_fields'] = tuple(uf)
 
         super().save(*args, **kwargs)
+
+        if reverted:
+            self.update_order_status()
 
         if self.status == 'done' and old_status != 'done':
             try:
