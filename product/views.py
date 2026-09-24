@@ -248,6 +248,12 @@ from .decorators import admin_or_manager_required
 from .models import WorkerProfile, Product, OrderItem, PaintingStage, STATION_CHOICES
 
 
+def _worker_ids_with_skill(skill):
+    """SQLite از JSONField __contains پشتیبانی نمی‌کند؛ فیلتر در پایتون."""
+    return [w.pk for w in WorkerProfile.objects.filter(stage='paint').only('id', 'skills')
+            if skill in (w.skills or [])]
+
+
 # ============================================================
 # API لیست کارگران (با فیلتر و صفحه‌بندی)
 # ============================================================
@@ -280,7 +286,7 @@ def painting_workers_api(request):
         elif status_filter == 'inactive':
             workers = workers.filter(is_available=False)
         if skill_filter:
-            workers = workers.filter(skills__contains=[skill_filter])
+            workers = workers.filter(pk__in=_worker_ids_with_skill(skill_filter))
 
         paginator = Paginator(workers, per_page)
         page_obj = paginator.get_page(page)
@@ -5782,7 +5788,7 @@ def painting_workers_view(request):
         elif status == 'inactive':
             workers = workers.filter(is_available=False)
     if skill_filter:
-        workers = workers.filter(skills__contains=[skill_filter])
+        workers = workers.filter(pk__in=_worker_ids_with_skill(skill_filter))
 
     paginator = Paginator(workers, 20)
     page_number = request.GET.get('page')
