@@ -208,11 +208,6 @@ def get_painting_material_requirements_for_item_colorpart(order_item, color_part
     return process, requirements
 
 
-def consume_material_for_paint_task(task):
-    """DEPRECATED: مصرف نقاشی اکنون فقط از طریق inventory.services.execute_handover ثبت می‌شود."""
-    return []
-
-
 # ===================================================================
 #   کش‌های سراسری
 # ===================================================================

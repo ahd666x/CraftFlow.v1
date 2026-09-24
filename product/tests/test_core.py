@@ -12,7 +12,6 @@ import jdatetime
 from product.utils import (
     is_working_day,
     consume_material_for_task,
-    consume_material_for_paint_task,
     get_painting_material_requirements_for_item_colorpart,
     auto_create_material_issues,
 )
