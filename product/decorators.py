@@ -1,5 +1,4 @@
 # product/decorators.py
-from django.contrib.auth.decorators import user_passes_test
 from django.shortcuts import redirect
 from django.http import JsonResponse
 from functools import wraps
@@ -54,7 +53,7 @@ def staff_or_representative_required(view_func=None, redirect_url='/customer/ord
     return decorator
 
 
-def warehouse_required(view_func=None, redirect_url='/dashboard/'):
+def warehouse_required(view_func=None, redirect_url='/customer/orders/'):
     def check_user(user):
         if not user.is_authenticated:
             return False
@@ -62,13 +61,22 @@ def warehouse_required(view_func=None, redirect_url='/dashboard/'):
             return True
         return user.groups.filter(name='انبار').exists()
 
-    decorator = user_passes_test(check_user, login_url=redirect_url)
+    def decorator(view_func):
+        @wraps(view_func)
+        def _wrapped_view(request, *args, **kwargs):
+            if not check_user(request.user):
+                if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.content_type == 'application/json':
+                    return JsonResponse({'success': False, 'error': 'دسترسی غیرمجاز. کاربر باید عضو انبار باشد.'}, status=403)
+                return redirect(redirect_url)
+            return view_func(request, *args, **kwargs)
+        return _wrapped_view
+
     if view_func:
         return decorator(view_func)
     return decorator
 
 
-def warehouse_or_manager_required(view_func=None, redirect_url='/dashboard/'):
+def warehouse_or_manager_required(view_func=None, redirect_url='/customer/orders/'):
     def check_user(user):
         if not user.is_authenticated:
             return False
@@ -79,7 +87,16 @@ def warehouse_or_manager_required(view_func=None, redirect_url='/dashboard/'):
             or user.groups.filter(name='انبار').exists()
         )
 
-    decorator = user_passes_test(check_user, login_url=redirect_url)
+    def decorator(view_func):
+        @wraps(view_func)
+        def _wrapped_view(request, *args, **kwargs):
+            if not check_user(request.user):
+                if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.content_type == 'application/json':
+                    return JsonResponse({'success': False, 'error': 'دسترسی غیرمجاز. کاربر باید ادمین یا مدیر یا انبار باشد.'}, status=403)
+                return redirect(redirect_url)
+            return view_func(request, *args, **kwargs)
+        return _wrapped_view
+
     if view_func:
         return decorator(view_func)
     return decorator
