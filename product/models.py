@@ -708,9 +708,6 @@ class ProductionTask(models.Model):
         if self.pk:
             old_status = ProductionTask.objects.filter(pk=self.pk).values_list('status', flat=True).first()
 
-        if self.pk and self.completed_quantity >= self.quantity and self.status != 'done':
-            self.status = 'done'
-
         if self.status == 'done' and old_status != 'done':
             if not self.completed_at:
                 self.completed_at = jdatetime.date.today()
