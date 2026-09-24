@@ -90,7 +90,7 @@
             {% for unit in units %}
             <tr>
                 <td>{{ forloop.counter }}</td>
-                <td>{{ unit.shipped_at|persian_date }}</td>
+                <td>{{ unit.shipped_at|localtime|persian_date }}</td>
                 <td>{{ unit.order_item.order.id }}/{{ unit.order_item.id }}</td>
                 {% comment %} <td>{{ unit.order_item.id }}</td> {% endcomment %}
                 <td>{{ unit.order_item.product.category.name }} {{ unit.order_item.product.name }}</td>

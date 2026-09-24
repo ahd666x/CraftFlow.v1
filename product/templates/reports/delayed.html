@@ -13,7 +13,7 @@
 {% for o in orders %}
 <tr>
     <td>{{ o.id }}</td>
-    <td>{{ o.customer_name }}</td>
+    <td>{{ o.customer.name }}</td>
 </tr>
 {% empty %}
 <tr>

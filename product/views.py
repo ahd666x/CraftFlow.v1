@@ -2599,7 +2599,7 @@ def report_workers(request):
 @staff_or_representative_required
 def delayed_orders(request):
     limit = timezone.now() - timedelta(days=3)
-    orders = Order.objects.filter(created_at__lt=limit).exclude(status='completed')
+    orders = Order.objects.filter(created_at__lt=limit).exclude(status='completed').select_related('customer')
     return render(request, 'reports/delayed.html', {'orders': orders})
 
 
@@ -4519,7 +4519,7 @@ def customer_shipments(request):
     for unit in shipments:
         log = unit.shipment_logs.first()
         if log:
-            key = f"{log.plate_number}_{log.shipped_at.date()}"
+            key = f"{log.plate_number}_{timezone.localtime(log.shipped_at).date()}"
             if key not in groups:
                 groups[key] = {
                     'plate': log.plate_number,
