@@ -150,6 +150,8 @@
             <form method="post" id="bulkForm">
                 {% csrf_token %}
                 <input type="hidden" name="action" value="bulk_status" id="bulkAction">
+                <input type="hidden" name="bulk_status" id="bulkStatusInput">
+                <input type="hidden" name="bulk_worker" id="bulkWorkerInput">
                 <div class="table-responsive">
                     <table class="table table-hover align-middle mb-0 task-table">
                         <thead class="table-light">
@@ -212,18 +214,14 @@
                                 </td>
                                 <td><small>{{ task.scheduled_start|date:"Y/m/d H:i"|default:"-" }}</small></td>
                                 <td><small>{{ task.scheduled_end|date:"Y/m/d H:i"|default:"-" }}</small></td>
-                                <td>
-                                    <form method="post" class="d-inline" style="display:inline;">
-                                        {% csrf_token %}
-                                        <input type="hidden" name="task_id" value="{{ task.id }}">
-                                        <select name="status" class="form-select" onchange="this.form.submit()">
-                                            <option value="">تغییر وضعیت</option>
-                                            <option value="waiting">در انتظار</option>
-                                            <option value="pending">آماده</option>
-                                            <option value="done">انجام شده</option>
-                                        </select>
-                                    </form>
-                                </td>
+<td>
+                                     <select class="form-select" onchange="quickStatus({{ task.id }}, this)">
+                                         <option value="">تغییر وضعیت</option>
+                                         <option value="waiting">در انتظار</option>
+                                         <option value="pending">آماده</option>
+                                         <option value="done">انجام شده</option>
+                                     </select>
+                                 </td>
                             </tr>
                             {% empty %}
                             <tr>
@@ -236,7 +234,14 @@
                         </tbody>
                     </table>
                 </div>
-            </form>
+</form>
+
+        <form method="post" id="quickStatusForm" style="display:none">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="single_status">
+            <input type="hidden" name="task_id" id="quickTaskId">
+            <input type="hidden" name="status" id="quickStatusValue">
+        </form>
         </div>
     </div>
 
@@ -262,16 +267,18 @@
                         {% for u in users %}
                         <option value="{{ u.id }}">{{ u.get_full_name|default:u.username }}</option>
                         {% endfor %}
-                    </select>
-                </div>
+</select>
+                 </div>
                 <div class="col-md-3">
-                    <label class="form-label small text-muted">عملیات</label>
-                    <select class="form-select" id="bulkActionSelect">
-                        <option value="">-- انتخاب عملیات --</option>
-                        <option value="fix_chain">رفع زنجیره وظایف</option>
-                        <option value="bulk_delete">حذف وظایف انتخاب شده</option>
-                    </select>
-                </div>
+                     <label class="form-label small text-muted">عملیات</label>
+                     <select class="form-select" id="bulkActionSelect">
+                         <option value="">-- انتخاب عملیات --</option>
+                         <option value="bulk_status">تغییر وضعیت</option>
+                         <option value="bulk_worker">تخصیص کارگر</option>
+                         <option value="fix_chain">FIX زنجیره وظایف</option>
+                         <option value="bulk_delete">حذف وظایف انتخاب شده</option>
+                     </select>
+                 </div>
                 <div class="col-md-3">
                     <button type="button" class="btn btn-primary w-100" onclick="submitBulkAction()">
                         <i class="bi bi-play"></i> اجرا
@@ -352,9 +359,28 @@ function submitBulkAction() {
         return;
     }
 
+    if (action === 'bulk_status') {
+        document.getElementById('bulkStatusInput').value = status;
+        document.getElementById('bulkAction').value = 'bulk_status';
+    } else if (action === 'bulk_worker') {
+        document.getElementById('bulkWorkerInput').value = worker;
+        document.getElementById('bulkAction').value = 'bulk_worker';
+    } else if (action === 'bulk_delete') {
+        if (!confirm('آیا از حذف وظایف انتخاب‌شده اطمینان دارید؟')) {
+            return;
+        }
+        document.getElementById('bulkAction').value = 'bulk_delete';
+    }
+
     const form = document.getElementById('bulkForm');
-    document.getElementById('bulkAction').value = action;
     form.submit();
+}
+
+function quickStatus(taskId, sel) {
+    if (!sel.value) return;
+    document.getElementById('quickTaskId').value = taskId;
+    document.getElementById('quickStatusValue').value = sel.value;
+    document.getElementById('quickStatusForm').submit();
 }
 
 function submitFixChain() {

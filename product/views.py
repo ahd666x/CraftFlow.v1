@@ -890,6 +890,8 @@ def _apply_task_status(task, new_status, user):
     if new_status == 'done' and old_status != 'done':
         task.completed_at = jdatetime.date.today()
         task.completed_quantity = task.quantity
+        # save() logs the 'done' event itself; do not create a duplicate status_changed
+    elif new_status != 'done' and old_status != new_status:
         log_production_event(
             task=task,
             event_type='status_changed',
@@ -970,19 +972,7 @@ def admin_tasks_management(request):
             if new_status in dict(ProductionTask.TASK_STATUS):
                 count = qs.count()
                 for task in qs:
-                    old_status = task.status
-                    task.status = new_status
-                    if new_status == 'done' and old_status != 'done':
-                        task.completed_at = jdatetime.date.today()
-                        task.completed_quantity = task.quantity
-                        log_production_event(
-                            task=task,
-                            event_type='status_changed',
-                            user=request.user,
-                            old_status=old_status,
-                            new_status=new_status,
-                        )
-                    task.save(update_fields=['status', 'completed_at', 'completed_quantity'])
+                    _apply_task_status(task, new_status, request.user)
                 messages.success(request, f'وضعیت {count} وظیفه به «{dict(ProductionTask.TASK_STATUS)[new_status]}» تغییر یافت.')
         elif action == 'single_status':
             task_id = request.POST.get('task_id')
