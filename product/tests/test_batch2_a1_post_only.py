@@ -65,7 +65,8 @@ class Batch2A1POSTOnlyTests(TestCase):
 
     def test_get_undo_packaging_unit_returns_405(self):
         self.client.login(username='packer', password='testpass')
-        unit = PackagingUnit.objects.get(order_item=self.order_item, unit_number=1)
+        unit, _ = PackagingUnit.objects.get_or_create(
+            order_item=self.order_item, unit_number=99, defaults={'unit_number': 99})
         units_before = PackagingUnit.objects.filter(id=unit.id).count()
         response = self.client.get(reverse('undo_packaging_unit', args=[unit.id]))
         self.assertEqual(response.status_code, 405)
@@ -86,7 +87,8 @@ class Batch2A1POSTOnlyTests(TestCase):
         self.assertFalse(OrderItem.objects.filter(id=self.order_item.id).exists())
 
     def test_safe_next_blocks_external_url(self):
-        unit = PackagingUnit.objects.get(order_item=self.order_item, unit_number=1)
+        unit, _ = PackagingUnit.objects.get_or_create(
+            order_item=self.order_item, unit_number=99, defaults={'unit_number': 99})
         self.client.login(username='packer', password='testpass')
         url = reverse('scan_packaging_unit', args=[unit.id]) + '?next=https://evil.example/'
         response = self.client.post(url)
@@ -94,7 +96,8 @@ class Batch2A1POSTOnlyTests(TestCase):
         self.assertNotIn('evil.example', response['Location'])
 
     def test_safe_next_allows_internal_path(self):
-        unit = PackagingUnit.objects.get(order_item=self.order_item, unit_number=2)
+        unit, _ = PackagingUnit.objects.get_or_create(
+            order_item=self.order_item, unit_number=98, defaults={'unit_number': 98})
         self.client.login(username='packer', password='testpass')
         url = reverse('scan_packaging_unit', args=[unit.id]) + '?next=/item/1/'
         response = self.client.post(url)
