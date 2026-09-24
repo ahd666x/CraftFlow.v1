@@ -119,10 +119,8 @@ urlpatterns = [
      path('products/', views.admin_product_list, name='admin_product_list'),
      path('catalog/', views.product_catalog, name='product_catalog'),
      path('catalog/pdf/', views.product_catalog_pdf, name='product_catalog_pdf'),
-     path('product/<int:product_id>/bom/edit/', views.product_bom_edit, name='product_bom_edit'),
-    path('export-all/', views.export_all_data, name='export_all_data'),
-    path('import-data/', views.import_data, name='import_data'),
-    path('scan/packaging/<int:pk>/', views.scan_packaging_unit, name='scan_packaging_unit'),
+path('product/<int:product_id>/bom/edit/', views.product_bom_edit, name='product_bom_edit'),
+     path('scan/packaging/<int:pk>/', views.scan_packaging_unit, name='scan_packaging_unit'),
     path('orders/<int:order_id>/invoice/', views.order_invoice, name='order_invoice'),
 
     path('scan/packaging/<int:pk>/undo/', views.undo_packaging_unit, name='undo_packaging_unit'),
