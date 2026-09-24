@@ -125,8 +125,9 @@ def production_defects(request):
                     if replacement_quantity > 0:
                         MaterialIssue.objects.create(
                             task=related_task, defect=defect, packaging_unit=unit, raw_material_id=raw_id,
+                            order_item=item, color_part=color_part,
                             requested_quantity=replacement_quantity, purpose='rework',
-                            requested_by=request.user, note=f'ساخت مجدد برای خرابی #{defect.id}'
+                            requested_by=request.user, note='ساخت م again برای خرابی #{}'.format(defect.id)
                         )
                         defect.status = 'material_requested'
                         defect.save(update_fields=['status'])

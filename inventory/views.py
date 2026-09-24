@@ -11,7 +11,6 @@ from django.http import JsonResponse, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, render, redirect
 from django.template.loader import render_to_string
 from django.db.transaction import atomic
-from django.utils import timezone
 from django.views.decorators.http import require_http_methods, require_POST
 
 from product.decorators import admin_or_manager_required, warehouse_or_manager_required
@@ -119,7 +118,11 @@ def production_issue_queue(request):
     if request.method == 'POST' and request.POST.get('action') == 'request':
         task = get_object_or_404(ProductionTask, pk=request.POST.get('task_id'))
         raw = get_object_or_404(RawMaterial, pk=request.POST.get('raw_material_id'))
-        quantity = Decimal(request.POST.get('quantity', '0'))
+        try:
+            quantity = Decimal(request.POST.get('quantity', '0'))
+        except InvalidOperation:
+            messages.error(request, 'مقدار درخواست نامعتبر است.')
+            return redirect('inventory:production_issue_queue')
         if quantity <= 0:
             messages.error(request, 'مقدار درخواست باید بزرگ‌تر از صفر باشد.')
         else:
@@ -299,56 +302,15 @@ def handover_create(request):
 @warehouse_or_manager_required
 @require_http_methods(['POST'])
 def issue_material(request, issue_id):
-    """Confirm hand-over and create the inventory consumption record in the same transaction."""
-    with atomic():
-        issue = get_object_or_404(
-            MaterialIssue.objects
-            .select_for_update()
-            .select_related('raw_material', 'defect__order_item', 'order_item__order'),
-            pk=issue_id
-        )
-        quantity = Decimal(request.POST.get('quantity', str(issue.requested_quantity)))
-        remaining = issue.requested_quantity - issue.issued_quantity
-        if issue.status not in ['requested', 'partial']:
-            messages.error(request, 'این درخواست قبلاً تعیین تکلیف شده است.')
-        elif quantity <= 0 or quantity > remaining:
-            messages.error(request, 'مقدار تحویل باید بین صفر و مانده درخواست باشد.')
-        elif issue.raw_material.current_stock < quantity:
-            messages.error(request, f'موجودی کافی نیست. موجودی فعلی: {issue.raw_material.current_stock}')
-        else:
-            if issue.task_id:
-                movement = StockMovement.objects.create(
-                    raw_material=issue.raw_material, movement_type='consumption', quantity=quantity,
-                    reference_task=issue.task, created_by=request.user,
-                    note=f'تحویل انبار #{issue.id} — {issue.get_purpose_display()}'
-                )
-            else:
-                item = issue.order_item
-                if item is None and issue.defect_id:
-                    item = issue.defect.order_item
-                if item is not None:
-                    note = f'تحویل انبار #{issue.id} — نقاشی — سفارش {item.order_id}/آیتم {item.id}'
-                else:
-                    note = f'تحویل انبار #{issue.id} — {issue.get_purpose_display()}'
-                movement = StockMovement.objects.create(
-                    raw_material=issue.raw_material, movement_type='consumption', quantity=quantity,
-                    reference_task=None,
-                    reference_order_item=item,
-                    reference_color_part=issue.color_part,
-                    created_by=request.user,
-                    note=note,
-                )
-            issue.stock_movement = movement
-            issue.issued_quantity += quantity
-            issue.status = 'issued' if issue.issued_quantity >= issue.requested_quantity else 'partial'
-            issue.issued_by = request.user
-            issue.received_by = request.user  # ثبت نام شخص تحویل گیرنده
-            issue.issued_at = timezone.now()
-            issue.save(update_fields=['issued_quantity', 'status', 'issued_by', 'received_by', 'issued_at', 'stock_movement'])
-            if issue.defect_id and issue.status == 'issued':
-                issue.defect.status = 'rework_issued'
-                issue.defect.save(update_fields=['status'])
-            messages.success(request, 'تحویل مواد و خروج انبار ثبت شد.')
+    """Confirm hand-over for a single queue row through the shared handover service."""
+    try:
+        quantity = _to_quantity(request.POST.get('quantity'))
+        services.execute_handover(
+            issued_by=request.user, received_by=request.user,
+            items=[(issue_id, quantity)], note='تحویل تک‌ردیف')
+        messages.success(request, 'تحویل مواد و خروج انبار ثبت شد.')
+    except HandoverError as exc:
+        messages.error(request, str(exc))
     return redirect('inventory:production_issue_queue')
 
 
