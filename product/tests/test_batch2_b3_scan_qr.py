@@ -30,13 +30,17 @@ class Batch2B3ScanQRTests(TestCase):
     def _create_order(self, number='B3-1'):
         return Order.objects.create(user=self.admin, customer=self.customer, number=number)
 
-    def test_no_pending_task_no_log_created(self):
+    def test_no_pending_task_still_creates_log(self):
+        """لاگ باید حتی بدون وجود تسک pending ایجاد شود"""
         order = self._create_order('B3-1')
         item = OrderItem.objects.create(order=order, product=self.product, quantity=1)
         logs_before = ProductionLog.objects.count()
         response = self.client.post(reverse('scan_qr', args=[item.id]))
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(ProductionLog.objects.count(), logs_before)
+        # لاگ باید ایجاد شده باشد
+        self.assertEqual(ProductionLog.objects.count(), logs_before + 1)
+        log = ProductionLog.objects.get(order_item=item, stage='cnc')
+        self.assertEqual(log.user, self.cnc_worker)
 
     def test_repeat_scan_message_not_duplicate(self):
         order = self._create_order('B3-2')
@@ -61,13 +65,17 @@ class Batch2B3ScanQRTests(TestCase):
         item_a = OrderItem.objects.create(order=order, product=self.product, quantity=1)
         item_b = OrderItem.objects.create(order=order, product=self.other_product, quantity=1)
         # Create a pending CNC task for item_b
-        ProductionTask.objects.create(
+        task_b = ProductionTask.objects.create(
             order=order, order_item=item_b,
             station_name='cnc', step_order=1, quantity=1, status='pending',
         )
         response = self.client.post(reverse('scan_qr', args=[item_a.id]))
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(ProductionLog.objects.count(), 0)
+        # لاگ برای item_a ایجاد شده (مستقل از وجود تسک)
+        self.assertEqual(ProductionLog.objects.filter(order_item=item_a).count(), 1)
+        # تسک item_b نباید علامت‌گذاری شده باشد
+        task_b.refresh_from_db()
+        self.assertEqual(task_b.status, 'pending')
 
     def test_matching_pending_task_scanned(self):
         order = self._create_order('B3-4')

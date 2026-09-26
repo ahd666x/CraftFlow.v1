@@ -118,7 +118,7 @@
                             <form method="post" action="{% url 'product_toggle_active' product.id %}" style="display:inline">
                                 {% csrf_token %}
                                 <button type="submit" class="btn btn-sm {% if product.is_active %}btn-success{% else %}btn-outline-secondary{% endif %}">
-                                    {% if product.is_active %}عال{% else %}غیرعال{% endif %}
+                                    {% if product.is_active %}فعال{% else %}غیرفعال{% endif %}
                                 </button>
                             </form>
                         </td>

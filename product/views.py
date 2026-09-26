@@ -1479,27 +1479,24 @@ def scan_qr(request, pk):
         messages.warning(request, "قبلاً ثبت شده")
         return redirect('item_detail', pk=pk)
 
-    # پیدا کردن تسک pending مرتبط (آیتم یا سفارش) — قبل از ثبت لاگ
+    # پیدا کردن تسک pending مرتبط (آیتم یا سفارش) — برای علامت‌گذاری
     task = ProductionTask.objects.filter(
         Q(order_item=item) | Q(order_item__isnull=True, order=item.order),
         station_name=stage,
         status='pending'
     ).first()
 
-    if not task:
-        messages.error(request, "مرحله مجاز نیست")
-        return redirect('item_detail', pk=pk)
-
-    # ثبت لاگ و علامت‌گذاری تسک
+    # ثبت لاگ — مستقل از وجود تسک
     with transaction.atomic():
         ProductionLog.objects.create(
             order_item=item,
             stage=stage,
             user=request.user
         )
-        task.status = 'done'
-        task.scanned_by = request.user
-        task.save()
+        if task:
+            task.status = 'done'
+            task.scanned_by = request.user
+            task.save()
 
     messages.success(request, "مرحله ثبت شد ✅")
     return redirect('item_detail', pk=pk)
