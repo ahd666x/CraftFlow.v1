@@ -4,6 +4,7 @@ import logging
 import os
 import re
 import traceback
+import xml.etree.ElementTree as ET
 from datetime import datetime, time, timedelta
 
 import pandas as pd
@@ -79,6 +80,7 @@ from .utils import (
     get_color_hex_map,
     get_color_code_choices,
     auto_assign_paint_tasks,
+    cancel_unissued_paint_material_requests,
 )
 logger = logging.getLogger(__name__)
 
@@ -451,6 +453,7 @@ def worker_to_dict(worker):
     return {
         'id': worker.id,
         'username': worker.user.username,
+        'display_name': worker.user.get_full_name() or worker.user.username,
         'stage_label': dict(STATION_CHOICES).get(worker.stage, worker.stage),
         'skills': worker.skills,
         'skill_priority': worker.skill_priority,
@@ -1084,9 +1087,19 @@ def dashboard(request):
 
     # بار کاری ایستگاه‌ها
     station_load = []
+    station_codes = [code for code, _ in STATION_CHOICES]
+    status_counts = (
+        ProductionTask.objects
+        .filter(station_name__in=station_codes, status__in=['pending', 'waiting'])
+        .values('station_name')
+        .annotate(pending=Count('id', filter=Q(status='pending')),
+                  waiting=Count('id', filter=Q(status='waiting')))
+    )
+    counts_map = {(row['station_name']): row for row in status_counts}
     for code, name in STATION_CHOICES:
-        pending = ProductionTask.objects.filter(station_name=code, status='pending').count()
-        waiting = ProductionTask.objects.filter(station_name=code, status='waiting').count()
+        counts = counts_map.get(code, {})
+        pending = counts.get('pending', 0)
+        waiting = counts.get('waiting', 0)
         station_load.append({
             'name': name,
             'pending': pending,
@@ -1399,8 +1412,8 @@ def item_detail(request, pk):
         else:
             stage_status_list.append(None)
     
-    # ۲. دریافت همه تسک‌های این سفارش
-    all_tasks = ProductionTask.objects.filter(order=item.order).select_related('part')
+    # ۲. دریافت همه تسک‌های این آیتم
+    all_tasks = ProductionTask.objects.filter(order_item=item).select_related('part')
     
     # ۳. ساخت نگاشت از part_id به station -> status
     # همچنین نگاشت از base_part_id برای قطعات داینامیک
@@ -1442,7 +1455,7 @@ def item_detail(request, pk):
         'stage_status_list': stage_status_list,
         'station_choices': STATION_CHOICES,
         'bom_parts': bom_parts,
-        'has_paint_tasks': item.paint_tasks.exists(),
+        'has_paint_tasks': item.paint_tasks.filter(station_name='paint').exists(),
         'order_date_str': order_date_str,
         'category_name': category_name,
         'representative_name': representative_name,
@@ -1593,10 +1606,6 @@ def export_autocut_xml(request, order_id):
 
         for idx, task in enumerate(tasks, start=1):
             part = task.part
-            # پیدا کردن OrderItem مربوطه برای گرفتن نام محصول و مشتری
-            order_item = order.items.filter(product__bom__part=part).first()
-            product_name = order_item.product.name if order_item else ""
-            product_category = order_item.product.category if order_item else ""
             customer_name = order.user.username if order.user else ""
 
             shape = ET.SubElement(objective, f"{{{NS}}}Shape", {
@@ -1604,8 +1613,8 @@ def export_autocut_xml(request, order_id):
                 "X": str(part.length),
                 "Y": str(part.width),
                 "Turn": "true" if part.turn else "false",
-                "Grain": product_category or "",
-                "Order": product_name,   
+                "Grain": part.grain or "",
+                "Order": part.pname or "",
                 "Count": str(task.quantity),
                 "F2": part.f2 or part.name,
                 "F3": part.f3 or "",
@@ -1693,10 +1702,6 @@ def export_multiple_autocut(request):
         for task in tasks:
             part = task.part
             order = task.order
-            # پیدا کردن OrderItem مربوطه برای گرفتن نام محصول و مشتری
-            order_item = order.items.filter(product__bom__part=part).first()
-            product_name = order_item.product.name if order_item else ""
-            product_category = order_item.product.category if order_item else ""
             customer_name = order.user.username if order.user else ""
             
             shape = ET.SubElement(objective, f"{{{NS}}}Shape", {
@@ -1704,10 +1709,8 @@ def export_multiple_autocut(request):
                 "X": str(part.length),
                 "Y": str(part.width),
                 "Turn": "true" if part.turn else "false",
-                # "Grian": product_category or "",
-                # "Order": product_name or "",  
-                "Grain": part.grain or product_category or "",
-                "Order": part.pname,    
+                "Grain": part.grain or "",
+                "Order": part.pname or "",
                 "Count": str(task.quantity),
                 "F2": part.f2 or part.name,
                 "F3": part.f3 or "",
@@ -2530,15 +2533,12 @@ def report_production_unified(request):
         for code, name in STATION_CHOICES:
             ev = item_station_latest.get((item.id, code))
             if ev and ev.created_at:
-                jdate = ev.created_at
-                if hasattr(jdate, 'strftime'):
-                    stage_status[code] = f"{jdate.month:02d}/{jdate.day:02d}"
-                else:
-                    stage_status[code] = str(jdate)
+                jd = jdatetime.datetime.fromgregorian(datetime=timezone.localtime(ev.created_at))
+                stage_status[code] = f"{jd.month:02d}/{jd.day:02d}"
             else:
                 log = item.logs.filter(stage=code).first()
                 if log and log.created_at:
-                    jdate = log.created_at
+                    jdate = timezone.localtime(log.created_at)
                     stage_status[code] = f"{jdate.month:02d}/{jdate.day:02d}"
                 else:
                     stage_status[code] = None
@@ -4191,6 +4191,8 @@ def delivery_confirm(request, item_id):
                 'item': item,
                 'users': users,
                 'selected_representative': request.POST.get('representative', ''),
+                'packed_units': item.packaging_units.filter(is_packed=True).count(),
+                'total_units': item.packaging_units.count(),
             }
             return render(request, 'delivery/delivery_confirm.html', context)
 
@@ -4234,6 +4236,8 @@ def delivery_confirm(request, item_id):
     context = {
         'item': item,
         'users': users,
+        'packed_units': item.packaging_units.filter(is_packed=True).count(),
+        'total_units': item.packaging_units.count(),
     }
     return render(request, 'delivery/delivery_confirm.html', context)
 
@@ -6071,7 +6075,10 @@ def painting_delete_tasks(request):
             return JsonResponse({'success': False, 'error': 'شناسه‌های نامعتبر'})
         qs = qs.filter(pk__in=task_ids)
 
-    deleted = qs.delete()[0]
+    with transaction.atomic():
+        pairs = set(qs.values_list('order_item_id', 'color_part'))
+        deleted = qs.delete()[0]
+        cancel_unissued_paint_material_requests(pairs)
 
     return JsonResponse({
         'success': True,
@@ -6220,6 +6227,11 @@ def painting_assignment_rules_view(request):
             rule_type = request.POST.get('rule_type', 'priority')
             is_active = request.POST.get('is_active', 'true') == 'true'
 
+            try:
+                priority = int(request.POST.get('priority', 100))
+            except (TypeError, ValueError):
+                priority = 100
+
             if not worker_id:
                 return JsonResponse({'success': False, 'error': 'کارگر الزامی است'})
 
@@ -6235,7 +6247,7 @@ def painting_assignment_rules_view(request):
                 process=process,
                 color_codes=color_codes,
                 rule_type=rule_type,
-                priority=100,
+                priority=priority,
                 is_active=is_active,
             )
             return JsonResponse({'success': True, 'id': rule.id})
@@ -6251,6 +6263,11 @@ def painting_assignment_rules_view(request):
             rule_type = request.POST.get('rule_type', rule.rule_type)
             is_active = request.POST.get('is_active', 'true') == 'true'
 
+            try:
+                priority = int(request.POST.get('priority', 100))
+            except (TypeError, ValueError):
+                priority = 100
+
             if worker_id:
                 rule.worker = get_object_or_404(WorkerProfile, pk=worker_id, stage='paint')
             if stage_id:
@@ -6264,6 +6281,7 @@ def painting_assignment_rules_view(request):
 
             rule.color_codes = [c.strip() for c in color_codes_str.split(',') if c.strip()] if color_codes_str else None
             rule.rule_type = rule_type
+            rule.priority = priority
             rule.is_active = is_active
             rule.save()
             return JsonResponse({'success': True})
@@ -6325,7 +6343,7 @@ def delete_paint_tasks(request, item_id):
     """حذف تمام تسک‌های نقاشی یک آیتم سفارش و پاک کردن زمان‌بندی/تخصیص آن‌ها"""
     item = get_object_or_404(OrderItem, pk=item_id)
 
-    paint_tasks = item.paint_tasks.all()
+    paint_tasks = item.paint_tasks.filter(station_name='paint')
     count = paint_tasks.count()
     if count == 0:
         messages.warning(request, "هیچ تسک نقاشی‌ای برای این آیتم وجود ندارد.")
@@ -6336,7 +6354,9 @@ def delete_paint_tasks(request, item_id):
         messages.warning(request, f"{done_tasks.count()} تسک نقاشی قبلاً تکمیل شده‌اند. با حذف آن‌ها، سابقه از بین می‌رود.")
 
     with transaction.atomic():
+        pairs = set(paint_tasks.values_list('order_item_id', 'color_part'))
         paint_tasks.delete()
+        cancel_unissued_paint_material_requests(pairs)
 
     messages.success(request, f"✅ {count} تسک نقاشی آیتم {item.id} حذف شدند.")
     return redirect('item_detail', pk=item.id)
@@ -6360,7 +6380,9 @@ def delete_all_paint_tasks_for_order(request, order_id):
         messages.warning(request, f"{done_tasks.count()} تسک نقاشی قبلاً تکمیل شده‌اند. با حذف آن‌ها، سابقه از بین می‌رود.")
 
     with transaction.atomic():
+        pairs = set(paint_tasks.values_list('order_item_id', 'color_part'))
         paint_tasks.delete()
+        cancel_unissued_paint_material_requests(pairs)
         remaining_tasks = order.tasks.exclude(station_name='paint')
         if not remaining_tasks.exists():
             order.status = 'draft'

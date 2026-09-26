@@ -347,27 +347,33 @@ const PAINTING_MATERIALS_API = "{% url 'product_color_part_materials_api' %}";
         return badges[source] || '';
     }
 
+    function escapeHtml(v) {
+        var d = document.createElement('div');
+        d.textContent = (v === null || v === undefined) ? '' : String(v);
+        return d.innerHTML;
+    }
+
     function renderMaterialRow(req) {
         return `
-            <tr class="material-row" data-req-id="${req.requirement_id || ''}" data-process-id="${req.process_id}" data-material-id="${req.raw_material_id}">
+            <tr class="material-row" data-req-id="${escapeHtml(req.requirement_id || '')}" data-process-id="${escapeHtml(req.process_id)}" data-material-id="${escapeHtml(req.raw_material_id)}">
                 <td>
-                    <span class="process-name">${req.process_name}</span>
-                    <input type="hidden" name="process_id" value="${req.process_id}" class="process-select" data-field="process_id" readonly>
+                    <span class="process-name">${escapeHtml(req.process_name)}</span>
+                    <input type="hidden" name="process_id" value="${escapeHtml(req.process_id)}" class="process-select" data-field="process_id" readonly>
                 </td>
                 <td>
-                    <span class="raw-material-name">${req.raw_material_name}</span>
+                    <span class="raw-material-name">${escapeHtml(req.raw_material_name)}</span>
                     ${req.is_color_variant ? '<span class="badge bg-warning text-dark ms-1" title="ماده واقعی این اسلات بر اساس کد رنگ سفارش انتخاب می‌شود">وابسته به رنگ سفارش</span>' : ''}
                 </td>
-                <td>${req.unit}</td>
+                <td>${escapeHtml(req.unit)}</td>
                 <td>
                     <input type="number" step="0.001" class="form-control form-control-sm consumption-input"
-                           data-field="consumption_per_unit" value="${req.consumption_per_unit}"
+                           data-field="consumption_per_unit" value="${escapeHtml(req.consumption_per_unit)}"
                            placeholder="مقدار را وارد کنید">
                 </td>
                 <td class="text-center">
                     ${req.requirement_id ? `
                         <button type="button" class="btn btn-sm btn-outline-danger delete-material-btn"
-                                data-req-id="${req.requirement_id}" title="حذف مقدار مصرف">
+                                data-req-id="${escapeHtml(req.requirement_id)}" title="حذف مقدار مصرف">
                             <i class="bi bi-trash"></i>
                         </button>
                     ` : ''}
@@ -401,7 +407,7 @@ const PAINTING_MATERIALS_API = "{% url 'product_color_part_materials_api' %}";
             attachRowEvents(tabPanel, productId, colorPart);
         } catch (e) {
             console.error('Failed to load materials:', e);
-            tbody.innerHTML = `<tr><td colspan="5" class="text-center text-danger py-3">خطا: ${e.message}</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="5" class="text-center text-danger py-3">خطا: ${escapeHtml(e.message)}</td></tr>`;
         }
     }
 
@@ -525,7 +531,7 @@ const PAINTING_MATERIALS_API = "{% url 'product_color_part_materials_api' %}";
             toastEl.setAttribute('role', 'alert');
             toastEl.innerHTML = `
                 <div class="d-flex">
-                    <div class="toast-body">${message}</div>
+                    <div class="toast-body">${escapeHtml(message)}</div>
                     <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
                 </div>
             `;

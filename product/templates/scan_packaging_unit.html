@@ -44,18 +44,22 @@
         </div>
     {% endif %}
 
-    {% if unit.is_packed and request.user == unit.packed_by or request.user.is_superuser %}
+    {% if unit.is_packed %}
+        {% if request.user == unit.packed_by or request.user.is_superuser %}
         <form method="post" action="{% url 'undo_packaging_unit' unit.id %}?next={{ next_url }}" class="mt-2">
             {% csrf_token %}
             <button type="submit" class="btn btn-sm btn-outline-danger">↩️ لغو بسته‌بندی</button>
         </form>
+        {% endif %}
     {% endif %}
 
-    {% if unit.is_shipped and request.user == unit.shipped_by or request.user.is_superuser %}
+    {% if unit.is_shipped %}
+        {% if request.user == unit.shipped_by or request.user.is_superuser %}
         <form method="post" action="{% url 'undo_packaging_unit' unit.id %}?next={{ next_url }}" class="mt-2">
             {% csrf_token %}
             <button type="submit" class="btn btn-sm btn-outline-danger">↩️ لغو ارسال</button>
         </form>
+        {% endif %}
     {% endif %}
 </div>
 

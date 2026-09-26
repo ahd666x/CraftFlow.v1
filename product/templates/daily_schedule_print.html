@@ -443,7 +443,7 @@
             {% for entry in col.date_entries %}
             <div class="all-days-entry" style="margin-bottom:6px;border:1px solid #9ca3af;border-radius:4px;padding:4px;">
                 <div style="background:#e5e7eb;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:700;margin-bottom:3px;">
-                    📅 {{ entry.date|date:"j \\M \\Y" }} ({{ entry.date_str }})
+                    📅 {{ entry.date|persian_date }}
                     <span style="float:left;font-weight:400;font-size:9px;color:#64748b;">
                         {{ entry.tasks|length }} تسک | مجموع زمان: {{ entry.total_duration }} دقیقه
                     </span>
@@ -517,7 +517,7 @@
         <div class="empty-msg">هیچ برنامه‌ریزی از تاریخ {{ today_str }} تا پایان برنامه‌ریزی وجود ندارد.</div>
     {% endif %}
     <div class="footer">
-        از تاریخ {{ today_str }} تا {{ end_date|date:"j \\M \\Y" }} | تاریخ چاپ: {{ today_str }} | ساعت: {% now "H:i" %}
+        از تاریخ {{ today_str }} تا {{ end_date|date:"Y/m/d" }} | تاریخ چاپ: {{ today_str }} | ساعت: {% now "H:i" %}
     </div>
     {% else %}
     <!-- ===== حالت چاپ یک روز ===== -->

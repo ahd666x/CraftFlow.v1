@@ -4,7 +4,7 @@
   <h2>🚚 ثبت تحویل - آیتم #{{ item.id }}</h2>
   <p><strong>محصول:</strong> {{ item.product.name }}</p>
   <p><strong>سفارش:</strong> #{{ item.order.id }} - {{ item.order.customer.name }}</p>
-  <p><strong>واحدها:</strong> {{ item.packaging_units.filter.is_packed|yesno:"بسته‌بندی شده,نیاز به بسته‌بندی" }} از {{ item.packaging_units.count }}</p>
+  <p><strong>واحدها:</strong> {{ packed_units }} بسته‌بندی‌شده از {{ total_units }}</p>
 
   <form method="post">
     {% csrf_token %}

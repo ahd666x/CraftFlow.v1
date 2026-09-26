@@ -125,12 +125,26 @@ $(document).ready(function() {
 <script src="{% static 'js/color_filter.js' %}"></script>
 <script>
 $(function () {
-    initCategoryProductColorFilter({
+    initColorFilter = initCategoryProductColorFilter;
+    initColorFilter({
         categorySelector: '#id_category',
         productSelector: '#id_product',
         loadProductsUrl: "{% url 'ajax_load_products' %}",
         loadColorsUrlBase: '/ajax/load-product-colors/',
         overwriteOnInitialLoad: true
+    });
+
+    $('#order-form').on('submit', function() {
+        var $form = $(this);
+        if ($form.find('button[name="add_another"]')[0] && document.activeElement && document.activeElement.name === 'add_another') {
+            setTimeout(function() {
+                $form[0].reset();
+                $form.find('.color-field').show();
+                $form.find('select').val('');
+                $('#id_category').trigger('change');
+                $('#id_product').trigger('change');
+            }, 10);
+        }
     });
 });
 </script>

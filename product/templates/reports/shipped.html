@@ -96,7 +96,7 @@
                 <td>{{ unit.order_item.product.category.name }} {{ unit.order_item.product.name }}</td>
                 <td>{{ unit.order_item.order.customer.name }}</td>
                 <td>{% if unit.order_item.order.user %}{{ unit.order_item.order.user.get_full_name|default:unit.order_item.order.user.username }}{% else %}—{% endif %}</td>
-                <td>{{ unit.order_item.note }}</td>
+                 <td>{{ unit.order_item.notes }}</td>
             </tr>
             {% endfor %}
         </tbody>

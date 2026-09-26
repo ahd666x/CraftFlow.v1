@@ -12,6 +12,10 @@
     'use strict';
 
     var BomEditor = {
+        escapeHtml: function (s) {
+            return $('<div>').text(s == null ? '' : String(s)).html();
+        },
+
         init: function () {
             this.bindEvents();
             this.initRuleDropdowns();

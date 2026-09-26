@@ -169,11 +169,12 @@
 </div>
 
 {% include 'components/_modal.html' with id="partModal" title="ایجاد قطعه جدید" size="lg" closable=true %}
+</div>
+
 {% block extra_js %}
     <script>
         // Pre-populate color_material_map textarea as JSON for editing
         // (kept inline because it depends on Django form rendering)
     </script>
     <script src="{% static 'selvi/js/bom-editor.js' %}"></script>
-{% endblock %}
 {% endblock %}

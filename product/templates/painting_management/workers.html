@@ -98,8 +98,7 @@
             <tbody id="workerTableBody">
                 {% for worker in workers %}
                 <tr id="worker-row-{{ worker.id }}" data-worker-id="{{ worker.id }}">
-                    <td>{{ worker.user.get_full_name|default:worker.user.username }}</td>
-                    <td>{{ worker.get_stage_display }}</td>
+                    <td>{{ worker.user.get_full_name|default:worker.user.username }}</td>                    <td>{{ worker.get_stage_display }}</td>
                     <td>
                         {% for skill in worker.skills %}
                         <span class="badge bg-info skill-badge">{{ skill }}</span>
@@ -414,6 +413,12 @@
             }
         },
 
+        escapeHtml: function(v) {
+            var d = document.createElement('div');
+            d.textContent = (v === null || v === undefined) ? '' : String(v);
+            return d.innerHTML;
+        },
+
         showToast: function(message, type) {
             type = type || 'success';
             const toastEl = document.getElementById('mainToast');
@@ -526,13 +531,13 @@
             var cells = row.querySelectorAll('td');
             if (cells.length < 8) return;
 
-            cells[0].textContent = workerData.username || '';
+            cells[0].textContent = workerData.display_name || workerData.username || '';
             cells[1].textContent = workerData.stage_label || '';
 
             var skills = workerData.skills || [];
             cells[2].innerHTML = skills.length ?
                 skills.map(function(s) {
-                    return '<span class="badge bg-info skill-badge">' + Utils.safeJson(s, '') + '</span>';
+                    return '<span class="badge bg-info skill-badge">' + Utils.escapeHtml(s) + '</span>';
                 }).join(' ') :
                 '<span class="text-muted">-</span>';
 
@@ -567,19 +572,19 @@
             tr.id = 'worker-row-' + workerData.id;
             tr.setAttribute('data-worker-id', workerData.id);
 
-            var username = Utils.safeJson(workerData.username, '');
-            var stageLabel = Utils.safeJson(workerData.stage_label, '');
+            var username = workerData.display_name || workerData.username || '';
+            var stageLabel = workerData.stage_label || '';
             var skills = workerData.skills || [];
             var costs = workerData.skill_priority || {};
             var isActive = workerData.is_available === true;
 
             tr.innerHTML =
-                '<td>' + username + '</td>' +
-                '<td>' + stageLabel + '</td>' +
+                '<td>' + Utils.escapeHtml(username) + '</td>' +
+                '<td>' + Utils.escapeHtml(stageLabel) + '</td>' +
                 '<td>' + (skills.length ? skills.map(function(s) {
-                    return '<span class="badge bg-info skill-badge">' + Utils.safeJson(s, '') + '</span>';
+                    return '<span class="badge bg-info skill-badge">' + Utils.escapeHtml(s) + '</span>';
                 }).join(' ') : '<span class="text-muted">-</span>') + '</td>' +
-                '<td>' + (Object.keys(costs).length ? '<code class="small">' + JSON.stringify(costs) + '</code>' : '<span class="text-muted">-</span>') + '</td>' +
+                '<td>' + (Object.keys(costs).length ? '<code class="small">' + Utils.escapeHtml(JSON.stringify(costs)) + '</code>' : '<span class="text-muted">-</span>') + '</td>' +
                 '<td><span class="badge ' + (isActive ? 'bg-success' : 'bg-secondary') + ' rounded-pill">' + (isActive ? 'فعال' : 'غیرفعال') + '</span></td>' +
                 '<td><span class="badge bg-warning text-dark rounded-pill" id="product-count-' + workerData.id + '">0</span> ' +
                 '<button class="btn btn-sm btn-outline-warning ms-1 btn-exclusion" data-worker-id="' + workerData.id + '" data-type="products" title="مدیریت محصولات ممنوع"><i class="bi bi-slash-circle"></i></button></td>' +

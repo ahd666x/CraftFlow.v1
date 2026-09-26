@@ -10,6 +10,7 @@ from copy import copy
 from dataclasses import dataclass
 from decimal import Decimal
 
+import time as _time
 import jdatetime
 from django.db import transaction
 from django.db.models import Exists, OuterRef, Prefetch, Q, Max
@@ -225,10 +226,17 @@ FALLBACK_MATERIAL_MAP = {
 }
 
 _PAINT_PROCESS_CACHE = None
+_PAINT_PROCESS_CACHE_TS = 0
 _PAINT_WORKER_CACHE = None
+_PAINT_WORKER_CACHE_TS = 0
 _COLOR_HEX_CACHE = None
+_COLOR_HEX_CACHE_TS = 0
 _COLOR_MATERIAL_CACHE = None
+_COLOR_MATERIAL_CACHE_TS = 0
 _COLOR_CODE_CHOICES_CACHE = None
+_COLOR_CODE_CHOICES_CACHE_TS = 0
+
+_CACHE_TTL_SECONDS = 300
 
 
 def get_color_code_choices():
@@ -238,33 +246,60 @@ def get_color_code_choices():
     (e.g. before the seed data migration has run).  The result is cached
     and invalidated by ``invalidate_caches``.
     """
-    global _COLOR_CODE_CHOICES_CACHE
-    if _COLOR_CODE_CHOICES_CACHE is None:
+    global _COLOR_CODE_CHOICES_CACHE, _COLOR_CODE_CHOICES_CACHE_TS
+    if _COLOR_CODE_CHOICES_CACHE is None or (_time.time() - _COLOR_CODE_CHOICES_CACHE_TS) > _CACHE_TTL_SECONDS:
         qs = ColorCode.objects.filter(is_active=True).order_by('code')
         if qs.exists():
             _COLOR_CODE_CHOICES_CACHE = [(str(c.code), str(c.code)) for c in qs]
         else:
             _COLOR_CODE_CHOICES_CACHE = [(str(i), str(i)) for i in range(1, 11)] + [('جناغی', 'جناغی'), ('بتنی', 'بتنی')]
+        _COLOR_CODE_CHOICES_CACHE_TS = _time.time()
     return _COLOR_CODE_CHOICES_CACHE
+
 
 
 def invalidate_caches():
     global _PAINT_PROCESS_CACHE, _PAINT_WORKER_CACHE, _COLOR_HEX_CACHE, _COLOR_MATERIAL_CACHE, _COLOR_CODE_CHOICES_CACHE
+    global _PAINT_PROCESS_CACHE_TS, _PAINT_WORKER_CACHE_TS, _COLOR_HEX_CACHE_TS, _COLOR_MATERIAL_CACHE_TS, _COLOR_CODE_CHOICES_CACHE_TS
     _PAINT_PROCESS_CACHE = None
+    _PAINT_PROCESS_CACHE_TS = 0
     _PAINT_WORKER_CACHE = None
+    _PAINT_WORKER_CACHE_TS = 0
     _COLOR_HEX_CACHE = None
+    _COLOR_HEX_CACHE_TS = 0
     _COLOR_MATERIAL_CACHE = None
+    _COLOR_MATERIAL_CACHE_TS = 0
     _COLOR_CODE_CHOICES_CACHE = None
+    _COLOR_CODE_CHOICES_CACHE_TS = 0
     logger.info("کش‌های نقاشی پاک شدند.")
 
 
+def cancel_unissued_paint_material_requests(pairs):
+    """pairs: iterable of (order_item_id, color_part). If no paint task remains for that item/color, cancel unissued requested material issues."""
+    from inventory.models import MaterialIssue
+    for item_id, color_part in set(pairs):
+        if not item_id:
+            continue
+        if ProductionTask.objects.filter(station_name='paint', order_item_id=item_id, color_part=color_part or '').exists():
+            continue
+        MaterialIssue.objects.filter(
+            order_item_id=item_id,
+            color_part=color_part or '',
+            task__isnull=True,
+            purpose='production',
+            status='requested',
+            issued_quantity=0,
+        ).update(status='cancelled')
+
+
 def _get_process_cache():
-    global _PAINT_PROCESS_CACHE
-    if _PAINT_PROCESS_CACHE is None:
+    global _PAINT_PROCESS_CACHE, _PAINT_PROCESS_CACHE_TS
+    if _PAINT_PROCESS_CACHE is None or (_time.time() - _PAINT_PROCESS_CACHE_TS) > _CACHE_TTL_SECONDS:
         _PAINT_PROCESS_CACHE = {}
         for p in PaintingProcess.objects.filter(is_active=True).prefetch_related('stages'):
             for code in (p.color_codes or []):
                 _PAINT_PROCESS_CACHE[str(code)] = p
+        _PAINT_PROCESS_CACHE_TS = _time.time()
     return _PAINT_PROCESS_CACHE
 
 
@@ -275,12 +310,13 @@ def get_color_hex_map():
     The cache is invalidated whenever a Color or ColorCode instance is saved
     (via ``invalidate_caches``).
     """
-    global _COLOR_HEX_CACHE
-    if _COLOR_HEX_CACHE is None:
+    global _COLOR_HEX_CACHE, _COLOR_HEX_CACHE_TS
+    if _COLOR_HEX_CACHE is None or (_time.time() - _COLOR_HEX_CACHE_TS) > _CACHE_TTL_SECONDS:
         _COLOR_HEX_CACHE = dict(FALLBACK_HEX_MAP)
         for code, hex_code in ColorCode.objects.filter(is_active=True, hex_code__gt='').values_list('code', 'hex_code'):
             if code and hex_code:
                 _COLOR_HEX_CACHE[str(code)] = hex_code
+        _COLOR_HEX_CACHE_TS = _time.time()
     return _COLOR_HEX_CACHE
 
 
@@ -289,18 +325,19 @@ def get_color_material_map():
 
     Falls back to FALLBACK_MATERIAL_MAP for codes that have no ColorCode entry.
     """
-    global _COLOR_MATERIAL_CACHE
-    if _COLOR_MATERIAL_CACHE is None:
+    global _COLOR_MATERIAL_CACHE, _COLOR_MATERIAL_CACHE_TS
+    if _COLOR_MATERIAL_CACHE is None or (_time.time() - _COLOR_MATERIAL_CACHE_TS) > _CACHE_TTL_SECONDS:
         _COLOR_MATERIAL_CACHE = dict(FALLBACK_MATERIAL_MAP)
         for code, material_name in ColorCode.objects.filter(is_active=True, material_name__gt='').values_list('code', 'material_name'):
             if code and material_name:
                 _COLOR_MATERIAL_CACHE[str(code)] = material_name
+        _COLOR_MATERIAL_CACHE_TS = _time.time()
     return _COLOR_MATERIAL_CACHE
 
 
 def _get_worker_cache():
-    global _PAINT_WORKER_CACHE
-    if _PAINT_WORKER_CACHE is None:
+    global _PAINT_WORKER_CACHE, _PAINT_WORKER_CACHE_TS
+    if _PAINT_WORKER_CACHE is None or (_time.time() - _PAINT_WORKER_CACHE_TS) > _CACHE_TTL_SECONDS:
         try:
             _PAINT_WORKER_CACHE = []
             workers_qs = WorkerProfile.objects.filter(
@@ -324,6 +361,7 @@ def _get_worker_cache():
         except Exception as e:
             logger.exception("خطا در بارگذاری کش کارگران")
             _PAINT_WORKER_CACHE = []
+        _PAINT_WORKER_CACHE_TS = _time.time()
     return _PAINT_WORKER_CACHE if isinstance(_PAINT_WORKER_CACHE, list) else []
 
 

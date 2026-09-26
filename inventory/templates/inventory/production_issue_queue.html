@@ -261,35 +261,36 @@
 (function() {
   'use strict';
 
-  // Auto-refresh every 60 seconds
-  let refreshInterval = null;
-  const REFRESH_MS = 60000;
+   // Auto-refresh every 60 seconds
+   let refreshInterval = null;
+   const REFRESH_MS = 60000;
 
-  function startAutoRefresh() {
-    refreshInterval = setInterval(() => {
-      fetch(window.location.href, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-        .then(r => r.text())
-        .then(html => {
-          const parser = new DOMParser();
-          const doc = parser.parseFromString(html, 'text/html');
-          const newTable = doc.querySelector('#issuesTable tbody');
-          const newCount = doc.querySelector('#issueCount');
-          if (newTable) {
-            // Preserve checkbox selections
-            const selectedIds = Array.from(document.querySelectorAll('.issue-checkbox:checked')).map(cb => cb.value);
-            document.querySelector('#issuesTable tbody').innerHTML = newTable.innerHTML;
-            // Restore selections
-            selectedIds.forEach(id => {
-              const cb = document.querySelector(`.issue-checkbox[value="${id}"]`);
-              if (cb) cb.checked = true;
-            });
-            updateHandoverBar();
-          }
-          if (newCount) document.querySelector('#issueCount').textContent = newCount.textContent;
-        })
-        .catch(console.error);
-    }, REFRESH_MS);
-  }
+   function startAutoRefresh() {
+     refreshInterval = setInterval(() => {
+       if (document.activeElement && document.activeElement.matches('.issue-qty-input')) {
+         return;
+       }
+       fetch(window.location.href, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+         .then(r => r.text())
+         .then(html => {
+           const parser = new DOMParser();
+           const doc = parser.parseFromString(html, 'text/html');
+           const newTable = doc.querySelector('#issuesTable tbody');
+           if (newTable) {
+             // Preserve checkbox selections
+             const selectedIds = Array.from(document.querySelectorAll('.issue-checkbox:checked')).map(cb => cb.value);
+             document.querySelector('#issuesTable tbody').innerHTML = newTable.innerHTML;
+             // Restore selections
+             selectedIds.forEach(id => {
+               const cb = document.querySelector(`.issue-checkbox[value="${id}"]`);
+               if (cb) cb.checked = true;
+             });
+             updateHandoverBar();
+           }
+         })
+         .catch(console.error);
+     }, REFRESH_MS);
+   }
 
   function stopAutoRefresh() {
     if (refreshInterval) clearInterval(refreshInterval);
@@ -305,32 +306,37 @@
   });
 
   const csrfToken = '{{ csrf_token }}';
-  document.querySelectorAll('.btn-cancel-issue').forEach(btn => {
-    btn.addEventListener('click', async function () {
-      const response = await fetch(this.dataset.cancelUrl, {
+
+  // Event delegation for cancel-issue buttons (works after auto-refresh)
+  document.getElementById('issuesTable').addEventListener('click', e => {
+    const btn = e.target.closest('.btn-cancel-issue');
+    if (btn) {
+      e.preventDefault();
+      fetch(btn.dataset.cancelUrl, {
         method: 'POST',
         headers: {
           'X-CSRFToken': csrfToken,
           'X-Requested-With': 'XMLHttpRequest'
         }
-      });
-      const result = await response.json();
-      if (response.ok && result.success) {
-        window.location.reload();
-      } else {
-        alert(result.error || 'خطا در لغو درخواست');
-      }
-    });
+      })
+      .then(async resp => {
+        const result = await resp.json();
+        if (resp.ok && result.success) {
+          window.location.reload();
+        } else {
+          alert(result.error || 'خطا در لغو درخواست');
+        }
+      })
+      .catch(() => alert('خطای ارتباط با سرور'));
+    }
   });
 
-  // Keyboard shortcut: Enter to submit quantity
-  document.querySelectorAll('.issue-qty-input').forEach(input => {
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        input.closest('form').submit();
-      }
-    });
+  // Event delegation for Enter key on quantity inputs (works after auto-refresh)
+  document.getElementById('issuesTable').addEventListener('keydown', e => {
+    if (e.target.matches('.issue-qty-input') && e.key === 'Enter') {
+      e.preventDefault();
+      e.target.closest('form').submit();
+    }
   });
 
   // Highlight row on hover for better UX

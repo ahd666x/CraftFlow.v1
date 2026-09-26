@@ -112,7 +112,8 @@
                                 data-worker="{{ rule.worker.id }}"
                                 data-stage="{{ rule.painting_stage.id|default:'' }}"
                                 data-process="{{ rule.process.id|default:'' }}"
-                                data-colors="{{ rule.color_codes|join:',' }}"
+                                data-colors="{% if rule.color_codes %}{{ rule.color_codes|join:',' }}{% endif %}"
+                                data-priority="{{ rule.priority }}"
                                 data-rule-type="{{ rule.rule_type }}"
                                 data-active="{{ rule.is_active|yesno:'true,false' }}">
                             <i class="bi bi-pencil"></i>
@@ -264,6 +265,7 @@ $(function() {
         $('#ruleColors').val(btn.data('colors') || '');
         $('#ruleType').val(btn.data('rule-type') || 'priority');
         $('#ruleActive').prop('checked', btn.data('active') === 'true');
+        $('#rulePriority').val(btn.data('priority') || 100);
         updatePriorityVisibility();
         $('#ruleModal').modal('show');
     });

@@ -1,6 +1,12 @@
 (function ($) {
     'use strict';
 
+    function escapeHtml(v) {
+        var d = document.createElement('div');
+        d.textContent = (v === null || v === undefined) ? '' : String(v);
+        return d.innerHTML;
+    }
+
     function applyColorFields(sel, defaults, overwrite) {
         var allowed = Object.keys(defaults || {});
         document.querySelectorAll(sel).forEach(function (el) {
@@ -44,7 +50,7 @@
                 success: function (data) {
                     var html = '<option value="">---------</option>';
                     (data || []).forEach(function (p) {
-                        html += '<option value="' + p.id + '">' + p.name + '</option>';
+                        html += '<option value="' + escapeHtml(p.id) + '">' + escapeHtml(p.name) + '</option>';
                     });
                     $product.html(html);
                     if (selectedId) {
