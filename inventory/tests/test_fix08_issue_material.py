@@ -50,8 +50,8 @@ class IssueMaterialTests(TestCase):
         self.assertEqual(response.status_code, 302)
         issue.refresh_from_db()
         self.assertEqual(issue.status, 'issued')
-        self.assertIsNotNone(issue.stock_movement)
-        self.assertEqual(issue.stock_movement.reference_order_item, self.order_item)
+        movement = issue.movements.get()
+        self.assertEqual(movement.reference_order_item, self.order_item)
 
     def test_invalid_quantity(self):
         issue = self._defect_only_issue()
@@ -59,7 +59,7 @@ class IssueMaterialTests(TestCase):
         self.assertEqual(response.status_code, 302)
         issue.refresh_from_db()
         self.assertEqual(issue.status, 'requested')
-        self.assertIsNone(issue.stock_movement)
+        self.assertFalse(issue.movements.exists())
 
     def test_pack_size_leftover(self):
         issue = self._defect_only_issue()
@@ -68,7 +68,7 @@ class IssueMaterialTests(TestCase):
         issue.refresh_from_db()
         leftover = MaterialLeftover.objects.get(raw_material=self.raw)
         self.assertEqual(leftover.quantity, Decimal('1'))
-        movement = issue.stock_movement
+        movement = issue.movements.get()
         self.assertEqual(movement.quantity, Decimal('3'))
 
     def test_insufficient_stock(self):
@@ -78,4 +78,4 @@ class IssueMaterialTests(TestCase):
         self.assertEqual(response.status_code, 302)
         issue.refresh_from_db()
         self.assertEqual(issue.status, 'requested')
-        self.assertIsNone(issue.stock_movement)
+        self.assertFalse(issue.movements.exists())

@@ -182,6 +182,7 @@ def _create_issue_movement(issue, qty, issued_by, handover):
             quantity=qty,
             reference_task=issue.task,
             created_by=issued_by,
+            fulfilled_issue=issue,
             note=f'تحویل انبار #{issue.id} — {issue.get_purpose_display()} — {suffix}',
         )
 
@@ -202,6 +203,7 @@ def _create_issue_movement(issue, qty, issued_by, handover):
         reference_order_item=item,
         reference_color_part=issue.color_part,
         created_by=issued_by,
+        fulfilled_issue=issue,
         note=note,
     )
 
@@ -257,7 +259,6 @@ def execute_handover(*, issued_by, items, received_by=None, note=''):
     now = timezone.now()
     for issue, qty in issues_qty:
         movement = _create_issue_movement(issue, qty, issued_by, handover)
-        issue.stock_movement = movement
         issue.issued_quantity += qty
         issue.status = 'issued' if issue.issued_quantity >= issue.requested_quantity else 'partial'
         issue.issued_by = issued_by
@@ -267,7 +268,7 @@ def execute_handover(*, issued_by, items, received_by=None, note=''):
         issue.handover = handover
         issue.save(update_fields=[
             'issued_quantity', 'status', 'issued_by', 'received_by',
-            'issued_at', 'stock_movement', 'handover',
+            'issued_at', 'handover',
         ])
         if issue.defect_id and issue.status == 'issued':
             issue.defect.status = 'rework_issued'

@@ -691,27 +691,27 @@ class MaterialIssueStockMovementLinkTests(TestCase):
         response = self.client.post(reverse('inventory:issue_material', args=[issue.id]), {'quantity': '3'})
         self.assertEqual(response.status_code, 302)
         issue.refresh_from_db()
-        self.assertIsNotNone(issue.stock_movement)
-        self.assertEqual(issue.stock_movement.reference_task_id, issue.task_id)
-        self.assertEqual(issue.stock_movement.quantity, Decimal('3'))
+        movement = issue.movements.get()
+        self.assertEqual(movement.reference_task_id, issue.task_id)
+        self.assertEqual(movement.quantity, Decimal('3'))
         self.assertEqual(issue.issued_quantity, Decimal('3'))
         self.assertEqual(issue.status, 'partial')
 
     def test_rework_movement_excluded_from_normal_consumption_report(self):
-        rework_movement = StockMovement.objects.create(
-            raw_material=self.rework_raw, movement_type='consumption', quantity=Decimal('2'),
-            reference_task=self.task, note=f'تحویل انبار #rework — جبران خرابی / ساخت مجدد',
-        )
         defect = ProductionDefect.objects.create(
             task=self.task, order=self.order, order_item=self.order_item,
             color_part='بدنه', quantity=1, description='خرابی تست',
             reported_by=self.user,
         )
-        MaterialIssue.objects.create(
+        issue = MaterialIssue.objects.create(
             task=self.task, defect=defect, raw_material=self.rework_raw,
             requested_quantity=Decimal('2'), issued_quantity=Decimal('2'),
             purpose='rework', status='issued', requested_by=self.user,
-            stock_movement=rework_movement,
+        )
+        StockMovement.objects.create(
+            raw_material=self.rework_raw, movement_type='consumption', quantity=Decimal('2'),
+            reference_task=self.task, fulfilled_issue=issue,
+            note=f'تحویل انبار #{issue.id} — جبران خرابی / ساخت مجدد',
         )
         response = self.client.get(reverse('report_material_consumption'))
         self.assertEqual(response.status_code, 200)
@@ -725,15 +725,15 @@ class MaterialIssueStockMovementLinkTests(TestCase):
         self.assertEqual(defect_totals[0]['qty'], Decimal('2'))
 
     def test_production_movement_still_included_in_report(self):
-        movement = StockMovement.objects.create(
-            raw_material=self.production_raw, movement_type='consumption', quantity=Decimal('4'),
-            reference_task=self.task, note=f'تحویل انبار #production — برنامه تولید',
-        )
-        MaterialIssue.objects.create(
+        issue = MaterialIssue.objects.create(
             task=self.task, raw_material=self.production_raw,
             requested_quantity=Decimal('4'), issued_quantity=Decimal('4'),
             purpose='production', status='issued', requested_by=self.user,
-            stock_movement=movement,
+        )
+        StockMovement.objects.create(
+            raw_material=self.production_raw, movement_type='consumption', quantity=Decimal('4'),
+            reference_task=self.task, fulfilled_issue=issue,
+            note=f'تحویل انبار #{issue.id} — برنامه تولید',
         )
         response = self.client.get(reverse('report_material_consumption'))
         self.assertEqual(response.status_code, 200)
@@ -765,6 +765,7 @@ class MaterialIssueStockMovementLinkTests(TestCase):
 
     def test_backfill_command_links_unambiguous_old_movement(self):
         from django.core.management import call_command
+        from io import StringIO
         issue = MaterialIssue.objects.create(
             task=self.task, raw_material=self.rework_raw,
             requested_quantity=Decimal('1'), issued_quantity=Decimal('1'),
@@ -774,9 +775,9 @@ class MaterialIssueStockMovementLinkTests(TestCase):
             raw_material=self.rework_raw, movement_type='consumption', quantity=Decimal('1'),
             reference_task=self.task, note=f'تحویل انبار #{issue.id} — جبران خرابی / ساخت مجدد',
         )
-        call_command('backfill_material_issue_links', verbosity=0)
-        issue.refresh_from_db()
-        self.assertEqual(issue.stock_movement, movement)
+        call_command('backfill_material_issue_links', stdout=StringIO())
+        movement.refresh_from_db()
+        self.assertEqual(movement.fulfilled_issue_id, issue.id)
 
     def test_task_without_part_does_not_fallback_to_product_bom(self):
         material = Material.objects.create(
@@ -1132,8 +1133,7 @@ class PaintMaterialIssuePerItemTests(TestCase):
         response = client.post(reverse('inventory:issue_material', args=[issue.id]), {'quantity': '1'})
         
         issue.refresh_from_db()
-        self.assertIsNotNone(issue.stock_movement)
-        movement = issue.stock_movement
+        movement = issue.movements.get()
         
         self.assertIsNone(movement.reference_task)
         self.assertEqual(movement.reference_order_item, self.order_item)

@@ -90,7 +90,7 @@ class PaintConsumptionTests(TestCase):
             items=[(issue.id, Decimal('1'))], note='تحویل'
         )
         issue.refresh_from_db()
-        movement = issue.stock_movement
+        movement = issue.movements.get()
         self.assertIsNotNone(movement)
         self.assertEqual(movement.reference_order_item, self.order_item)
         self.assertEqual(movement.quantity, Decimal('1'))

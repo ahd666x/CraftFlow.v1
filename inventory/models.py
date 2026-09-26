@@ -113,6 +113,10 @@ class StockMovement(models.Model):
         related_name='paint_material_movements', verbose_name='آیتم سفارش (برای نقاشی)'
     )
     reference_color_part = models.CharField(max_length=20, blank=True, verbose_name='بخش رنگی')
+    fulfilled_issue = models.ForeignKey(
+        'MaterialIssue', null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='movements', verbose_name='درخواست مرتبط',
+    )
     note = models.CharField(max_length=255, blank=True, verbose_name="یادداشت")
     created_by = models.ForeignKey(User, null=True, on_delete=models.SET_NULL, verbose_name="ثبت‌کننده")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="تاریخ ثبت")
@@ -224,15 +228,6 @@ class MaterialIssue(models.Model):
     )
     raw_material = models.ForeignKey(RawMaterial, on_delete=models.PROTECT,
                                       related_name='issues', verbose_name='ماده اولیه')
-    stock_movement = models.OneToOneField(
-        'StockMovement',
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name='fulfilled_issue',
-        verbose_name='گردش انبار ثبت‌شده',
-        help_text='گردش انبار مصرفی که این درخواست را تسویه کرده است.',
-    )
     handover = models.ForeignKey(
         'MaterialHandover', null=True, blank=True,
         on_delete=models.SET_NULL, related_name='issues', verbose_name='آخرین سند تحویل'
