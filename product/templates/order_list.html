@@ -253,7 +253,13 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (data.success) {
                         content.innerHTML = data.html;
                         content.dataset.loaded = 'true';
+                    } else {
+                        content.innerHTML = '<div class="text-center text-danger py-3">' +
+                            (data.error || 'خطا در بارگذاری آیتم‌ها') + '</div>';
                     }
+                })
+                .catch(() => {
+                    content.innerHTML = '<div class="text-center text-danger py-3">خطای شبکه در بارگذاری آیتم‌ها</div>';
                 });
         });
     });
@@ -283,7 +289,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (data.success) {
                         location.reload();
                     } else {
-                        alert('خطا: ' + (data.error || 'نامspecified'));
+                        alert('خطا: ' + (data.error || 'نامشخص'));
                         this.disabled = false;
                     }
                 })
@@ -293,7 +299,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
             }
         });
-    });
     });
 });
 </script>
