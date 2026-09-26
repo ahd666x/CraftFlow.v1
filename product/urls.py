@@ -117,6 +117,7 @@ urlpatterns = [
 
 
      path('products/', views.admin_product_list, name='admin_product_list'),
+     path('products/<int:product_id>/toggle-active/', views.product_toggle_active, name='product_toggle_active'),
      path('catalog/', views.product_catalog, name='product_catalog'),
      path('catalog/pdf/', views.product_catalog_pdf, name='product_catalog_pdf'),
 path('product/<int:product_id>/bom/edit/', views.product_bom_edit, name='product_bom_edit'),

@@ -39,6 +39,7 @@ class Customer(models.Model):
 
 class ProductCategory(models.Model):
     name = models.CharField(max_length=100, verbose_name="نام دسته")
+    is_active = models.BooleanField(default=True, verbose_name="فعال")
 
     def __str__(self):
         return self.name
@@ -298,6 +299,7 @@ class Product(models.Model):
     base_price = models.DecimalField(max_digits=12, decimal_places=0, default=0,verbose_name="قیمت")
     price_increment_per_cm = models.DecimalField(max_digits=5,decimal_places=2,default=0,verbose_name="درصد افزایش قیمت به ازای هر سانتی‌متر",)
     image = models.ImageField(upload_to='product_images/', blank=True, null=True, verbose_name="عکس محصول")
+    is_active = models.BooleanField(default=True, verbose_name="فعال")
 
     def __str__(self):
         return f"{self.category} - {self.name}"

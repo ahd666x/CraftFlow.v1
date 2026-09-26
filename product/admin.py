@@ -112,8 +112,10 @@ class ColorAdmin(admin.ModelAdmin):
 
 @admin.register(ProductCategory)
 class ProductCategoryAdmin(admin.ModelAdmin):
-    list_display = ['name']
+    list_display = ['name', 'is_active']
+    list_filter = ['is_active']
     search_fields = ['name']
+    list_editable = ['is_active']
 
 @admin.register(WorkerProfile)
 class WorkerProfileAdmin(admin.ModelAdmin):
@@ -202,16 +204,16 @@ class ProductBOMInline(admin.TabularInline):
 class ProductAdmin(admin.ModelAdmin):
     list_display = [
         'name', 'category', 'color', 'default_size',
-        'base_price', 'price_increment_per_cm', 'parts_list_key'
+        'base_price', 'price_increment_per_cm', 'parts_list_key', 'is_active'
     ]
-    list_filter = ['category', 'color']
+    list_filter = ['category', 'color', 'is_active']
     search_fields = ['name', 'parts_list_key']
     inlines = [ProductBOMInline]
-    list_editable = ['base_price', 'price_increment_per_cm']
+    list_editable = ['base_price', 'price_increment_per_cm', 'is_active']
 
     fieldsets = (
         ('اطلاعات اصلی', {
-            'fields': ('category', 'name', 'color', 'parts_list_key', 'description', 'image')
+            'fields': ('category', 'name', 'color', 'parts_list_key', 'description', 'image', 'is_active')
         }),
         ('اندازه و قیمت', {
             'fields': (

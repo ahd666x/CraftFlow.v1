@@ -89,6 +89,7 @@
                         <th>دسته‌بندی</th>
                         <th>سایز پیش‌فرض</th>
                         <th>رنگ‌های پیش‌فرض</th>
+                    <th>وضعیت</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -112,6 +113,14 @@
                                     —
                                 {% endif %}
                             </div>
+                        </td>
+                        <td>
+                            <form method="post" action="{% url 'product_toggle_active' product.id %}" style="display:inline">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-sm {% if product.is_active %}btn-success{% else %}btn-outline-secondary{% endif %}">
+                                    {% if product.is_active %}عال{% else %}غیرعال{% endif %}
+                                </button>
+                            </form>
                         </td>
 
                     </tr>

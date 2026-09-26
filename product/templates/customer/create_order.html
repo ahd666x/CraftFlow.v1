@@ -45,7 +45,11 @@
                         <div class="row">
                             {% for field in color_form %}
                                 <div class="col-md-4 mb-2 color-field" data-part="{{ field.name|slice:'6:' }}">
-                                    {{ field.label_tag }} {{ field }}
+                                    <div class="d-flex align-items-center gap-2">
+                                        {{ field.label_tag }}
+                                        {{ field }}
+                                        <span class="color-hex-swatch" style="width:24px;height:24px;border-radius:50%;border:1px solid #ccc;display:inline-block;flex-shrink:0;"></span>
+                                    </div>
                                 </div>
                             {% endfor %}
                         </div>
@@ -64,6 +68,16 @@
 {% endblock %}
 
 {% block extra_js %}
+<script>
+const COLOR_HEX_MAP = {{ color_hex_map|safe }};
+
+function updateSwatch(select) {
+    var swatch = select.parentElement.querySelector('.color-hex-swatch');
+    var hex = COLOR_HEX_MAP[select.value] || 'transparent';
+    swatch.style.background = hex;
+}
+window.updateSwatch = updateSwatch;
+</script>
 <script src="{% static 'js/color_filter.js' %}"></script>
 <script>
 $(function () {

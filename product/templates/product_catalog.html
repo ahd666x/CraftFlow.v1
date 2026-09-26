@@ -508,7 +508,7 @@
 
         font-family: var(--font-en);
 
-        font-size: 9px;
+        font-size: 12px;
         font-weight: 600;
 
         letter-spacing: .16em;
@@ -520,7 +520,7 @@
     .catalog-product-name {
         margin: 0;
 
-        font-size: 21px;
+        font-size: 18px;
         font-weight: 500;
 
         line-height: 1.3;
@@ -534,15 +534,15 @@
 
         gap: 14px;
 
-        margin-top: 9px;
+        margin-top: 0px;
 
         font-family: var(--font-en);
 
-        font-size: 9px;
+        font-size: 12px;
 
         direction: ltr;
 
-        opacity: .72;
+        opacity: .82;
     }
 
     .catalog-product-code {
@@ -557,7 +557,7 @@
     .catalog-product-price {
         direction: rtl;
         font-family: var(--font-fa);
-        font-weight: 600;
+        font-weight: 700;
     }
 
     .catalog-product-arrow {
@@ -1264,6 +1264,18 @@
 
             </div>
 
+            <form method="get" class="catalog-search" style="display:flex;gap:8px;align-items:center;">
+                {% if selected_category %}
+                    <input type="hidden" name="category" value="{{ selected_category }}">
+                {% endif %}
+                <input type="text" name="q" value="{{ search_query|default:'' }}"
+                       placeholder="جستجوی محصول..."
+                       style="border:1px solid var(--catalog-line); border-radius:20px; padding:6px 14px; font-family:var(--font-fa); font-size:12px; min-width:180px;">
+                <button type="submit" style="border:none;background:var(--catalog-dark);color:#fff;border-radius:20px;padding:6px 16px;font-size:12px;cursor:pointer;">
+                    جستجو
+                </button>
+            </form>
+
         </header>
 
     </div>
@@ -1292,17 +1304,13 @@
 
 
                                 <h1 class="catalog-intro-title">
-                                    طراحی برای
-                                    <strong>زندگی</strong>
+                                    سلوی چوب
+                                    <strong>سلوی چوب</strong>
                                 </h1>
 
 
                                 <p class="catalog-intro-description">
-                                    مجموعه‌ای از محصولات چوبی با تمرکز بر
-                                    فرم، تناسب، متریال و جزئیات اجرایی.
-                                    هر محصول با رویکردی ساده و کاربردی طراحی
-                                    شده تا در کنار سایر اعضای مجموعه،
-                                    یک فضای هماهنگ ایجاد کند.
+
                                 </p>
 
                             </div>
@@ -1311,15 +1319,11 @@
                             <div class="catalog-intro-footer">
 
                                 <div class="catalog-intro-note">
-                                    مجموعه محصولات منتخب
                                     <br>
-                                    طراحی و تولید سلوی چوب
                                 </div>
 
 
-                                <div class="catalog-intro-number">
-                                    {{ total_collections|stringformat:"02d" }}
-                                </div>
+
 
                             </div>
 
@@ -1334,7 +1338,7 @@
                             >
 
                                 <img
-                                    src="{% static 'cover.jpg' %}"
+                                    src="{{ first_product.image.url }}"
                                     alt="{{ first_product.name }}"
                                 >
 
@@ -1403,9 +1407,9 @@
 
                             <header class="collection-header">
 
-                                <div class="collection-index">
+                                {% comment %} <div class="collection-index">
                                     {{ forloop.counter|stringformat:"02d" }}
-                                </div>
+                                </div> {% endcomment %}
 
 
                                 <h2 class="collection-title">
@@ -1413,11 +1417,11 @@
                                 </h2>
 
 
-                                <p class="collection-description">
+                                {% comment %} <p class="collection-description">
                                     {% if col.category_names %}
                                         شامل: {{ col.category_names|join:"، " }}
                                     {% endif %}
-                                </p>
+                                </p> {% endcomment %}
 
                             </header>
 
@@ -1479,18 +1483,18 @@
 
                                                 <div class="catalog-product-meta">
 
-                                                    <span class="catalog-product-code">
+                                                    {% comment %} <span class="catalog-product-code">
                                                         {{ product.display_code }}
-                                                    </span>
+                                                    </span> {% endcomment %}
 
 
-                                                    {% if product.default_size %}
+                                                    {% comment %} {% if product.default_size %}
 
                                                         <span class="catalog-product-dimensions">
                                                             {{ product.default_size }}
                                                         </span>
 
-                                                    {% endif %}
+                                                    {% endif %} {% endcomment %}
 
 
                                                     <span class="catalog-product-price">
@@ -1500,7 +1504,7 @@
                                                 </div>
 
 
-                                                <span class="catalog-product-arrow">↗</span>
+                                                {% comment %} <span class="catalog-product-arrow">↗</span> {% endcomment %}
 
 
                                             </div>
@@ -1520,7 +1524,7 @@
                                  COLLECTION INFO
                                  ================================= -->
 
-                            <footer class="collection-footer">
+                            {% comment %} <footer class="collection-footer">
 
 
                                 <div class="collection-info">
@@ -1575,7 +1579,7 @@
                                 </div>
 
 
-                            </footer>
+                            </footer> {% endcomment %}
 
 
                         </article>
@@ -1616,7 +1620,7 @@
              BOTTOM INFORMATION
              ===================================================== -->
 
-        <section class="catalog-bottom">
+        {% comment %} <section class="catalog-bottom">
 
 
             <div class="catalog-bottom-grid">
@@ -1627,10 +1631,7 @@
                     <h3 class="catalog-bottom-title">درباره مجموعه</h3>
 
                     <p class="catalog-bottom-text">
-                        این کاتالوگ مجموعه‌ای از محصولات طراحی و
-                        تولیدشده را در قالب مجموعه‌های هماهنگ نمایش
-                        می‌دهد. هدف، ارائه تصویری یکپارچه از فرم،
-                        متریال و کاربرد محصولات در فضای داخلی است.
+
                     </p>
 
                 </div>
@@ -1659,10 +1660,8 @@
 
                     <ul class="catalog-bottom-list">
 
-                        <li>طراحی محصول</li>
-                        <li>تولید مبلمان</li>
-                        <li>طراحی سفارشی</li>
-                        <li>اجرای پروژه</li>
+                        <li></li>
+
 
                     </ul>
 
@@ -1671,7 +1670,7 @@
 
             </div>
 
-        </section>
+        </section> {% endcomment %}
 
 
         <!-- =====================================================

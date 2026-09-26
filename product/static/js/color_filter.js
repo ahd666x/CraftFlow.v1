@@ -19,6 +19,9 @@
             } else if (isAllowed && overwrite && select) {
                 select.value = defaults[part] || '';
             }
+            if (select && typeof window.updateSwatch === 'function') {
+                window.updateSwatch(select);
+            }
         });
     }
 

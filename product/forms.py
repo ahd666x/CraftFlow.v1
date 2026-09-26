@@ -52,7 +52,7 @@ from .models import OrderItem, Product, ProductCategory
 class OrderItemForm(forms.ModelForm):
 
     category = forms.ModelChoiceField(
-        queryset=ProductCategory.objects.all(),
+        queryset=ProductCategory.objects.filter(is_active=True),
         label="دسته بندی",
         widget=forms.Select(attrs={'class': 'form-select', 'id': 'id_category'})
     )
@@ -66,8 +66,8 @@ class OrderItemForm(forms.ModelForm):
         fields = ['quantity', 'size', 'notes']
         widgets = {
             'quantity': forms.NumberInput(attrs={'class': 'form-control', 'min': 1}),
-            'size': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'اختیاری'}),
-            'notes': forms.Textarea(attrs={'class': 'form-control', 'rows': 2, 'placeholder': 'یادداشت'}),
+            'size': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'سانتی متر'}),
+            'notes': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
         }
         labels = {
             'quantity': 'تعداد',
@@ -79,7 +79,12 @@ class OrderItemForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         # اگر نمونه موجود باشد
         if self.instance and self.instance.pk:
-            self.fields['category'].initial = self.instance.product.category
+            current_category = self.instance.product.category
+            qs = ProductCategory.objects.filter(is_active=True)
+            if current_category and not current_category.is_active:
+                qs = qs | ProductCategory.objects.filter(pk=current_category.pk)
+            self.fields['category'].queryset = qs
+            self.fields['category'].initial = current_category
             self.fields['product'].choices = [(self.instance.product.id, str(self.instance.product))]
         else:
             self.fields['product'].choices = [('', '---------')]
@@ -88,8 +93,10 @@ class OrderItemForm(forms.ModelForm):
         if 'category' in self.data:
             try:
                 category_id = int(self.data.get('category'))
-                products = Product.objects.filter(category_id=category_id).order_by('name')
-                self.fields['product'].choices = [(p.id, str(p)) for p in products]
+                products = Product.objects.filter(category_id=category_id, is_active=True)
+                if self.instance and self.instance.pk and not self.instance.product.is_active:
+                    products = products | Product.objects.filter(pk=self.instance.product_id)
+                self.fields['product'].choices = [(p.id, str(p)) for p in products.order_by('name')]
             except (ValueError, TypeError):
                 pass
 
@@ -366,10 +373,17 @@ class EditOrderItemForm(forms.ModelForm):
             current_category = self.instance.product.category
             current_product_id = self.instance.product.id
 
+            # اگر دسته فعلی غیرعال است، در لیست انتخابی بگنجاند
+            qs = ProductCategory.objects.filter(is_active=True)
+            if current_category and not current_category.is_active:
+                qs = qs | ProductCategory.objects.filter(pk=current_category.pk)
+            self.fields['category'].queryset = qs
             self.fields['category'].initial = current_category
             # همهٔ محصولات این دسته را در لیست کشویی قرار بده
-            products = Product.objects.filter(category=current_category).order_by('name')
-            self.fields['product'].choices = [(p.id, str(p)) for p in products]
+            products = Product.objects.filter(category=current_category, is_active=True)
+            if not self.instance.product.is_active:
+                products = products | Product.objects.filter(pk=current_product_id)
+            self.fields['product'].choices = [(p.id, str(p)) for p in products.order_by('name')]
             self.fields['product'].initial = current_product_id   # ← این خط کلیدی است
         else:
             self.fields['product'].choices = [('', '---------')]
@@ -378,8 +392,10 @@ class EditOrderItemForm(forms.ModelForm):
         if 'category' in self.data:
             try:
                 category_id = int(self.data.get('category'))
-                products = Product.objects.filter(category_id=category_id).order_by('name')
-                self.fields['product'].choices = [(p.id, str(p)) for p in products]
+                products = Product.objects.filter(category_id=category_id, is_active=True)
+                if self.instance and self.instance.pk and not self.instance.product.is_active:
+                    products = products | Product.objects.filter(pk=self.instance.product_id)
+                self.fields['product'].choices = [(p.id, str(p)) for p in products.order_by('name')]
             except (ValueError, TypeError):
                 pass
 

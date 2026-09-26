@@ -2883,6 +2883,7 @@ def create_order(request):
         'item_form': item_form,
         'color_form': color_form,
         'is_admin': form.is_admin,
+        'color_hex_map': json.dumps(get_color_hex_map()),
     }
     return render(request, 'orders/create_order.html', context)
 
@@ -2957,7 +2958,7 @@ def ajax_load_products(request):
     """بارگذاری محصولات بر اساس دسته برای فیلترهای وابسته"""
     category_id = request.GET.get('category')
     if category_id:
-        products = Product.objects.filter(category_id=category_id).order_by('name')
+        products = Product.objects.filter(category_id=category_id, is_active=True).order_by('name')
     else:
         products = Product.objects.none()
     data = [{'id': p.id, 'name': str(p)} for p in products]
@@ -3114,6 +3115,20 @@ def admin_product_list(request):
     return render(request, 'admin_product_list.html', context)
 
 
+@login_required
+@admin_or_manager_required
+@require_POST
+def product_toggle_active(request, product_id):
+    """تغییر وضعیت فعال/غیر فعال یک محصول"""
+    product = get_object_or_404(Product, pk=product_id)
+    product.is_active = not product.is_active
+    product.save(update_fields=['is_active'])
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return JsonResponse({'success': True, 'is_active': product.is_active})
+    messages.success(request, f"وضعیت محصول «{product.name}» تغییر کرد.")
+    return redirect('admin_product_list')
+
+
 # -------------------------------------------------------------------
 #      کاتالوگ محصولات (لیست قیمت) — نمایش عکس، قیمت و لیست قطعات
 # -------------------------------------------------------------------
@@ -3132,7 +3147,7 @@ def product_catalog(request):
 
     products_qs = Product.objects.select_related('category').prefetch_related(
         'bom__part__material'
-    )
+    ).filter(is_active=True)
 
     q = request.GET.get('q')
     if q:
@@ -3211,7 +3226,7 @@ def product_catalog_pdf(request):
 
     products_qs = Product.objects.select_related('category').prefetch_related(
         'bom__part__material'
-    )
+    ).filter(is_active=True)
     if q:
         products_qs = products_qs.filter(
             Q(name__icontains=q) | Q(category__name__icontains=q)
@@ -3728,6 +3743,7 @@ def customer_create_order(request):
         'form': form,
         'item_form': item_form,
         'color_form': color_form,
+        'color_hex_map': json.dumps(get_color_hex_map()),
     }
     return render(request, 'customer/create_order.html', context)
 
