@@ -873,7 +873,7 @@ class PackagingUnitDefectTests(TestCase):
     def test_scan_packaging_unit_defect_branch_links_unit(self):
         WorkerProfile.objects.create(user=self.user, stage='mon')
         response = self.client.post(reverse('scan_packaging_unit', args=[self.unit.id]), {
-            'color_part': 'بدنه',
+            'color_parts': ['بدنه'],
             'quantity': '1',
             'description': 'خرابی اسکن',
         })

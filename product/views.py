@@ -3296,32 +3296,34 @@ def scan_packaging_unit(request, pk):
         label_map = dict(Color.PART_CHOICES)
 
         if request.method == 'POST':
-            color_part = request.POST.get('color_part', '').strip()
+            selected_parts = [p for p in request.POST.getlist('color_parts') if p in available_parts]
             description = request.POST.get('description', '').strip() or 'خرابی ثبت‌شده هنگام اسکن بسته‌بندی'
-            if not color_part or color_part not in available_parts:
-                messages.error(request, 'بخش رنگی خراب را انتخاب کنید.')
+            if not selected_parts:
+                messages.error(request, 'حداقل یک بخش خراب را انتخاب کنید.')
             else:
-                related_task = ProductionTask.objects.filter(
-                    order_item=item, station_name='paint', color_part=color_part
-                ).order_by('-step_order').first()
+                created_labels, skipped_labels = [], []
                 with transaction.atomic():
-                    existing = ProductionDefect.objects.filter(
-                        packaging_unit=unit,
-                        color_part=color_part,
-                        status__in=['reported', 'material_requested', 'rework_issued'],
-                    ).select_for_update().first()
-                    if existing:
-                        messages.warning(
-                            request,
-                            f'برای این بخش قبلاً خرابی ثبت شده است (#{existing.id}).'
+                    for color_part in selected_parts:
+                        existing = ProductionDefect.objects.filter(
+                            packaging_unit=unit, color_part=color_part,
+                            status__in=['reported', 'material_requested', 'rework_issued'],
+                        ).select_for_update().first()
+                        if existing:
+                            skipped_labels.append(label_map.get(color_part, color_part))
+                            continue
+                        related_task = ProductionTask.objects.filter(
+                            order_item=item, station_name='paint', color_part=color_part
+                        ).order_by('-step_order').first()
+                        ProductionDefect.objects.create(
+                            task=related_task, order=item.order, order_item=item,
+                            packaging_unit=unit, color_part=color_part, quantity=1,
+                            description=description, reported_by=request.user,
                         )
-                        return redirect('item_detail', pk=item.id)
-                    ProductionDefect.objects.create(
-                        task=related_task, order=item.order, order_item=item,
-                        packaging_unit=unit, color_part=color_part, quantity=1,
-                        description=description, reported_by=request.user,
-                    )
-                messages.success(request, f'خرابی برای بخش «{label_map.get(color_part, color_part)}» ثبت شد.')
+                        created_labels.append(label_map.get(color_part, color_part))
+                if created_labels:
+                    messages.success(request, f"خرابی برای «{'، '.join(created_labels)}» ثبت شد.")
+                if skipped_labels:
+                    messages.warning(request, f"برای «{'، '.join(skipped_labels)}» قبلاً خرابی ثبت شده بود.")
                 return redirect('item_detail', pk=item.id)
 
         return render(request, 'scan_defect_report.html', {
