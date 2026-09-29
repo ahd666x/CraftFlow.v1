@@ -4061,7 +4061,7 @@ def report_shipped(request):
     if request.GET.get('print'):
         return render(request, 'reports/delivery_note.html', {
             'units': units,
-            'today': persian_date,
+            'shamsi_date': persian_date.strftime('%Y/%m/%d'),
             'representative_name': representative_name,
             'total_price': total_price,
             'plate': request.GET.get('plate', ''),   # ← پلاک از فیلتر
@@ -4073,8 +4073,16 @@ def report_shipped(request):
         order__items__packaging_units__is_shipped=True
     ).distinct().order_by('username')
 
-    # ---------- لیست پلاک‌های موجود (واقعی) ----------
-    plates = ShipmentLog.objects.values_list('plate_number', flat=True).distinct().order_by('plate_number')
+    # ---------- لیست پلاک‌های همان تاریخ انتخاب‌شده (به‌همراه تعداد واحد) ----------
+    plates = list(
+        ShipmentLog.objects
+        .filter(shipped_at__date=gregorian_date, plate_number__isnull=False)
+        .exclude(plate_number='')
+        .values('plate_number')
+        .annotate(unit_count=Count('packaging_unit', distinct=True))
+        .order_by('plate_number')
+    )
+    plate_numbers = [row['plate_number'] for row in plates]
 
     context = {
         'units': units,
@@ -4084,7 +4092,8 @@ def report_shipped(request):
         'selected_order': order_id or '',
         'representative_name': representative_name,
         'total_price': total_price,
-        'plates': plates,
+        'plates': plate_numbers,
+        'plate_groups': plates,
         'selected_plate': plate or '',
     }
     return render(request, 'reports/shipped.html', context)

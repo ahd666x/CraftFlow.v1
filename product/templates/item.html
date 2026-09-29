@@ -41,6 +41,16 @@
                         <div class="col-md-3"><strong>نماینده:</strong> {{ representative_name }}</div>
                         <div class="col-md-3"><strong>مشتری:</strong> {{ item.order.customer.name|default:"—" }}</div>
                     </div>
+                    <div class="row mt-2">
+                        <div class="col-md-12">
+                            <strong>توضیحات آیتم:</strong> {{ item.notes|default:"—" }}
+                        </div>
+                    </div>
+                    <div class="row mt-2">
+                        <div class="col-md-12">
+                            <strong>توضیحات محصول:</strong> {{ item.product.description|default:"—"|linebreaksbr }}
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
