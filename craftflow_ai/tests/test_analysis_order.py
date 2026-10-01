@@ -314,6 +314,58 @@ class OrderDelayTests(TestCase):
         self.assertTrue(report['due_date_available'])
         self.assertNotIn('missing_due_date', report['limitations'])
 
+    def test_due_date_is_primary_over_age_heuristic(self):
+        """سفارش قدیمی با due_date آینده نباید صرفاً به‌خاطر سن سفارش delayed شود."""
+        old_created = jdatetime.date.today() - jdatetime.timedelta(days=30)
+        order = make_order(
+            status='producing',
+            due_in_days=10,
+            created_at=old_created,
+        )
+        tasks = make_tasks(order, stations=('cut',), statuses=('pending',))
+        future = timezone.now() + timedelta(days=2)
+        ProductionTask.objects.filter(pk=tasks[0].pk).update(
+            scheduled_start=future,
+            scheduled_end=future + timedelta(hours=4),
+        )
+        report = order_delay(order.id)
+        self.assertFalse(report['is_delayed'])
+        self.assertTrue(report['due_date_available'])
+        self.assertTrue(report['delay']['due_date_used'])
+        self.assertFalse(report['delay']['due_date_overdue'])
+
+    def test_past_due_date_is_used_even_when_order_is_not_old(self):
+        """due_date گذشته باید بدون اتکا به created_at به‌عنوان تأخیر دیده شود."""
+        order = make_order(status='producing', due_in_days=-1, created_at=jdatetime.date.today())
+        tasks = make_tasks(order, stations=('cut',), statuses=('pending',))
+        future = timezone.now() + timedelta(days=2)
+        ProductionTask.objects.filter(pk=tasks[0].pk).update(
+            scheduled_start=future,
+            scheduled_end=future + timedelta(hours=4),
+        )
+        report = order_delay(order.id)
+        self.assertTrue(report['is_delayed'])
+        self.assertEqual(report['cause_code'], 'age_only')
+        self.assertTrue(report['delay']['due_date_used'])
+        self.assertTrue(report['delay']['due_date_overdue'])
+
+    def test_missing_nonpaint_schedule_is_not_hidden_by_paint_task(self):
+        """وجود paint نباید زمان‌بندی ناقص cut/CNC را پنهان کند."""
+        order = make_order(status='producing')
+        make_tasks(
+            order,
+            stations=('cut', 'paint'),
+            statuses=('pending', 'waiting'),
+        )
+        report = order_delay(order.id)
+        self.assertTrue(report['is_delayed'])
+        self.assertEqual(report['cause_code'], 'missing_schedule')
+        self.assertIn('missing_nonpaint_schedule', report['limitations'])
+        self.assertEqual(
+            report['evidence'][3]['metric'],
+            'due_date_overdue',
+        )
+
     def test_completed_order_is_not_delayed(self):
         order = make_order(status='completed')
         make_tasks(order, stations=('cut',), statuses=('done',))
