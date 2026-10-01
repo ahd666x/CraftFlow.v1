@@ -239,6 +239,55 @@ class BrowserFlowTests(LiveServerTestCase):
         print('modal inside issuesCard:', 'issuesCard' in modal_path or 'table-responsive' in modal_path)
         print('leftover open tags at end:', p.stack)
 
+    def test_return_button_and_modal_contract(self):
+        """
+        Exact user sequence on the custody board.
+        Verifies every contract the JS depends on.
+        """
+        import re
+
+        issue = self.make_issue('3')
+        self.post_json('inventory:handover_create', {
+            'items': [{'issue_id': issue.pk, 'quantity': '3'}],
+            'received_by': self.worker.pk,
+            'held_by': self.worker.pk,
+        })
+        html = self.get(reverse('inventory:custody_board'))
+
+        print('\n===== RETURN FLOW CONTRACT =====')
+
+        # 1) دکمهٔ ثبت بازگشت باید با data-attributeهای لازم وجود داشته باشد
+        btns = re.findall(r'(?s)<button[^>]*btn-custody-return[^>]*>', html)
+        print('  return buttons found:', len(btns))
+        self.assertEqual(len(btns), 1)
+        b = btns[0]
+        for attr in ('data-bs-toggle="modal"', 'data-bs-target="#custodyReturnModal"',
+                     'data-raw=', 'data-holder=', 'data-quantity='):
+            print(f'    has {attr:34}', attr in b)
+            self.assertIn(attr, b, f'button missing {attr}')
+
+        # 2) المان‌هایی که JS با getElementById صدا می‌زند باید موجود باشند
+        for el in ('custodyReturnModal', 'custodyHolderName', 'custodyMaterialName',
+                   'custodyCurrentQty', 'custodyUnit', 'custodyMeasuredInput',
+                   'custodyNoteInput', 'custodyAlert', 'custodySaveBtn',
+                   'custodyZeroBtn', 'custodyTable'):
+            present = f'id="{el}"' in html
+            print(f'    element {el:22}', present)
+            self.assertTrue(present, f'missing element #{el}')
+
+        # 3) اسکریپت باید به همین idها گوش بدهد
+        print('\n  --- JS references ---')
+        for el in ('custodyTable', 'custodySaveBtn', 'custodyZeroBtn',
+                   'custodyReturnModal', 'custodyMeasuredInput'):
+            ref = f"getElementById('{el}')" in html
+            print(f'    JS binds {el:22}', ref)
+            self.assertTrue(ref)
+
+        # 4) target مودال باید واقعاً در صفحه باشد
+        print('\n    data-bs-target matches real modal id:',
+              'id="custodyReturnModal"' in html)
+        self.assertIn('id="custodyReturnModal"', html)
+
     def test_custody_toggle_is_outside_rebuilt_region(self):
         """
         Regression: the custody checkbox MUST live outside #handoverPreviewContent.
