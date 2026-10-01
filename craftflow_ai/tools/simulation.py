@@ -14,6 +14,8 @@
 روی ``step_order`` اثری ندارد و ``finish_time`` هم محاسبه نمی‌شود. بنابراین
 خروجی هرگز زمانی را وعده نمی‌دهد.
 """
+from decimal import Decimal, InvalidOperation
+
 from craftflow_ai.simulation import scenarios
 from craftflow_ai.tools.registry import Tool, fail, ok
 
@@ -54,8 +56,8 @@ def simulate_material_availability(raw_material_id, additional_quantity=0):
             argument='raw_material_id',
         )
     try:
-        quantity = float(additional_quantity or 0)
-    except (TypeError, ValueError):
+        quantity = Decimal(str(additional_quantity if additional_quantity is not None else 0))
+    except (InvalidOperation, TypeError, ValueError):
         return fail(
             INVALID_ARGUMENT,
             'مقدار اضافه باید عدد باشد.',
