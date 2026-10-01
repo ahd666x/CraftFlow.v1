@@ -23,6 +23,7 @@ from django.db.models import (
     Count,
     DecimalField,
     Exists,
+    IntegerField,
     F,
     OuterRef,
     Q,
@@ -385,35 +386,27 @@ def _consumption_index(raw_ids):
         .annotate(
             count=Count('id'),
             quantity=Sum('quantity'),
-            # reference_task برای مصرف تولید عادی و reference_order_item
-            # برای برخی مصرف‌های نقاشی استفاده می‌شود؛ هر دو باید در
-            # انتساب سفارش لحاظ شوند.
-            task_order_count=Count('reference_task__order_id', distinct=True),
-            item_order_count=Count('reference_order_item__order_id', distinct=True),
+            # هر movement یک «مالک سفارش» دارد: reference_task اولویت دارد و
+            # برای مصرف‌های نقاشی reference_order_item استفاده می‌شود.
+            # Case داخل Count باعث می‌شود کل محاسبه همچنان یک query بماند.
+            order_count=Count(
+                Case(
+                    When(
+                        reference_task__order_id__isnull=False,
+                        then=F('reference_task__order_id'),
+                    ),
+                    default=F('reference_order_item__order_id'),
+                    output_field=IntegerField(),
+                ),
+                distinct=True,
+            ),
         )
     )
     for row in rows:
-        # Count روی دو FK جداگانه قابل جمع‌زدن نیست، چون یک movement ممکن است
-        # هر دو reference را داشته باشد. برای correctness، شناسه سفارش‌های
-        # واقعی را جداگانه می‌گیریم و union می‌کنیم.
-        movement_order_rows = (
-            StockMovement.objects
-            .filter(
-                raw_material_id=row['raw_material_id'],
-                movement_type='consumption',
-            )
-            .values_list('reference_task__order_id', 'reference_order_item__order_id')
-        )
-        order_ids = {
-            order_id
-            for task_order_id, item_order_id in movement_order_rows
-            for order_id in (task_order_id, item_order_id)
-            if order_id is not None
-        }
         index[row['raw_material_id']] = {
             'count': row['count'] or 0,
             'quantity': row['quantity'] or ZERO,
-            'order_count': len(order_ids),
+            'order_count': row['order_count'] or 0,
         }
     return index
 
