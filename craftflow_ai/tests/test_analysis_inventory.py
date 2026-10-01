@@ -350,6 +350,19 @@ class WarehouseImpactTests(TestCase):
         self.assertEqual(Decimal(row['consumption_quantity']), Decimal('4.00'))
         self.assertEqual(row['consuming_orders'], 1)
 
+    def test_paint_consumption_reference_order_item_counts_order(self):
+        """مصرف نقاشی که reference_task ندارد باید از order_item انتساب شود."""
+        StockMovement.objects.create(
+            raw_material=self.raw,
+            movement_type='consumption',
+            quantity=Decimal('2'),
+            reference_order_item=self.order.items.first(),
+        )
+        report = material_impact(raw_material_id=self.raw.pk)
+        row = report['materials'][0]
+        self.assertEqual(row['consumption_movements'], 1)
+        self.assertEqual(row['consuming_orders'], 1)
+
 
 class MaterialImpactEdgeTests(TestCase):
     def test_unknown_raw_material_returns_none(self):
