@@ -126,8 +126,18 @@ def bom_mapping_coverage(order):
     paint_total = tasks.filter(station_name='paint').count()
     paint_resolved = _paint_tasks_with_requirements(order)
 
-    materials_total = Material.objects.count()
-    materials_unmapped = Material.objects.filter(raw_material__isnull=True).count()
+    # فقط Materialهایی را بررسی می‌کنیم که واقعاً در قطعات تسک‌های باز این
+    # سفارش مورد نیازند؛ Material نامرتبط در کل دیتابیس نباید سفارش را ناقص کند.
+    required_material_ids = set(
+        nonpaint
+        .filter(part__isnull=False, part__material_id__isnull=False)
+        .values_list('part__material_id', flat=True)
+    )
+    required_materials = Material.objects.filter(pk__in=required_material_ids)
+    required_materials_total = required_materials.count()
+    required_materials_unmapped = required_materials.filter(
+        raw_material__isnull=True
+    ).count()
 
     return {
         'nonpaint_tasks': nonpaint_total,
@@ -136,11 +146,14 @@ def bom_mapping_coverage(order):
         'paint_tasks': paint_total,
         'paint_tasks_with_requirement': paint_resolved,
         'paint_tasks_without_requirement': max(paint_total - paint_resolved, 0),
-        'material_rows': materials_total,
-        'material_rows_unmapped': materials_unmapped,
+        # این دو فیلد برای سازگاری گزارش/تست‌ها نگه داشته شده‌اند، اما اکنون
+        # scoped به Materialهای واقعاً مورد نیاز همین سفارش هستند.
+        'material_rows': required_materials_total,
+        'material_rows_unmapped': required_materials_unmapped,
+        'material_rows_scope': 'open_order_tasks',
         'mapping_complete': (
-            materials_total > 0
-            and materials_unmapped == 0
+            required_materials_total > 0
+            and required_materials_unmapped == 0
             and nonpaint_total == nonpaint_resolved
         ),
     }
@@ -372,14 +385,35 @@ def _consumption_index(raw_ids):
         .annotate(
             count=Count('id'),
             quantity=Sum('quantity'),
-            order_count=Count('reference_task__order_id', distinct=True),
+            # reference_task برای مصرف تولید عادی و reference_order_item
+            # برای برخی مصرف‌های نقاشی استفاده می‌شود؛ هر دو باید در
+            # انتساب سفارش لحاظ شوند.
+            task_order_count=Count('reference_task__order_id', distinct=True),
+            item_order_count=Count('reference_order_item__order_id', distinct=True),
         )
     )
     for row in rows:
+        # Count روی دو FK جداگانه قابل جمع‌زدن نیست، چون یک movement ممکن است
+        # هر دو reference را داشته باشد. برای correctness، شناسه سفارش‌های
+        # واقعی را جداگانه می‌گیریم و union می‌کنیم.
+        movement_order_rows = (
+            StockMovement.objects
+            .filter(
+                raw_material_id=row['raw_material_id'],
+                movement_type='consumption',
+            )
+            .values_list('reference_task__order_id', 'reference_order_item__order_id')
+        )
+        order_ids = {
+            order_id
+            for task_order_id, item_order_id in movement_order_rows
+            for order_id in (task_order_id, item_order_id)
+            if order_id is not None
+        }
         index[row['raw_material_id']] = {
             'count': row['count'] or 0,
             'quantity': row['quantity'] or ZERO,
-            'order_count': row['order_count'] or 0,
+            'order_count': len(order_ids),
         }
     return index
 
