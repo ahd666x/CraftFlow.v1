@@ -4,7 +4,7 @@
 {% block inventory_content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h2>🚚 مدیریت تامین‌کنندگان</h2>
-    <button class="btn btn-modern" data-bs-toggle="modal" data-bs-target="#supplierModal">
+    <button class="btn btn-modern" id="btnNewSupplier" data-bs-toggle="modal" data-bs-target="#supplierModal">
         <i class="bi bi-plus-circle"></i> تامین‌کننده جدید
     </button>
 </div>
@@ -156,7 +156,24 @@
         });
     });
 
-    $('.edit-supplier').on('click', function() {
+    function resetSupplierForm() {
+        $('#supplierForm')[0].reset();
+        $('#formAction').val('create');
+        $('#supplierId').val('');
+        $('#modalTitle').text('تامین‌کننده جدید');
+    }
+
+    $('#btnNewSupplier').on('click', function() {
+        resetSupplierForm();
+    });
+
+    $('#supplierModal').on('show.bs.modal', function() {
+        if ($('#formAction').val() !== 'edit') {
+            resetSupplierForm();
+        }
+    });
+
+    $(document).on('click', '.edit-supplier', function() {
         var id = $(this).data('id');
         $.getJSON('/inventory/suppliers/' + id + '/detail/', function(data) {
             $('#modalTitle').text('ویرایش تامین‌کننده');

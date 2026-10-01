@@ -99,12 +99,15 @@ def inventory_dashboard(request):
     total_materials = RawMaterial.objects.filter(is_active=True).count()
     total_suppliers = Supplier.objects.filter(is_active=True).count()
     low_stock = RawMaterial.objects.filter(is_active=True).annotate(
-        stock=Sum(
-            Case(
-                When(movements__movement_type='consumption', then=-F('movements__quantity')),
-                default=F('movements__quantity'),
-                output_field=DecimalField()
-            )
+        stock=Coalesce(
+            Sum(
+                Case(
+                    When(movements__movement_type='consumption', then=-F('movements__quantity')),
+                    default=F('movements__quantity'),
+                    output_field=DecimalField()
+                )
+            ),
+            Value(0, output_field=DecimalField())
         )
     ).filter(stock__lte=F('min_stock_alert')).count()
 
@@ -391,7 +394,12 @@ def custody_board(request):
 
     worker = None
     if worker_id:
-        worker = User.objects.filter(pk=worker_id, is_active=True).first()
+        try:
+            worker_pk = int(worker_id)
+        except (TypeError, ValueError):
+            messages.error(request, 'کارگر انتخاب‌شده یافت نشد.')
+            return redirect('inventory:custody_board')
+        worker = User.objects.filter(pk=worker_pk, is_active=True).first()
         if worker is None:
             messages.error(request, 'کارگر انتخاب‌شده یافت نشد.')
             return redirect('inventory:custody_board')
@@ -995,6 +1003,11 @@ def purchase_order_delete(request, order_id):
     if request.headers.get('X-Requested-With') != 'XMLHttpRequest':
         return HttpResponseForbidden()
     po = get_object_or_404(PurchaseOrder, pk=order_id)
+    if po.status == 'received':
+        return JsonResponse(
+            {'success': False, 'error': 'سفارش دریافت‌شده قابل حذف نیست.'},
+            status=400,
+        )
     po.delete()
     return JsonResponse({'success': True})
 
@@ -1007,7 +1020,7 @@ def purchase_order_receive(request, order_id):
     if request.headers.get('X-Requested-With') != 'XMLHttpRequest':
         return HttpResponseForbidden()
     with atomic():
-        po = PurchaseOrder.objects.select_for_update().get(pk=order_id)
+        po = get_object_or_404(PurchaseOrder.objects.select_for_update(), pk=order_id)
         if po.status == 'received':
             return JsonResponse({'success': False, 'error': 'این سفارش قبلاً دریافت شده است.'})
 
@@ -1042,6 +1055,11 @@ def purchase_order_item_add(request, order_id):
     if request.headers.get('X-Requested-With') != 'XMLHttpRequest':
         return HttpResponseForbidden()
     po = get_object_or_404(PurchaseOrder, pk=order_id)
+    if po.status == 'received':
+        return JsonResponse(
+            {'success': False, 'error': 'سفارش دریافت‌شده قابل تغییر نیست.'},
+            status=400,
+        )
     form = PurchaseOrderItemForm(request.POST)
     if form.is_valid():
         item = form.save(commit=False)

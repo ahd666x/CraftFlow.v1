@@ -19,10 +19,12 @@ from product.models import (
     Customer,
     Order,
     OrderItem,
+    PackagingUnit,
     Part,
     Product,
     ProductBOM,
     ProductCategory,
+    ProductionDefect,
     ProductionTask,
 )
 from product.models import Material as SheetMaterial
@@ -46,10 +48,11 @@ def make_user(username, groups=(), superuser=False):
     return user
 
 
-def make_material_sheet(name='MDF', thickness=Decimal('16.0')):
+def make_material_sheet(name='MDF', thickness=Decimal('16.0'), raw_material=None):
     """متریال محصول (ورق) — متمایز از RawMaterial انبار."""
     return SheetMaterial.objects.create(
-        name=name, thickness=thickness, consumption_per_unit=Decimal('1')
+        name=name, thickness=thickness, consumption_per_unit=Decimal('1'),
+        raw_material=raw_material,
     )
 
 
@@ -82,14 +85,26 @@ def make_product(name='مبل سلوی', with_bom=True):
     return product
 
 
-def make_order(status='producing', customer_name='مشتری آزمایشی', with_items=True):
+def make_order(status='producing', customer_name='مشتری آزمایشی', with_items=True,
+               due_in_days=10, created_at=None):
+    """
+    ساخت سفارش با داده‌های واقعی CraftFlow.
+
+    ``due_in_days=None`` یعنی ``due_date`` خالی است — همان وضعیتی که در دادهٔ
+    فعلی کارخانه برای همهٔ سفارش‌ها برقرار است و برای تست اطمینان ``low``
+    در تحلیل تأخیر لازم است.
+    """
     customer, _ = Customer.objects.get_or_create(name=customer_name)
+    due_date = (
+        jdatetime.date.today() + jdatetime.timedelta(days=due_in_days)
+        if due_in_days is not None else None
+    )
     order = Order.objects.create(
         customer=customer,
         number=f'N-{Order.objects.count() + 1}',
         status=status,
-        created_at=jdatetime.date.today(),
-        due_date=jdatetime.date.today() + jdatetime.timedelta(days=10),
+        created_at=created_at or jdatetime.date.today(),
+        due_date=due_date,
     )
     if with_items:
         item = OrderItem.objects.create(
@@ -98,6 +113,40 @@ def make_order(status='producing', customer_name='مشتری آزمایشی', wi
         )
         order.items.add(item)
     return order
+
+
+def make_defect(order, status='reported', quantity=1, task=None):
+    """خرابی تولید — برای تست دامنهٔ کیفیت."""
+    return ProductionDefect.objects.create(
+        order=order,
+        order_item=order.items.first(),
+        task=task,
+        color_part='بدنه',
+        quantity=quantity,
+        description='خرابی آزمایشی',
+        status=status,
+    )
+
+
+def make_packaging_units(item, count=3, packed=0, shipped=0):
+    """
+    واحدهای بسته‌بندی با وضعیت مشخص.
+
+    توجه: سیگنال ``post_save`` روی ``OrderItem`` در خود CraftFlow به‌طور خودکار
+    ``quantity`` واحد بسته‌بندی می‌سازد؛ بنابراین این کمکی آن‌ها را به‌روزرسانی
+    می‌کند و واحد تکراری نمی‌سازد (قید ``unique(order_item, unit_number)``).
+    """
+    item.sync_packaging_units()
+    units = list(
+        PackagingUnit.objects
+        .filter(order_item=item)
+        .order_by('unit_number')[:max(0, int(count))]
+    )
+    for index, unit in enumerate(units, start=1):
+        unit.is_packed = index <= packed
+        unit.is_shipped = index <= shipped
+        unit.save(update_fields=['is_packed', 'is_shipped'])
+    return units
 
 
 def make_tasks(order, stations=('cut', 'cnc'), status='pending', statuses=None):

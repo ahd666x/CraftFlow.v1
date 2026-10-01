@@ -285,16 +285,17 @@
 
     $('#poItemForm').on('submit', function(e) {
         e.preventDefault();
+        var $form = $(this);
         var orderId = $('#poItemOrderId').val();
         $.ajax({
             url: '/inventory/purchase-orders/' + orderId + '/items/add/',
             method: 'POST',
             headers: {'X-Requested-With': 'XMLHttpRequest', 'X-CSRFToken': getCsrfToken()},
-            data: $(this).serialize(),
+            data: $form.serialize(),
             success: function(data) {
                 if (data.success) {
                     loadPOItems(orderId);
-                    $(this)[0].reset();
+                    $form[0].reset();
                 } else {
                     alert('خطا: ' + JSON.stringify(data.errors || data));
                 }

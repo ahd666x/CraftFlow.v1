@@ -4,7 +4,7 @@
 {% block inventory_content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h2>📋 مدیریت دسته‌های مواد اولیه</h2>
-    <button class="btn btn-modern" data-bs-toggle="modal" data-bs-target="#categoryModal">
+    <button class="btn btn-modern" id="btnNewCategory" data-bs-toggle="modal" data-bs-target="#categoryModal">
         <i class="bi bi-plus-circle"></i> دسته جدید
     </button>
 </div>
@@ -134,7 +134,24 @@
         });
     });
 
-    $('.edit-category').on('click', function() {
+    function resetCategoryForm() {
+        $('#categoryForm')[0].reset();
+        $('#formAction').val('create');
+        $('#categoryId').val('');
+        $('#modalTitle').text('دسته جدید');
+    }
+
+    $('#btnNewCategory').on('click', function() {
+        resetCategoryForm();
+    });
+
+    $('#categoryModal').on('show.bs.modal', function() {
+        if ($('#formAction').val() !== 'edit') {
+            resetCategoryForm();
+        }
+    });
+
+    $(document).on('click', '.edit-category', function() {
         var id = $(this).data('id');
         $.getJSON('/inventory/categories/' + id + '/detail/', function(data) {
             $('#modalTitle').text('ویرایش دسته');

@@ -15,6 +15,9 @@ _MODULES = (
     'craftflow_ai.tools.reports',
     'craftflow_ai.tools.planning',
     'craftflow_ai.tools.quality',
+    # فاز ۲ — تحلیل قطعی و شبیه‌سازی خالص (همچنان فقط‌خواندنی)
+    'craftflow_ai.tools.analysis',
+    'craftflow_ai.tools.simulation',
 )
 
 

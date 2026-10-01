@@ -160,6 +160,13 @@ ACTIVITY_LABELS = {
     'find_material_shortages': 'کمبود مواد',
     'generate_production_report': 'گزارش تولید',
     'get_quality_status': 'وضعیت خرابی‌ها',
+    # فاز ۲
+    'analyze_order_health': 'تحلیل سلامت سفارش',
+    'analyze_order_delay': 'تحلیل تأخیر سفارش',
+    'analyze_station_bottleneck': 'تحلیل گلوگاه ایستگاه',
+    'analyze_material_impact': 'تحلیل تأثیر مواد',
+    'simulate_material_availability': 'شبیه‌سازی موجودی مواد',
+    'simulate_order_priority': 'شبیه‌سازی اولویت سفارش',
 }
 
 

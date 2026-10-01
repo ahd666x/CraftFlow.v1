@@ -59,7 +59,13 @@ EXPECTED_TOOLS = {
     'get_material_requirements', 'find_material_shortages',
     'generate_production_report', 'get_order_timeline',
     'get_worker_load', 'get_working_day_info', 'get_quality_status',
+    # فاز ۲ — تحلیل قطعی و شبیه‌سازی خالص
+    'analyze_order_health', 'analyze_order_delay',
+    'analyze_station_bottleneck', 'analyze_material_impact',
+    'simulate_material_availability', 'simulate_order_priority',
 }
+
+EXPECTED_TOOL_COUNT = 20
 
 
 class RegistryAcceptanceTests(TestCase):
@@ -69,13 +75,13 @@ class RegistryAcceptanceTests(TestCase):
         self.registry = get_registry()
         self.user = make_user('reg_user', groups=['1'])
 
-    def test_01_all_fourteen_tools_are_discoverable(self):
+    def test_01_all_expected_tools_are_discoverable(self):
         self.assertEqual(set(self.registry.names()), EXPECTED_TOOLS)
-        self.assertEqual(len(self.registry), 14)
+        self.assertEqual(len(self.registry), EXPECTED_TOOL_COUNT)
 
     def test_02_every_tool_exposes_a_valid_llm_schema(self):
         schemas = self.registry.schemas_for_llm()
-        self.assertEqual(len(schemas), 14)
+        self.assertEqual(len(schemas), EXPECTED_TOOL_COUNT)
         for schema in schemas:
             self.assertIn('name', schema)
             self.assertTrue(schema['description'].strip())
@@ -207,7 +213,7 @@ class RegistryAcceptanceTests(TestCase):
         fresh = ToolRegistry()
         register_all(fresh)
         register_all(fresh)  # نباید خطا دهد
-        self.assertEqual(len(fresh), 14)
+        self.assertEqual(len(fresh), EXPECTED_TOOL_COUNT)
 
     def test_13_available_for_filters_by_permission(self):
         warehouse = make_user('wh_only', groups=['انبار'])
@@ -438,8 +444,15 @@ class PermissionMatrixTests(TestCase):
             'find_material_shortages': 'inventory.view',
             'generate_production_report': 'reports.view',
             'get_quality_status': 'quality.view',
+            # فاز ۲ — همان permissionهای منبع دادهٔ زیربنایی، بدون گسترش دسترسی
+            'analyze_order_health': 'orders.view',
+            'analyze_order_delay': 'orders.view',
+            'analyze_station_bottleneck': 'production.view',
+            'analyze_material_impact': 'inventory.view',
+            'simulate_material_availability': 'inventory.view',
+            'simulate_order_priority': 'orders.view',
         }
-        self.assertEqual(len(expected), 14)
+        self.assertEqual(len(expected), EXPECTED_TOOL_COUNT)
         for name, perm in expected.items():
             self.assertEqual(self.registry.get(name).permission, perm, name)
             self.assertIn(perm, known_permissions())
@@ -447,7 +460,7 @@ class PermissionMatrixTests(TestCase):
     def test_03_superuser_can_use_every_tool(self):
         for tool in self.registry.list_tools():
             self.assertTrue(has_permission(self.superuser, tool.permission), tool.name)
-        self.assertEqual(len(self.registry.available_for(self.superuser)), 14)
+        self.assertEqual(len(self.registry.available_for(self.superuser)), EXPECTED_TOOL_COUNT)
 
     def test_04_staff_group_1(self):
         allowed = {t.name for t in self.registry.available_for(self.staff)}
@@ -464,6 +477,8 @@ class PermissionMatrixTests(TestCase):
     def test_07_warehouse_only_inventory(self):
         warehouse_tools = {
             'get_inventory_status', 'get_material_requirements', 'find_material_shortages',
+            # فاز ۲: ابزارهای انبار برای انباردار هم همان دسترسی فاز ۱ را دارند
+            'analyze_material_impact', 'simulate_material_availability',
         }
         self.assertEqual(
             {t.name for t in self.registry.available_for(self.warehouse)},
@@ -808,11 +823,17 @@ class ChatApiTests(TestCase):
         self.client.force_login(warehouse)
         body = self.client.get(reverse('craftflow_ai:tools_api')).json()
         self.assertTrue(body['success'])
-        self.assertEqual(len(body['tools']), 3)
+        # انباردار: سه ابزار فاز ۱ + دو ابزار انبار فاز ۲ (تحلیل/شبیه‌سازی مواد).
+        self.assertEqual(
+            {tool['name'] for tool in body['tools']},
+            {'get_inventory_status', 'get_material_requirements',
+             'find_material_shortages', 'analyze_material_impact',
+             'simulate_material_availability'},
+        )
         self.assertFalse(body['permissions']['reports.view'])
         self.client.force_login(self.user)
         body = self.client.get(reverse('craftflow_ai:tools_api')).json()
-        self.assertEqual(len(body['tools']), 14)
+        self.assertEqual(len(body['tools']), EXPECTED_TOOL_COUNT)
 
     def test_14_sequential_messages_keep_one_conversation(self):
         provider = FakeAIProvider()
