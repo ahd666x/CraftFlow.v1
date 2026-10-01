@@ -138,7 +138,7 @@ def production_defects(request):
                             task=related_task, defect=defect, packaging_unit=unit, raw_material_id=raw_id,
                             order_item=item, color_part=color_part,
                             requested_quantity=replacement_quantity, purpose='rework',
-                            requested_by=request.user, note='ساخت م again برای خرابی #{}'.format(defect.id)
+                            requested_by=request.user, note='ساخت مagain برای خرابی #{}'.format(defect.id)
                         )
                         defect.status = 'material_requested'
                         defect.save(update_fields=['status'])
@@ -3660,7 +3660,10 @@ def undo_packaging_unit(request, pk):
 @login_required
 def customer_order_list(request):
     # نمایش تمام سفارش‌هایی که این کاربر ثبت کرده است (مستقل از Customer)
-    orders = Order.objects.filter(user=request.user).order_by('-id')
+    orders = (Order.objects.filter(user=request.user)
+              .select_related('customer')
+              .prefetch_related('items__packaging_units')
+              .order_by('-id'))
     return render(request, 'customer/order_list.html', {'orders': orders})
 
 

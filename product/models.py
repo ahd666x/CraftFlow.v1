@@ -116,23 +116,17 @@ class Order(models.Model):
     @property
     def total_price(self):
         return sum(item.line_total for item in self.items.all())
-    
+
 
     @property
     def packaging_summary(self):
-        total_units = 0
-        packed_units = 0
-        shipped_units = 0
+        total = packed = shipped = 0
         for item in self.items.all():
-            item_total = item.packaging_units.count()
-            total_units += item_total
-            packed_units += item.packaging_units.filter(is_packed=True).count()
-            shipped_units += item.packaging_units.filter(is_shipped=True).count()
-        return {
-            'total': total_units,
-            'packed': packed_units,
-            'shipped': shipped_units,
-        }
+            for u in item.packaging_units.all():
+                total += 1
+                packed += bool(u.is_packed)
+                shipped += bool(u.is_shipped)
+        return {'total': total, 'packed': packed, 'shipped': shipped}
 
 
 

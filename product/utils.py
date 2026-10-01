@@ -108,6 +108,35 @@ def _get_task_actual_color_code(task):
     return str(code) if code and code != 'nan' else None
 
 
+def _resolve_variant_requirements(process_id, requirements, actual_code):
+    """requirements را به ماده واقعی کد رنگ تبدیل می‌کند؛ اسلات‌های color-variant حل‌نشده حذف و لاگ می‌شوند."""
+    from .models import PaintingProcessMaterial, PaintingColorMaterialVariant
+    variant_slots = set(PaintingProcessMaterial.objects.filter(
+        process_id=process_id, is_color_variant=True
+    ).values_list('raw_material_id', flat=True))
+    variant_map = {}
+    if actual_code:
+        variant_map = {
+            v.process_material.raw_material_id: v.raw_material
+            for v in PaintingColorMaterialVariant.objects.filter(
+                process_material__process_id=process_id,
+                process_material__is_color_variant=True,
+                color_code=actual_code,
+            ).select_related('raw_material', 'process_material')
+        }
+    resolved = []
+    for req in requirements:
+        if req.raw_material_id in variant_slots:
+            real = variant_map.get(req.raw_material_id)
+            if not real:
+                logger.warning('اسلات رنگ‌وابسته بدون mapping: process=%s material=%s code=%s',
+                               process_id, req.raw_material_id, actual_code)
+                continue
+            req.raw_material = real
+        resolved.append(req)
+    return resolved
+
+
 def get_painting_material_requirements_for_task(task):
     """
     فرمول مصرف مواد یک تسک نقاشی: دقیقاً بر اساس (روندِ مرحلهٔ تسک،
@@ -136,24 +165,7 @@ def get_painting_material_requirements_for_task(task):
     )
 
     actual_code = _get_task_actual_color_code(task)
-    if not actual_code:
-        return requirements
-
-    variant_map = {
-        variant.process_material.raw_material_id: variant.raw_material
-        for variant in PaintingColorMaterialVariant.objects.filter(
-            process_material__process_id=process_id,
-            process_material__is_color_variant=True,
-            color_code=actual_code,
-        ).select_related('raw_material', 'process_material')
-    }
-
-    for requirement in requirements:
-        real_material = variant_map.get(requirement.raw_material_id)
-        if real_material:
-            requirement.raw_material = real_material
-
-    return requirements
+    return _resolve_variant_requirements(process_id, requirements, actual_code)
 
 
 def get_painting_material_requirements_for_item_colorpart(order_item, color_part):
@@ -193,18 +205,7 @@ def get_painting_material_requirements_for_item_colorpart(order_item, color_part
     )
 
     # 4. اسلات‌های وابسته به رنگ را به ماده‌ی واقعی تبدیل کن (in-memory، مثل نسخه‌ی task)
-    variant_map = {
-        v.process_material.raw_material_id: v.raw_material
-        for v in PaintingColorMaterialVariant.objects.filter(
-            process_material__process_id=process.id,
-            process_material__is_color_variant=True,
-            color_code=actual_code,
-        ).select_related('raw_material', 'process_material')
-    }
-    for req in requirements:
-        real = variant_map.get(req.raw_material_id)
-        if real:
-            req.raw_material = real
+    requirements = _resolve_variant_requirements(process.id, requirements, actual_code)
 
     return process, requirements
 
