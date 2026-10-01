@@ -41,6 +41,7 @@
                 {% comment %} <li class="nav-item"><a class="nav-link {% if request.resolver_match.url_name == 'product_catalog' %}active fw-bold{% endif %}" href="{% url 'product_catalog' %}"><i class="bi bi-collection me-1"></i> کاتالوگ / لیست قیمت</a></li> {% endcomment %}
                 <li class="nav-item"><a class="nav-link {% if request.resolver_match.url_name == 'painting_schedule' %}active fw-bold{% endif %}" href="{% url 'painting_schedule' %}"><i class="bi bi-brush me-1"></i> نقاشی</a></li>
                 <li class="nav-item"><a class="nav-link {% if request.resolver_match.namespace == 'inventory' %}active fw-bold{% endif %}" href="{% url 'inventory:production_issue_queue' %}"><i class="bi bi-archive me-1"></i> انبار</a></li>
+                <li class="nav-item"><a class="nav-link {% if request.resolver_match.namespace == 'craftflow_ai' %}active fw-bold{% endif %}" href="{% url 'craftflow_ai:chat' %}"><i class="bi bi-stars me-1"></i> دستیار هوشمند</a></li>
                 {% comment %} <li class="nav-item"><a class="nav-link {% if request.resolver_match.url_name == 'report_production_unified' %}active fw-bold{% endif %}" href="{% url 'report_production_unified' %}"><i class="bi bi-graph-up me-1"></i> گزارش یکپارچه</a></li> {% endcomment %}
                 {% comment %} <li class="nav-item"><a class="nav-link {% if request.resolver_match.url_name == 'report_fulfillment_status' %}active fw-bold{% endif %}" href="{% url 'report_fulfillment_status' %}"><i class="bi bi-truck me-1"></i> وضعیت ارسال</a></li> {% endcomment %}
             </ul>

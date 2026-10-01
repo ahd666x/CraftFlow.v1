@@ -12,4 +12,5 @@ urlpatterns = [
     re_path(r'^media/(?P<path>.*)$', login_required(serve), {'document_root': settings.MEDIA_ROOT}),
     path('', include('product.urls')),
     path('inventory/', include('inventory.urls')),
+    path('craftflow-ai/', include('craftflow_ai.urls')),
 ]

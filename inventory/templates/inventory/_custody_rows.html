@@ -1,0 +1,52 @@
+{% load product_filters %}
+{% for row in rows %}
+<tr data-custody="{{ row.custody.id }}"
+    data-material="{{ row.raw.id }}"
+    data-holder="{{ row.user.id }}"
+    data-quantity="{{ row.quantity|floatformat:2 }}"
+    class="{% if row.days_open > 3 and row.quantity > 0 %}table-warning{% endif %}">
+  <td>
+    <strong>{{ row.user.get_full_name|default:row.user.username }}</strong>
+    {% if row.user.workerprofile %}
+      <div class="small text-muted">{{ row.user.workerprofile.get_stage_display }}</div>
+    {% endif %}
+  </td>
+  <td>
+    <strong>{{ row.raw.name }}</strong>
+    {% if row.raw.code %}<div class="small text-muted">{{ row.raw.code }}</div>{% endif %}
+  </td>
+  <td class="text-muted small">{{ row.unit }}</td>
+  <td>
+    <span class="fw-bold {% if row.quantity > 0 %}text-warning{% else %}text-muted{% endif %}">
+      {{ row.quantity|floatformat:2 }}
+    </span>
+  </td>
+  <td class="text-muted">{{ row.pack_size|floatformat:2 }}</td>
+  <td class="text-muted small">{{ row.updated_at|persian_datetime }}</td>
+  <td>
+    {% if row.days_open > 0 %}
+      <span class="badge {% if row.days_open > 3 %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
+        {{ row.days_open }} روز
+      </span>
+    {% else %}
+      <span class="badge bg-light text-dark">امروز</span>
+    {% endif %}
+  </td>
+  <td>
+    <button type="button" class="btn btn-sm btn-outline-primary btn-custody-return"
+            data-bs-toggle="modal" data-bs-target="#custodyReturnModal"
+            data-material="{{ row.raw.name }}" data-unit="{{ row.unit }}"
+            data-raw="{{ row.raw.id }}" data-holder="{{ row.user.id }}"
+            data-holder-name="{{ row.user.get_full_name|default:row.user.username }}"
+            data-quantity="{{ row.quantity|floatformat:2 }}">
+      <i class="bi bi-box-arrow-in-down"></i> ثبت بازگشت
+    </button>
+  </td>
+</tr>
+{% empty %}
+<tr>
+  <td colspan="8" class="text-center text-muted py-5">
+    <i class="bi bi-inbox"></i> هیچ امانتی ثبت نشده است.
+  </td>
+</tr>
+{% endfor %}

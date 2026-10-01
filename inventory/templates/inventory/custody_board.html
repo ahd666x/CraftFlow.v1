@@ -1,0 +1,242 @@
+{% extends "inventory/base.html" %}
+{% load static %}
+{% load product_filters %}
+{% block title %}تحویل روزانه نقاشی{% endblock %}
+
+{% block inventory_content %}
+{% include "inventory/_js_error_guard.html" %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+  <div>
+    <h1 class="h3 mb-1">تحویل روزانه نقاشی</h1>
+    <div class="text-muted small">
+      باقی‌ماندهٔ بسته‌های بازِ هر نقاش — پایان روز وزن واقعی را ثبت کنید تا فردا از همان
+      مقدار به او تحویل داده شود، نه بستهٔ کامل جدید.
+    </div>
+    <div class="small text-muted mt-1">نسخهٔ صفحه: <code>{{ page_version|default:"—" }}</code></div>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-12 col-md-4">
+    <div class="card-modern h-100">
+      <div class="card-body py-3">
+        <div class="text-muted small">کارگران با امانت باز</div>
+        <div class="h4 mb-0">{{ summary.workers_count }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-md-4">
+    <div class="card-modern h-100">
+      <div class="card-body py-3">
+        <div class="text-muted small">ردیف‌های امانت باز</div>
+        <div class="h4 mb-0">{{ summary.open_rows }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-md-4">
+    <div class="card-modern h-100">
+      <div class="card-body py-3">
+        <div class="text-muted small">مجموع امانت‌های باز</div>
+        <div class="h4 mb-0">{{ summary.total_quantity|floatformat:2 }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-12">
+    <form method="get" class="d-flex gap-2 flex-wrap" id="custodyFilterForm">
+      <select name="worker" class="form-select form-select-sm" id="custodyWorkerFilter" style="max-width:260px">
+        <option value="">همهٔ کارگران</option>
+        {% for w in paint_workers %}
+          <option value="{{ w.id }}" {% if worker and worker.id == w.id %}selected{% endif %}>{{ w.get_full_name|default:w.username }}</option>
+        {% endfor %}
+      </select>
+      <input type="text" name="q" class="form-control form-control-sm" placeholder="جستجو: کارگر یا ماده..." value="{{ search }}" style="max-width:280px">
+      <div class="form-check form-check-inline align-self-center">
+        <input class="form-check-input" type="checkbox" name="only_open" value="1" id="custodyOnlyOpen" {% if only_open %}checked{% endif %}>
+        <label class="form-check-label small" for="custodyOnlyOpen">فقط امانت‌های باز</label>
+      </div>
+      <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-funnel"></i> فیلتر</button>
+      <a href="{% url 'inventory:custody_board' %}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-x-circle"></i> پاک</a>
+    </form>
+  </div>
+</div>
+
+<div class="card-modern" id="custodyCard">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0" id="custodyTable">
+        <thead class="table-light">
+          <tr>
+            <th style="width:18%">کارگر</th>
+            <th style="width:22%">ماده اولیه</th>
+            <th style="width:8%">واحد</th>
+            <th style="width:12%">مقدار امانت</th>
+            <th style="width:10%">حجم بسته</th>
+            <th style="width:14%">آخرین تغییر</th>
+            <th style="width:8%">سپری‌شده</th>
+            <th style="width:14%"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% include "inventory/_custody_rows.html" %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Return Modal -->
+<div class="modal fade" id="custodyReturnModal" tabindex="-1" aria-labelledby="custodyReturnModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title" id="custodyReturnModalLabel">ثبت بازگشت پایان روز</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="بستن"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-light border">
+          <div class="mb-1"><i class="bi bi-person"></i> کارگر: <strong id="custodyHolderName">—</strong></div>
+          <div><i class="bi bi-box"></i> ماده اولیه: <strong id="custodyMaterialName">—</strong></div>
+          <div class="small text-muted mt-1">
+            باقی‌ماندهٔ ثبت‌شده: <span id="custodyCurrentQty">۰</span> <span id="custodyUnit"></span>
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-bold" for="custodyMeasuredInput">مقدار واقعی توزین‌شده <span class="text-danger">*</span></label>
+          <input type="number" class="form-control" id="custodyMeasuredInput" min="0" step="0.01" required autofocus>
+          <div class="form-text">اگر همهٔ باقیمانده مصرف شده، عدد <code>۰</code> را ثبت کنید.</div>
+        </div>
+        <div class="mb-3">
+          <button type="button" class="btn btn-sm btn-outline-danger" id="custodyZeroBtn">
+            <i class="bi bi-x-circle"></i> صفر کردن (همه مصرف شد)
+          </button>
+        </div>
+        <div class="mb-1">
+          <label class="form-label" for="custodyNoteInput">یادداشت</label>
+          <input type="text" class="form-control" id="custodyNoteInput" maxlength="255">
+        </div>
+        <div id="custodyAlert" class="alert alert-danger d-none mt-3" role="alert"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+        <button type="button" class="btn btn-success" id="custodySaveBtn">
+          <i class="bi bi-check-lg"></i> ثبت بازگشت
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block inventory_js %}
+<script>
+(function() {
+  'use strict';
+
+  const csrfToken = '{{ csrf_token }}';
+  const returnUrl = '{% url "inventory:custody_return" %}';
+
+  const modalEl = document.getElementById('custodyReturnModal');
+  const holderNameEl = document.getElementById('custodyHolderName');
+  const materialNameEl = document.getElementById('custodyMaterialName');
+  const currentQtyEl = document.getElementById('custodyCurrentQty');
+  const unitEl = document.getElementById('custodyUnit');
+  const measuredInput = document.getElementById('custodyMeasuredInput');
+  const noteInput = document.getElementById('custodyNoteInput');
+  const alertEl = document.getElementById('custodyAlert');
+  const saveBtn = document.getElementById('custodySaveBtn');
+  const zeroBtn = document.getElementById('custodyZeroBtn');
+
+  let modalInstance = null;
+  let active = { raw: null, holder: null, holderName: '' };
+
+  function toPersian(value) {
+    return String(value).replace(/\d/g, d => '۰۱۲۳۴۵۶۷۸۹'[d]);
+  }
+
+  document.getElementById('custodyTable').addEventListener('click', e => {
+    const btn = e.target.closest('.btn-custody-return');
+    if (!btn) return;
+
+    active = {
+      raw: btn.dataset.raw,
+      holder: btn.dataset.holder,
+      holderName: btn.dataset.holderName || ''
+    };
+    holderNameEl.textContent = btn.dataset.holderName || '—';
+    materialNameEl.textContent = btn.dataset.material || '—';
+    unitEl.textContent = btn.dataset.unit || '';
+    const currentQty = parseFloat(btn.dataset.quantity || '0');
+    currentQtyEl.textContent = toPersian(currentQty.toFixed(2));
+    measuredInput.value = currentQty.toFixed(2);
+    noteInput.value = '';
+    alertEl.classList.add('d-none');
+    alertEl.textContent = '';
+    setTimeout(() => { measuredInput.focus(); measuredInput.select(); }, 400);
+  });
+
+  zeroBtn?.addEventListener('click', () => {
+    measuredInput.value = '0.00';
+    measuredInput.focus();
+  });
+
+  saveBtn?.addEventListener('click', async () => {
+    if (!active.raw || !active.holder) {
+      alert('ردیف امانتی انتخاب نشده است.');
+      return;
+    }
+    const value = measuredInput.value;
+    if (value === '' || value === null) {
+      alertEl.textContent = 'مقدار توزین‌شده را وارد کنید.';
+      alertEl.classList.remove('d-none');
+      return;
+    }
+
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> در حال ثبت...';
+
+    try {
+      const response = await fetch(returnUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrfToken,
+          'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: JSON.stringify({
+          raw_material_id: active.raw,
+          held_by: active.holder,
+          measured_quantity: value,
+          note: noteInput.value || ''
+        })
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'خطا در ثبت بازگشت');
+      }
+      if (modalInstance) modalInstance.hide();
+      window.location.reload();
+    } catch (err) {
+      alertEl.textContent = err.message;
+      alertEl.classList.remove('d-none');
+    } finally {
+      saveBtn.disabled = false;
+      saveBtn.innerHTML = '<i class="bi bi-check-lg"></i> ثبت بازگشت';
+    }
+  });
+
+  modalEl?.addEventListener('hidden.bs.modal', () => {
+    active = { raw: null, holder: null, holderName: '' };
+    measuredInput.value = '';
+    noteInput.value = '';
+    alertEl.classList.add('d-none');
+  });
+
+  modalEl?.addEventListener('show.bs.modal', () => {
+    modalInstance = bootstrap.Modal.getOrCreateInstance(modalEl);
+  });
+})();
+</script>
+{% endblock %}

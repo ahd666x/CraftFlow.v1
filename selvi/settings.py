@@ -26,7 +26,7 @@ SECRET_KEY = config('SECRET_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 
 
-DEBUG = config('DEBUG', default=False, cast=bool)
+DEBUG = config('DEBUG', default=True, cast=bool)
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='selvichoob.ir,45.159.149.122,localhost,127.0.0.1', cast=Csv())
 CSRF_TRUSTED_ORIGINS = config('CSRF_TRUSTED_ORIGINS', default='https://selvichoob.ir', cast=Csv())
 
@@ -51,6 +51,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'product',
     'inventory',
+    'craftflow_ai',
     'rest_framework',
     'django.contrib.humanize',
 
@@ -191,3 +192,48 @@ CNC_FILE_EXTENSION = '.cnc'
 DR_SOURCE_DIR = BASE_DIR /'dr_archive'
 
 DR_FILE_EXTENSION = '.scx'              # پسوند فایل
+
+
+# ===================================================================
+#   لایهٔ هوش مصنوعی (CraftFlow AI Copilot) — فقط-خواندنی
+#   همهٔ مقادیر از Environment Variable خوانده می‌شوند.
+#   API Key را هرگز داخل گیت نگذارید؛ آن را در selvi/.env قرار دهید.
+# ===================================================================
+CRAFTFLOW_AI_ENABLED = config('CRAFTFLOW_AI_ENABLED', default=True, cast=bool)
+CRAFTFLOW_AI_PROVIDER = config('CRAFTFLOW_AI_PROVIDER', default='gemini')
+CRAFTFLOW_AI_MODEL = config('CRAFTFLOW_AI_MODEL', default='gemini-2.5-flash')
+CRAFTFLOW_AI_API_KEY = config('CRAFTFLOW_AI_API_KEY', default='')
+CRAFTFLOW_AI_BASE_URL = config('CRAFTFLOW_AI_BASE_URL', default='')
+CRAFTFLOW_AI_MAX_TOOL_CALLS = config('CRAFTFLOW_AI_MAX_TOOL_CALLS', default=8, cast=int)
+CRAFTFLOW_AI_TIMEOUT = config('CRAFTFLOW_AI_TIMEOUT', default=60, cast=int)
+CRAFTFLOW_AI_MAX_HISTORY = config('CRAFTFLOW_AI_MAX_HISTORY', default=10, cast=int)
+CRAFTFLOW_AI_TEMPERATURE = config('CRAFTFLOW_AI_TEMPERATURE', default=0.0, cast=float)
+
+# نام گروه‌های مجاز برای هر دسترسی (همان گروه‌های موجود CraftFlow)
+CRAFTFLOW_AI_MANAGER_GROUPS = config(
+    'CRAFTFLOW_AI_MANAGER_GROUPS', default='1,2,3', cast=Csv())
+CRAFTFLOW_AI_STAFF_GROUPS = config(
+    'CRAFTFLOW_AI_STAFF_GROUPS', default='1', cast=Csv())
+CRAFTFLOW_AI_WAREHOUSE_GROUPS = config(
+    'CRAFTFLOW_AI_WAREHOUSE_GROUPS', default='انبار', cast=Csv())
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'simple': {'format': '[{asctime}] {levelname} {name}: {message}', 'style': '{'},
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple',
+        },
+    },
+    'loggers': {
+        'craftflow_ai': {
+            'handlers': ['console'],
+            'level': config('CRAFTFLOW_AI_LOG_LEVEL', default='INFO'),
+            'propagate': False,
+        },
+    },
+}

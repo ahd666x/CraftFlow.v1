@@ -1,0 +1,35 @@
+{# inventory/_js_error_guard.html — نمایش خطای جاوااسکریپت روی صفحه
+   تا وقتی خطاهای مرورگر فقط در Console پنهان می‌مانند، مستقیم دیده شوند. #}
+<div id="jsErrorBox" class="alert alert-danger d-none rounded-0 border-0 mb-0"
+     style="position:sticky; top:0; z-index:2000;" role="alert">
+  <div class="d-flex justify-content-between align-items-start gap-3">
+    <div>
+      <strong><i class="bi bi-bug"></i> خطای جاوااسکریپت</strong>
+      <div id="jsErrorText" class="small mt-1" style="white-space:pre-wrap;"></div>
+    </div>
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="بستن"></button>
+  </div>
+</div>
+<script>
+(function() {
+  'use strict';
+  let shown = 0;
+  function show(text) {
+    if (shown >= 3) return;
+    shown += 1;
+    const box = document.getElementById('jsErrorBox');
+    const txt = document.getElementById('jsErrorText');
+    if (!box || !txt) return;
+    txt.textContent = (txt.textContent ? txt.textContent + '\n' : '') + text;
+    box.classList.remove('d-none');
+  }
+  window.addEventListener('error', function(e) {
+    show((e.message || 'خطای ناشناخته') + (e.filename ? ' @ ' + e.filename + ':' + e.lineno : ''));
+  });
+  window.addEventListener('unhandledrejection', function(e) {
+    show('Promise: ' + (e.reason && e.reason.message ? e.reason.message : e.reason));
+  });
+  // در دسترس برای بقیهٔ اسکریپت‌های صفحه
+  window.__showJsError = show;
+})();
+</script>

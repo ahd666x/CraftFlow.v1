@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}دستیار هوشمند کرفت‌فلو{% endblock %}
+
+{% block extra_css %}
+<style>
+    body.admin-panel { font-family: 'Vazirmatn', 'Segoe UI', Tahoma, sans-serif; }
+    .ai-shell { display: flex; flex-direction: column; height: calc(100vh - 190px); min-height: 520px; }
+    .ai-log { flex: 1; overflow-y: auto; padding: 1rem; background: #f8fafc; border-radius: .6rem; }
+    .ai-bubble { border-radius: .85rem; padding: .75rem 1rem; margin-bottom: .85rem; max-width: 82%; line-height: 1.9; white-space: pre-wrap; word-break: break-word; }
+    .ai-user { background: #0f172a; color: #fff; margin-inline-start: auto; }
+    .ai-bot { background: #fff; border: 1px solid #e2e8f0; margin-inline-end: auto; }
+    .ai-error { background: #fee2e2; border: 1px solid #fca5a5; color: #7f1d1d; margin-inline-end: auto; }
+    .ai-tools { border: 1px dashed #cbd5e1; background: #fff; border-radius: .6rem; padding: .5rem .75rem; margin-bottom: .75rem; font-size: .86rem; }
+    .ai-tools-title { color: #475569; font-weight: 600; margin-bottom: .35rem; }
+    .ai-tool-row { display: flex; align-items: center; gap: .45rem; color: #334155; padding: .12rem 0; }
+    .ai-tool-row .bi-check-circle-fill { color: #16a34a; }
+    .ai-tool-row .bi-x-circle-fill { color: #dc2626; }
+    .ai-tool-row .bi-hourglass-split { color: #d97706; }
+    .ai-suggestion { font-size: .85rem; }
+    .ai-suggestion button { font-size: .82rem; }
+    .ai-composer textarea { resize: none; }
+    .ai-meta-box { font-size: .8rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
+        <div>
+            <h4 class="mb-1"><i class="bi bi-stars me-1"></i>دستیار هوشمند کرفت‌فلو</h4>
+            <p class="text-muted mb-0 ai-meta-box">
+                فقط‌خواندنی — این دستیار هیچ تغییری در سفارش، تولید یا انبار ایجاد نمی‌کند.
+            </p>
+        </div>
+        <div class="ai-meta-box text-muted">
+            {% if ai_config.provider %}<span class="badge text-bg-light">{{ ai_config.provider }}</span>{% endif %}
+            {% if ai_config.model %}<span class="badge text-bg-light">{{ ai_config.model }}</span>{% endif %}
+            <span class="badge text-bg-light">{{ tool_count }} ابزار در دسترس</span>
+        </div>
+    </div>
+
+    {% if not ai_enabled %}
+    <div class="alert alert-warning">
+        <i class="bi bi-exclamation-triangle me-1"></i>
+        دستیار هوشمند غیرفعال است (CRAFTFLOW_AI_ENABLED).
+    </div>
+    {% elif not ai_config.has_api_key %}
+    <div class="alert alert-warning">
+        <i class="bi bi-key me-1"></i>
+        کلید API تنظیم نشده است. مقدار <code>CRAFTFLOW_AI_API_KEY</code> را در فایل تنظیمات محیطی
+        سرور قرار دهید. در این حالت پاسخ‌گویی انجام نمی‌شود.
+    </div>
+    {% endif %}
+
+    <div class="ai-shell">
+        <div class="ai-log" id="aiLog">
+            <div class="ai-bubble ai-bot" id="aiIntro">
+                سلام. من دستیار عملیاتی کرفت‌فلو هستم و فقط بر اساس داده‌های واقعی سامانه
+                پاسخ می‌دهم. می‌توانید بپرسید:
+                وضعیت امروز تولید چطور است؟
+                کدام سفارش‌ها عقب افتاده‌اند؟
+                کدام ایستگاه بیشترین تراکم را دارد؟
+                کدام مواد اولیه کم داریم؟
+                مواد مورد نیاز سفارش ۱۰۸۰ چیست؟
+            </div>
+        </div>
+
+        <div class="ai-suggestion mt-2 mb-2 d-flex flex-wrap gap-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary" data-prompt="وضعیت امروز تولید چطور است؟">وضعیت تولید</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" data-prompt="کدام سفارش‌ها عقب افتاده‌اند؟">سفارش‌های عقب‌افتاده</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" data-prompt="کدام ایستگاه بیشترین تراکم را دارد؟">گلوگاه‌ها</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" data-prompt="کدام مواد اولیه کم داریم؟">کمبود مواد</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" data-prompt="یک گزارش تولید امروز بده">گزارش تولید</button>
+        </div>
+
+        <form class="ai-composer d-flex gap-2" id="aiForm">
+            <textarea class="form-control" id="aiInput" rows="2" maxlength="4000"
+                      placeholder="پرسش خود را بنویسید…"></textarea>
+            <button type="submit" class="btn btn-primary px-4" id="aiSend">
+                <i class="bi bi-send"></i> ارسال
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    const log = document.getElementById('aiLog');
+    const form = document.getElementById('aiForm');
+    const input = document.getElementById('aiInput');
+    const sendBtn = document.getElementById('aiSend');
+    let conversationId = null;
+    let busy = false;
+
+    function scroll() { log.scrollTop = log.scrollHeight; }
+
+    function addBubble(text, kind) {
+        const el = document.createElement('div');
+        el.className = 'ai-bubble ' + kind;
+        el.textContent = text;
+        log.appendChild(el);
+        scroll();
+        return el;
+    }
+
+    function addToolActivity(toolCalls) {
+        if (!toolCalls || !toolCalls.length) return null;
+        const box = document.createElement('div');
+        box.className = 'ai-tools';
+
+        const title = document.createElement('div');
+        title.className = 'ai-tools-title';
+        title.textContent = 'فعالیت ابزارهای CraftFlow';
+        box.appendChild(title);
+
+        toolCalls.forEach(function (call) {
+            const row = document.createElement('div');
+            row.className = 'ai-tool-row';
+
+            let icon = 'bi-hourglass-split', cls = 'text-warning';
+            if (call.status === 'completed') { icon = 'bi-check-circle-fill'; cls = 'text-success'; }
+            else if (call.status === 'denied' || call.status === 'failed') {
+                icon = 'bi-x-circle-fill'; cls = 'text-danger';
+            }
+
+            const iconEl = document.createElement('i');
+            iconEl.className = 'bi ' + icon + ' ' + cls;
+            const text = document.createElement('span');
+            // فقط برچسب عمومی؛ نه آرگومان و نه خروجی خام ابزار.
+            text.textContent = call.label || call.name;
+            row.appendChild(iconEl);
+            row.appendChild(text);
+            box.appendChild(row);
+        });
+
+        log.appendChild(box);
+        scroll();
+        return box;
+    }
+
+    function setBusy(state) {
+        busy = state;
+        sendBtn.disabled = state;
+        input.disabled = state;
+        sendBtn.innerHTML = state
+            ? '<span class="spinner-border spinner-border-sm"></span> در حال پاسخ…'
+            : '<i class="bi bi-send"></i> ارسال';
+    }
+
+    async function send(message) {
+        if (busy) return;
+        addBubble(message, 'ai-user');
+        setBusy(true);
+        const thinking = addBubble('در حال بررسی داده‌های کرفت‌فلو…', 'ai-bot');
+
+        try {
+            const response = await fetch("{% url 'craftflow_ai:chat_api' %}", {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token }}',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: JSON.stringify({ message: message, conversation_id: conversationId })
+            });
+            const data = await response.json();
+
+            if (thinking.parentNode) thinking.parentNode.removeChild(thinking);
+
+            if (data.conversation_id) conversationId = data.conversation_id;
+            addToolActivity(data.tool_calls);
+
+            if (data.success) {
+                addBubble(data.message || '', 'ai-bot');
+            } else {
+                const code = (data.error && data.error.code) || 'ERROR';
+                addBubble((data.error && data.error.message) || 'خطای نامشخص', 'ai-error');
+                log.lastElementChild.dataset.code = code;
+            }
+        } catch (err) {
+            if (thinking.parentNode) thinking.parentNode.removeChild(thinking);
+            addBubble('ارتباط با سرور برقرار نشد. لطفاً دوباره تلاش کنید.', 'ai-error');
+        } finally {
+            setBusy(false);
+            input.focus();
+        }
+    }
+
+    form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        const message = input.value.trim();
+        if (!message) return;
+        input.value = '';
+        send(message);
+    });
+
+    document.querySelectorAll('[data-prompt]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            send(btn.getAttribute('data-prompt'));
+        });
+    });
+
+    input.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            form.requestSubmit ? form.requestSubmit() : form.dispatchEvent(new Event('submit'));
+        }
+    });
+})();
+</script>
+{% endblock %}

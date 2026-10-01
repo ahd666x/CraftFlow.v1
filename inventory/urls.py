@@ -33,6 +33,10 @@ urlpatterns = [
     path('handover/preview/', views.handover_preview, name='handover_preview'),
     path('handover/create/', views.handover_create, name='handover_create'),
 
+    # Material Custody (باقی‌ماندهٔ بسته‌های باز نزد هر نقاش)
+    path('custody/', views.custody_board, name='custody_board'),
+    path('custody/return/', views.custody_return, name='custody_return'),
+
     path('purchase-orders/', views.purchase_order_list, name='purchase_order_list'),
     path('purchase-orders/<int:order_id>/detail/', views.purchase_order_detail_api, name='purchase_order_detail'),
     path('purchase-orders/create/', views.purchase_order_create, name='purchase_order_create'),

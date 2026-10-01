@@ -151,6 +151,83 @@ class MaterialLeftover(models.Model):
         return f'{self.raw_material.name}: {self.quantity}'
 
 
+class MaterialCustody(models.Model):
+    """
+    مقدار «بازشده»ٔ یک ماده اولیه که هم‌اکنون فیزیکاً در دست یک کارگر (نقاش) است.
+
+    تفاوت با MaterialLeftover:
+      - کلید این رکورد (raw_material, held_by) است، نه فقط raw_material
+      - یعنی باقیماندهٔ هر نقاش جداگانه ردیابی می‌شود و با هم قاطی نمی‌شود
+    این مقدار قبلاً از موجودی انبار خارج شده (در execute_handover به‌صورت
+    StockMovement مصرف ثبت شده)، پس ویرایش آن روی موجودی انبار اثری ندارد.
+    """
+    raw_material = models.ForeignKey(
+        RawMaterial, on_delete=models.PROTECT,
+        related_name='custodies', verbose_name='ماده اولیه'
+    )
+    held_by = models.ForeignKey(
+        User, on_delete=models.PROTECT,
+        related_name='material_custodies', verbose_name='تحویل‌گیرنده (نقاش)'
+    )
+    quantity = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0, verbose_name='مقدار باقی‌مانده نزد کارگر'
+    )
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='آخرین تغییر')
+
+    class Meta:
+        verbose_name = 'امانت مواد نزد کارگر'
+        verbose_name_plural = 'امانت‌های مواد نزد کارگران'
+        ordering = ['-updated_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['raw_material', 'held_by'],
+                name='uniq_material_custody_raw_held_by',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.raw_material.name} — {self.held_by} : {self.quantity}'
+
+
+class MaterialCustodyReturn(models.Model):
+    """سند ثبت مقدار واقعی باقیمانده در پایان روز (توزین)."""
+    custody = models.ForeignKey(
+        MaterialCustody, on_delete=models.CASCADE, related_name='returns',
+        verbose_name='امانت'
+    )
+    raw_material = models.ForeignKey(
+        RawMaterial, on_delete=models.PROTECT, related_name='custody_returns',
+        verbose_name='ماده اولیه'
+    )
+    held_by = models.ForeignKey(
+        User, on_delete=models.PROTECT, related_name='material_custody_returns',
+        verbose_name='کارگر'
+    )
+    measured_quantity = models.DecimalField(
+        max_digits=12, decimal_places=2, verbose_name='مقدار توزین‌شده'
+    )
+    quantity_before = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0, verbose_name='موجودی امانت قبل'
+    )
+    delta = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0, verbose_name='اختلاف'
+    )
+    note = models.CharField(max_length=255, blank=True, verbose_name='یادداشت')
+    recorded_by = models.ForeignKey(
+        User, null=True, on_delete=models.SET_NULL,
+        related_name='recorded_custody_returns', verbose_name='ثبت‌کننده (انبار)'
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='زمان ثبت')
+
+    class Meta:
+        verbose_name = 'سند بازگشت امانت'
+        verbose_name_plural = 'اسناد بازگشت امانت'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'بازگشت #{self.pk} — {self.raw_material.name} — {self.measured_quantity}'
+
+
 class MaterialHandover(models.Model):
     """یک سند تحویل گروهی: انبار‌دار چند درخواست را یک‌جا به یک تحویل‌گیرنده می‌دهد."""
     issued_by = models.ForeignKey(

@@ -17,7 +17,7 @@ from product.decorators import admin_or_manager_required, warehouse_or_manager_r
 from .models import (
     Supplier, RawMaterialCategory, RawMaterial,
     StockMovement, PurchaseOrder, PurchaseOrderItem,
-    MaterialIssue
+    MaterialCustody, MaterialIssue
 )
 from .forms import (
     SupplierForm, RawMaterialCategoryForm, RawMaterialForm,
@@ -36,6 +36,57 @@ def _inventory_context(active_tab='dashboard'):
     return {
         'active_tab': active_tab,
     }
+
+
+def _no_store(response):
+    """
+    این صفحات دادهٔ لحظه‌ای صف/امانت را نشان می‌دهند؛ هیچ‌کدام نباید
+    توسط مرورگر یا پراکسی کش شوند وگرنه کاربر نسخهٔ قدیمیِ JS را می‌بیند
+    و تغییرات «اعمال نمی‌شوند».
+    """
+    response['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    response['Pragma'] = 'no-cache'
+    response['Expires'] = '0'
+    return response
+
+
+def _page_version():
+    """شناسهٔ نسخهٔ کد تا کاربر بتواند ببیند آخرین تغییرات را می‌بیند یا نه."""
+    import hashlib
+    import os
+
+    marks = []
+    for rel in ('views.py', 'services.py', 'models.py'):
+        path = os.path.join(os.path.dirname(__file__), rel)
+        try:
+            with open(path, 'rb') as fh:
+                marks.append(hashlib.sha1(fh.read()).hexdigest()[:8])
+        except OSError:
+            marks.append('00000000')
+    return '-'.join(marks)
+
+
+def _paint_workers():
+    """کاربران فعالِ مرحلهٔ نقاشی؛ اگر پروفایل کارگری وجود نداشت، همهٔ کاربران فعال."""
+    workers = User.objects.filter(
+        is_active=True, workerprofile__stage='paint'
+    ).order_by('first_name', 'last_name', 'username')
+    workers = list(workers)
+    if workers:
+        return workers
+    return list(User.objects.filter(is_active=True).order_by('first_name', 'last_name', 'username'))
+
+
+def _open_custody_users():
+    """کاربرانی که هم‌اکنون بستهٔ بازِ امانت‌شده دستشان است."""
+    ids = (
+        MaterialCustody.objects.filter(quantity__gt=0)
+        .values_list('held_by_id', flat=True)
+        .distinct()
+    )
+    return list(
+        User.objects.filter(pk__in=list(ids)).order_by('first_name', 'last_name', 'username')
+    )
 
 
 # ============================================================
@@ -188,14 +239,19 @@ def production_issue_queue(request):
     # Warehouse users for handover receiver dropdown
     warehouse_users = User.objects.filter(is_active=True).order_by('first_name', 'last_name', 'username')
 
-    return render(request, 'inventory/production_issue_queue.html', {
+    custody_users = _open_custody_users()
+
+    return _no_store(render(request, 'inventory/production_issue_queue.html', {
         **_inventory_context('production_queue'),
         'issues': issues,
         'issues_total': paginator.count,
         'station': station,
         'stations': ProductionTask.STATION_CHOICES,
         'warehouse_users': warehouse_users,
-    })
+        'paint_workers': _paint_workers(),
+        'custody_users': custody_users,
+        'page_version': _page_version(),
+    }))
 
 
 # ============================================================
@@ -246,6 +302,21 @@ def _parse_items(payload):
     return items
 
 
+def _parse_held_by(payload):
+    """شناسهٔ کارگر امانت‌گیرنده را از payload می‌خواند و اعتبارسنجی می‌کند."""
+    raw = payload.get('held_by') if payload else None
+    if raw in (None, '', 'null'):
+        return None
+    try:
+        held_id = int(raw)
+    except (TypeError, ValueError):
+        raise HandoverError('کارگر امانت‌گیرنده نامعتبر است.')
+    holder = User.objects.filter(pk=held_id, is_active=True).first()
+    if holder is None:
+        raise HandoverError('کارگر امانت‌گیرنده را انتخاب کنید.')
+    return holder
+
+
 @login_required
 @warehouse_or_manager_required
 @require_POST
@@ -254,7 +325,8 @@ def handover_preview(request):
     payload = _json_body(request)
     try:
         items = _parse_items(payload)
-        rows = services.preview_handover(items)
+        held_by = _parse_held_by(payload)
+        rows = services.preview_handover(items, held_by=held_by)
     except HandoverError as exc:
         return JsonResponse({'success': False, 'error': str(exc)})
     return JsonResponse({'success': True, 'rows': rows})
@@ -277,21 +349,127 @@ def handover_create(request):
         if receiver is None:
             raise HandoverError('تحویل‌گیرنده را انتخاب کنید.')
 
+        held_by = _parse_held_by(payload)
+
         handover = services.execute_handover(
             issued_by=request.user,
             received_by=receiver,
             items=items,
             note=str(payload.get('note') or '').strip()[:255],
+            held_by=held_by,
         )
     except HandoverError as exc:
         return JsonResponse({'success': False, 'error': str(exc)})
 
     receiver_name = receiver.get_full_name() or receiver.username
-    messages.success(
-        request,
-        f'تحویل {len(items)} ردیف به «{receiver_name}» ثبت شد (تحویل شماره {handover.id}).'
-    )
+    if held_by is not None:
+        holder_name = held_by.get_full_name() or held_by.username
+        messages.success(
+            request,
+            f'تحویل {len(items)} ردیف به «{receiver_name}» ثبت شد (تحویل شماره {handover.id}). '
+            f'باقی‌ماندهٔ بسته‌ها به‌عنوان امانت نزد «{holder_name}» ثبت شد.'
+        )
+    else:
+        messages.success(
+            request,
+            f'تحویل {len(items)} ردیف به «{receiver_name}» ثبت شد (تحویل شماره {handover.id}).'
+        )
     return JsonResponse({'success': True, 'handover_id': handover.id})
+
+
+# ============================================================
+# امانت مواد نزد کارگر (Material Custody)
+# ============================================================
+
+@login_required
+@warehouse_or_manager_required
+def custody_board(request):
+    """صفحهٔ «تحویل روزانه نقاشی»: باقی‌ماندهٔ بسته‌های باز و ثبت بازگشت پایان روز."""
+    worker_id = request.GET.get('worker', '').strip()
+    search = request.GET.get('q', '').strip()
+    only_open = request.GET.get('only_open', '') in ('1', 'on', 'true')
+
+    worker = None
+    if worker_id:
+        worker = User.objects.filter(pk=worker_id, is_active=True).first()
+        if worker is None:
+            messages.error(request, 'کارگر انتخاب‌شده یافت نشد.')
+            return redirect('inventory:custody_board')
+
+    overview = services.custody_overview(held_by=worker, search=search, only_open=only_open)
+
+    return _no_store(render(request, 'inventory/custody_board.html', {
+        **_inventory_context('custody'),
+        'rows': overview['rows'],
+        'summary': overview['summary'],
+        'paint_workers': _paint_workers(),
+        'worker': worker,
+        'search': search,
+        'only_open': only_open,
+        'page_version': _page_version(),
+    }))
+
+
+def _post_data(request):
+    """
+    داده‌های یک POST را می‌خواند: چه فرم‌-encoded باشد چه JSON.
+    مرورگر فقط وقتی request.POST را پر می‌کند که Content-Type درست باشد،
+    پس هر دو حالت پشتیبانی می‌شود.
+    """
+    if request.POST:
+        return request.POST
+    payload = _json_body(request) or {}
+    return {
+        key: ('' if value is None else value)
+        for key, value in payload.items()
+    }
+
+
+@login_required
+@warehouse_or_manager_required
+@require_POST
+def custody_return(request):
+    """ثبت بازگشت پایان روز: مقدار واقعی توزین‌شدهٔ باقیماندهٔ نزد کارگر."""
+    if request.headers.get('X-Requested-With') != 'XMLHttpRequest':
+        return HttpResponseForbidden()
+
+    data = _post_data(request)
+
+    try:
+        raw_id = int(data.get('raw_material_id'))
+        held_id = int(data.get('held_by'))
+    except (TypeError, ValueError):
+        return JsonResponse(
+            {'success': False, 'error': 'ماده اولیه یا کارگر به‌درستی انتخاب نشده است.'},
+            status=400,
+        )
+
+    raw = RawMaterial.objects.filter(pk=raw_id).first()
+    if raw is None:
+        return JsonResponse({'success': False, 'error': 'ماده اولیه یافت نشد.'}, status=400)
+    holder = User.objects.filter(pk=held_id, is_active=True).first()
+    if holder is None:
+        return JsonResponse({'success': False, 'error': 'کارگر تحویل‌گیرنده یافت نشد.'}, status=400)
+
+    try:
+        record = services.return_custody(
+            raw_material=raw,
+            held_by=holder,
+            measured_quantity=data.get('measured_quantity'),
+            recorded_by=request.user,
+            note=str(data.get('note') or '').strip(),
+        )
+    except HandoverError as exc:
+        return JsonResponse({'success': False, 'error': str(exc)}, status=400)
+
+    holder_name = holder.get_full_name() or holder.username
+    return JsonResponse({
+        'success': True,
+        'material': raw.name,
+        'quantity': str(record.measured_quantity),
+        'delta': str(record.delta),
+        'held_by': holder_name,
+    })
 
 
 # ============================================================
@@ -305,10 +483,28 @@ def issue_material(request, issue_id):
     """Confirm hand-over for a single queue row through the shared handover service."""
     try:
         quantity = _to_quantity(request.POST.get('quantity'))
+        holder = None
+        raw_held = (request.POST.get('held_by') or '').strip()
+        if raw_held:
+            try:
+                holder = User.objects.filter(pk=int(raw_held), is_active=True).first()
+            except (TypeError, ValueError):
+                holder = None
         services.execute_handover(
-            issued_by=request.user, received_by=request.user,
-            items=[(issue_id, quantity)], note='تحویل تک‌ردیف')
-        messages.success(request, 'تحویل مواد و خروج انبار ثبت شد.')
+            issued_by=request.user,
+            received_by=holder or request.user,
+            items=[(issue_id, quantity)],
+            note='تحویل تک‌ردیف',
+            held_by=holder,
+        )
+        if holder is not None:
+            holder_name = holder.get_full_name() or holder.username
+            messages.success(
+                request,
+                f'تحویل مواد و خروج انبار ثبت شد. باقی‌ماندهٔ بسته‌ها به‌عنوان امانت نزد «{holder_name}» ثبت شد.',
+            )
+        else:
+            messages.success(request, 'تحویل مواد و خروج انبار ثبت شد.')
     except HandoverError as exc:
         messages.error(request, str(exc))
     return redirect('inventory:production_issue_queue')

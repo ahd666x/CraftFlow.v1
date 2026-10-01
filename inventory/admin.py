@@ -1,7 +1,10 @@
 from django.contrib import admin
 from django.utils.html import format_html
 
-from .models import Supplier, RawMaterialCategory, RawMaterial, StockMovement, PurchaseOrder, PurchaseOrderItem
+from .models import (
+    Supplier, RawMaterialCategory, RawMaterial, StockMovement,
+    PurchaseOrder, PurchaseOrderItem, MaterialCustody, MaterialCustodyReturn,
+)
 
 
 @admin.register(Supplier)
@@ -55,3 +58,19 @@ class PurchaseOrderItemAdmin(admin.ModelAdmin):
     list_display = ['purchase_order', 'raw_material', 'quantity', 'unit_price', 'received_quantity']
     list_filter = ['purchase_order__status']
     search_fields = ['raw_material__name']
+
+
+@admin.register(MaterialCustody)
+class MaterialCustodyAdmin(admin.ModelAdmin):
+    list_display = ['raw_material', 'held_by', 'quantity', 'updated_at']
+    list_filter = ['raw_material__category', 'held_by']
+    search_fields = ['raw_material__name', 'raw_material__code', 'held_by__username']
+    autocomplete_fields = ['raw_material', 'held_by']
+
+
+@admin.register(MaterialCustodyReturn)
+class MaterialCustodyReturnAdmin(admin.ModelAdmin):
+    list_display = ['custody', 'measured_quantity', 'quantity_before', 'delta', 'recorded_by', 'created_at']
+    list_filter = ['raw_material__category', 'held_by', 'created_at']
+    search_fields = ['raw_material__name', 'held_by__username', 'note']
+    date_hierarchy = 'created_at'

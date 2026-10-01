@@ -21,6 +21,9 @@
         <a href="{% url 'inventory:production_issue_queue' %}" class="nav-link {% if active_tab == 'production_queue' %}active{% endif %}">
             <i class="bi bi-clipboard2-check"></i> صف تحویل تولید
         </a>
+        <a href="{% url 'inventory:custody_board' %}" class="nav-link {% if active_tab == 'custody' %}active{% endif %}">
+            <i class="bi bi-person-check"></i> تحویل روزانه نقاشی
+        </a>
         <a href="{% url 'inventory:supplier_list' %}" class="nav-link {% if active_tab == 'suppliers' %}active{% endif %}">
             <i class="bi bi-truck"></i> تامین‌کنندگان
         </a>
