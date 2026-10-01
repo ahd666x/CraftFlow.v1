@@ -165,6 +165,12 @@ def task_rollup(order_id, now=None):
             'id', filter=Q(status__in=(STATUS_PENDING, STATUS_WAITING),
                            scheduled_start__isnull=True)
         ),
+        unscheduled_nonpaint_open=Count(
+            'id', filter=Q(
+                status__in=(STATUS_PENDING, STATUS_WAITING),
+                scheduled_start__isnull=True,
+            ) & ~Q(station_name=STAGE_PAINT)
+        ),
         unknown_station=Count('id', exclude=Q(station_name__in=STATION_CODES)),
         paint_tasks=Count('id', filter=Q(station_name=STAGE_PAINT)),
     )
@@ -324,7 +330,7 @@ def _production_domain(order, tasks, age_days, now):
     limitations = ['missing_dependency_graph', 'missing_task_timestamp']
     if unknown_station:
         limitations.append('unknown_station_codes')
-    if (tasks['unscheduled_open'] or 0) and not tasks['paint_tasks']:
+    if tasks['unscheduled_nonpaint_open'] or 0:
         limitations.append('missing_nonpaint_schedule')
 
     findings = []
@@ -957,6 +963,7 @@ def _delay_facts(order, rows, tasks, age_days, days, now):
     pending = rows['pending'] or 0
     waiting = rows['waiting'] or 0
     unscheduled_open = rows['unscheduled_open'] or 0
+    unscheduled_nonpaint_open = rows['unscheduled_nonpaint_open'] or 0
     overdue_pending = rows['overdue_pending'] or 0
 
     material_impact = order_material_impact(order.id)
@@ -976,9 +983,8 @@ def _delay_facts(order, rows, tasks, age_days, days, now):
     # برنده می‌شد و علت واقعی را پنهان می‌کرد.
     blocking_material_or_quality = bool(blocked_material or blocking_defects)
     missing_schedule = bool(
-        unscheduled_open
+        unscheduled_nonpaint_open
         and not blocking_material_or_quality
-        and not paint_rows
     )
 
     queue = _station_queue(order, tasks, pending)
@@ -987,8 +993,15 @@ def _delay_facts(order, rows, tasks, age_days, days, now):
     unit_packed = units.filter(is_packed=True).count()
     unit_shipped = units.filter(is_shipped=True).count()
 
+    today = jdatetime.date.today()
+    due_date_overdue = bool(
+        order.status != 'completed'
+        and order.due_date is not None
+        and order.due_date < today
+    )
     age_only = (
         order.status != 'completed'
+        and order.due_date is None
         and age_days is not None
         and age_days > days
     )
@@ -1008,17 +1021,16 @@ def _delay_facts(order, rows, tasks, age_days, days, now):
         'shipping_pending': bool(
             unit_total and unit_shipped < unit_total and unit_packed == unit_total
         ),
-        'age_only': age_only,
+        'age_only': due_date_overdue or age_only,
     }
 
     source_task = 'product.ProductionTask'
     cause_evidence = {
         'missing_schedule': (Evidence(
-            metric='unscheduled_open_tasks', value=unscheduled_open, unit='task',
+            metric='unscheduled_nonpaint_open_tasks', value=unscheduled_nonpaint_open, unit='task',
             source=f'{source_task}.scheduled_start',
             query=(
-                'open tasks of this order where scheduled_start is NULL and the order '
-                'has no painting task'
+                'open non-paint tasks of this order where scheduled_start is NULL'
             ),
             derived=True,
         ),),
@@ -1147,8 +1159,12 @@ def _delay_facts(order, rows, tasks, age_days, days, now):
             'ارسال نشده است.'
         ),
         'age_only': (
-            f'این سفارش {age_days} روز از تاریخ ایجاد گذشته و تکمیل نشده است؛ این '
-            f'تنها قاعدهٔ موجود در CraftFlow است (created_at + {days} روز).'
+            f'تاریخ تحویل سفارش گذشته است ({order.due_date.isoformat()}) و سفارش '
+            'تکمیل نشده است.'
+            if due_date_overdue else
+            f'این سفارش {age_days} روز از تاریخ ایجاد گذشته و تکمیل نشده است؛ '
+            f'تاریخ تحویل ثبت نشده و از قاعدهٔ جایگزین CraftFlow '
+            f'(created_at + {days} روز) استفاده شده است.'
         ),
     }
 
@@ -1207,6 +1223,12 @@ def _delay_facts(order, rows, tasks, age_days, days, now):
             unit='boolean', source='product.Order.due_date',
             query='whether this order has a due_date value',
         ),
+        Evidence(
+            metric='due_date_overdue', value=due_date_overdue,
+            unit='boolean', source='product.Order.due_date',
+            query='whether today is after the order due_date',
+            derived=True,
+        ),
     ]
 
     return {
@@ -1216,11 +1238,17 @@ def _delay_facts(order, rows, tasks, age_days, days, now):
             'days': days,
             'age_days': age_days,
             'rule': (
-                f'CraftFlow delayed = created_at older than {days} days and '
-                'status != completed'
+                'Order.due_date is the primary deadline when present; '
+                f'otherwise CraftFlow fallback = created_at older than {days} days '
+                'and status != completed'
             ),
-            'rule_source': 'product.views.delayed_orders',
-            'due_date_used': False,
+            'rule_source': (
+                'product.Order.due_date'
+                if order.due_date is not None
+                else 'product.views.delayed_orders'
+            ),
+            'due_date_used': order.due_date is not None,
+            'due_date_overdue': due_date_overdue,
             'due_date_available': order.due_date is not None,
         },
         'evidence': [e.to_dict() for e in evidence],
