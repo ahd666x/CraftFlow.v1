@@ -7,7 +7,7 @@ from django.urls import reverse
 
 from inventory import services
 from inventory.models import (
-    MaterialCustody, MaterialCustodyReturn, MaterialHandover,
+    CustodyConsumption, MaterialCustody, MaterialCustodyReturn, MaterialHandover,
     MaterialIssue, MaterialLeftover, RawMaterial, RawMaterialCategory,
     StockMovement,
 )
@@ -172,10 +172,11 @@ class ReturnCustodyTests(CustodyTestBase):
 
     def test_return_custody_sets_measured(self):
         self._issue_to(self.worker1)
-        record = services.return_custody(
+        result = services.return_custody(
             raw_material=self.raw, held_by=self.worker1, measured_quantity='2.5',
             recorded_by=self.warehouse, note='توزین پایان روز',
         )
+        record = result['record']
         custody = MaterialCustody.objects.get(raw_material=self.raw, held_by=self.worker1)
         self.assertEqual(custody.quantity, Decimal('2.50'))
         self.assertEqual(record.quantity_before, Decimal('1.50'))
@@ -204,10 +205,13 @@ class ReturnCustodyTests(CustodyTestBase):
         )
 
     def test_return_custody_creates_no_stock_movement(self):
+        # حالت عادی پایان روز (توزین کمتر از امانت ثبت‌شده) نباید موجودی انبار
+        # را جابه‌جا کند: کل بسته از لحظهٔ تحویل کسر شده و انتساب مصرف هم اثر
+        # ندارد. حالت کسری و بازگشت به انبار جداگانه تست شده‌اند.
         self._issue_to(self.worker1)
         before = StockMovement.objects.count()
         services.return_custody(
-            raw_material=self.raw, held_by=self.worker1, measured_quantity='2.5',
+            raw_material=self.raw, held_by=self.worker1, measured_quantity='0',
             recorded_by=self.warehouse,
         )
         self.assertEqual(StockMovement.objects.count(), before)
@@ -434,3 +438,388 @@ class CustodyViewTests(CustodyTestBase):
     def _json(payload):
         import json
         return json.dumps(payload)
+
+# ============================================================
+# مجموع مواد نیاز تحویل + توزیع تناسبی
+# ============================================================
+
+class AggregateNeedsTests(CustodyTestBase):
+    def _pending(self):
+        # هر سه روی همان ماده، با مقدار متفاوت
+        a = self._issue(Decimal('2'))
+        b = self._issue(Decimal('6'))
+        c = self._issue(Decimal('4'))
+        return a, b, c
+
+    def test_aggregate_needs_groups_by_raw_material(self):
+        self._pending()
+        qs = MaterialIssue.objects.filter(status__in=['requested', 'partial'])
+        rows = services.aggregate_needs(qs)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]['raw_material_id'], self.raw.pk)
+        self.assertEqual(rows[0]['need'], Decimal('12.00'))
+        self.assertEqual(rows[0]['issue_count'], 3)
+
+    def test_aggregate_needs_ignores_already_issued(self):
+        issue = self._issue(Decimal('5'))
+        issue.issued_quantity = Decimal('2')
+        issue.status = 'partial'
+        issue.save()
+        qs = MaterialIssue.objects.filter(status__in=['requested', 'partial'])
+        rows = services.aggregate_needs(qs)
+        self.assertEqual(rows[0]['need'], Decimal('3.00'))
+
+    def test_distribute_is_proportional_and_sums_exactly(self):
+        a, b, c = self._pending()   # نیازها: 2، 6، 4  => مجموع 12
+        items = services.distribute_aggregate(self.raw.pk, Decimal('6'))
+        total = sum(q for _, q in items)
+        self.assertEqual(total, Decimal('6.00'))
+        mapping = dict(items)
+        # نسبت‌ها 1:3:2 از ۶ یعنی ۱، ۳، ۲
+        self.assertEqual(mapping[a.pk], Decimal('1.00'))
+        self.assertEqual(mapping[b.pk], Decimal('3.00'))
+        self.assertEqual(mapping[c.pk], Decimal('2.00'))
+
+    def test_distribute_rounding_never_loses_a_cent(self):
+        # نیازهایی که نسبتشان بخش‌پذیر نیست: 1 / 1 / 1
+        for _ in range(3):
+            self._issue(Decimal('1'))
+        items = services.distribute_aggregate(self.raw.pk, Decimal('1'))
+        self.assertEqual(sum(q for _, q in items), Decimal('1.00'))
+
+    def test_distribute_full_need_returns_each_issue_whole(self):
+        a, b, c = self._pending()
+        items = services.distribute_aggregate(self.raw.pk, Decimal('12'))
+        self.assertEqual(len(items), 3)
+        self.assertEqual(sum(q for _, q in items), Decimal('12.00'))
+
+    def test_distribute_rejects_more_than_total_need(self):
+        self._pending()
+        with self.assertRaises(HandoverError):
+            services.distribute_aggregate(self.raw.pk, Decimal('12.01'))
+
+    def test_distribute_skips_issued_issues(self):
+        a, b, _ = self._pending()
+        a.issued_quantity = Decimal('2')
+        a.status = 'issued'
+        a.save()
+        items = services.distribute_aggregate(self.raw.pk, Decimal('10'))
+        self.assertNotIn(a.pk, [i for i, _ in items])
+
+    def test_distribute_rejects_non_positive_quantity(self):
+        self._pending()
+        with self.assertRaises(HandoverError):
+            services.distribute_aggregate(self.raw.pk, Decimal('0'))
+
+
+# ============================================================
+# انتساب مصرف پایان روز به خرابی‌ها
+# ============================================================
+
+class CustodyConsumptionTests(CustodyTestBase):
+    def setUp(self):
+        super().setUp()
+        self.defect = ProductionDefect.objects.create(
+            order=self.order, order_item=self.order_item, color_part='بدنه',
+            quantity=1, description='خط و خش', reported_by=self.warehouse,
+        )
+        self.other_defect = ProductionDefect.objects.create(
+            order=self.order, order_item=self.order_item, color_part='درب',
+            quantity=1, description='پوست شدن', reported_by=self.warehouse,
+        )
+        MaterialCustody.objects.create(
+            raw_material=self.raw, held_by=self.worker1, quantity=Decimal('4'),
+        )
+
+    def test_attribution_is_stored_without_touching_stock(self):
+        stock_before = self.raw.current_stock
+        result = services.return_custody(
+            raw_material=self.raw, held_by=self.worker1,
+            measured_quantity=Decimal('2.5'), recorded_by=self.warehouse,
+            attributions=[(self.defect, Decimal('1.0')),
+                          (self.other_defect, Decimal('0.5'))],
+        )
+        self.raw.refresh_from_db()
+        self.assertEqual(self.raw.current_stock, stock_before)
+        self.assertEqual(result['consumed'], Decimal('1.50'))
+        self.assertEqual(result['attributed_total'], Decimal('1.50'))
+        self.assertEqual(CustodyConsumption.objects.count(), 2)
+        stored = CustodyConsumption.objects.get(defect=self.defect)
+        self.assertEqual(stored.quantity, Decimal('1.00'))
+        self.assertEqual(stored.held_by, self.worker1)
+        self.assertEqual(stored.raw_material, self.raw)
+
+    def test_consumed_is_independent_from_warehouse_return(self):
+        stock_before = self.raw.current_stock
+        # امانت قبلی ۴، توزین ۲، از این ۲ مقدار ۱.۵ به انبار برگشت.
+        # مصرف = ۴ − ۲ = ۲ (نه ۴ − ۱.۵)؛ باقی‌مانده نزد کارگر = ۲.
+        result = services.return_custody(
+            raw_material=self.raw, held_by=self.worker1,
+            measured_quantity=Decimal('2'), recorded_by=self.warehouse,
+            to_warehouse=Decimal('1.5'),
+            attributions=[(self.defect, Decimal('2'))],
+        )
+        self.raw.refresh_from_db()
+        self.assertEqual(result['consumed'], Decimal('2.00'))
+        self.assertEqual(result['warehouse_return'], Decimal('1.50'))
+        self.assertEqual(self.raw.current_stock, stock_before + Decimal('1.50'))
+        movement = StockMovement.objects.filter(movement_type='return').latest('id')
+        self.assertEqual(movement.quantity, Decimal('1.50'))
+        custody = MaterialCustody.objects.get(raw_material=self.raw, held_by=self.worker1)
+        self.assertEqual(custody.quantity, Decimal('2.00'))
+
+    def test_warehouse_return_cannot_exceed_measured(self):
+        with self.assertRaises(HandoverError):
+            services.return_custody(
+                raw_material=self.raw, held_by=self.worker1,
+                measured_quantity=Decimal('1'), recorded_by=self.warehouse,
+                to_warehouse=Decimal('1.5'),
+            )
+
+    def test_partial_attribution_is_allowed(self):
+        result = services.return_custody(
+            raw_material=self.raw, held_by=self.worker1,
+            measured_quantity=Decimal('1'), recorded_by=self.warehouse,
+            attributions=[(self.defect, Decimal('0.5'))],
+        )
+        self.assertEqual(result['consumed'], Decimal('3.00'))
+        self.assertEqual(result['attributed_total'], Decimal('0.50'))
+        self.assertEqual(result['shortfall'], Decimal('2.50'))
+
+    def test_over_attribution_is_rejected(self):
+        with self.assertRaises(HandoverError):
+            services.return_custody(
+                raw_material=self.raw, held_by=self.worker1,
+                measured_quantity=Decimal('1'), recorded_by=self.warehouse,
+                attributions=[(self.defect, Decimal('9'))],
+            )
+
+    def test_duplicate_defect_in_same_return_is_rejected(self):
+        with self.assertRaises(HandoverError):
+            services.return_custody(
+                raw_material=self.raw, held_by=self.worker1,
+                measured_quantity=Decimal('1'), recorded_by=self.warehouse,
+                attributions=[(self.defect, Decimal('1')),
+                              (self.defect, Decimal('1'))],
+            )
+
+    def test_more_material_than_recorded_credits_stock_back(self):
+        # امانت ثبت‌شده ۴ ولی توزین ۶ ⇒ ۲ کیلو رنگ هیچ‌وقت از انبار کسر نشده
+        # بود، پس موجودی انبار ۲ واحد به آن برمی‌گردد.
+        stock_before = self.raw.current_stock
+        result = services.return_custody(
+            raw_material=self.raw, held_by=self.worker1,
+            measured_quantity=Decimal('6'), recorded_by=self.warehouse,
+        )
+        self.assertEqual(result['consumed'], Decimal('-2.00'))
+        movement = StockMovement.objects.filter(movement_type='adjustment').latest('id')
+        self.assertEqual(movement.quantity, Decimal('2.00'))
+        self.raw.refresh_from_db()
+        self.assertEqual(self.raw.current_stock, stock_before + Decimal('2.00'))
+
+    def test_warehouse_return_wins_over_credit(self):
+        # هم بازگشت به انبار و هم کسری: فقط حرکت return ساخته می‌شود.
+        stock_before = self.raw.current_stock
+        services.return_custody(
+            raw_material=self.raw, held_by=self.worker1,
+            measured_quantity=Decimal('6'), recorded_by=self.warehouse,
+            to_warehouse=Decimal('1'),
+        )
+        self.assertFalse(StockMovement.objects.filter(movement_type='adjustment').exists())
+        self.raw.refresh_from_db()
+        self.assertEqual(self.raw.current_stock, stock_before + Decimal('1.00'))
+
+    def test_return_custody_does_not_double_deduct_consumption(self):
+        stock_before = self.raw.current_stock
+        services.return_custody(
+            raw_material=self.raw, held_by=self.worker1,
+            measured_quantity=Decimal('0'), recorded_by=self.warehouse,
+            attributions=[(self.defect, Decimal('4'))],
+        )
+        self.raw.refresh_from_db()
+        self.assertEqual(self.raw.current_stock, stock_before)
+
+
+# ============================================================
+# ویوی ثبت بازگشت با انتساب
+# ============================================================
+
+class CustodyReturnAttributionViewTests(CustodyTestBase):
+    def setUp(self):
+        super().setUp()
+        self.defect = ProductionDefect.objects.create(
+            order=self.order, order_item=self.order_item, color_part='بدنه',
+            quantity=1, description='خط و خش', reported_by=self.warehouse,
+        )
+        MaterialCustody.objects.create(
+            raw_material=self.raw, held_by=self.worker1, quantity=Decimal('3'),
+        )
+
+    def _post(self, payload):
+        import json
+        return self.client.post(
+            reverse('inventory:custody_return'),
+            data=json.dumps(payload),
+            content_type='application/json',
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+
+    def test_view_accepts_attributions_and_warehouse_return(self):
+        # امانت قبلی ۳، توزین ۱.۵ ⇒ مصرف ۱.۵ (سقف انتساب)
+        response = self._post({
+            'raw_material_id': self.raw.pk,
+            'held_by': self.worker1.pk,
+            'measured_quantity': '1.5',
+            'to_warehouse': '0.5',
+            'attributions': [{'defect_id': self.defect.pk, 'quantity': '1.5'}],
+        })
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertTrue(body['success'])
+        self.assertEqual(body['consumed'], '1.50')
+        self.assertEqual(body['warehouse_return'], '0.50')
+        self.assertEqual(body['attributed'], '1.50')
+        self.assertEqual(CustodyConsumption.objects.count(), 1)
+
+    def test_view_rejects_over_attribution(self):
+        response = self._post({
+            'raw_material_id': self.raw.pk,
+            'held_by': self.worker1.pk,
+            'measured_quantity': '2',
+            'attributions': [{'defect_id': self.defect.pk, 'quantity': '99'}],
+        })
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.json()['success'])
+        self.assertFalse(CustodyConsumption.objects.exists())
+
+    def test_view_rejects_unknown_defect(self):
+        response = self._post({
+            'raw_material_id': self.raw.pk,
+            'held_by': self.worker1.pk,
+            'measured_quantity': '1',
+            'attributions': [{'defect_id': 987654, 'quantity': '1'}],
+        })
+        self.assertEqual(response.status_code, 400)
+
+    def test_view_works_without_any_attribution(self):
+        response = self._post({
+            'raw_material_id': self.raw.pk,
+            'held_by': self.worker1.pk,
+            'measured_quantity': '1',
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['success'])
+        self.assertEqual(CustodyConsumption.objects.count(), 0)
+
+    def test_defect_choices_endpoint(self):
+        import json
+        response = self.client.post(
+            reverse('inventory:defect_choices'),
+            data=json.dumps({'raw_material_id': self.raw.pk}),
+            content_type='application/json',
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+        self.assertEqual(response.status_code, 200)
+        ids = [o['id'] for o in response.json()['options']]
+        self.assertNotIn(self.defect.pk, ids)  # این خرابی هنوز درخواست مواد ندارد
+
+        MaterialIssue.objects.create(
+            defect=self.defect, raw_material=self.raw, requested_quantity=Decimal('1'),
+            purpose='rework', status='requested', requested_by=self.warehouse,
+        )
+        response = self.client.post(
+            reverse('inventory:defect_choices'),
+            data=json.dumps({'raw_material_id': self.raw.pk}),
+            content_type='application/json',
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+        ids = [o['id'] for o in response.json()['options']]
+        self.assertIn(self.defect.pk, ids)
+
+    def test_defect_choices_requires_valid_material(self):
+        import json
+        response = self.client.post(
+            reverse('inventory:defect_choices'),
+            data=json.dumps({'raw_material_id': 'abc'}),
+            content_type='application/json',
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+        self.assertEqual(response.status_code, 400)
+
+
+# ============================================================
+# ویوی تحویل مجموعی
+# ============================================================
+
+class AggregateHandoverViewTests(CustodyTestBase):
+    def _post(self, name, payload):
+        import json
+        return self.client.post(
+            reverse(f'inventory:{name}'),
+            data=json.dumps(payload),
+            content_type='application/json',
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+
+    def test_queue_page_shows_aggregate_block(self):
+        for _ in range(3):
+            self._issue(Decimal('2'))
+        response = self.client.get(reverse('inventory:production_issue_queue'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'aggregateTable')
+        self.assertContains(response, 'مجموع مواد نیاز تحویل')
+        self.assertEqual(len(response.context['aggregate_rows']), 1)
+        self.assertEqual(response.context['aggregate_rows'][0]['need'], Decimal('6.00'))
+
+    def test_aggregate_preview_reports_distribution(self):
+        a, b, c = self._issue(Decimal('2')), self._issue(Decimal('6')), self._issue(Decimal('4'))
+        response = self._post('aggregate_handover_preview', {
+            'raw_material_id': self.raw.pk,
+            'quantity': '6',
+            'received_by': self.worker1.pk,
+        })
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertTrue(body['success'])
+        allocation = {row['issue_id']: row['quantity'] for row in body['allocation']}
+        self.assertEqual(allocation[a.pk], '1.00')
+        self.assertEqual(allocation[b.pk], '3.00')
+        self.assertEqual(allocation[c.pk], '2.00')
+        self.assertTrue(body['rows'])
+
+    def test_aggregate_preview_requires_receiver(self):
+        self._issue(Decimal('2'))
+        response = self._post('aggregate_handover_preview', {
+            'raw_material_id': self.raw.pk, 'quantity': '1',
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()['success'])
+
+    def test_aggregate_create_splits_across_issues(self):
+        a, b, c = self._issue(Decimal('2')), self._issue(Decimal('6')), self._issue(Decimal('4'))
+        response = self._post('aggregate_handover_create', {
+            'raw_material_id': self.raw.pk,
+            'quantity': '6',
+            'received_by': self.worker1.pk,
+            'held_by': self.worker1.pk,
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['success'])
+        self.assertEqual(response.json()['rows'], 3)
+        a.refresh_from_db(); b.refresh_from_db(); c.refresh_from_db()
+        self.assertEqual(a.issued_quantity, Decimal('1'))
+        self.assertEqual(b.issued_quantity, Decimal('3'))
+        self.assertEqual(c.issued_quantity, Decimal('2'))
+        self.assertEqual(a.status, 'partial')
+        self.assertEqual(b.status, 'partial')
+
+    def test_aggregate_create_rejects_overshoot(self):
+        self._issue(Decimal('2'))
+        response = self._post('aggregate_handover_create', {
+            'raw_material_id': self.raw.pk,
+            'quantity': '5',
+            'received_by': self.worker1.pk,
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()['success'])
+        self.assertFalse(MaterialHandover.objects.exists())

@@ -4,6 +4,7 @@ from django.utils.html import format_html
 from .models import (
     Supplier, RawMaterialCategory, RawMaterial, StockMovement,
     PurchaseOrder, PurchaseOrderItem, MaterialCustody, MaterialCustodyReturn,
+    CustodyConsumption,
 )
 
 
@@ -74,3 +75,11 @@ class MaterialCustodyReturnAdmin(admin.ModelAdmin):
     list_filter = ['raw_material__category', 'held_by', 'created_at']
     search_fields = ['raw_material__name', 'held_by__username', 'note']
     date_hierarchy = 'created_at'
+
+
+@admin.register(CustodyConsumption)
+class CustodyConsumptionAdmin(admin.ModelAdmin):
+    list_display = ['raw_material', 'held_by', 'defect', 'quantity', 'custody_return']
+    list_filter = ['raw_material__category', 'held_by', 'raw_material']
+    autocomplete_fields = ['raw_material', 'held_by', 'defect', 'custody_return']
+    search_fields = ['raw_material__name', 'held_by__username', 'defect__description']

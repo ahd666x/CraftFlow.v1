@@ -224,8 +224,60 @@ class MaterialCustodyReturn(models.Model):
         verbose_name_plural = 'اسناد بازگشت امانت'
         ordering = ['-created_at']
 
+    warehouse_return = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        verbose_name='مقدار بازگشتی فیزیکی به انبار',
+    )
+
     def __str__(self):
         return f'بازگشت #{self.pk} — {self.raw_material.name} — {self.measured_quantity}'
+
+
+class CustodyConsumption(models.Model):
+    """
+    انتساب مصرفِ ثبت‌شده در پایان روز به یک خرابی مشخص.
+
+    این جدول **هیچ اثری روی موجودی انبار ندارد**. موجودی از زمان تحویل (خروج کل
+    بسته از انبار) کسر شده و در پایان روز چیزی فیزیکی وارد انبار نشده است؛ بنابراین
+    ثبت مصرف، فقط «برای چه کاری این رنگ رفت» را نگه می‌دارد، نه اینکه موجودی را
+    دوباره کم کند.
+    """
+
+    custody_return = models.ForeignKey(
+        MaterialCustodyReturn, on_delete=models.CASCADE,
+        related_name='consumptions', verbose_name='سند بازگشت امانت',
+    )
+    raw_material = models.ForeignKey(
+        RawMaterial, on_delete=models.PROTECT, related_name='custody_consumptions',
+        verbose_name='ماده اولیه',
+    )
+    held_by = models.ForeignKey(
+        User, on_delete=models.PROTECT, related_name='custody_consumptions',
+        verbose_name='کارگر',
+    )
+    defect = models.ForeignKey(
+        'product.ProductionDefect', on_delete=models.PROTECT,
+        related_name='custody_consumptions', verbose_name='خرابی',
+    )
+    quantity = models.DecimalField(max_digits=12, decimal_places=2, verbose_name='مقدار مصرف‌شده')
+
+    class Meta:
+        verbose_name = 'انتساب مصرف امانت'
+        verbose_name_plural = 'انتساب‌های مصرف امانت'
+        ordering = ['id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['custody_return', 'defect'],
+                name='uniq_custody_consumption_return_defect',
+            ),
+            models.CheckConstraint(
+                condition=models.Q(quantity__gt=0),
+                name='custody_consumption_quantity_positive',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.raw_material.name} — خرابی {self.defect_id} — {self.quantity}'
 
 
 class MaterialHandover(models.Model):

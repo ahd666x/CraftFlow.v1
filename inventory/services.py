@@ -40,12 +40,14 @@ from django.db.models import Q, Sum
 from django.utils import timezone
 
 from .models import (
+    CustodyConsumption,
     MaterialCustody,
     MaterialCustodyReturn,
     MaterialHandover,
     MaterialHandoverLine,
     MaterialIssue,
     MaterialLeftover,
+    RawMaterial,
     StockMovement,
 )
 
@@ -379,13 +381,34 @@ def execute_handover(*, issued_by, items, received_by=None, note='', held_by=Non
 # ---------------------------------------------------------------------------
 
 @transaction.atomic
-def return_custody(*, raw_material, held_by, measured_quantity, recorded_by, note=''):
+def return_custody(
+    *, raw_material, held_by, measured_quantity, recorded_by, note='',
+    to_warehouse=None, attributions=(),
+):
     """
-    انباردار در پایان روز وزن واقعی باقیماندهٔ هر کارگر را ثبت می‌کند.
+    انباردار در پایان روز وضعیت امانت هر کارگر را ثبت می‌کند.
 
-    این کار StockMovement جدیدی ایجاد نمی‌کند، چون چیزی فیزیکاً وارد انبار
-    نشده است؛ فقط «دفتر امانت» به‌روز می‌شود (مقدار قبلاً از انبار کسر شده بود).
-    مقدار ثبت‌شده **جایگزین** مقدار قبلی امانت می‌شود، نه جمع آن.
+    ``measured_quantity``
+        مقدار توزین‌شده؛ **جایگزین** مقدار قبلی امانت می‌شود، نه جمع آن.
+        یعنی مقداری که **همین حالا** دست کارگر است.
+    ``to_warehouse``
+        اگر کارگر بخشی از همان مقدار توزین‌شده را فیزیکاً به انبار برگرداند،
+        موجودی انبار به همان اندازه زیاد می‌شود (حرکت `return`). نمی‌تواند از
+        ``measured_quantity`` بیشتر باشد.
+    ``attributions``
+        فهرست ``(defect, quantity)``: مصرف این ماده برای کدام خرابی‌ها بوده است.
+
+    حسابداری — چرا مصرف حرکت انبار نمی‌سازد:
+        کل بستهٔ بازشده در لحظهٔ تحویل از انبار کسر شده و ``current_stock`` آن را
+        «خارج‌شده» نشان می‌دهد. اگر اینجا دوباره حرکت مصرف ساخته شود، موجودی
+        **دو بار** کسر می‌شود. پس انتساب مصرف فقط در جدول CustodyConsumption
+        ثبت می‌شود و روی موجودی اثری ندارد.
+
+    وضعیت‌های خاص که حرکت انبار می‌سازند:
+        * ``measured < before``  → کارگر کمتر از ثبت‌شده دارد؛ آن مقدار به
+          حساب دفتر امانت می‌آید ولی حرکت انبار نمی‌سازد (چیزی وارد انبار نشده).
+        * ``measured > before``  → کارگر بیش از ثبت‌شده دارد؛ کسری انبار با
+          حرکت ``adjustment`` ثبت می‌شود (انبار کم می‌شود).
     """
     if held_by is None:
         raise HandoverError('کارگر تحویل‌گیرنده مشخص نشده است.')
@@ -398,13 +421,54 @@ def return_custody(*, raw_material, held_by, measured_quantity, recorded_by, not
     if not measured.is_finite() or measured < ZERO:
         raise HandoverError('مقدار توزین‌شده نمی‌تواند منفی باشد.')
 
+    back = ZERO if to_warehouse in (None, '') else None
+    if back is None:
+        try:
+            back = q2(to_warehouse)
+        except (TypeError, ValueError, ArithmeticError, InvalidOperation):
+            raise HandoverError('مقدار بازگشتی به انبار نامعتبر است.')
+    if not back.is_finite() or back < ZERO:
+        raise HandoverError('مقدار بازگشتی به انبار نمی‌تواند منفی باشد.')
+    if back > measured:
+        raise HandoverError(
+            'مقدار بازگشتی به انبار نمی‌تواند از مقدار توزین‌شده بیشتر باشد '
+            f'({back} > {measured}).'
+        )
+
     custody, _ = MaterialCustody.objects.select_for_update().get_or_create(
         raw_material=raw_material, held_by=held_by, defaults={'quantity': ZERO}
     )
     before = q2(custody.quantity)
-    delta = measured - before
+
+    # مصرف واقعی = امانت قبلی منهای آنچه هنوز دست کارگر است.
+    # «بازگشت به انبار» جدا از این است و فقط موجودی انبار را زیاد می‌کند؛
+    # آن مقدار از قبل در «توزین‌شده» دیده شده و در امانت باقی می‌ماند.
+    consumed = q2(before - measured)
+
     custody.quantity = measured
     custody.save(update_fields=['quantity', 'updated_at'])
+
+    if back > ZERO:
+        StockMovement.objects.create(
+            raw_material=raw_material,
+            movement_type='return',
+            quantity=back,
+            created_by=recorded_by,
+            note=f'بازگشت فیزیکی به انبار از امانت «{held_by}»'
+                 + (f' — {note[:120]}' if note else ''),
+        )
+    elif consumed < ZERO:
+        # کارگر بیش از مقدار ثبت‌شده در اختیار دارد؛ یعنی آن مقدار هیچ‌وقت از
+        # موجودی انبار کسر نشده بود (تحویل ثبت‌نشده). پس موجودی را به همان
+        # اندازه به انبار برمی‌گردانیم تا عدد انبار با واقعیت بخواند.
+        StockMovement.objects.create(
+            raw_material=raw_material,
+            movement_type='adjustment',
+            quantity=-consumed,
+            created_by=recorded_by,
+            note=f'کسری امانت «{held_by}» — بیش از مقدار ثبت‌شده در اختیار داشت'
+                 + (f' — {note[:120]}' if note else ''),
+        )
 
     record = MaterialCustodyReturn.objects.create(
         custody=custody,
@@ -412,11 +476,63 @@ def return_custody(*, raw_material, held_by, measured_quantity, recorded_by, not
         held_by=held_by,
         measured_quantity=measured,
         quantity_before=before,
-        delta=delta,
+        delta=q2(measured - before),
+        warehouse_return=back,
         note=(note or '')[:255],
         recorded_by=recorded_by,
     )
-    return record
+
+    rows, total = _create_consumptions(
+        record, raw_material=raw_material, held_by=held_by,
+        attributions=attributions, available=consumed,
+    )
+
+    return {
+        'record': record,
+        'before': before,
+        'measured': measured,
+        'delta': record.delta,
+        'consumed': consumed,
+        'warehouse_return': back,
+        'attributions': rows,
+        'attributed_total': total,
+        'shortfall': q2(consumed - total) if consumed > ZERO else ZERO,
+    }
+
+
+def _create_consumptions(record, *, raw_material, held_by, attributions, available):
+    """
+    انتساب مصرف به خرابی‌ها را می‌سازد و جمع آن را برمی‌گرداند.
+
+    جمع انتساب‌ها نباید از مصرف واقعی بیشتر شود؛ اگر بیشتر باشد خطا می‌دهیم تا
+    انباردار مبالغ را اصلاح کند. (کمتر بودن مجاز است: بخشی از مصرف ممکن است
+    برای کار عادی باشد و خرابی ثبت نشده باشد.)
+    """
+    seen = set()
+    rows = []
+    total = ZERO
+    for defect, qty in attributions:
+        if defect is None:
+            raise HandoverError('یکی از خرابی‌های انتخاب‌شده نامعتبر است.')
+        if defect.pk in seen:
+            raise HandoverError(f'خرابی شماره {defect.pk} بیش از یک‌بار انتخاب شده است.')
+        seen.add(defect.pk)
+        amount = q2(qty)
+        if not amount.is_finite() or amount <= ZERO:
+            raise HandoverError(f'مقدار مصرف برای خرابی شماره {defect.pk} باید بزرگ‌تر از صفر باشد.')
+        total = q2(total + amount)
+        if total > available:
+            raise HandoverError(
+                f'جمع مصرف ثبت‌شده ({total}) از مصرف واقعی ({available}) بیشتر است.'
+            )
+        rows.append(CustodyConsumption.objects.create(
+            custody_return=record,
+            raw_material=raw_material,
+            held_by=held_by,
+            defect=defect,
+            quantity=amount,
+        ))
+    return rows, total
 
 
 # ---------------------------------------------------------------------------
@@ -473,3 +589,138 @@ def custody_overview(held_by=None, search='', only_open=False):
         'total_quantity': open_qs.aggregate(total=Sum('quantity'))['total'] or ZERO,
     }
     return {'rows': rows, 'summary': summary}
+
+
+# ---------------------------------------------------------------------------
+# جمع مواد نیاز تحویل (نمای پیش از جدولِ ردیف‌های ریز)
+# ---------------------------------------------------------------------------
+
+def aggregate_needs(issues_qs, *, held_by=None):
+    """
+    مجموع نیاز مواد برای تحویل، گروه‌بندی‌شده بر اساس ماده اولیه.
+
+    هر ردیز = یک ماده اولیه با جمع «باقی‌ماندهٔ تحویل‌نشده» آن درخواست‌ها.
+    ورودی همان queryset صف تحویل است (قبل از صفحه‌بندی)، تا مجموع کل صف را
+    نشان دهد نه فقط ۲۵ ردیف نخستِ نمایش‌داده‌شده.
+
+    کنار هر ردیف، شناسهٔ درخواست‌های زیرمجموعه هم برمی‌گردد تا بتوان همان مقدار
+    را با ``distribute_aggregate`` بین آن‌ها پخش کرد.
+    """
+    rows = issues_qs.values_list('id', 'raw_material_id', 'raw_material__name',
+                                 'requested_quantity', 'issued_quantity')
+
+    buckets = {}
+    for issue_id, raw_id, raw_name, requested, issued in rows:
+        remaining = q2(q2(requested or ZERO) - q2(issued or ZERO))
+        if remaining <= ZERO:
+            continue
+        entry = buckets.get(raw_id)
+        if entry is None:
+            entry = buckets[raw_id] = {
+                'raw_material_id': raw_id,
+                'name': raw_name,
+                'need': ZERO,
+                'issue_ids': [],
+            }
+        entry['need'] = q2(entry['need'] + remaining)
+        entry['issue_ids'].append(issue_id)
+
+    result = []
+    for raw_id in sorted(buckets, key=lambda k: (buckets[k]['name'] or '', k)):
+        entry = buckets[raw_id]
+        raw = RawMaterial.objects.get(pk=raw_id)
+        result.append({
+            'raw_material_id': raw_id,
+            'raw': raw,
+            'name': raw.name,
+            'unit': raw.get_unit_display(),
+            'need': entry['need'],
+            'pack_size': q2(raw.pack_size or ZERO),
+            'stock': q2(raw.current_stock),
+            'issue_ids': entry['issue_ids'],
+            'issue_count': len(entry['issue_ids']),
+        })
+    return result
+
+
+def distribute_aggregate(raw_material_id, quantity):
+    """
+    یک مقدار کل را **تناسبی** بین درخواست‌های بازِ یک ماده پخش می‌کند.
+
+    خروجی: ``list[(issue_id, Decimal)]`` — همان فرمتی که ``execute_handover``
+    می‌گیرد. سهم هر درخواست برابر نسبتِ نیاز باقی‌ماندهٔ او به جمع کل است، و
+    باقی‌ماندهٔ گِردکردن به آخرین درخواست داده می‌شود تا جمع دقیقاً برابر مقدار
+    ورودی بماند.
+
+    مقدار ورودی نباید از مجموع نیاز باقی‌مانده بیشتر باشد.
+    """
+    if quantity is None:
+        raise HandoverError('مقدار تحویل را وارد کنید.')
+    try:
+        total = q2(quantity)
+    except (TypeError, ValueError, ArithmeticError, InvalidOperation):
+        raise HandoverError('مقدار تحویل نامعتبر است.')
+    if not total.is_finite() or total <= ZERO:
+        raise HandoverError('مقدار تحویل باید بزرگ‌تر از صفر باشد.')
+
+    pending = list(
+        MaterialIssue.objects
+        .filter(raw_material_id=raw_material_id, status__in=['requested', 'partial'])
+        .order_by('created_at', 'pk')
+    )
+    remainings = [q2(i.requested_quantity - i.issued_quantity) for i in pending]
+    pairs = [(i, r) for i, r in zip(pending, remainings) if r > ZERO]
+    if not pairs:
+        raise HandoverError('برای این ماده درخواست بازی وجود ندارد.')
+
+    total_need = q2(sum((r for _, r in pairs), ZERO))
+    if total > total_need:
+        raise HandoverError(
+            f'مقدار تحویل ({total}) از مجموع نیاز باقی‌مانده ({total_need}) بیشتر است.'
+        )
+
+    if total == total_need:
+        return [(i.pk, r) for i, r in pairs]
+
+    items, allocated = [], ZERO
+    last = len(pairs) - 1
+    for idx, (issue, remaining) in enumerate(pairs):
+        if idx == last:
+            share = q2(total - allocated)
+        else:
+            share = min(q2(total * remaining / total_need), q2(total - allocated))
+        if share <= ZERO:
+            continue
+        items.append((issue.pk, share))
+        allocated = q2(allocated + share)
+    return items
+
+
+def open_defect_choices(*, search='', raw_material=None, limit=50):
+    """
+    فهرست خرابی‌های باز برای انتساب مصرف در پایان روز.
+
+    خرابی‌هایی که هنوز مواد جایگزینشان صادر نشده‌اند. اگر ``raw_material`` داده
+    شود، فقط خرابی‌هایی می‌آیند که قبلاً برای همین ماده درخواست/تحویل داشته‌اند،
+    تا انتخاب‌ها به کار واقعی نزدیک بماند.
+    """
+    from product.models import ProductionDefect
+
+    qs = ProductionDefect.objects.filter(
+        status__in=['reported', 'material_requested']
+    ).select_related('order', 'order_item__product', 'packaging_unit')
+
+    if raw_material is not None:
+        qs = qs.filter(
+            Q(material_issues__raw_material=raw_material) |
+            Q(order_item__material_issues__raw_material=raw_material) |
+            Q(packaging_unit__order_item__material_issues__raw_material=raw_material)
+        ).distinct()
+    if search:
+        qs = qs.filter(
+            Q(order__id__icontains=search) |
+            Q(description__icontains=search) |
+            Q(packaging_unit__unit_number__icontains=search) |
+            Q(order_item__product__name__icontains=search)
+        )
+    return list(qs.order_by('-created_at')[:limit])

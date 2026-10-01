@@ -217,6 +217,9 @@ CRAFTFLOW_AI_STAFF_GROUPS = config(
 CRAFTFLOW_AI_WAREHOUSE_GROUPS = config(
     'CRAFTFLOW_AI_WAREHOUSE_GROUPS', default='انبار', cast=Csv())
 
+# MCP Server shared secret for Hermes authentication
+CRAFTFLOW_AI_MCP_SECRET = config('CRAFTFLOW_AI_MCP_SECRET', default='')
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,

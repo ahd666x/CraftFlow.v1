@@ -239,6 +239,154 @@ class OrchestratorErrorTests(TestCase):
         self.assertEqual(ctx.exception.detail['missing'], 'CRAFTFLOW_AI_API_KEY')
 
 
+class GeminiSchemaCompatibilityTests(TestCase):
+    """
+    Gemini زیرمجموعهٔ محدودی از JSON Schema را می‌پذیرد.
+
+    ``additionalProperties`` را با خطای ۴۰۰ رد می‌کند، در حالی که رجیستری
+    CraftFlow برای بستنِ آرگومان‌های ناشناخته به آن نیاز دارد. پس حذف باید
+    در مرز Provider انجام شود، نه در schema مشترک.
+    """
+
+    def test_additional_properties_is_stripped_from_every_tool(self):
+        from craftflow_ai.providers.gemini import GeminiProvider
+        from craftflow_ai.tools import get_registry
+
+        tools = [t.to_schema() for t in get_registry().list_tools()]
+        self.assertTrue(tools)
+
+        declarations = GeminiProvider._convert_tools(tools)[0]['functionDeclarations']
+        self.assertEqual(len(declarations), len(tools))
+
+        for declaration in declarations:
+            with self.subTest(tool=declaration['name']):
+                self.assertNotIn(
+                    'additionalProperties', declaration['parameters'])
+
+    def test_shared_schema_keeps_additional_properties_for_validation(self):
+        """حذف در Gemini نباید قاعدهٔ اعتبارسنجی داخلی رجیستری را از بین ببرد."""
+        from craftflow_ai.providers.gemini import GeminiProvider
+        from craftflow_ai.tools import get_registry
+
+        tool = get_registry().get('get_open_orders')
+        self.assertFalse(tool.input_schema['additionalProperties'])
+
+        sent = GeminiProvider._convert_tools([tool.to_schema()])
+        self.assertNotIn(
+            'additionalProperties',
+            sent[0]['functionDeclarations'][0]['parameters'],
+        )
+
+        # اعتبارسنجی داخلی هنوز آرگومان ناشناخته را رد می‌کند.
+        from craftflow_ai.permissions.errors import ToolValidationError
+        with self.assertRaises(ToolValidationError) as ctx:
+            tool.validate_arguments({'nope': 1})
+        self.assertEqual(ctx.exception.code, 'UNKNOWN_ARGUMENT')
+
+    def test_property_descriptions_survive_the_conversion(self):
+        from craftflow_ai.providers.gemini import GeminiProvider
+        from craftflow_ai.tools import get_registry
+
+        tool = get_registry().get('get_open_orders')
+        sent = GeminiProvider._convert_tools([tool.to_schema()])
+        parameters = sent[0]['functionDeclarations'][0]['parameters']
+
+        self.assertEqual(parameters['type'], 'object')
+        self.assertIn('limit', parameters['properties'])
+        self.assertTrue(parameters['properties']['limit']['description'])
+
+
+class OpenAICompatibleToolCallTests(TestCase):
+    """
+    سازگاری با APIهای OpenAI-مانند (OpenAI، NVIDIA NIM، vLLM و…).
+
+    این دو باگ هر دو فقط با یک سرویس *واقعی* دیده می‌شوند و با
+    ``FakeAIProvider`` پنهان می‌مانند، چون آن Provider از ابتدا dict
+    می‌سازد و ``tool_call_id`` هم کنار می‌گذارد.
+    """
+
+    def _tool_call_response(self, arguments):
+        return {
+            'choices': [{
+                'finish_reason': 'tool_calls',
+                'message': {
+                    'content': None,
+                    'tool_calls': [{
+                        'id': 'call_abc123',
+                        'type': 'function',
+                        'function': {
+                            'name': 'get_open_orders',
+                            'arguments': arguments,
+                        },
+                    }],
+                },
+            }],
+        }
+
+    def test_string_arguments_are_parsed_into_a_dict(self):
+        """در APIهای OpenAI-مانند ``arguments`` رشتهٔ JSON است، نه dict."""
+        from craftflow_ai.providers.openai import OpenAIProvider
+
+        provider = OpenAIProvider(api_key='k', model='m', base_url='https://x/v1')
+        response = provider._parse(self._tool_call_response('{"limit": 7}'))
+
+        self.assertEqual(len(response.tool_calls), 1)
+        self.assertEqual(response.tool_calls[0].arguments, {'limit': 7})
+        self.assertEqual(response.tool_calls[0].call_id, 'call_abc123')
+
+    def test_dict_arguments_pass_through_unchanged(self):
+        from craftflow_ai.providers.openai import OpenAIProvider
+
+        provider = OpenAIProvider(api_key='k', model='m', base_url='https://x/v1')
+        response = provider._parse(self._tool_call_response({'limit': 3}))
+
+        self.assertEqual(response.tool_calls[0].arguments, {'limit': 3})
+
+    def test_unparsable_arguments_stay_visible_to_validation(self):
+        """
+        اگر آرگومان dict نشود نباید بی‌صدا به ``{}`` تبدیل شود؛ باید همان
+        مقدار بماند تا اعتبارسنجی رجیستری خطای دقیق بدهد و مدل بتواند
+        فراخوانی‌اش را اصلاح کند.
+        """
+        from craftflow_ai.providers.openai import OpenAIProvider
+
+        provider = OpenAIProvider(api_key='k', model='m', base_url='https://x/v1')
+        response = provider._parse(self._tool_call_response('limit=7'))
+        self.assertEqual(response.tool_calls[0].arguments, 'limit=7')
+
+    def test_tool_result_message_carries_tool_call_id(self):
+        """
+        بدون ``tool_call_id`` سرویس کل پیام را با ۴۰۰ رد می‌کند و نوبت دوم
+        هر گفتگوی ابزارمحور از کار می‌افتد.
+        """
+        user = make_user('tool_id_user', groups=['2'])
+        provider = FakeAIProvider()
+        provider.queue_tool_call('get_open_orders', {'limit': 1}, call_id='call_abc123')
+        provider.queue_text('خلاصهٔ سفارش‌ها آماده است.')
+
+        AIOrchestrator(user, provider=provider).chat('سفارش‌های باز را بده')
+
+        tool_messages = [
+            m for m in provider.calls[-1]['messages'] if m.get('role') == 'tool'
+        ]
+        self.assertEqual(len(tool_messages), 1)
+        self.assertEqual(tool_messages[0]['tool_call_id'], 'call_abc123')
+
+    def test_parsed_arguments_reach_the_tool_handler(self):
+        """مسیر کامل: رشتهٔ JSON مدل باید به آرگومان واقعی تبدیل شود."""
+        user = make_user('parsed_args_user', groups=['2'])
+        provider = FakeAIProvider()
+
+        # FakeAIProvider خودش dict می‌دهد؛ اینجا حلقهٔ واقعی شبیه‌سازی می‌شود
+        # تا ثابت شود dict برای اجرای ابزار کافی است و اعتبارسنجی نمی‌شکند.
+        provider.queue_tool_call('get_open_orders', {'limit': 2})
+        provider.queue_text('انجام شد.')
+
+        result = AIOrchestrator(user, provider=provider).chat('سفارش‌های باز')
+        self.assertTrue(result.success)
+        self.assertEqual(result.tool_calls[0]['status'], 'completed')
+
+
 class OrchestratorToolSafetyTests(TestCase):
     """مدل نباید بتواند ابزار غیرمجاز یا ناشناخته را اجرا کند."""
 

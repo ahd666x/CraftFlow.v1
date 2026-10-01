@@ -187,10 +187,17 @@ class AIOrchestrator:
                     conversation_id=conversation_id,
                     tool_calls=tool_calls,
                 )
-                messages.append({
+                # ``tool_call_id`` برای APIهای سازگار با OpenAI اجباری است:
+                # بدون آن، سرویس کل پیام را با خطای 400 رد می‌کند و نوبت دوم
+                # هر گفتگوی ابزارمحور از کار می‌افتد. Gemini و Anthropic این
+                # کلید را نمی‌خوانند، پس بی‌اثر است.
+                tool_message = {
                     'role': 'tool',
                     'content': json.dumps(outcome, ensure_ascii=False),
-                })
+                }
+                if call.call_id:
+                    tool_message['tool_call_id'] = call.call_id
+                messages.append(tool_message)
 
         provider_name, model_name = self._provider_identity()
 

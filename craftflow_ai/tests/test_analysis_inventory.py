@@ -29,7 +29,7 @@ from inventory.models import (
     RawMaterialCategory,
     StockMovement,
 )
-from product.models import Material, Part, ProductionTask
+from product.models import Material, Part, ProductBOM, ProductionTask
 
 from .factories import (
     make_leftover,
@@ -174,16 +174,43 @@ class MaterialMappingGapTests(TestCase):
         self.assertFalse(coverage['mapping_complete'])
 
     def test_partial_mapping_is_still_insufficient(self):
-        make_material_sheet(name='MDF-2', thickness=Decimal('12.0'))
-        self.assertGreater(Material.objects.count(), 1)
+        """
+        نگاشت ناقص کافی نیست: اگر حتی یکی از متریال‌های *موردنیاز* همین سفارش
+        نگاشت نشده باشد، نیاز مواد قابل محاسبه نیست.
+
+        عمداً دو متریالِ واقعاً مصرفیِ سفارش ساخته می‌شود تا «ناقص بودن» واقعاً
+        رخ دهد. متریالِ نامرتبطِ دیتابیس نباید سفارش را ناقص کند، چون گزارش
+        عمداً فقط به متریال‌های مصرفیِ همین سفارش محدود است.
+        """
+        item = self.order.items.first()
+        original_material = item.product.bom.first().part.material
+
+        second_sheet = make_material_sheet(name='MDF-2', thickness=Decimal('12.0'))
+        second_part = Part.objects.create(
+            material=second_sheet, name='قطعه دوم', pname='مبل سلوی',
+            length=Decimal('100.0'), width=Decimal('50.0'), routing_code='cnc.prs',
+        )
+        ProductBOM.objects.create(product=item.product, part=second_part, quantity=1)
+
+        # هر دو متریال باید واقعاً مصرفیِ یک تسکِ بازِ این سفارش باشند، وگرنه
+        # خارج از محدودهٔ گزارش می‌افتند.
+        ProductionTask.objects.create(
+            order=self.order, order_item=item,
+            part=item.product.bom.first().part,
+            station_name='cut', step_order=1, quantity=1, status='pending',
+        )
+        ProductionTask.objects.create(
+            order=self.order, order_item=item, part=second_part,
+            station_name='cnc', step_order=2, quantity=1, status='pending',
+        )
 
         raw = make_raw_material(name='MDF', unit='kg', stock=Decimal('100'))
-        sheets = list(Material.objects.all())
-        sheets[0].raw_material = raw
-        sheets[0].save(update_fields=['raw_material'])
+        original_material.raw_material = raw
+        original_material.save(update_fields=['raw_material'])
 
         coverage = bom_mapping_coverage(self.order)
-        self.assertGreater(coverage['material_rows_unmapped'], 0)
+        self.assertEqual(coverage['material_rows'], 2)
+        self.assertEqual(coverage['material_rows_unmapped'], 1)
         self.assertFalse(coverage['mapping_complete'])
 
 

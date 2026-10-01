@@ -1,4 +1,5 @@
 """Provider واقعی OpenAI (Chat Completions با function calling)."""
+import json
 import logging
 
 from craftflow_ai import config
@@ -9,6 +10,29 @@ from craftflow_ai.providers.http import post_json
 logger = logging.getLogger('craftflow_ai.providers.openai')
 
 DEFAULT_BASE = 'https://api.openai.com/v1'
+
+
+def _parse_tool_arguments(raw):
+    """
+    آرگومان فراخوانی ابزار را به dict تبدیل می‌کند.
+
+    در APIهای سازگار با OpenAI، ``function.arguments`` یک *رشتهٔ JSON* است،
+    برخلاف Gemini (``args``) و Anthropic (``input``) که شیء می‌دهند. اگر این
+    تبدیل انجام نشود، اعتبارسنجی رجیستری آن را با «آرگومان‌های ابزار باید شیء
+    باشد» رد می‌کند و هیچ ابزاری هرگز اجرا نمی‌شود.
+
+    اگر محتوا dict نباشد، مقدار خام دست‌نخورده برگردانده می‌شود تا اعتبارسنجی
+    نوع واقعی را گزارش دهد و مدل بتواند خودش فراخوانی را اصلاح کند.
+    """
+    if raw is None or raw == '':
+        return {}
+    if isinstance(raw, dict):
+        return raw
+    try:
+        parsed = json.loads(raw)
+    except (TypeError, ValueError):
+        return raw
+    return parsed if isinstance(parsed, dict) else raw
 
 
 class OpenAIProvider(AIProvider):
@@ -76,7 +100,7 @@ class OpenAIProvider(AIProvider):
             function = call.get('function') or {}
             tool_calls.append(ToolCall(
                 name=function.get('name', ''),
-                arguments=function.get('arguments') or {},
+                arguments=_parse_tool_arguments(function.get('arguments')),
                 call_id=call.get('id'),
             ))
 

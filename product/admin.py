@@ -5,7 +5,7 @@ from django.utils.html import format_html
 from .models import (
     Color, ColorCode, ProductCategory, WorkerProfile, Customer, ProductBOM, Product,
     Order, ProductionTask, Part, OrderItem, ProductionLog , PackagingUnit ,
-    ProductionEvent,
+    ProductionEvent, ProductionDefect,
 )
 from .forms import OrderItemForm
 from .models import ShipmentLog
@@ -514,3 +514,13 @@ class ProductionEventAdmin(admin.ModelAdmin):
     list_filter = ['event_type', 'station_name']
     search_fields = ['order__id', 'task__id']
     readonly_fields = ['created_at']
+
+
+@admin.register(ProductionDefect)
+class ProductionDefectAdmin(admin.ModelAdmin):
+    list_display = ['id', 'order', 'order_item', 'packaging_unit', 'color_part', 'quantity', 'status', 'created_at']
+    list_filter = ['status', 'color_part', 'created_at']
+    search_fields = ['order__id', 'description', 'packaging_unit__unit_number', 'order_item__product__name']
+    autocomplete_fields = ['order_item', 'packaging_unit', 'task', 'part', 'reported_by']
+    readonly_fields = ['created_at']
+    date_hierarchy = 'created_at'

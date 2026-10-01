@@ -113,6 +113,44 @@
             <i class="bi bi-x-circle"></i> صفر کردن (همه مصرف شد)
           </button>
         </div>
+        <div class="mb-3">
+          <label class="form-label" for="custodyToWarehouseInput">مقدار بازگشتی فیزیکی به انبار</label>
+          <input type="number" class="form-control" id="custodyToWarehouseInput" min="0" step="0.01" value="0">
+          <div class="form-text">
+            اگر کارگر بخشی از رنگ را فیزیکاً به انبار آورد، اینجا وارد کنید؛
+            موجودی انبار به همان اندازه زیاد می‌شود. اگر <code>۰</code> بماند،
+            مصرف فقط در دفتر امانت ثبت می‌شود و موجودی انبار دست‌نخورده می‌ماند.
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-bold" for="custodyDefectSelect">این رنگ برای کدام خرابی‌ها مصرف شد؟</label>
+          <select class="form-select" id="custodyDefectSelect">
+            <option value="">— انتخاب خرابی —</option>
+          </select>
+          <div class="form-text" id="custodyDefectEmpty">
+            خرابی بازی برای این ماده پیدا نشد. اگر مصرف مربوط به خرابی نبود، همین‌جا رها کنید.
+          </div>
+        </div>
+        <div class="mb-3 d-none" id="custodyAttributionWrap">
+          <label class="form-label" for="custodyAttributionQty">مقدار مصرف برای این خرابی</label>
+          <input type="number" class="form-control" id="custodyAttributionQty" min="0" step="0.01" value="0">
+          <div class="form-text">
+            مصرف قابل انتساب:
+            <strong id="custodyConsumableHint">۰</strong>
+            <span id="custodyUnitAttribution"></span>
+            — انتساب‌های قبلی این سند: <span id="custodyAttributedHint">۰</span>
+          </div>
+          <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="custodyAddAttribution">
+            <i class="bi bi-plus-lg"></i> افزودن این خرابی به انتساب
+          </button>
+        </div>
+        <div class="mb-3">
+          <div class="fw-bold small mb-1">انتساب‌های ثبت‌شده</div>
+          <ul class="list-group list-group-flush" id="custodyAttributionList"></ul>
+          <div class="form-text d-none" id="custodyAttributionEmpty">
+            هنوز خرابی‌ای انتخاب نشده است. ثبت بدون انتساب هم مجاز است.
+          </div>
+        </div>
         <div class="mb-1">
           <label class="form-label" for="custodyNoteInput">یادداشت</label>
           <input type="text" class="form-control" id="custodyNoteInput" maxlength="255">
@@ -137,6 +175,7 @@
 
   const csrfToken = '{{ csrf_token }}';
   const returnUrl = '{% url "inventory:custody_return" %}';
+  const defectChoicesUrl = '{% url "inventory:defect_choices" %}';
 
   const modalEl = document.getElementById('custodyReturnModal');
   const holderNameEl = document.getElementById('custodyHolderName');
@@ -148,12 +187,118 @@
   const alertEl = document.getElementById('custodyAlert');
   const saveBtn = document.getElementById('custodySaveBtn');
   const zeroBtn = document.getElementById('custodyZeroBtn');
+  const toWarehouseInput = document.getElementById('custodyToWarehouseInput');
+  const defectSelect = document.getElementById('custodyDefectSelect');
+  const defectEmpty = document.getElementById('custodyDefectEmpty');
+  const attributionWrap = document.getElementById('custodyAttributionWrap');
+  const attributionQty = document.getElementById('custodyAttributionQty');
+  const addAttributionBtn = document.getElementById('custodyAddAttribution');
+  const attributionList = document.getElementById('custodyAttributionList');
+  const attributionEmpty = document.getElementById('custodyAttributionEmpty');
+  const consumableHint = document.getElementById('custodyConsumableHint');
+  const attributedHint = document.getElementById('custodyAttributedHint');
+  const unitAttribution = document.getElementById('custodyUnitAttribution');
 
   let modalInstance = null;
-  let active = { raw: null, holder: null, holderName: '' };
+  let active = { raw: null, holder: null, holderName: '', before: 0, unit: '' };
+  let attributions = [];
 
   function toPersian(value) {
     return String(value).replace(/\d/g, d => '۰۱۲۳۴۵۶۷۸۹'[d]);
+  }
+
+  function num(value) {
+    const n = parseFloat(value);
+    return isNaN(n) ? 0 : n;
+  }
+
+  // مصرف قابل انتساب = امانت قبلی منهای مقداری که واقعاً به انبار برگشت.
+  function consumable() {
+    const back = num(toWarehouseInput?.value);
+    return Math.max(0, active.before - back);
+  }
+
+  function attributedTotal() {
+    return attributions.reduce((sum, row) => sum + num(row.quantity), 0);
+  }
+
+  function renderAttributionState() {
+    consumableHint.textContent = toPersian(consumable().toFixed(2));
+    attributedHint.textContent = toPersian(attributedTotal().toFixed(2));
+    attributionEmpty.classList.toggle('d-none', attributions.length > 0);
+    attributionList.innerHTML = '';
+    attributions.forEach((row, idx) => {
+      const li = document.createElement('li');
+      li.className = 'list-group-item d-flex justify-content-between align-items-center py-1 px-2';
+      const label = document.createElement('span');
+      label.className = 'small';
+      label.textContent = (row.label || ('خرابی #' + row.defect_id));
+      const right = document.createElement('span');
+      const qty = document.createElement('span');
+      qty.className = 'badge bg-primary ms-2';
+      qty.textContent = toPersian(num(row.quantity).toFixed(2)) + ' ' + (active.unit || '');
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'btn btn-sm btn-link text-danger p-0 ms-2';
+      del.innerHTML = '<i class="bi bi-x-lg"></i>';
+      del.addEventListener('click', () => {
+        attributions.splice(idx, 1);
+        renderAttributionState();
+      });
+      right.appendChild(qty);
+      right.appendChild(del);
+      li.appendChild(label);
+      li.appendChild(right);
+      attributionList.appendChild(li);
+    });
+  }
+
+  async function loadDefectChoices() {
+    if (!defectSelect || !active.raw) return;
+    defectSelect.innerHTML = '<option value="">در حال بارگذاری…</option>';
+    try {
+      const response = await fetch(defectChoicesUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrfToken,
+          'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: JSON.stringify({ raw_material_id: active.raw })
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'خطا در دریافت خرابی‌ها');
+      }
+      defectSelect.innerHTML = '<option value="">— انتخاب خرابی —</option>';
+      (data.options || []).forEach(opt => {
+        const option = document.createElement('option');
+        option.value = opt.id;
+        option.dataset.label = opt.label;
+        option.textContent = opt.label;
+        defectSelect.appendChild(option);
+      });
+      const none = !(data.options || []).length;
+      if (defectEmpty) defectEmpty.classList.toggle('d-none', !none);
+      syncAttributionVisibility();
+    } catch (err) {
+      defectSelect.innerHTML = '<option value="">— بارگذاری نشد —</option>';
+      if (defectEmpty) {
+        defectEmpty.textContent = err.message;
+        defectEmpty.classList.remove('d-none');
+      }
+      syncAttributionVisibility();
+    }
+  }
+
+  function syncAttributionVisibility() {
+    if (!attributionWrap || !defectSelect) return;
+    const hasChoice = !!defectSelect.value;
+    attributionWrap.classList.toggle('d-none', !hasChoice);
+    if (hasChoice && !(attributionQty.value || '').trim()) {
+      const rest = Math.max(0, consumable() - attributedTotal());
+      attributionQty.value = rest.toFixed(2);
+    }
   }
 
   document.getElementById('custodyTable').addEventListener('click', e => {
@@ -163,23 +308,77 @@
     active = {
       raw: btn.dataset.raw,
       holder: btn.dataset.holder,
-      holderName: btn.dataset.holderName || ''
+      holderName: btn.dataset.holderName || '',
+      before: num(btn.dataset.quantity || '0'),
+      unit: btn.dataset.unit || ''
     };
+    attributions = [];
     holderNameEl.textContent = btn.dataset.holderName || '—';
     materialNameEl.textContent = btn.dataset.material || '—';
-    unitEl.textContent = btn.dataset.unit || '';
-    const currentQty = parseFloat(btn.dataset.quantity || '0');
-    currentQtyEl.textContent = toPersian(currentQty.toFixed(2));
-    measuredInput.value = currentQty.toFixed(2);
+    unitEl.textContent = active.unit;
+    currentQtyEl.textContent = toPersian(active.before.toFixed(2));
+    measuredInput.value = active.before.toFixed(2);
     noteInput.value = '';
+    toWarehouseInput.value = '0';
+    attributionQty.value = '';
+    if (defectSelect) defectSelect.value = '';
+    if (defectEmpty) {
+      defectEmpty.textContent = 'در حال دریافت فهرست خرابی‌ها…';
+      defectEmpty.classList.remove('d-none');
+    }
+    if (unitAttribution) unitAttribution.textContent = active.unit;
+    renderAttributionState();
     alertEl.classList.add('d-none');
     alertEl.textContent = '';
+    loadDefectChoices();
     setTimeout(() => { measuredInput.focus(); measuredInput.select(); }, 400);
   });
 
   zeroBtn?.addEventListener('click', () => {
     measuredInput.value = '0.00';
     measuredInput.focus();
+  });
+
+  toWarehouseInput?.addEventListener('input', renderAttributionState);
+  defectSelect?.addEventListener('change', syncAttributionVisibility);
+
+  addAttributionBtn?.addEventListener('click', () => {
+    if (!defectSelect?.value) {
+      alertEl.textContent = 'ابتدا یک خرابی انتخاب کنید.';
+      alertEl.classList.remove('d-none');
+      return;
+    }
+    const qty = num(attributionQty.value);
+    const before = attributedTotal();
+    const limit = consumable();
+    if (qty <= 0) {
+      alertEl.textContent = 'مقدار مصرف این خرابی باید بزرگ‌تر از صفر باشد.';
+      alertEl.classList.remove('d-none');
+      return;
+    }
+    if (before + qty > limit) {
+      alertEl.textContent =
+        'جمع انتساب‌ها (' + toPersian((before + qty).toFixed(2)) +
+        ') از مصرف واقعی (' + toPersian(limit.toFixed(2)) + ') بیشتر است.';
+      alertEl.classList.remove('d-none');
+      return;
+    }
+    if (attributions.some(row => String(row.defect_id) === String(defectSelect.value))) {
+      alertEl.textContent = 'این خرابی قبلاً در انتساب‌ها آمده است.';
+      alertEl.classList.remove('d-none');
+      return;
+    }
+    const option = defectSelect.options[defectSelect.selectedIndex];
+    attributions.push({
+      defect_id: parseInt(defectSelect.value, 10),
+      quantity: qty.toFixed(2),
+      label: option?.dataset.label || ('خرابی #' + defectSelect.value)
+    });
+    alertEl.classList.add('d-none');
+    defectSelect.value = '';
+    attributionQty.value = '';
+    syncAttributionVisibility();
+    renderAttributionState();
   });
 
   saveBtn?.addEventListener('click', async () => {
@@ -190,6 +389,15 @@
     const value = measuredInput.value;
     if (value === '' || value === null) {
       alertEl.textContent = 'مقدار توزین‌شده را وارد کنید.';
+      alertEl.classList.remove('d-none');
+      return;
+    }
+    const limit = consumable();
+    const over = attributedTotal() - limit;
+    if (over > 0.0001) {
+      alertEl.textContent =
+        'جمع انتساب‌ها (' + toPersian(attributedTotal().toFixed(2)) +
+        ') از مصرف واقعی (' + toPersian(limit.toFixed(2)) + ') بیشتر است.';
       alertEl.classList.remove('d-none');
       return;
     }
@@ -209,6 +417,8 @@
           raw_material_id: active.raw,
           held_by: active.holder,
           measured_quantity: value,
+          to_warehouse: toWarehouseInput ? (toWarehouseInput.value || '0') : '0',
+          attributions: attributions,
           note: noteInput.value || ''
         })
       });
@@ -228,9 +438,14 @@
   });
 
   modalEl?.addEventListener('hidden.bs.modal', () => {
-    active = { raw: null, holder: null, holderName: '' };
+    active = { raw: null, holder: null, holderName: '', before: 0, unit: '' };
+    attributions = [];
     measuredInput.value = '';
     noteInput.value = '';
+    if (toWarehouseInput) toWarehouseInput.value = '0';
+    if (defectSelect) defectSelect.value = '';
+    attributionQty.value = '';
+    renderAttributionState();
     alertEl.classList.add('d-none');
   });
 

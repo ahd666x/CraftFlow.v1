@@ -10,6 +10,9 @@ logger = logging.getLogger('craftflow_ai.providers.gemini')
 
 DEFAULT_BASE = 'https://generativelanguage.googleapis.com/v1beta'
 
+# کلیدهایی که Gemini در شمای ورودی ابزار نمی‌پذیرد و باید پیش از ارسال حذف شوند.
+_UNSUPPORTED_SCHEMA_KEYS = frozenset({'additionalProperties'})
+
 
 class GeminiProvider(AIProvider):
     name = 'gemini'
@@ -60,6 +63,27 @@ class GeminiProvider(AIProvider):
         return system_parts, contents
 
     @staticmethod
+    def _sanitize_schema(node):
+        """
+        Gemini زیرمجموعهٔ محدودی از JSON Schema را می‌پذیرد و هر کلید ناشناخته
+        را با خطای ۴۰۰ رد می‌کند (``Unknown name ... at parameters``).
+
+        ``additionalProperties`` در Gemini پشتیبانی نمی‌شود، اما رجیستری
+        CraftFlow برای بستنِ آرگومان‌های ناشناخته به آن نیاز دارد
+        (``Tool.validate_arguments``). بنابراین حذفش در این مرز انجام می‌شود،
+        نه در schema مشترکی که OpenAI/Anthropic هم از آن استفاده می‌کنند.
+        """
+        if isinstance(node, dict):
+            return {
+                key: GeminiProvider._sanitize_schema(value)
+                for key, value in node.items()
+                if key not in _UNSUPPORTED_SCHEMA_KEYS
+            }
+        if isinstance(node, list):
+            return [GeminiProvider._sanitize_schema(item) for item in node]
+        return node
+
+    @staticmethod
     def _convert_tools(tools):
         declarations = []
         for tool in tools or []:
@@ -69,7 +93,7 @@ class GeminiProvider(AIProvider):
             declarations.append({
                 'name': tool['name'],
                 'description': tool.get('description', ''),
-                'parameters': schema,
+                'parameters': GeminiProvider._sanitize_schema(schema),
             })
         return [{'functionDeclarations': declarations}] if declarations else None
 

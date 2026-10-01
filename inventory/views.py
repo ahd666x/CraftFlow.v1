@@ -239,6 +239,9 @@ def production_issue_queue(request):
     paginator = Paginator(issues_qs, 25)
     issues = paginator.get_page(request.GET.get('page'))
 
+    # مجموع نیازِ کل صف (نه فقط ۲۵ ردیف نمایش‌داده‌شده) برای نمای بالای جدول.
+    aggregate_rows = services.aggregate_needs(issues_qs)
+
     # Warehouse users for handover receiver dropdown
     warehouse_users = User.objects.filter(is_active=True).order_by('first_name', 'last_name', 'username')
 
@@ -248,6 +251,7 @@ def production_issue_queue(request):
         **_inventory_context('production_queue'),
         'issues': issues,
         'issues_total': paginator.count,
+        'aggregate_rows': aggregate_rows,
         'station': station,
         'stations': ProductionTask.STATION_CHOICES,
         'warehouse_users': warehouse_users,
@@ -380,6 +384,107 @@ def handover_create(request):
     return JsonResponse({'success': True, 'handover_id': handover.id})
 
 
+# ---------------------------------------------------------------------------
+# تحویل مجموع (یک مقدار کل، پخش‌شده بین درخواست‌های بازِ همان ماده)
+# ---------------------------------------------------------------------------
+
+def _parse_aggregate_payload(payload):
+    """خواندن و اعتبارسنجی payload تحویل مجموع."""
+    if not isinstance(payload, dict):
+        raise HandoverError('داده ارسالی نامعتبر است.')
+    try:
+        raw_id = int(payload.get('raw_material_id'))
+    except (TypeError, ValueError):
+        raise HandoverError('ماده اولیه انتخاب نشده است.')
+
+    try:
+        receiver_id = int(payload.get('received_by'))
+    except (TypeError, ValueError):
+        receiver_id = None
+    receiver = User.objects.filter(pk=receiver_id, is_active=True).first() if receiver_id else None
+    if receiver is None:
+        raise HandoverError('تحویل‌گیرنده را انتخاب کنید.')
+
+    held_by = _parse_held_by(payload)
+    return raw_id, receiver, held_by
+
+
+@login_required
+@warehouse_or_manager_required
+@require_POST
+def aggregate_handover_preview(request):
+    """پیش‌نمایش یک تحویل مجموعی، با نمایش اینکه چه مقدار به چه درخواستی می‌رسد."""
+    payload = _json_body(request)
+    try:
+        raw_id, receiver, held_by = _parse_aggregate_payload(payload)
+        items = services.distribute_aggregate(raw_id, payload.get('quantity'))
+        rows = services.preview_handover(items, held_by=held_by)
+        allocation = [
+            {
+                'issue_id': issue_id,
+                'quantity': str(qty),
+                'label': _issue_label(issue_id),
+            }
+            for issue_id, qty in items
+        ]
+    except HandoverError as exc:
+        return JsonResponse({'success': False, 'error': str(exc)})
+    return JsonResponse({
+        'success': True,
+        'rows': rows,
+        'allocation': allocation,
+        'received_by': receiver.get_full_name() or receiver.username,
+        'held_by': (held_by.get_full_name() or held_by.username) if held_by else '',
+    })
+
+
+def _issue_label(issue_id):
+    """برچسب کوتاه یک درخواست برای نمایش در پیش‌نمایش توزیع."""
+    issue = MaterialIssue.objects.select_related(
+        'raw_material', 'task', 'order_item__product', 'defect__order'
+    ).filter(pk=issue_id).first()
+    if issue is None:
+        return f'درخواست #{issue_id}'
+    if issue.defect_id:
+        return f'خرابی #{issue.defect_id} — سفارش {issue.defect.order_id}'
+    if issue.task_id:
+        return f'سفارش {issue.task.order_id} — {issue.task.get_station_name_display()}'
+    if issue.order_item_id:
+        product = getattr(issue.order_item, 'product', None)
+        return f'آیتم #{issue.order_item_id}' + (f' — {product.name}' if product else '')
+    return f'درخواست #{issue_id}'
+
+
+@login_required
+@warehouse_or_manager_required
+@require_POST
+def aggregate_handover_create(request):
+    """ثبت نهایی تحویل مجموعی؛ مقدار کل تناسبی بین درخواست‌های باز پخش می‌شود."""
+    payload = _json_body(request)
+    try:
+        raw_id, receiver, held_by = _parse_aggregate_payload(payload)
+        items = services.distribute_aggregate(raw_id, payload.get('quantity'))
+        handover = services.execute_handover(
+            issued_by=request.user,
+            received_by=receiver,
+            items=items,
+            note=str(payload.get('note') or '').strip()[:255],
+            held_by=held_by,
+        )
+    except HandoverError as exc:
+        return JsonResponse({'success': False, 'error': str(exc)})
+
+    receiver_name = receiver.get_full_name() or receiver.username
+    message = (
+        f'تحویل مجموعی {len(items)} درخواست به «{receiver_name}» ثبت شد '
+        f'(تحویل شماره {handover.id}).'
+    )
+    if held_by is not None:
+        message += f' باقی‌ماندهٔ بسته‌ها امانت «{held_by.get_full_name() or held_by.username}» شد.'
+    messages.success(request, message)
+    return JsonResponse({'success': True, 'handover_id': handover.id, 'rows': len(items)})
+
+
 # ============================================================
 # امانت مواد نزد کارگر (Material Custody)
 # ============================================================
@@ -433,6 +538,45 @@ def _post_data(request):
     }
 
 
+def _parse_attributions(raw_value):
+    """
+    انتساب مصرف: فهرست ``[(defect, quantity)]`` از JSON یا فیلد فرم.
+
+    قالب JSON هر عضو: ``{"defect_id": 12, "quantity": "0.50"}``.
+    ردیف‌های ناقص یا بی‌مقدار نادیده گرفته می‌شوند تا ثبت بازگشت را بی‌دلیل
+    نشکند؛ اعتبارسنجی اصلی در سرویس انجام می‌شود.
+    """
+    from product.models import ProductionDefect
+
+    if raw_value in (None, '', [], ()):
+        return []
+
+    entries = []
+    if isinstance(raw_value, str):
+        try:
+            raw_value = json.loads(raw_value)
+        except (ValueError, TypeError):
+            raise HandoverError('فهرست انتساب مصرف نامعتبر است.')
+    if not isinstance(raw_value, list):
+        raise HandoverError('فهرست انتساب مصرف نامعتبر است.')
+
+    for row in raw_value:
+        if not isinstance(row, dict):
+            continue
+        try:
+            defect_id = int(row.get('defect_id'))
+        except (TypeError, ValueError):
+            continue
+        qty = row.get('quantity')
+        if qty in (None, ''):
+            continue
+        defect = ProductionDefect.objects.filter(pk=defect_id).first()
+        if defect is None:
+            raise HandoverError(f'خرابی شماره {defect_id} یافت نشد.')
+        entries.append((defect, qty))
+    return entries
+
+
 @login_required
 @warehouse_or_manager_required
 @require_POST
@@ -460,16 +604,24 @@ def custody_return(request):
         return JsonResponse({'success': False, 'error': 'کارگر تحویل‌گیرنده یافت نشد.'}, status=400)
 
     try:
-        record = services.return_custody(
+        attributions = _parse_attributions(data.get('attributions'))
+    except HandoverError as exc:
+        return JsonResponse({'success': False, 'error': str(exc)}, status=400)
+
+    try:
+        result = services.return_custody(
             raw_material=raw,
             held_by=holder,
             measured_quantity=data.get('measured_quantity'),
             recorded_by=request.user,
             note=str(data.get('note') or '').strip(),
+            to_warehouse=data.get('to_warehouse'),
+            attributions=attributions,
         )
     except HandoverError as exc:
         return JsonResponse({'success': False, 'error': str(exc)}, status=400)
 
+    record = result['record']
     holder_name = holder.get_full_name() or holder.username
     return JsonResponse({
         'success': True,
@@ -477,6 +629,66 @@ def custody_return(request):
         'quantity': str(record.measured_quantity),
         'delta': str(record.delta),
         'held_by': holder_name,
+        'consumed': str(result['consumed']),
+        'warehouse_return': str(result['warehouse_return']),
+        'attributed': str(result['attributed_total']),
+        'shortfall': str(result['shortfall']),
+        'attributions': [
+            {'defect_id': row.defect_id, 'quantity': str(row.quantity)}
+            for row in result['attributions']
+        ],
+    })
+
+
+def _defect_option(defect):
+    """گزینهٔ قابل انتخاب برای انتساب مصرف در UI."""
+    parts = [f'خرابی #{defect.pk}']
+    if defect.order_id:
+        parts.append(f'سفارش {defect.order_id}')
+    product = getattr(defect.order_item, 'product', None)
+    if product:
+        parts.append(product.name)
+    if defect.color_part:
+        parts.append(defect.get_color_part_display())
+    return {
+        'id': defect.pk,
+        'label': ' — '.join(parts),
+        'status': defect.status,
+        'description': (defect.description or '')[:120],
+    }
+
+
+@login_required
+@warehouse_or_manager_required
+@require_POST
+def defect_choices(request):
+    """فهرست خرابی‌های باز برای انتساب مصرفِ پایان روز."""
+    data = _post_data(request)
+    raw_id = data.get('raw_material_id')
+    if raw_id in (None, ''):
+        return JsonResponse(
+            {'success': False, 'error': 'ماده اولیه نامعتبر است.'}, status=400
+        )
+    try:
+        raw = RawMaterial.objects.filter(pk=int(raw_id)).first()
+    except (TypeError, ValueError):
+        raw = None
+    if raw is None:
+        return JsonResponse(
+            {'success': False, 'error': 'ماده اولیه یافت نشد.'}, status=400
+        )
+    try:
+        limit = int(data.get('limit') or 50)
+    except (TypeError, ValueError):
+        limit = 50
+    defects = services.open_defect_choices(
+        search=str(data.get('q') or '').strip(),
+        raw_material=raw,
+        limit=max(1, min(limit, 200)),
+    )
+    return JsonResponse({
+        'success': True,
+        'options': [_defect_option(d) for d in defects],
     })
 
 

@@ -33,9 +33,14 @@ urlpatterns = [
     path('handover/preview/', views.handover_preview, name='handover_preview'),
     path('handover/create/', views.handover_create, name='handover_create'),
 
+    # Aggregate Handover (یک مقدار کل، پخش‌شده بین درخواست‌های باز)
+    path('handover/aggregate/preview/', views.aggregate_handover_preview, name='aggregate_handover_preview'),
+    path('handover/aggregate/create/', views.aggregate_handover_create, name='aggregate_handover_create'),
+
     # Material Custody (باقی‌ماندهٔ بسته‌های باز نزد هر نقاش)
     path('custody/', views.custody_board, name='custody_board'),
     path('custody/return/', views.custody_return, name='custody_return'),
+    path('custody/defect-choices/', views.defect_choices, name='defect_choices'),
 
     path('purchase-orders/', views.purchase_order_list, name='purchase_order_list'),
     path('purchase-orders/<int:order_id>/detail/', views.purchase_order_detail_api, name='purchase_order_detail'),

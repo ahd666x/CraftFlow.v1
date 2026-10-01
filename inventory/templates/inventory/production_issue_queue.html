@@ -45,6 +45,116 @@
   </div>
 </div>
 
+<div class="card-modern mb-3" id="aggregateCard">
+  <div class="card-body">
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
+      <div>
+        <h5 class="mb-1"><i class="bi bi-collection"></i> مجموع مواد نیاز تحویل</h5>
+        <div class="text-muted small">
+          جمع باقی‌ماندهٔ همهٔ درخواست‌های صف (نه فقط ردیف‌های همین صفحه).
+          انباردار یک ماده را انتخاب می‌کند و کل مقدار را یک‌جا تحویل می‌دهد؛
+          مقدار به‌صورت تناسبی بین درخواست‌های بازِ همان ماده پخش می‌شود.
+        </div>
+      </div>
+      {% if aggregate_rows %}
+      <span class="badge bg-primary">{{ aggregate_rows|length }} ماده</span>
+      {% endif %}
+    </div>
+
+    {% if aggregate_rows %}
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0" id="aggregateTable">
+        <thead class="table-light">
+          <tr>
+            <th>ماده اولیه</th>
+            <th style="width:14%">جمع نیاز</th>
+            <th style="width:12%">موجودی</th>
+            <th style="width:12%">اندازهٔ بسته</th>
+            <th style="width:12%">تعداد درخواست</th>
+            <th style="width:22%">تحویل مجموعی</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in aggregate_rows %}
+          <tr data-raw="{{ row.raw_material_id }}" class="{% if row.stock < row.need %}table-warning{% endif %}">
+            <td>{{ row.name }}</td>
+            <td class="fw-bold">{{ row.need }} {{ row.unit }}</td>
+            <td>{{ row.stock }} {{ row.unit }}</td>
+            <td>{% if row.pack_size %}{{ row.pack_size }}{% else %}—{% endif %}</td>
+            <td>{{ row.issue_count }}</td>
+            <td>
+              <div class="input-group input-group-sm">
+                <input type="number" class="form-control agg-qty" min="0" step="0.01"
+                       max="{{ row.need }}" placeholder="مقدار" aria-label="مقدار تحویل {{ row.name }}">
+                <button class="btn btn-outline-primary agg-preview" type="button"
+                        data-raw="{{ row.raw_material_id }}" data-need="{{ row.need }}"
+                        data-unit="{{ row.unit }}" data-name="{{ row.name }}">
+                  <i class="bi bi-eye"></i> تحویل
+                </button>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="text-muted"><i class="bi bi-info-circle"></i> در حال حاضر درخواست بازی برای تحویل وجود ندارد.</div>
+    {% endif %}
+  </div>
+</div>
+
+{% if aggregate_rows %}
+<div class="modal fade" id="aggregateModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="aggregateModalTitle">تحویل مجموعی</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="بستن"></button>
+      </div>
+      <div class="modal-body" id="aggregateModalBody">
+        <div id="aggregateAlert" class="alert alert-danger d-none" role="alert"></div>
+        <div id="aggregateFormArea">
+          <div class="row g-2 mb-3">
+            <div class="col-md-5">
+              <label class="form-label" for="aggReceiver">تحویل‌گیرنده</label>
+              <select class="form-select form-select-sm" id="aggReceiver">
+                <option value="">— انتخاب کنید —</option>
+                {% for u in warehouse_users %}
+                <option value="{{ u.id }}">{{ u.get_full_name|default:u.username }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label" for="aggHeldBy">امانت نزد کارگر</label>
+              <select class="form-select form-select-sm" id="aggHeldBy">
+                <option value="">— بدون امانت (سالن) —</option>
+                {% for u in paint_workers %}
+                <option value="{{ u.id }}">{{ u.get_full_name|default:u.username }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label" for="aggNote">یادداشت</label>
+              <input type="text" class="form-control form-control-sm" id="aggNote" maxlength="255">
+            </div>
+          </div>
+        </div>
+        <div id="aggregatePreviewContent">
+          <div class="text-muted"><i class="bi bi-hourglass"></i> در حال محاسبه...</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+        <button type="button" class="btn btn-primary" id="aggregateConfirmBtn" disabled>
+          <i class="bi bi-check-lg"></i> ثبت تحویل مجموعی
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 <div class="card-modern" id="issuesCard">
   <div class="card-body p-0">
     {% if custody_users %}
@@ -321,6 +431,15 @@ function startAutoRefresh() {
         if (modalEl && modalEl.classList.contains('show')) {
           return;
         }
+        // همان قاعده برای مودال تحویل مجموعی.
+        const aggModalElGuard = document.getElementById('aggregateModal');
+        if (aggModalElGuard && aggModalElGuard.classList.contains('show')) {
+          return;
+        }
+        // ورودی مقدارِ مجموع در حال ویرایش است؛ ریفرش آن را پاک می‌کند.
+        if (document.activeElement && document.activeElement.matches('.agg-qty')) {
+          return;
+        }
         fetch(window.location.href, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
          .then(r => r.text())
          .then(html => {
@@ -357,6 +476,192 @@ function startAutoRefresh() {
   });
 
   const csrfToken = '{{ csrf_token }}';
+
+  // ---------------------------------------------------------------
+  // Aggregate handover (مجموع مواد نیاز تحویل)
+  // ---------------------------------------------------------------
+  const aggPreviewUrl = '{% url "inventory:aggregate_handover_preview" %}';
+  const aggCreateUrl = '{% url "inventory:aggregate_handover_create" %}';
+  const aggModalEl = document.getElementById('aggregateModal');
+  const aggBody = document.getElementById('aggregateModalBody');
+  const aggPreviewContent = document.getElementById('aggregatePreviewContent');
+  const aggAlert = document.getElementById('aggregateAlert');
+  const aggConfirmBtn = document.getElementById('aggregateConfirmBtn');
+  const aggReceiver = document.getElementById('aggReceiver');
+  const aggHeldBy = document.getElementById('aggHeldBy');
+  const aggNote = document.getElementById('aggNote');
+
+  let aggModal = null;
+  let aggState = { raw: null, quantity: '', ok: false };
+
+  function aggShowAlert(message) {
+    aggAlert.textContent = message;
+    aggAlert.classList.remove('d-none');
+  }
+
+  function aggClearAlert() {
+    aggAlert.classList.add('d-none');
+    aggAlert.textContent = '';
+  }
+
+  function aggSetPreviewBusy(text) {
+    aggConfirmBtn.disabled = true;
+    aggState.ok = false;
+    aggPreviewContent.innerHTML =
+      '<div class="text-muted"><i class="bi bi-hourglass"></i> ' + (text || 'در حال محاسبه...') + '</div>';
+  }
+
+  async function aggPreview() {
+    if (!aggState.raw) return;
+    const qty = (aggState.quantity || '').toString().trim();
+    if (qty === '') {
+      aggSetPreviewBusy('مقدار را وارد کنید.');
+      return;
+    }
+    aggClearAlert();
+    aggSetPreviewBusy();
+
+    try {
+      const response = await fetch(aggPreviewUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrfToken,
+          'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: JSON.stringify({
+          raw_material_id: aggState.raw,
+          quantity: qty,
+          received_by: aggReceiver ? aggReceiver.value : '',
+          held_by: aggHeldBy ? aggHeldBy.value : ''
+        })
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'خطا در محاسبهٔ تحویل');
+      }
+      aggRenderPreview(data);
+    } catch (err) {
+      aggSetPreviewBusy();
+      aggShowAlert(err.message);
+    }
+  }
+
+  function aggRenderPreview(data) {
+    const rows = data.rows || [];
+    const allocation = data.allocation || [];
+    let html = '';
+
+    if (allocation.length) {
+      html += '<div class="alert alert-light border"><div class="fw-bold mb-1">' +
+              'توزیع تناسبی بین ' + allocation.length + ' درخواست:</div><ul class="mb-0 small ps-3">';
+      allocation.forEach(item => {
+        html += '<li>' + item.label + ' → <strong>' + item.quantity + '</strong></li>';
+      });
+      html += '</ul></div>';
+    }
+
+    html += '<div class="table-responsive"><table class="table table-sm align-middle mb-0">' +
+            '<thead class="table-light"><tr><th>ماده</th><th>نیاز تحویل</th>' +
+            '<th>از باقی‌مانده</th><th>از انبار</th><th>بسته</th>' +
+            '<th>باقی‌ماندهٔ جدید</th><th>موجودی</th></tr></thead><tbody>';
+    rows.forEach(row => {
+      html += '<tr' + (row.enough ? '' : ' class="table-warning"') + '>' +
+              '<td>' + row.name + '</td>' +
+              '<td>' + row.need + ' ' + row.unit + '</td>' +
+              '<td>' + row.from_custody + '</td>' +
+              '<td>' + row.from_stock + '</td>' +
+              '<td>' + (row.packs ? row.packs + ' × ' + row.pack_size : '—') + '</td>' +
+              '<td><strong>' + row.new_custody + '</strong> ' + row.unit + '</td>' +
+              '<td>' + row.stock + '</td>' +
+              '</tr>';
+    });
+    html += '</tbody></table></div>';
+
+    aggPreviewContent.innerHTML = html;
+    if (aggHeldBy && aggHeldBy.value) {
+      aggPreviewContent.insertAdjacentHTML(
+        'beforeend',
+        '<div class="alert alert-info mt-3 mb-0 small"><i class="bi bi-person"></i> ' +
+        'باقی‌ماندهٔ بسته‌ها به‌عنوان امانت نزد «' + data.held_by + '» ثبت می‌شود.</div>'
+      );
+    }
+
+    aggState.ok = true;
+    aggConfirmBtn.disabled = false;
+  }
+
+  async function aggConfirm() {
+    if (!aggState.ok) return;
+    if (aggReceiver && !aggReceiver.value) {
+      aggShowAlert('تحویل‌گیرنده را انتخاب کنید.');
+      return;
+    }
+    aggClearAlert();
+    aggConfirmBtn.disabled = true;
+    aggConfirmBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> در حال ثبت...';
+
+    try {
+      const response = await fetch(aggCreateUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrfToken,
+          'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: JSON.stringify({
+          raw_material_id: aggState.raw,
+          quantity: aggState.quantity,
+          received_by: aggReceiver ? aggReceiver.value : '',
+          held_by: aggHeldBy ? aggHeldBy.value : '',
+          note: aggNote ? aggNote.value : ''
+        })
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'خطا در ثبت تحویل');
+      }
+      if (aggModal) aggModal.hide();
+      window.location.reload();
+    } catch (err) {
+      aggShowAlert(err.message);
+    } finally {
+      aggConfirmBtn.disabled = false;
+      aggConfirmBtn.innerHTML = '<i class="bi bi-check-lg"></i> ثبت تحویل مجموعی';
+    }
+  }
+
+  document.getElementById('aggregateTable')?.addEventListener('click', async e => {
+    const btn = e.target.closest('.agg-preview');
+    if (!btn) return;
+    const row = btn.closest('tr');
+    const qtyInput = row ? row.querySelector('.agg-qty') : null;
+    aggState = {
+      raw: btn.dataset.raw,
+      quantity: qtyInput ? qtyInput.value : '',
+      ok: false
+    };
+    document.getElementById('aggregateModalTitle').textContent =
+      'تحویل مجموعی — ' + btn.dataset.name;
+    if (aggNote) aggNote.value = '';
+    aggClearAlert();
+    if (aggModalEl) {
+      aggModal = bootstrap.Modal.getOrCreateInstance(aggModalEl);
+      aggModal.show();
+    }
+    aggPreview();
+  });
+
+  aggReceiver?.addEventListener('change', aggPreview);
+  aggHeldBy?.addEventListener('change', aggPreview);
+  aggConfirmBtn?.addEventListener('click', aggConfirm);
+
+  // تا وقتی مودال مجموع باز است، ریفرش خودکار جدول را بازنویسی نکند.
+  if (aggModalEl) {
+    aggModalEl.addEventListener('hidden.bs.modal', () => {
+      aggState = { raw: null, quantity: '', ok: false };
+    });
+  }
 
   // Event delegation for cancel-issue buttons (works after auto-refresh)
   document.getElementById('issuesTable').addEventListener('click', e => {
