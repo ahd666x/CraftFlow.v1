@@ -273,10 +273,10 @@ class AIOrchestrator:
         # دروازهٔ اعتبارسنجی: وجود ابزار، دسترسی کاربر، و اعتبار آرگومان‌ها.
         plan = ToolPlanner(self.registry, self.user).plan(tool_name, arguments)
         if not plan:
-            activity['status'] = (
-                'denied' if plan.tool else 'failed'
-            )
-            activity['error_code'] = plan.to_error()['error']['code']
+            # دلیل رد از خود plan می‌آید؛ «رد دسترسی» فقط برای همان یک حالت
+            # است و بقیه (ابزار ناشناخته / آرگومان اشتباه) شکست اجرا هستند.
+            activity['status'] = plan.status
+            activity['error_code'] = plan.error_code
             activity['message'] = plan.reason
             tool_calls.append(activity)
             audit.record(
@@ -284,8 +284,8 @@ class AIOrchestrator:
                 arguments=activity['arguments'],
                 user=self.user,
                 session_id=conversation_id,
-                status='denied' if plan.tool else 'failed',
-                error_code=activity['error_code'],
+                status=plan.status,
+                error_code=plan.error_code,
                 error_message=plan.reason,
                 duration_ms=_elapsed_ms(started),
             )

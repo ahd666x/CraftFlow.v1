@@ -121,7 +121,7 @@
                                     </td>
                                     <td class="fw-bold text-success">{{ movement.quantity }} {{ movement.raw_material.get_unit_display }}</td>
                                     <td>{{ movement.created_at|persian_datetime }}</td>
-                                    <td>{{ movement.created_by.get_full_name|default:movement.created_by.username }}</td>
+                                    <td>{% if movement.created_by %}{{ movement.created_by.get_full_name|default:movement.created_by.username }}{% else %}—{% endif %}</td>
                                     <td class="text-muted small">{{ movement.note|default:"—" }}</td>
                                 </tr>
                                 {% endfor %}

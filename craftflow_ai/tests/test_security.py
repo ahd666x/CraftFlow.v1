@@ -258,6 +258,118 @@ class ToolFailureIsolationTests(TestCase):
             self.assertEqual(_count(_MODELS[label]), before, f'{label} تغییر کرد')
 
 
+class ToolRejectionReasonTests(TestCase):
+    """
+    «چرا» رد شدن باید دقیق باشد.
+
+    یک مدل واقعی مرتب آرگومان اشتباه می‌سازد. اگر این خطای مدل مثل «رد
+    دسترسی» ثبت شود، دو آسیب واقعی رخ می‌دهد: گزارش امنیتی پر از رخداد
+    جعلی می‌شود، و مدل/کاربر به‌اشتباه می‌فهمند که کاربر اجازهٔ ابزار را
+    ندارد و تلاش برای اصلاح را رها می‌کنند.
+    """
+
+    def setUp(self):
+        self.user = make_user('reject_reason_user', groups=['1'])
+        self.order = make_order(status='producing')
+
+    def _plan(self, name, arguments, user=None):
+        from craftflow_ai.orchestrator.planner import ToolPlanner
+
+        return ToolPlanner(get_registry(), user or self.user).plan(name, arguments)
+
+    def test_unknown_tool_is_not_found(self):
+        plan = self._plan('drop_all_tables', {})
+        self.assertFalse(plan)
+        self.assertEqual(plan.error_code, 'TOOL_NOT_FOUND')
+        self.assertEqual(plan.status, 'failed')
+        self.assertEqual(plan.rejection, 'not_found')
+
+    def test_missing_permission_is_denied(self):
+        plan = self._plan('analyze_order_health', {'order_id': self.order.id},
+                          user=make_user('outsider_reject'))
+        self.assertFalse(plan)
+        self.assertEqual(plan.error_code, 'PERMISSION_DENIED')
+        self.assertEqual(plan.status, 'denied')
+        self.assertEqual(plan.rejection, 'permission')
+
+    def test_unknown_argument_is_a_failure_not_a_denial(self):
+        plan = self._plan('simulate_material_availability',
+                          {'raw_material_id': 1, 'extra_quantity': 5})
+        self.assertFalse(plan)
+        self.assertEqual(plan.error_code, 'UNKNOWN_ARGUMENT')
+        self.assertEqual(plan.status, 'failed')
+        self.assertNotEqual(plan.status, 'denied')
+
+    def test_missing_argument_is_a_failure_not_a_denial(self):
+        plan = self._plan('analyze_order_health', {})
+        self.assertFalse(plan)
+        self.assertEqual(plan.error_code, 'MISSING_ARGUMENT')
+        self.assertEqual(plan.status, 'failed')
+
+    def test_unknown_argument_error_tells_the_model_what_is_allowed(self):
+        payload = self._plan('simulate_material_availability',
+                             {'raw_material_id': 1, 'extra_quantity': 5}).to_error()
+        detail = payload['error']['detail']
+        self.assertEqual(detail['argument'], 'extra_quantity')
+        self.assertIn('additional_quantity', detail['allowed'])
+
+    def test_audit_log_does_not_record_model_mistakes_as_denials(self):
+        from craftflow_ai.models import AIAuditLog
+        from craftflow_ai.orchestrator.manager import AIOrchestrator
+        from craftflow_ai.providers.local import FakeAIProvider
+
+        provider = FakeAIProvider()
+        provider.queue_tool_call('simulate_material_availability',
+                                 {'raw_material_id': 1, 'extra_quantity': 5})
+        provider.queue_text('پاسخ نهایی.')
+        AIOrchestrator(self.user, provider=provider).chat('این را بررسی کن')
+
+        activity = AIAuditLog.objects.filter(
+            tool_name='simulate_material_availability').latest('created_at')
+        self.assertEqual(activity.status, 'failed')
+        self.assertEqual(activity.error_code, 'UNKNOWN_ARGUMENT')
+        self.assertFalse(AIAuditLog.objects.filter(status='denied').exists())
+
+    def test_real_permission_denial_is_still_audited_as_denied(self):
+        from craftflow_ai.models import AIAuditLog
+        from craftflow_ai.orchestrator.manager import AIOrchestrator
+        from craftflow_ai.providers.local import FakeAIProvider
+
+        outsider = make_user('outsider_audit', groups=['انبار'])
+        provider = FakeAIProvider()
+        provider.queue_tool_call('analyze_order_health',
+                                 {'order_id': self.order.id})
+        provider.queue_text('پاسخ نهایی.')
+        AIOrchestrator(outsider, provider=provider).chat('این را بررسی کن')
+
+        activity = AIAuditLog.objects.filter(
+            tool_name='analyze_order_health').latest('created_at')
+        self.assertEqual(activity.status, 'denied')
+        self.assertEqual(activity.error_code, 'PERMISSION_DENIED')
+
+    def test_rejection_reasons_never_collapse_to_one_code(self):
+        codes = {
+            self._plan('no_such_tool', {}).error_code,
+            self._plan('simulate_material_availability',
+                       {'raw_material_id': 1, 'wrong': 1}).error_code,
+            self._plan('analyze_order_health', {}).error_code,
+        }
+        self.assertEqual(len(codes), 3)
+
+    def test_argument_errors_map_to_400_not_502(self):
+        from craftflow_ai.permissions.errors import http_status_for
+
+        for code in ('INVALID_ARGUMENTS', 'MISSING_ARGUMENT',
+                     'UNKNOWN_ARGUMENT', 'MAX_TOOL_CALLS_EXCEEDED'):
+            with self.subTest(code=code):
+                self.assertEqual(http_status_for(code), 400)
+
+    def test_unknown_code_still_falls_back_to_502(self):
+        from craftflow_ai.permissions.errors import http_status_for
+
+        self.assertEqual(http_status_for('SOMETHING_ELSE'), 502)
+
+
 _MODELS = {
     'orders': 'product.Order',
     'tasks': 'product.ProductionTask',

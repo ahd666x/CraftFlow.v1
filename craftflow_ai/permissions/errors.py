@@ -78,6 +78,10 @@ def http_status_for(code, default=502):
     خطاهایی که از مسیر ``OrchestratorResult`` برمی‌گردند exception نیستند، پس
     view برای انتخاب وضعیت به این نگاشت نیاز دارد تا مثلاً «پیکربندی ناقص»
     ۵۰۳ بدهد نه ۵۰۲.
+
+    کدهایی که کلاس exception ندارند (خطاهای اعتبارسنجی آرگومان و سقف
+    فراخوانی ابزار) صریحاً فهرست شده‌اند؛ در غیر این صورت به‌اشتباه ۵۰۲
+    (خطای سرویس) برگردانده می‌شدند در حالی که خطای سمت درخواست‌اند.
     """
     for klass in (
         AIDisabledError, AIConfigurationError, AITimeoutError, AIProviderError,
@@ -86,4 +90,16 @@ def http_status_for(code, default=502):
     ):
         if klass.code == code:
             return klass.http_status
+
+    for explicit_code, status in EXPLICIT_HTTP_STATUSES.items():
+        if explicit_code == code:
+            return status
     return default
+
+
+EXPLICIT_HTTP_STATUSES = {
+    'INVALID_ARGUMENTS': 400,
+    'MISSING_ARGUMENT': 400,
+    'UNKNOWN_ARGUMENT': 400,
+    'MAX_TOOL_CALLS_EXCEEDED': 400,
+}
