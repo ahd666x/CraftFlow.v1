@@ -1,4 +1,5 @@
 from django.db import models
+from django.conf import settings
 from django.contrib.auth.models import User
 from django.db.models import Sum, Case, When, Value, DecimalField, F
 
@@ -424,3 +425,150 @@ class PurchaseOrderItem(models.Model):
         verbose_name = "آیتم سفارش خرید"
         verbose_name_plural = "آیتم‌های سفارش خرید"
         ordering = ['purchase_order', 'id']
+
+
+# ============================================================
+#  مدل‌های روزانه انبار — نسخهٔ جدید (Painting Schedule → Derived)
+# ============================================================
+
+class DailyMaterialQueue(models.Model):
+    """
+    یک رکورد «صف تحویل مواد روزانه» برای یک (کارگر + ماده + تاریخ).
+
+    این مدل **از برنامهٔ نقاشی مشتق می‌شود** (PaintingStage / ProductionTask /
+    PaintingMaterialRequirement) و نه اینکه خودش برنامهٔ مستقلی باشد.
+
+    مثلاً:
+        تاریخ: 1405/07/10
+        کارگر: عباس
+        ماده: رنگ سفید
+        planned_quantity: 3 kg   (از 3 PaintingTask مختلف جمع‌شده)
+
+    انباردار فقط این اعداد را می‌بیند؛ traceability به Taskهای منبع در
+    ``DailyMaterialQueueSource`` نگهداری می‌شود.
+    """
+
+    STATUS_CHOICES = [
+        ('pending', 'در انتظار تحویل'),
+        ('delivered', 'تحویل شده'),
+        ('returned', 'برگشت ثبت شده'),
+        ('closed', 'پایان روز بسته شد'),
+        ('cancelled', 'لغو شده'),
+    ]
+
+    work_date = models.DateField(verbose_name="تاریخ کاری")
+    worker = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='daily_material_queues', verbose_name="کارگر",
+    )
+    raw_material = models.ForeignKey(
+        RawMaterial, on_delete=models.CASCADE,
+        related_name='daily_queues', verbose_name="ماده اولیه",
+    )
+    planned_quantity = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        verbose_name="نیاز برنامه‌ریزی‌شده (امروز)",
+        help_text="Snapshot نیازی که از برنامهٔ نقاشی گرفته شده است.",
+    )
+    delivered_quantity = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        verbose_name="تحویل شده",
+    )
+    returned_quantity = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        verbose_name="برگشتی",
+    )
+    actual_consumption = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        verbose_name="مصرف واقعی",
+        help_text="delivered_quantity - returned_quantity",
+    )
+    excess_consumption = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        verbose_name="مصرف اضافه",
+        help_text="max(0, actual_consumption - planned_quantity)",
+    )
+    status = models.CharField(
+        max_length=20, choices=STATUS_CHOICES, default='pending',
+        verbose_name="وضعیت",
+    )
+    note = models.CharField(max_length=255, blank=True, verbose_name="یادداشت")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="تاریخ ایجاد")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="بروزرسانی")
+
+    class Meta:
+        verbose_name = "صف مواد روزانه"
+        verbose_name_plural = "صف‌های مواد روزانه"
+        ordering = ['work_date', 'worker', 'raw_material']
+        unique_together = ('work_date', 'worker', 'raw_material')
+        indexes = [
+            models.Index(fields=['work_date', 'worker']),
+            models.Index(fields=['work_date', 'status']),
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.work_date} — {self.worker} — "
+            f"{self.raw_material.name} ({self.planned_quantity})"
+        )
+
+    @property
+    def computed_actual_consumption(self):
+        from decimal import Decimal
+        return (self.delivered_quantity or 0) - (self.returned_quantity or 0)
+
+    @property
+    def computed_excess_consumption(self):
+        from decimal import Decimal
+        actual = self.computed_actual_consumption
+        planned = self.planned_quantity or 0
+        return max(actual - planned, 0) if actual > planned else 0
+
+
+class DailyMaterialQueueSource(models.Model):
+    """
+    traceability از ``DailyMaterialQueue`` به منابع برنامه‌ریزی.
+
+    هر رکورد نشان می‌دهد که بخشی از planned_quantity یک DailyMaterialQueue
+    از کدام ProductionTask / PaintingMaterialRequirement آمده است.
+
+    مثلاً:
+        DailyMaterialQueue: عباس | رنگ سفید | 3kg
+            ├── ProductionTask A → 1kg (PaintingStage: رنگ‌آمیزی سفید مرحله 1)
+            ├── ProductionTask B → 1kg (PaintingStage: رنگ‌آمیزی سفید مرحله 2)
+            └── ProductionTask C → 1kg (PaintingStage: سندیس مرحله 1)
+    """
+
+    queue = models.ForeignKey(
+        DailyMaterialQueue, on_delete=models.CASCADE,
+        related_name='sources', verbose_name="صف روزانه",
+    )
+    production_task = models.ForeignKey(
+        'product.ProductionTask', on_delete=models.CASCADE,
+        related_name='daily_queue_sources', verbose_name="تسک تولید",
+    )
+    painting_stage = models.ForeignKey(
+        'product.PaintingStage', on_delete=models.CASCADE,
+        related_name='daily_queue_sources', verbose_name="مرحله نقاشی",
+    )
+    raw_material = models.ForeignKey(
+        RawMaterial, on_delete=models.CASCADE,
+        related_name='daily_queue_sources', verbose_name="ماده اولیه",
+    )
+    quantity = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        verbose_name="سهم از این منبع",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="تاریخ ایجاد")
+
+    class Meta:
+        verbose_name = "منبع صف روزانه"
+        verbose_name_plural = "منابع صف‌های روزانه"
+        ordering = ['queue', 'production_task']
+        unique_together = ('queue', 'production_task', 'painting_stage', 'raw_material')
+
+    def __str__(self):
+        return (
+            f"{self.queue} ← تسک {self.production_task_id} / "
+            f"مرحله {self.painting_stage_id} / {self.quantity}"
+        )

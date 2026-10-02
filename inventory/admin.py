@@ -4,7 +4,7 @@ from django.utils.html import format_html
 from .models import (
     Supplier, RawMaterialCategory, RawMaterial, StockMovement,
     PurchaseOrder, PurchaseOrderItem, MaterialCustody, MaterialCustodyReturn,
-    CustodyConsumption,
+    CustodyConsumption, DailyMaterialQueue, DailyMaterialQueueSource,
 )
 
 
@@ -83,3 +83,25 @@ class CustodyConsumptionAdmin(admin.ModelAdmin):
     list_filter = ['raw_material__category', 'held_by', 'raw_material']
     autocomplete_fields = ['raw_material', 'held_by', 'defect', 'custody_return']
     search_fields = ['raw_material__name', 'held_by__username', 'defect__description']
+
+
+@admin.register(DailyMaterialQueue)
+class DailyMaterialQueueAdmin(admin.ModelAdmin):
+    list_display = ['work_date', 'worker', 'raw_material', 'planned_quantity',
+                    'delivered_quantity', 'returned_quantity', 'actual_consumption',
+                    'excess_consumption', 'status']
+    list_filter = ['work_date', 'status', 'raw_material__category']
+    search_fields = ['worker__first_name', 'worker__last_name', 'worker__username',
+                     'raw_material__name', 'raw_material__code']
+    date_hierarchy = 'work_date'
+    autocomplete_fields = ['worker', 'raw_material']
+    readonly_fields = ['created_at', 'updated_at', 'computed_actual_consumption',
+                       'computed_excess_consumption']
+
+
+@admin.register(DailyMaterialQueueSource)
+class DailyMaterialQueueSourceAdmin(admin.ModelAdmin):
+    list_display = ['queue', 'production_task', 'painting_stage', 'raw_material', 'quantity']
+    list_filter = ['queue__work_date', 'raw_material__category']
+    search_fields = ['production_task__id', 'painting_stage__name']
+    autocomplete_fields = ['queue', 'production_task', 'painting_stage', 'raw_material']

@@ -488,6 +488,7 @@ class PaintingColorMaterialVariantAdmin(admin.ModelAdmin):
 class PaintingStageAdmin(admin.ModelAdmin):
     list_display = ['process', 'order', 'name', 'duration_minutes', 'drying_time_minutes', 'required_skill']
     list_filter = ['process', 'required_skill']
+    search_fields = ['name', 'process__name']
     ordering = ['process', 'order']
     fieldsets = (
         (None, {

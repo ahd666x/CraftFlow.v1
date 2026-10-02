@@ -35,6 +35,12 @@ def setup_django():
 # Setup Django immediately on module load
 setup_django()
 
+# Debug: log startup
+import os
+print(f"[MCP DEBUG] Starting server, PID={os.getpid()}, CWD={os.getcwd()}", file=sys.stderr)
+print(f"[MCP DEBUG] CRAFTFLOW_AI_MCP_SECRET={'set' if os.environ.get('CRAFTFLOW_AI_MCP_SECRET') else 'NOT SET'}", file=sys.stderr)
+print(f"[MCP DEBUG] DJANGO_SETTINGS_MODULE={os.environ.get('DJANGO_SETTINGS_MODULE')}", file=sys.stderr)
+
 # Now safe to import CraftFlow modules
 from craftflow_ai.mcp.adapter import MCPToolAdapter, create_adapter_for_initialize
 from craftflow_ai.mcp.schemas import get_all_mcp_tools
@@ -101,12 +107,16 @@ class MCPServer:
 
     def _handle_initialize(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Handle initialize request."""
+        import os
+        print(f"[MCP DEBUG] _handle_initialize called, params keys={list(params.keys())}", file=sys.stderr)
+        print(f"[MCP DEBUG] CRAFTFLOW_AI_MCP_SECRET from env={'set' if os.environ.get('CRAFTFLOW_AI_MCP_SECRET') else 'NOT SET'}", file=sys.stderr)
         if self.initialized:
             raise MCPError(MCP_INVALID_REQUEST, 'Already initialized')
 
         # Authenticate and create adapter
         self.adapter, self.user = create_adapter_for_initialize(params)
         self.initialized = True
+        print(f"[MCP DEBUG] Initialized successfully, user={self.user}", file=sys.stderr)
 
         # Return server capabilities and info
         tools = get_all_mcp_tools(self.user)
@@ -210,7 +220,14 @@ class MCPServer:
 
     def _write_response(self, response: Dict[str, Any]):
         """Write JSON-RPC response to stdout."""
-        sys.stdout.write(json.dumps(response, ensure_ascii=False) + '\n')
+        # Use UTF-8 encoding for stdout to support non-ASCII characters
+        # On Windows, wrap stdout with UTF-8 writer if needed
+        try:
+            sys.stdout.write(json.dumps(response, ensure_ascii=False) + '\n')
+        except UnicodeEncodeError:
+            # Fallback: encode to UTF-8 bytes and write to buffer
+            encoded = (json.dumps(response, ensure_ascii=False) + '\n').encode('utf-8')
+            sys.stdout.buffer.write(encoded)
         sys.stdout.flush()
 
 

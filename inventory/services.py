@@ -724,3 +724,432 @@ def open_defect_choices(*, search='', raw_material=None, limit=50):
             Q(order_item__product__name__icontains=search)
         )
     return list(qs.order_by('-created_at')[:limit])
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: Daily Material Queue (standalone from legacy custody)
+# ---------------------------------------------------------------------------
+
+from decimal import Decimal, ROUND_CEILING as _RCEIL
+import logging as _logging
+_logger = _logging.getLogger(__name__)
+
+
+def _q2(value):
+    """Round to 2 decimal places."""
+    if value is None:
+        return Decimal('0.00')
+    return Decimal(str(value)).quantize(Decimal('0.01'))
+
+
+def _ceil_int(value):
+    """Ceiling to integer."""
+    import math
+    return int(math.ceil(float(value)))
+
+
+def _packs_for(need, pack_size):
+    """Return number of full packages needed to cover *need*."""
+    need = _q2(need)
+    pack = _q2(pack_size or 0)
+    if pack <= 0:
+        return 0, need
+    return _ceil_int(need / pack), pack * _ceil_int(need / pack)
+
+
+def _resolve_painting_requirements_for_task(task):
+    from product.utils import get_painting_material_requirements_for_task
+    return get_painting_material_requirements_for_task(task)
+
+
+def _worker_for_date(task, work_date):
+    if task.assigned_worker_id:
+        return task.assigned_worker
+    try:
+        from product.utils import get_worker_for_stage
+        stage = task.painting_stage
+        if stage is not None:
+            worker = get_worker_for_stage(stage, work_date)
+            if worker is not None:
+                return worker
+    except Exception:
+        pass
+    return task.scanned_by
+
+
+def _task_date(task):
+    if task.scheduled_start is None:
+        return None
+    from django.utils import timezone
+    try:
+        return timezone.localtime(task.scheduled_start).date()
+    except Exception:
+        return task.scheduled_start.date()
+
+
+def _aggregate_requirements(tasks):
+    from collections import OrderedDict
+    grouped = OrderedDict()
+    for task in tasks:
+        if task.station_name != 'paint':
+            continue
+        if not task.painting_stage_id:
+            continue
+        if not task.order_item_id or not task.order_item.product_id:
+            continue
+        if not task.color_part:
+            continue
+        date = _task_date(task)
+        if date is None:
+            continue
+        worker = _worker_for_date(task, date)
+        if worker is None:
+            continue
+        requirements = _resolve_painting_requirements_for_task(task)
+        if not requirements:
+            continue
+        item = task.order_item
+        try:
+            item_qty = Decimal(str(item.quantity))
+        except Exception:
+            item_qty = Decimal('0')
+        for req in requirements:
+            raw = req.raw_material
+            if raw is None:
+                continue
+            try:
+                consumption = Decimal(str(req.consumption_per_unit))
+            except Exception:
+                consumption = Decimal('0')
+            qty = item_qty * consumption
+            if qty <= 0:
+                continue
+            key = (worker.pk, raw.pk)
+            entry = grouped.get(key)
+            if entry is None:
+                entry = grouped[key] = {
+                    'worker': worker,
+                    'raw_material': raw,
+                    'quantity': Decimal('0.00'),
+                    'sources': [],
+                }
+            entry['quantity'] = _q2(entry['quantity'] + qty)
+            entry['sources'].append((task, task.painting_stage, raw, _q2(qty)))
+    return grouped
+
+
+def _get_scheduled_painting_tasks(date):
+    from product.models import ProductionTask
+    from django.utils import timezone
+    from datetime import datetime, timedelta
+    day_start = datetime.combine(date, datetime.min.time())
+    if timezone.is_aware(day_start):
+        start = day_start
+    else:
+        start = timezone.make_aware(day_start)
+    end = start + timedelta(days=1)
+    qs = (
+        ProductionTask.objects
+        .filter(station_name='paint', scheduled_start__gte=start, scheduled_start__lt=end)
+        .select_related('painting_stage', 'order_item', 'order_item__product',
+                        'assigned_worker', 'scanned_by')
+    )
+    return list(qs)
+
+
+def build_daily_queue_for_date(date):
+    """
+    Build (or refresh) DailyMaterialQueue rows for *date*.
+
+    Aggregates painting ProductionTasks scheduled on *date*, groups
+    them by (worker, raw_material), creates/updates DailyMaterialQueue
+    rows, and records source traceability via DailyMaterialQueueSource.
+
+    Returns list of DailyMaterialQueue instances.
+    """
+    from .models import DailyMaterialQueue, DailyMaterialQueueSource
+    from django.db import transaction
+
+    tasks = _get_scheduled_painting_tasks(date)
+    grouped = _aggregate_requirements(tasks)
+
+    with transaction.atomic():
+        existing = list(
+            DailyMaterialQueue.objects.select_for_update()
+            .filter(work_date=date)
+        )
+        existing_keys = {(q.worker_id, q.raw_material_id): q for q in existing}
+
+        for (worker_id, raw_id), entry in grouped.items():
+            queue = existing_keys.get((worker_id, raw_id))
+            if queue is None:
+                queue = DailyMaterialQueue(
+                    work_date=date,
+                    worker=entry['worker'],
+                    raw_material=entry['raw_material'],
+                    planned_quantity=entry['quantity'],
+                    status='pending',
+                )
+            else:
+                # Preserve delivered/returned quantities; only update planned
+                queue.planned_quantity = entry['quantity']
+                queue.worker = entry['worker']
+                queue.raw_material = entry['raw_material']
+            queue.save()
+
+            # Refresh sources: delete old, recreate from current aggregation
+            DailyMaterialQueueSource.objects.filter(queue=queue).delete()
+            for task, stage, raw, qty in entry['sources']:
+                DailyMaterialQueueSource.objects.create(
+                    queue=queue,
+                    production_task=task,
+                    painting_stage=stage,
+                    raw_material=raw,
+                    quantity=qty,
+                )
+
+        # Mark stale rows (no longer in the schedule) as cancelled
+        active_keys = set(grouped.keys())
+        for key, queue in existing_keys.items():
+            if key not in active_keys:
+                queue.status = 'cancelled'
+                queue.save(update_fields=['status', 'updated_at'])
+
+    return list(
+        DailyMaterialQueue.objects
+        .filter(work_date=date)
+        .order_by('worker', 'raw_material__name')
+    )
+
+
+def sync_daily_material_queue(date):
+    """
+    Central sync entry point. Rebuilds the daily queue for *date*
+    from the Painting Schedule (ProductionTask -> PaintingStage ->
+    PaintingMaterialRequirement). Idempotent: safe to call multiple times.
+
+    Returns the list of DailyMaterialQueue rows.
+    """
+    return build_daily_queue_for_date(date)
+
+
+def _affected_dates_for_tasks(task_ids):
+    """Return set of Gregorian dates affected by the given task IDs."""
+    from django.utils import timezone
+
+    if not task_ids:
+        return set()
+
+    dates = set()
+    tasks = list(
+        ProductionTask.objects.filter(pk__in=task_ids)
+        .only('id', 'scheduled_start')
+    )
+    for t in tasks:
+        if t.scheduled_start is None:
+            continue
+        try:
+            d = timezone.localtime(t.scheduled_start).date()
+        except Exception:
+            d = t.scheduled_start.date()
+        dates.add(d)
+    return dates
+
+
+def sync_queue_for_tasks(task_ids, *, dry_run=False):
+    """Rebuild DailyMaterialQueue for all dates affected by *task_ids*."""
+    from django.db import transaction
+
+    if not task_ids:
+        return []
+
+    task_ids = list(set(int(t) for t in task_ids))
+    dates = _affected_dates_for_tasks(task_ids)
+    if not dates:
+        return []
+
+    results = []
+    for d in sorted(dates):
+        try:
+            with transaction.atomic():
+                rows = sync_daily_material_queue(d)
+            results.extend(rows)
+        except Exception:
+            _logger.exception(
+                'sync_queue_for_tasks: error syncing date %s for tasks %s',
+                d, task_ids,
+            )
+    return results
+
+
+def sync_queue_for_date(date, *, dry_run=False):
+    """Rebuild DailyMaterialQueue for a single date."""
+    from django.db import transaction
+    try:
+        with transaction.atomic():
+            return sync_daily_material_queue(date)
+    except Exception:
+        _logger.exception('sync_queue_for_date: error syncing date %s', date)
+        return []
+
+
+def sync_queue_safe(task_ids=None, date=None):
+    """Best-effort sync wrapper used by views. Never raises."""
+    try:
+        if date is not None:
+            return sync_queue_for_date(date)
+        if task_ids:
+            return sync_queue_for_tasks(task_ids)
+        return []
+    except Exception:
+        _logger.exception('sync_queue_safe: unexpected error')
+        return []
+
+
+@transaction.atomic
+def execute_daily_delivery(*, queue_id, delivered_by, note='', items=None):
+    """
+    Execute delivery for one DailyMaterialQueue row.
+
+    Computes the physical quantity to deliver using the packaging rule:
+        physical = ceil(planned / pack_size) * pack_size  (if pack_size > 0)
+        otherwise physical = planned
+
+    Creates a StockMovement(consumption) for the physical quantity,
+    updates delivered_quantity and status.
+
+    *items* (optional): list of (source_id, delivered_qty) for partial
+    delivery. If omitted, the full planned quantity is delivered.
+    """
+    from .models import DailyMaterialQueue, StockMovement
+
+    try:
+        queue = DailyMaterialQueue.objects.select_for_update().get(pk=queue_id)
+    except DailyMaterialQueue.DoesNotExist:
+        raise HandoverError('Daily material queue not found.')
+
+    if queue.status in ('delivered', 'closed'):
+        raise HandoverError('This queue has already been delivered or closed.')
+
+    planned = _q2(queue.planned_quantity)
+    pack = _q2(queue.raw_material.pack_size or 0)
+
+    if items:
+        total_delivered = sum(_q2(q) for _, q in items)
+        if total_delivered <= 0:
+            raise HandoverError('Delivery quantity must be greater than zero.')
+    else:
+        total_delivered = planned
+
+    # Packaging rule: if need=3kg and pack_size=4kg, deliver 4kg
+    if total_delivered > 0 and pack > 0:
+        import math
+        packs = int(math.ceil(float(total_delivered) / float(pack)))
+        physical = pack * packs
+    else:
+        physical = total_delivered
+
+    stock = _q2(queue.raw_material.current_stock)
+    if physical > stock:
+        raise HandoverError(
+            f'Insufficient warehouse stock for {queue.raw_material.name} '
+            f'(physical need {physical}, stock {stock})'
+        )
+
+    with transaction.atomic():
+        StockMovement.objects.create(
+            raw_material=queue.raw_material,
+            movement_type='consumption',
+            quantity=physical,
+            created_by=delivered_by,
+            note=(note or '')[:255] or f'Daily delivery queue #{queue.id}',
+        )
+        queue.delivered_quantity = total_delivered
+        queue.status = 'delivered'
+        queue.save(update_fields=['delivered_quantity', 'status', 'updated_at'])
+
+    return queue
+
+
+@transaction.atomic
+def execute_daily_return(*, queue_id, returned_by, returned_quantity, note=''):
+    """
+    Register a physical return of material to the warehouse for a
+    DailyMaterialQueue row. Creates a real StockMovement(return), which
+    increases warehouse stock. This is the NEW return path (Decision 5).
+
+    The legacy return_custody() is unchanged and still used for the
+    old MaterialCustody workflow.
+    """
+    from .models import DailyMaterialQueue, StockMovement
+
+    try:
+        ret = _q2(returned_quantity)
+    except (TypeError, ValueError):
+        raise HandoverError('Invalid return quantity.')
+    if ret <= 0:
+        raise HandoverError('Return quantity must be greater than zero.')
+
+    try:
+        queue = DailyMaterialQueue.objects.select_for_update().get(pk=queue_id)
+    except DailyMaterialQueue.DoesNotExist:
+        raise HandoverError('Daily material queue not found.')
+
+    delivered = _q2(queue.delivered_quantity)
+    already_returned = _q2(queue.returned_quantity)
+    max_returnable = delivered - already_returned
+    if ret > max_returnable:
+        raise HandoverError(
+            f'Return quantity ({ret}) cannot exceed undelivered amount ({max_returnable}).'
+        )
+
+    StockMovement.objects.create(
+        raw_material=queue.raw_material,
+        movement_type='return',
+        quantity=ret,
+        created_by=returned_by,
+        note=(note or '')[:255] or f'Daily return queue #{queue.id}',
+    )
+    queue.returned_quantity = _q2(already_returned + ret)
+    if queue.returned_quantity >= delivered and delivered > 0:
+        queue.status = 'returned'
+    else:
+        queue.status = 'delivered'
+    queue.save(update_fields=['returned_quantity', 'status', 'updated_at'])
+
+    return queue
+
+
+def preview_daily_delivery(queue_id):
+    """
+    Return a read-only preview of what execute_daily_delivery would do
+    for the given queue row. No database writes.
+    """
+    from .models import DailyMaterialQueue
+
+    try:
+        queue = DailyMaterialQueue.objects.get(pk=queue_id)
+    except DailyMaterialQueue.DoesNotExist:
+        raise HandoverError('Daily material queue not found.')
+
+    planned = _q2(queue.planned_quantity)
+    pack = _q2(queue.raw_material.pack_size or 0)
+    if planned > 0 and pack > 0:
+        import math
+        packs = int(math.ceil(float(planned) / float(pack)))
+        physical = pack * packs
+    else:
+        packs = 0
+        physical = planned
+
+    return {
+        'queue': queue,
+        'planned': planned,
+        'pack_size': pack,
+        'packs': packs,
+        'physical': physical,
+        'stock': _q2(queue.raw_material.current_stock),
+        'enough': physical <= _q2(queue.raw_material.current_stock),
+        'name': queue.raw_material.name,
+        'unit': queue.raw_material.get_unit_display(),
+    }

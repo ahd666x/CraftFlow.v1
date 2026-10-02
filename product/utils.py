@@ -38,6 +38,27 @@ from .models import (
 logger = logging.getLogger(__name__)
 
 
+# Phase 3: Daily Material Queue sync hook
+def _sync_queue_for_task_ids(task_ids):
+    """Best-effort sync of DailyMaterialQueue for affected dates."""
+    try:
+        from inventory.services import sync_queue_for_tasks
+        return sync_queue_for_tasks(task_ids)
+    except Exception:
+        logger.exception('_sync_queue_for_task_ids: sync failed')
+        return []
+
+
+def _sync_queue_for_date(date):
+    """Best-effort sync of DailyMaterialQueue for a single date."""
+    try:
+        from inventory.services import sync_queue_for_date
+        return sync_queue_for_date(date)
+    except Exception:
+        logger.exception('_sync_queue_for_date: sync failed')
+        return []
+
+
 def log_production_event(task, event_type, user=None, old_status='', new_status='',
                          old_worker=None, new_worker=None, quantity=0):
     """ثبت متمرکز رویداد تولید - همیشه از این تابع استفاده شود، نه ساخت مستقیم ProductionEvent"""
@@ -1936,6 +1957,11 @@ def assign_task_to_worker(task_id, worker_id, target_date=None, allow_overtime=F
             }
 
         final_start, final_end = changes[task.pk][1], changes[task.pk][2]
+
+        # Phase 3: sync DailyMaterialQueue for affected dates
+        affected_ids = list(changes.keys())
+        _sync_queue_for_task_ids(affected_ids)
+
         return {
             'ok': True,
             'scheduled_start': timezone.localtime(final_start).strftime('%H:%M'),
@@ -2037,6 +2063,9 @@ def reschedule_worker_tasks_on_date(worker_id, target_date, allow_overtime=False
                         to_update,
                         ['assigned_worker_id', 'scheduled_start', 'scheduled_end']
                     )
+
+                    # Phase 3: sync DailyMaterialQueue for affected date
+                    _sync_queue_for_date(gregorian)
 
                 return len(to_update)
 
