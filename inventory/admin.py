@@ -89,14 +89,20 @@ class CustodyConsumptionAdmin(admin.ModelAdmin):
 class DailyMaterialQueueAdmin(admin.ModelAdmin):
     list_display = ['work_date', 'worker', 'raw_material', 'planned_quantity',
                     'delivered_quantity', 'returned_quantity', 'actual_consumption',
-                    'excess_consumption', 'status']
-    list_filter = ['work_date', 'status', 'raw_material__category']
+                    'excess_consumption', 'status', 'has_plan_conflict']
+    list_filter = ['work_date', 'status', 'has_plan_conflict', 'raw_material__category']
     search_fields = ['worker__first_name', 'worker__last_name', 'worker__username',
                      'raw_material__name', 'raw_material__code']
     date_hierarchy = 'work_date'
     autocomplete_fields = ['worker', 'raw_material']
     readonly_fields = ['created_at', 'updated_at', 'computed_actual_consumption',
-                       'computed_excess_consumption']
+                       'computed_excess_consumption', 'has_plan_conflict',
+                       'conflict_note',
+                       # مقادیر از Painting Schedule مشتق می‌شوند و با Sync سرویس
+                       # مرکزی به‌روز می‌شوند؛ ویرایش دستی مجاز نیست.
+                       'planned_quantity', 'delivered_quantity',
+                       'returned_quantity', 'actual_consumption',
+                       'excess_consumption']
 
 
 @admin.register(DailyMaterialQueueSource)

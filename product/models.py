@@ -629,7 +629,81 @@ STATION_CHOICES = [
 ]
 
 
+class ProductionTaskQuerySet(models.QuerySet):
+    """
+    queryset که مسیرهای دسته‌ایِ تغییر برنامهٔ نقاشی را هم به صف مواد روزانه وصل می‌کند.
+
+    ذخیرهٔ معمولی تسک از طریق signal ها (inventory/signals.py) همگام می‌شود،
+    اما ``update()``، ``bulk_update()``، ``delete()`` و ``bulk_create()`` سیگنال
+    per-object ندارند؛ این‌ها اینجا به سرویس مرکزی صف روزانه وصل می‌شوند.
+    """
+
+    def _queue_work_dates(self):
+        """تاریخ‌های کاریِ تسک‌های نقاشیِ این مجموعه (بدون خطا)."""
+        try:
+            from inventory.services import _work_date
+            rows = (
+                self.filter(station_name='paint')
+                .values_list('scheduled_start', flat=True)
+            )
+            return {_work_date(v) for v in rows if v is not None}
+        except Exception:
+            logger.exception('ProductionTaskQuerySet: failed to collect queue work dates')
+            return set()
+
+    def _request_queue_sync(self, dates):
+        if not dates:
+            return
+        try:
+            from inventory.services import request_queue_sync
+            request_queue_sync(dates)
+        except Exception:
+            logger.exception('ProductionTaskQuerySet: queue sync request failed')
+
+    def update(self, **kwargs):
+        before = self._queue_work_dates()
+        result = super().update(**kwargs)
+        self._request_queue_sync(before | self._queue_work_dates())
+        return result
+
+    def bulk_update(self, objs, fields, batch_size=None):
+        before = self._queue_work_dates()
+        result = super().bulk_update(objs, fields, batch_size=batch_size)
+        self._request_queue_sync(before | self._queue_work_dates())
+        return result
+
+    def bulk_create(self, objs, *args, **kwargs):
+        result = super().bulk_create(objs, *args, **kwargs)
+        dates = set()
+        for obj in objs:
+            if getattr(obj, 'station_name', None) != 'paint':
+                continue
+            if not getattr(obj, 'scheduled_start', None):
+                continue
+            from inventory.services import _work_date
+            work_date = _work_date(obj.scheduled_start)
+            if work_date:
+                dates.add(work_date)
+        self._request_queue_sync(dates)
+        return result
+
+    def delete(self):
+        before = self._queue_work_dates()
+        with queue_sync_scope():
+            result = super().delete()
+            self._request_queue_sync(before)
+            return result
+
+
+def queue_sync_scope():
+    """حباب‌بندی همگام‌سازی صف مواد روزانه (به inventory منتقل می‌شود)."""
+    from inventory.services import queue_sync_scope as _scope
+    return _scope()
+
+
 class ProductionTask(models.Model):
+    objects = ProductionTaskQuerySet.as_manager()
+
     STATION_CHOICES = STATION_CHOICES
     TASK_STATUS = (
         ('waiting', 'در انتظار مرحله قبل'),

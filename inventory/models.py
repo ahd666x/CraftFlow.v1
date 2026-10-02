@@ -493,6 +493,17 @@ class DailyMaterialQueue(models.Model):
         verbose_name="وضعیت",
     )
     note = models.CharField(max_length=255, blank=True, verbose_name="یادداشت")
+    has_plan_conflict = models.BooleanField(
+        default=False,
+        verbose_name="تعارض برنامه با تراکنش",
+        help_text=(
+            "وقتی برنامهٔ نقاشی بعد از تحویل/برگشت تغییر کند، موجودی و "
+            "تاریخچهٔ واقعی دست‌نخورده می‌ماند و فقط این پرچم فعال می‌شود."
+        ),
+    )
+    conflict_note = models.CharField(
+        max_length=255, blank=True, verbose_name="شرح تعارض",
+    )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="تاریخ ایجاد")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="بروزرسانی")
 
@@ -511,6 +522,28 @@ class DailyMaterialQueue(models.Model):
             f"{self.work_date} — {self.worker} — "
             f"{self.raw_material.name} ({self.planned_quantity})"
         )
+
+    @property
+    def has_transaction(self):
+        """آیا تحویل یا برگشت واقعی برای این صف ثبت شده است؟"""
+        return bool(
+            (self.delivered_quantity and self.delivered_quantity > 0)
+            or (self.returned_quantity and self.returned_quantity > 0)
+        )
+
+    def recalculate_consumption(self, commit=False):
+        """
+        مقادیر مشتق‌شده (مصرف واقعی / مصرف اضافه) را از تحویل و برگشت
+        دوباره حساب می‌کند. planned_quantity و وضعیت انجام تسک دست‌نخورده می‌مانند.
+        """
+        actual = self.computed_actual_consumption
+        excess = self.computed_excess_consumption
+        changed = (actual != self.actual_consumption) or (excess != self.excess_consumption)
+        self.actual_consumption = actual
+        self.excess_consumption = excess
+        if commit and changed:
+            self.save(update_fields=['actual_consumption', 'excess_consumption', 'updated_at'])
+        return changed
 
     @property
     def computed_actual_consumption(self):
@@ -572,3 +605,50 @@ class DailyMaterialQueueSource(models.Model):
             f"{self.queue} ← تسک {self.production_task_id} / "
             f"مرحله {self.painting_stage_id} / {self.quantity}"
         )
+
+
+class DailyMaterialClosing(models.Model):
+    """
+    تأیید نهایی روز (Phase 9): «روز بررسی و تأیید شد».
+
+    این مدل فقط یک سند تأیید است و هیچ اثر انباری یا برنامه‌ای ندارد:
+
+        * ``StockMovement`` ایجاد نمی‌کند؛
+        * مقادیر ``DailyMaterialQueue`` را تغییر نمی‌دهد؛
+        * فقط ثبت می‌کند که مدیر/انباردار روز را دیده و تأیید کرده است.
+
+    شرط ثبت (در ``services.confirm_daily_closing`` و نه در این مدل) این است که
+    روز «مشکل کنترل‌نشده» نداشته باشد. ``work_date`` یکتا است تا یک روز دوبار
+    بسته نشود.
+    """
+
+    STATUS_CHOICES = [
+        ('confirmed', 'روز بررسی و تأیید شد'),
+    ]
+
+    work_date = models.DateField(
+        unique=True, verbose_name="تاریخ کاری",
+    )
+    status = models.CharField(
+        max_length=20, choices=STATUS_CHOICES, default='confirmed',
+        verbose_name="وضعیت",
+    )
+    closed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='daily_material_closings',
+        verbose_name="تأییدکننده",
+    )
+    closed_at = models.DateTimeField(
+        auto_now_add=True, verbose_name="زمان تأیید",
+    )
+    note = models.CharField(
+        max_length=255, blank=True, verbose_name="یادداشت",
+    )
+
+    class Meta:
+        verbose_name = "تأیید پایان روز"
+        verbose_name_plural = "تأیید پایان روزها"
+        ordering = ['-work_date']
+
+    def __str__(self):
+        return f"{self.work_date} — {self.get_status_display()}"

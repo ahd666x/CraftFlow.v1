@@ -39,11 +39,11 @@ logger = logging.getLogger(__name__)
 
 
 # Phase 3: Daily Material Queue sync hook
-def _sync_queue_for_task_ids(task_ids):
+def _sync_queue_for_task_ids(task_ids, extra_dates=()):
     """Best-effort sync of DailyMaterialQueue for affected dates."""
     try:
         from inventory.services import sync_queue_for_tasks
-        return sync_queue_for_tasks(task_ids)
+        return sync_queue_for_tasks(task_ids, extra_dates=extra_dates)
     except Exception:
         logger.exception('_sync_queue_for_task_ids: sync failed')
         return []
@@ -1571,6 +1571,8 @@ def schedule_paint_tasks_for_items(item_ids, target_date, initial_item_cursors=N
 
 
 def schedule_paint_items_auto(item_ids, start_date=None, max_days=100, initial_item_cursors=None):
+    from inventory.services import queue_sync_scope
+
     if not item_ids:
         return 0, None, {}
     if start_date is None:
@@ -1596,27 +1598,29 @@ def schedule_paint_items_auto(item_ids, start_date=None, max_days=100, initial_i
     safety = 0
     item_cursors = dict(initial_item_cursors)
 
-    while remaining and safety < max_days:
-        if not is_working_day(cur_date):
+    # Phase 3: جمع‌آوری نیازهای روزانه و یک Sync در پایان (به‌جای Sync برای هر روز)
+    with queue_sync_scope():
+        while remaining and safety < max_days:
+            if not is_working_day(cur_date):
+                cur_date += jdatetime.timedelta(days=1)
+                safety += 1
+                continue
+
+            sched = PaintingScheduler(remaining, cur_date, item_cursors, assignment_rules=_get_active_assignment_rules())
+            cnt, new_cursors = sched.schedule()
+            total += cnt
+            item_cursors.update(new_cursors)
+
+            remaining = list(
+                ProductionTask.objects.filter(
+                    id__in=remaining,
+                    station_name='paint',
+                    status__in=['pending', 'waiting'],
+                    scheduled_start__isnull=True,
+                ).values_list('id', flat=True)
+            )
             cur_date += jdatetime.timedelta(days=1)
             safety += 1
-            continue
-
-        sched = PaintingScheduler(remaining, cur_date, item_cursors, assignment_rules=_get_active_assignment_rules())
-        cnt, new_cursors = sched.schedule()
-        total += cnt
-        item_cursors.update(new_cursors)
-
-        remaining = list(
-            ProductionTask.objects.filter(
-                id__in=remaining,
-                station_name='paint',
-                status__in=['pending', 'waiting'],
-                scheduled_start__isnull=True,
-            ).values_list('id', flat=True)
-        )
-        cur_date += jdatetime.timedelta(days=1)
-        safety += 1
 
     if remaining:
         logger.warning(f"{len(remaining)} تسک پس از {max_days} روز همچنان زمان‌بندی نشده‌اند.")
@@ -1625,6 +1629,8 @@ def schedule_paint_items_auto(item_ids, start_date=None, max_days=100, initial_i
 
 
 def auto_assign_paint_tasks(target_date=None):
+    from inventory.services import queue_sync_scope
+
     if target_date is None:
         target_date = jdatetime.date.today()
 
@@ -1652,11 +1658,19 @@ def auto_assign_paint_tasks(target_date=None):
     initial_cursors = _get_initial_item_cursors(item_ids)
 
     sched = PaintingScheduler(task_ids, target_date, initial_cursors, assignment_rules=_get_active_assignment_rules())
-    cnt, _ = sched.schedule()
+    with queue_sync_scope():
+        cnt, _ = sched.schedule()
     return cnt
 
 
 def create_and_schedule_items_for_date(item_ids, target_date=None):
+    from inventory.services import queue_sync_scope
+
+    with queue_sync_scope():
+        return _create_and_schedule_items_for_date(item_ids, target_date)
+
+
+def _create_and_schedule_items_for_date(item_ids, target_date=None):
     try:
         if target_date is None:
             target_date = jdatetime.date.today()
@@ -1736,6 +1750,16 @@ def create_and_schedule_items_for_date(item_ids, target_date=None):
             all_item_ids, target_date, max_days=100, initial_item_cursors=initial_cursors
         )
 
+
+        # Phase 3: sync DailyMaterialQueue for all affected dates
+        scheduled_task_ids = list(
+            ProductionTask.objects.filter(
+                order_item_id__in=item_ids,
+                station_name='paint',
+                scheduled_start__isnull=False,
+            ).values_list('id', flat=True)
+        )
+        _sync_queue_for_task_ids(scheduled_task_ids)
         return {
             'scheduled_count': cnt,
             'scheduled_date': last_date or target_date,
@@ -1878,6 +1902,22 @@ def assign_task_to_worker(task_id, worker_id, target_date=None, allow_overtime=F
                     allow_overtime=allow_overtime,
                 )
 
+                # Phase 3: تاریخ قبلیِ تسک‌های جابه‌جاشده، پیش از mutate کردن
+                # شیء‌ها؛ تا صف روز قبلی هم اصلاح شود (انتقال بین دو روز
+                # باید روی هر دو صف و به‌صورت اتمیک انجام شود).
+                from inventory.services import _work_date
+                affected_dates = set()
+                try:
+                    affected_dates = {
+                        _work_date(v)
+                        for v in ProductionTask.objects.filter(
+                            pk__in=list(changes.keys())
+                        ).values_list('scheduled_start', flat=True)
+                        if v is not None
+                    }
+                except Exception:
+                    logger.exception('assign_task_to_worker: failed to read previous dates')
+
                 to_update = []
                 for pk, (wid, s, e) in changes.items():
                     t = task_objects[pk]
@@ -1958,9 +1998,9 @@ def assign_task_to_worker(task_id, worker_id, target_date=None, allow_overtime=F
 
         final_start, final_end = changes[task.pk][1], changes[task.pk][2]
 
-        # Phase 3: sync DailyMaterialQueue for affected dates
+        # Phase 3: sync DailyMaterialQueue برای روزهای قبلی و جدید
         affected_ids = list(changes.keys())
-        _sync_queue_for_task_ids(affected_ids)
+        _sync_queue_for_task_ids(affected_ids, extra_dates=affected_dates)
 
         return {
             'ok': True,
@@ -2064,8 +2104,17 @@ def reschedule_worker_tasks_on_date(worker_id, target_date, allow_overtime=False
                         ['assigned_worker_id', 'scheduled_start', 'scheduled_end']
                     )
 
-                    # Phase 3: sync DailyMaterialQueue for affected date
-                    _sync_queue_for_date(gregorian)
+                    # Phase 3: sync DailyMaterialQueue برای روزهای قبلی و جدید
+                    from inventory.services import _work_date
+                    previous_dates = set()
+                    for t in tasks:
+                        d = _work_date(t.scheduled_start)
+                        if d:
+                            previous_dates.add(d)
+                    _sync_queue_for_task_ids(
+                        [t.pk for t in to_update],
+                        extra_dates=previous_dates | {gregorian},
+                    )
 
                 return len(to_update)
 

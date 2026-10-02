@@ -42,6 +42,35 @@ urlpatterns = [
     path('custody/return/', views.custody_return, name='custody_return'),
     path('custody/defect-choices/', views.defect_choices, name='defect_choices'),
 
+    # Daily Material Queue (Phase 4)
+    path('daily-material-queue/', views.daily_material_queue, name='daily_material_queue'),
+    path('daily-material-queue/closing/', views.daily_closing, name='daily_closing'),
+    path('daily-material-queue/closing/confirm/', views.daily_closing_confirm, name='daily_closing_confirm'),
+
+    # Phase 10 — دفتر گردش مواد
+    path('material-ledger/', views.material_ledger, name='material_ledger'),
+    # Phase 11 — تحلیل مصرف
+    path('consumption-report/', views.consumption_report, name='consumption_report'),
+    # Phase 12 — ردیابی مواد سفارش
+    path('orders/<int:order_id>/material-trace/', views.order_material_traceability,
+         name='order_material_traceability'),
+    # Phase 13 — داشبورد برنامه‌ریزی مواد
+    path('material-dashboard/', views.material_dashboard, name='material_dashboard'),
+    # Phase 14 — هشدارها
+    path('alerts/', views.inventory_alerts, name='inventory_alerts'),
+    # Phase 15 — گزارش‌های تاریخی
+    path('reports/historical/', views.historical_reports, name='historical_reports'),
+    path('reports/historical/csv/', views.historical_reports_csv,
+         name='historical_reports_csv'),
+    # Phase 16 — حسابرسی یکپارچگی داده
+    path('audit/data-integrity/', views.data_integrity_audit,
+         name='data_integrity_audit'),
+
+    path('daily-material-queue/<int:queue_id>/delivery/', views.daily_queue_delivery, name='daily_queue_delivery'),
+    path('daily-material-queue/<int:queue_id>/return/', views.daily_queue_return, name='daily_queue_return'),
+    path('daily-material-queue/<int:queue_id>/sources/', views.daily_queue_sources, name='daily_queue_sources'),
+    path('daily-material-queue/<int:queue_id>/preview-delivery/', views.daily_queue_preview_delivery, name='daily_queue_preview_delivery'),
+
     path('purchase-orders/', views.purchase_order_list, name='purchase_order_list'),
     path('purchase-orders/<int:order_id>/detail/', views.purchase_order_detail_api, name='purchase_order_detail'),
     path('purchase-orders/create/', views.purchase_order_create, name='purchase_order_create'),

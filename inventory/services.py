@@ -34,8 +34,10 @@
 """
 from collections import OrderedDict
 from decimal import Decimal, InvalidOperation, ROUND_CEILING
+import contextlib
+import threading
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Q, Sum
 from django.utils import timezone
 
@@ -742,19 +744,37 @@ def _q2(value):
     return Decimal(str(value)).quantize(Decimal('0.01'))
 
 
-def _ceil_int(value):
-    """Ceiling to integer."""
-    import math
-    return int(math.ceil(float(value)))
+def _packs_counted(need, pack_size):
+    """
+    تعداد بستهٔ کامل لازم برای پوشش *need* — تنها قانون سقف بسته‌بندی در این ماژول.
+
+    عمداً با ``Decimal`` و ``ROUND_CEILING`` محاسبه می‌شود، نه با ``float``:
+    در محاسبهٔ اعشاری، ``0.07 / 0.01`` برابر ``7.000000000000001`` درمی‌آید و
+    سقف آن ۸ می‌شود؛ یعنی برای نیاز ۰٫۰۷ کیلو یک بستهٔ کامل اضافه تحویل
+    می‌گردد. این همان قانونی است که مسیر قدیمی تحویل مواد
+    (``ROUND_CEILING``) استفاده می‌کند.
+    """
+    need = _q2(need)
+    pack = _q2(pack_size or 0)
+    if need <= 0 or pack <= 0:
+        return 0
+    return int((need / pack).to_integral_value(rounding=ROUND_CEILING))
+
+
+def _physical_for(need, pack_size):
+    """مقدار فیزیکی تحویل‌شده با گرد کردن رو به بالا به بستهٔ کامل."""
+    need = _q2(need)
+    pack = _q2(pack_size or 0)
+    if need <= 0 or pack <= 0:
+        return 0, need
+    count = _packs_counted(need, pack)
+    return count, _q2(pack * count)
 
 
 def _packs_for(need, pack_size):
     """Return number of full packages needed to cover *need*."""
-    need = _q2(need)
-    pack = _q2(pack_size or 0)
-    if pack <= 0:
-        return 0, need
-    return _ceil_int(need / pack), pack * _ceil_int(need / pack)
+    count, physical = _physical_for(need, pack_size)
+    return count, physical
 
 
 def _resolve_painting_requirements_for_task(task):
@@ -762,80 +782,179 @@ def _resolve_painting_requirements_for_task(task):
     return get_painting_material_requirements_for_task(task)
 
 
-def _worker_for_date(task, work_date):
-    if task.assigned_worker_id:
-        return task.assigned_worker
-    try:
-        from product.utils import get_worker_for_stage
-        stage = task.painting_stage
-        if stage is not None:
-            worker = get_worker_for_stage(stage, work_date)
-            if worker is not None:
-                return worker
-    except Exception:
-        pass
-    return task.scanned_by
+def _work_date(value):
+    """Convert a (possibly tz-aware) datetime/date into the local work date."""
+    if value is None:
+        return None
+    from django.utils import timezone
+    if hasattr(value, 'time'):
+        try:
+            return timezone.localtime(value).date()
+        except Exception:
+            return value.date()
+    return value
 
 
 def _task_date(task):
-    if task.scheduled_start is None:
-        return None
-    from django.utils import timezone
-    try:
-        return timezone.localtime(task.scheduled_start).date()
-    except Exception:
-        return task.scheduled_start.date()
+    return _work_date(task.scheduled_start)
 
 
-def _aggregate_requirements(tasks):
+# ---------------------------------------------------------------------------
+# Eligibility of a ProductionTask for the daily delivery queue.
+#
+# Phase 3 / Decision 3: a task enters the daily queue ONLY when it has a
+# scheduled date, an explicitly assigned worker and a painting stage.
+# A task without a worker never becomes a warehouse delivery row.
+# ---------------------------------------------------------------------------
+
+_SKIP_REASONS = {
+    'no_schedule': 'بدون تاریخ زمان‌بندی',
+    'no_worker': 'بدون کارگر تخصیص‌یافته',
+    'no_stage': 'بدون مرحله نقاشی',
+    'no_order_item': 'بدون آیتم سفارش',
+    'no_color_part': 'بدون بخش رنگی',
+    'no_quantity': 'بدون مقدار تولید',
+    'no_requirement': 'بدون فرمول مصرف',
+}
+
+
+def task_queue_ineligibility(task):
+    """Return None if the task may feed the daily queue, else a skip reason key."""
+    if task.station_name != 'paint':
+        return 'not_painting'
+    if _task_date(task) is None:
+        return 'no_schedule'
+    if not task.assigned_worker_id:
+        return 'no_worker'
+    if not task.painting_stage_id:
+        return 'no_stage'
+    if not task.order_item_id or not task.order_item.product_id:
+        return 'no_order_item'
+    if not task.color_part:
+        return 'no_color_part'
+    if not task.quantity or int(task.quantity) <= 0:
+        return 'no_quantity'
+    return None
+
+
+def aggregate_queue_requirements(tasks):
+    """
+    Aggregate planned material needs for *tasks* (painting tasks of one day).
+
+    Returns ``(grouped, diagnostics)``:
+        grouped:      OrderedDict keyed by (worker_id, raw_material_id)
+        diagnostics:  {'skipped': [...], 'multistage_overlaps': [...]}
+
+    Phase 3 rules applied here:
+        * planned quantity comes from ProductionTask.quantity (the production
+          quantity of that task) — never from completed_quantity, so a
+          half-finished task keeps its full planned need (Decision 10);
+        * the worker is always the explicitly assigned one (Decision 3).
+    """
     from collections import OrderedDict
     grouped = OrderedDict()
+    diagnostics = {'skipped': [], 'multistage_overlaps': []}
+
     for task in tasks:
-        if task.station_name != 'paint':
+        reason = task_queue_ineligibility(task)
+        if reason is not None:
+            if reason != 'not_painting':
+                diagnostics['skipped'].append(
+                    {'task_id': task.pk, 'reason': reason,
+                     'label': _SKIP_REASONS.get(reason, reason)}
+                )
             continue
-        if not task.painting_stage_id:
-            continue
-        if not task.order_item_id or not task.order_item.product_id:
-            continue
-        if not task.color_part:
-            continue
-        date = _task_date(task)
-        if date is None:
-            continue
-        worker = _worker_for_date(task, date)
-        if worker is None:
-            continue
+
         requirements = _resolve_painting_requirements_for_task(task)
         if not requirements:
+            diagnostics['skipped'].append(
+                {'task_id': task.pk, 'reason': 'no_requirement',
+                 'label': _SKIP_REASONS['no_requirement']}
+            )
             continue
-        item = task.order_item
+
+        worker = task.assigned_worker
+        stage = task.painting_stage
         try:
-            item_qty = Decimal(str(item.quantity))
-        except Exception:
-            item_qty = Decimal('0')
+            task_qty = Decimal(str(task.quantity))
+        except (TypeError, ValueError):
+            task_qty = Decimal('0')
+
         for req in requirements:
             raw = req.raw_material
             if raw is None:
                 continue
             try:
                 consumption = Decimal(str(req.consumption_per_unit))
-            except Exception:
+            except (TypeError, ValueError):
                 consumption = Decimal('0')
-            qty = item_qty * consumption
+            # جمع با دقت کامل انجام می‌شود و فقط یک‌بار هنگام نوشتن در دیتابیس
+            # گرد می‌شود. گرد کردن هر منبع به‌صورت جداگانه باعث می‌شد نیازهای
+            # کوچک (مثل 0.004) بی‌صدا حذف شوند و مجموع کمتر از واقع شود.
+            qty = task_qty * consumption
             if qty <= 0:
                 continue
+
             key = (worker.pk, raw.pk)
             entry = grouped.get(key)
             if entry is None:
                 entry = grouped[key] = {
                     'worker': worker,
                     'raw_material': raw,
-                    'quantity': Decimal('0.00'),
+                    'quantity': Decimal('0'),
                     'sources': [],
+                    'stages_by_process': {},
                 }
-            entry['quantity'] = _q2(entry['quantity'] + qty)
-            entry['sources'].append((task, task.painting_stage, raw, _q2(qty)))
-    return grouped
+            entry['quantity'] = entry['quantity'] + qty
+            entry['sources'].append((task, stage, raw, qty))
+            stages = entry['stages_by_process'].setdefault(stage.process_id, {})
+            stages[stage.id] = stages.get(stage.id, Decimal('0')) + qty
+
+    # Decision 2 (report only): a process-level MaterialRequirement applied by
+    # several stages of the same process on the same day/worker/material is a
+    # known modelling gap. It is reported, never silently re-modelled here.
+    for (worker_id, raw_id), entry in grouped.items():
+        for process_id, stages in entry['stages_by_process'].items():
+            if len(stages) > 1:
+                diagnostics['multistage_overlaps'].append({
+                    'worker_id': worker_id,
+                    'raw_material_id': raw_id,
+                    'process_id': process_id,
+                    'stage_ids': sorted(stages.keys()),
+                    'total_quantity': _q2(sum(stages.values())),
+                })
+
+    return grouped, diagnostics
+
+
+def detect_multistage_overlaps(date):
+    """
+    Report-only check (Phase 3): painting processes whose process-level
+    PaintingMaterialRequirement is consumed by more than one stage of the
+    same process on *date*. No database writes, no model changes.
+    """
+    _tasks = _get_scheduled_painting_tasks(date)
+    _grouped, diagnostics = aggregate_queue_requirements(_tasks)
+    return diagnostics['multistage_overlaps']
+
+
+def log_queue_diagnostics(date, diagnostics):
+    """Surface aggregation diagnostics (skipped tasks, stage overlaps)."""
+    overlaps = diagnostics.get('multistage_overlaps') or []
+    for item in overlaps:
+        _logger.warning(
+            'sync_daily_material_queue: %s — process %s contributes to the same '
+            'worker/material through stages %s (total %s). PaintingMaterialRequirement '
+            'is process-level, so consumption may be counted per stage.',
+            date, item['process_id'], item['stage_ids'], item['total_quantity'],
+        )
+    skipped = diagnostics.get('skipped') or []
+    if skipped:
+        _logger.info(
+            'sync_daily_material_queue: %s — %s task(s) did not enter the queue.',
+            date, len(skipped),
+        )
+    return overlaps
 
 
 def _get_scheduled_painting_tasks(date):
@@ -857,21 +976,46 @@ def _get_scheduled_painting_tasks(date):
     return list(qs)
 
 
+CONFLICT_NOTE_PLAN_CHANGED = (
+    'تغییر برنامه پس از ثبت تحویل/برگشت اعمال نشد؛ تاریخچهٔ واقعی حفظ شد.'
+)
+CONFLICT_NOTE_DROPPED = (
+    'نیاز از برنامهٔ نقاشی حذف شد ولی تحویل/برگشت ثبت‌شده دارد؛ '
+    'موجودی و تاریخچه دست‌نخورده ماند.'
+)
+
+
+def _mark_conflict(queue, note):
+    """Flag a plan/transaction conflict without touching real movement history."""
+    fields = ['has_plan_conflict', 'conflict_note', 'updated_at']
+    queue.has_plan_conflict = True
+    queue.conflict_note = (note or '')[:255]
+    queue.save(update_fields=fields)
+
+
 def build_daily_queue_for_date(date):
     """
     Build (or refresh) DailyMaterialQueue rows for *date*.
 
-    Aggregates painting ProductionTasks scheduled on *date*, groups
-    them by (worker, raw_material), creates/updates DailyMaterialQueue
-    rows, and records source traceability via DailyMaterialQueueSource.
+    Derives the day's needs from the painting schedule
+    (ProductionTask -> PaintingStage -> PaintingMaterialRequirement), grouped
+    by (worker, raw_material), with full traceability in
+    DailyMaterialQueueSource.
 
-    Returns list of DailyMaterialQueue instances.
+    Decision 6 (transaction guard):
+        * a queue with no delivery/return is fully re-synchronised;
+        * a queue that already has ``delivered_quantity > 0`` or
+          ``returned_quantity > 0`` keeps its planned quantity and its sources,
+          and the plan change is only flagged through ``has_plan_conflict`` /
+          ``conflict_note``. Real stock movements are never rewritten.
+
+    Idempotent: running it repeatedly never duplicates rows or sources.
     """
     from .models import DailyMaterialQueue, DailyMaterialQueueSource
     from django.db import transaction
 
     tasks = _get_scheduled_painting_tasks(date)
-    grouped = _aggregate_requirements(tasks)
+    grouped, diagnostics = aggregate_queue_requirements(tasks)
 
     with transaction.atomic():
         existing = list(
@@ -881,23 +1025,36 @@ def build_daily_queue_for_date(date):
         existing_keys = {(q.worker_id, q.raw_material_id): q for q in existing}
 
         for (worker_id, raw_id), entry in grouped.items():
+            # تنها نقطهٔ گرد کردن: مقدار نهایی و قابل ذخیره در فیلد دومقطری.
+            planned = _q2(entry['quantity'])
             queue = existing_keys.get((worker_id, raw_id))
+
             if queue is None:
                 queue = DailyMaterialQueue(
                     work_date=date,
                     worker=entry['worker'],
                     raw_material=entry['raw_material'],
-                    planned_quantity=entry['quantity'],
+                    planned_quantity=planned,
                     status='pending',
                 )
+                queue.save()
+            elif queue.has_transaction:
+                # Never overwrite a delivered/returned row's plan history.
+                if _q2(queue.planned_quantity) != planned:
+                    _mark_conflict(queue, CONFLICT_NOTE_PLAN_CHANGED)
+                continue
             else:
-                # Preserve delivered/returned quantities; only update planned
-                queue.planned_quantity = entry['quantity']
+                queue.planned_quantity = planned
                 queue.worker = entry['worker']
                 queue.raw_material = entry['raw_material']
-            queue.save()
+                if queue.status == 'cancelled':
+                    # The need is back in the schedule: revive the row.
+                    queue.status = 'pending'
+                queue.has_plan_conflict = False
+                queue.conflict_note = ''
+                queue.save()
 
-            # Refresh sources: delete old, recreate from current aggregation
+            # Sources are refreshed only for rows without real movements.
             DailyMaterialQueueSource.objects.filter(queue=queue).delete()
             for task, stage, raw, qty in entry['sources']:
                 DailyMaterialQueueSource.objects.create(
@@ -905,15 +1062,23 @@ def build_daily_queue_for_date(date):
                     production_task=task,
                     painting_stage=stage,
                     raw_material=raw,
-                    quantity=qty,
+                    quantity=_q2(qty),
                 )
 
-        # Mark stale rows (no longer in the schedule) as cancelled
+        # Rows that are no longer part of the schedule.
         active_keys = set(grouped.keys())
         for key, queue in existing_keys.items():
-            if key not in active_keys:
+            if key in active_keys:
+                continue
+            if queue.has_transaction:
+                # Delivery/return history exists: keep it, flag the conflict.
+                if not queue.has_plan_conflict:
+                    _mark_conflict(queue, CONFLICT_NOTE_DROPPED)
+            elif queue.status != 'cancelled':
                 queue.status = 'cancelled'
                 queue.save(update_fields=['status', 'updated_at'])
+
+    log_queue_diagnostics(date, diagnostics)
 
     return list(
         DailyMaterialQueue.objects
@@ -933,61 +1098,134 @@ def sync_daily_material_queue(date):
     return build_daily_queue_for_date(date)
 
 
-def _affected_dates_for_tasks(task_ids):
-    """Return set of Gregorian dates affected by the given task IDs."""
-    from django.utils import timezone
+def sync_daily_material_queue_for_dates(dates):
+    """
+    Sync several work dates inside ONE transaction (Decision 5: moving a task
+    from day 1 to day 2 must remove the need from day 1 and create/update it on
+    day 2 atomically).
 
-    if not task_ids:
-        return set()
-
-    dates = set()
-    tasks = list(
-        ProductionTask.objects.filter(pk__in=task_ids)
-        .only('id', 'scheduled_start')
-    )
-    for t in tasks:
-        if t.scheduled_start is None:
-            continue
-        try:
-            d = timezone.localtime(t.scheduled_start).date()
-        except Exception:
-            d = t.scheduled_start.date()
-        dates.add(d)
-    return dates
-
-
-def sync_queue_for_tasks(task_ids, *, dry_run=False):
-    """Rebuild DailyMaterialQueue for all dates affected by *task_ids*."""
+    Raises on failure so the caller can roll the whole schedule change back.
+    """
     from django.db import transaction
 
-    if not task_ids:
-        return []
-
-    task_ids = list(set(int(t) for t in task_ids))
-    dates = _affected_dates_for_tasks(task_ids)
-    if not dates:
-        return []
+    cleaned = []
+    for d in dates or ():
+        if d is None:
+            continue
+        cleaned.append(_work_date(d))
+    unique_dates = sorted(set(cleaned))
 
     results = []
-    for d in sorted(dates):
-        try:
-            with transaction.atomic():
-                rows = sync_daily_material_queue(d)
-            results.extend(rows)
-        except Exception:
-            _logger.exception(
-                'sync_queue_for_tasks: error syncing date %s for tasks %s',
-                d, task_ids,
-            )
+    if not unique_dates:
+        return results
+    with transaction.atomic():
+        for d in unique_dates:
+            results.extend(sync_daily_material_queue(d))
     return results
 
 
-def sync_queue_for_date(date, *, dry_run=False):
-    """Rebuild DailyMaterialQueue for a single date."""
-    from django.db import transaction
+def _affected_dates_for_tasks(task_ids):
+    """Return set of Gregorian work dates affected by the given task IDs."""
+    if not task_ids:
+        return set()
+
+    from product.models import ProductionTask
+
+    dates = set()
+    for start in (
+        ProductionTask.objects.filter(pk__in=task_ids)
+        .values_list('scheduled_start', flat=True)
+    ):
+        d = _work_date(start)
+        if d is not None:
+            dates.add(d)
+    return dates
+
+
+# ---------------------------------------------------------------------------
+# Batching of sync requests
+#
+# Bulk scheduling touches hundreds of tasks at once. Every one of them asks for
+# a queue sync; instead of rebuilding one day per task, the callers open
+# ``queue_sync_scope()`` and all requests collected inside it are applied once,
+# in one transaction, when the scope closes. If the scope raises, the pending
+# dates are dropped together with the rolled-back schedule change.
+# ---------------------------------------------------------------------------
+
+_queue_sync_state = threading.local()
+
+
+def _pending_sync_dates():
+    return getattr(_queue_sync_state, 'dates', None)
+
+
+@contextlib.contextmanager
+def queue_sync_scope():
+    """Collect queue-sync dates raised inside the block and flush them once."""
+    previous = getattr(_queue_sync_state, 'dates', None)
+    _queue_sync_state.dates = set()
     try:
-        with transaction.atomic():
-            return sync_daily_material_queue(date)
+        yield _queue_sync_state.dates
+    except Exception:
+        _queue_sync_state.dates = previous
+        raise
+    pending = _queue_sync_state.dates
+    _queue_sync_state.dates = previous
+    if pending:
+        try:
+            sync_daily_material_queue_for_dates(pending)
+        except Exception:
+            _logger.exception('queue_sync_scope: failed to sync dates %s', sorted(pending))
+
+
+def request_queue_sync(dates):
+    """
+    Ask for the daily queue of *dates* to be re-derived. Best effort: never
+    raises, never breaks the caller's business logic. Inside a
+    ``queue_sync_scope`` the dates are only collected.
+    """
+    cleaned = {_work_date(d) for d in (dates or ()) if d is not None}
+    if not cleaned:
+        return []
+
+    pending = _pending_sync_dates()
+    if pending is not None:
+        pending |= cleaned
+        return []
+
+    try:
+        return sync_daily_material_queue_for_dates(cleaned)
+    except Exception:
+        _logger.exception('request_queue_sync: failed to sync dates %s', sorted(cleaned))
+        return []
+
+
+def request_queue_sync_for_tasks(task_ids, extra_dates=()):
+    """Request a queue sync for the dates of *task_ids* plus any *extra_dates*."""
+    dates = set(_affected_dates_for_tasks(task_ids))
+    dates |= {_work_date(d) for d in (extra_dates or ()) if d is not None}
+    return request_queue_sync(dates)
+
+
+def sync_queue_for_tasks(task_ids, *, extra_dates=()):
+    """
+    Rebuild DailyMaterialQueue for all dates affected by *task_ids*.
+    Never raises; inside a ``queue_sync_scope`` it only collects the dates.
+    """
+    try:
+        if not task_ids:
+            return request_queue_sync(extra_dates)
+        task_ids = list(set(int(t) for t in task_ids))
+        return request_queue_sync_for_tasks(task_ids, extra_dates=extra_dates)
+    except Exception:
+        _logger.exception('sync_queue_for_tasks: error for tasks %s', task_ids)
+        return []
+
+
+def sync_queue_for_date(date):
+    """Rebuild DailyMaterialQueue for a single date. Never raises."""
+    try:
+        return request_queue_sync([date])
     except Exception:
         _logger.exception('sync_queue_for_date: error syncing date %s', date)
         return []
@@ -1018,55 +1256,79 @@ def execute_daily_delivery(*, queue_id, delivered_by, note='', items=None):
     Creates a StockMovement(consumption) for the physical quantity,
     updates delivered_quantity and status.
 
-    *items* (optional): list of (source_id, delivered_qty) for partial
-    delivery. If omitted, the full planned quantity is delivered.
+    This function is the single source of truth for the delivery quantity;
+    callers (views/UI) must not re-implement the packaging rule.
+
+    *items* (optional): list of (source_id, delivered_qty) for controlled
+    partial delivery. If omitted, the full planned quantity is delivered.
+
+    Idempotency / concurrency:
+        The queue row is locked with ``select_for_update`` for the whole
+        operation, so two simultaneous requests can never both consume stock.
+        Any row that already has a real movement (``has_transaction``) is
+        refused, which also covers statuses like ``returned`` where a
+        naive status check would otherwise allow a second consumption.
     """
     from .models import DailyMaterialQueue, StockMovement
 
     try:
         queue = DailyMaterialQueue.objects.select_for_update().get(pk=queue_id)
     except DailyMaterialQueue.DoesNotExist:
-        raise HandoverError('Daily material queue not found.')
+        raise HandoverError('ردیف صف مواد روزانه یافت نشد.')
 
-    if queue.status in ('delivered', 'closed'):
-        raise HandoverError('This queue has already been delivered or closed.')
+    if queue.has_transaction or queue.status in ('delivered', 'returned', 'closed'):
+        raise HandoverError('این ردیف قبلاً تحویل داده شده است و تحویل دوبارهٔ آن ممکن نیست.')
+
+    if queue.status == 'cancelled':
+        raise HandoverError(
+            'این ردیف از برنامهٔ روز حذف شده است؛ تا زمانی که نیاز آن در برنامه نباشد، تحویل ممکن نیست.'
+        )
 
     planned = _q2(queue.planned_quantity)
     pack = _q2(queue.raw_material.pack_size or 0)
 
+    if planned <= 0:
+        raise HandoverError('مقدار برنامه‌ریزی‌شده برای این ردیف صفر است؛ تحویلی انجام نمی‌شود.')
+
     if items:
         total_delivered = sum(_q2(q) for _, q in items)
         if total_delivered <= 0:
-            raise HandoverError('Delivery quantity must be greater than zero.')
+            raise HandoverError('مقدار تحویل باید بزرگ‌تر از صفر باشد.')
     else:
         total_delivered = planned
 
     # Packaging rule: if need=3kg and pack_size=4kg, deliver 4kg
-    if total_delivered > 0 and pack > 0:
-        import math
-        packs = int(math.ceil(float(total_delivered) / float(pack)))
-        physical = pack * packs
-    else:
-        physical = total_delivered
+    packs, physical = _physical_for(total_delivered, pack)
 
     stock = _q2(queue.raw_material.current_stock)
     if physical > stock:
         raise HandoverError(
-            f'Insufficient warehouse stock for {queue.raw_material.name} '
-            f'(physical need {physical}, stock {stock})'
+            f'موجودی انبار کافی نیست. برای «{queue.raw_material.name}» '
+            f'مقدار تحویل {physical} لازم است اما موجودی {stock} است.'
         )
 
-    with transaction.atomic():
-        StockMovement.objects.create(
-            raw_material=queue.raw_material,
-            movement_type='consumption',
-            quantity=physical,
-            created_by=delivered_by,
-            note=(note or '')[:255] or f'Daily delivery queue #{queue.id}',
-        )
-        queue.delivered_quantity = total_delivered
-        queue.status = 'delivered'
-        queue.save(update_fields=['delivered_quantity', 'status', 'updated_at'])
+    # تا این‌جا هیچ نوشتنی انجام نشده؛ از این نقطه به بعد حرکت انبار و به‌روزرسانی
+    # صف در همان تراکنش انجام می‌شود، پس خطا هیچ تغییری باقی نمی‌گذارد.
+    StockMovement.objects.create(
+        raw_material=queue.raw_material,
+        movement_type='consumption',
+        quantity=physical,
+        created_by=delivered_by,
+        note=(note or '')[:255] or f'تحویل روزانه — صف #{queue.id}',
+    )
+    # مقدار ثبت‌شده در صف باید دقیقاً همان چیزی باشد که از انبار کم شده است.
+    # planned_quantity (نیاز برنامه‌ریزی‌شده) دست‌نخورده می‌ماند و ممکن است کمتر
+    # از مقدار فیزیکی باشد؛ مابه‌التفاوت (پک اضافه) یا مصرف اضافه گزارش می‌شود یا
+    # به‌صورت برگشتی برمی‌گردد. اگر اینجا مقدار نیاز ذخیره شود، موجودی انبار با صف
+    # reconcile نمی‌شود و پک اضافه هرگز قابل برگشت نیست.
+    queue.delivered_quantity = physical
+    queue.status = 'delivered'
+    queue.recalculate_consumption()
+    # planned_quantity و منابع برنامه‌ریزی دست‌نخورده می‌مانند.
+    queue.save(update_fields=[
+        'delivered_quantity', 'status',
+        'actual_consumption', 'excess_consumption', 'updated_at',
+    ])
 
     return queue
 
@@ -1078,6 +1340,22 @@ def execute_daily_return(*, queue_id, returned_by, returned_quantity, note=''):
     DailyMaterialQueue row. Creates a real StockMovement(return), which
     increases warehouse stock. This is the NEW return path (Decision 5).
 
+    Accounting rules enforced here:
+        * returned total can never exceed delivered total, so
+          ``actual_consumption = delivered - returned`` never goes negative;
+        * a return never increases actual consumption, it only reduces it;
+        * planned quantity and planning sources are never touched;
+        * the returned material becomes ordinary warehouse stock — no
+          MaterialCustody / reservation is created for the worker.
+
+    Partial returns are supported: several returns may be recorded for the
+    same queue as long as their sum does not exceed ``delivered_quantity``.
+    Once nothing is left to return, further returns are refused (idempotency).
+
+    The queue row is locked with ``select_for_update`` for the whole
+    operation, so two simultaneous requests can never both create a
+    StockMovement(return) for the same queue row.
+
     The legacy return_custody() is unchanged and still used for the
     old MaterialCustody workflow.
     """
@@ -1085,39 +1363,322 @@ def execute_daily_return(*, queue_id, returned_by, returned_quantity, note=''):
 
     try:
         ret = _q2(returned_quantity)
-    except (TypeError, ValueError):
-        raise HandoverError('Invalid return quantity.')
-    if ret <= 0:
-        raise HandoverError('Return quantity must be greater than zero.')
+    except (TypeError, ValueError, ArithmeticError, InvalidOperation):
+        raise HandoverError('مقدار برگشتی معتبر نیست.')
+    if not ret.is_finite() or ret <= 0:
+        raise HandoverError('مقدار برگشتی باید بزرگ‌تر از صفر باشد.')
 
     try:
         queue = DailyMaterialQueue.objects.select_for_update().get(pk=queue_id)
     except DailyMaterialQueue.DoesNotExist:
-        raise HandoverError('Daily material queue not found.')
+        raise HandoverError('ردیف صف مواد روزانه یافت نشد.')
+
+    if queue.status == 'cancelled':
+        raise HandoverError(
+            'این ردیف از برنامهٔ روز حذف شده است؛ برگشت برای آن ثبت نمی‌شود.'
+        )
 
     delivered = _q2(queue.delivered_quantity)
     already_returned = _q2(queue.returned_quantity)
-    max_returnable = delivered - already_returned
+
+    if delivered <= 0:
+        raise HandoverError('این ردیف هنوز تحویل نشده است؛ ابتدا تحویل را ثبت کنید.')
+
+    max_returnable = _q2(delivered - already_returned)
+    if max_returnable <= 0:
+        raise HandoverError('همهٔ مقدار تحویل‌شدهٔ این ردیف قبلاً برگشت داده شده است.')
     if ret > max_returnable:
         raise HandoverError(
-            f'Return quantity ({ret}) cannot exceed undelivered amount ({max_returnable}).'
+            f'مقدار برگشتی ({ret}) نمی‌تواند از مقدار تحویل‌شدهٔ برگشت‌نشده ({max_returnable}) بیشتر باشد.'
         )
 
+    # Decision 7: a returned material is ordinary warehouse stock again.
+    # The movement goes straight to the general stock ledger; no custody /
+    # reservation is created for the worker.
     StockMovement.objects.create(
         raw_material=queue.raw_material,
         movement_type='return',
         quantity=ret,
         created_by=returned_by,
-        note=(note or '')[:255] or f'Daily return queue #{queue.id}',
+        note=(note or '')[:255] or f'بازگشت روزانه — صف #{queue.id}',
     )
     queue.returned_quantity = _q2(already_returned + ret)
-    if queue.returned_quantity >= delivered and delivered > 0:
+    if queue.returned_quantity >= delivered:
         queue.status = 'returned'
     else:
         queue.status = 'delivered'
-    queue.save(update_fields=['returned_quantity', 'status', 'updated_at'])
+    # planned_quantity و منابع برنامه‌ریزی دست‌نخورده می‌مانند.
+    queue.recalculate_consumption()
+    queue.save(update_fields=[
+        'returned_quantity', 'status',
+        'actual_consumption', 'excess_consumption', 'updated_at',
+    ])
 
     return queue
+
+
+# ---------------------------------------------------------------------------
+# گزارش مصرف مواد روزانه (Phase 7)
+#
+# این گزارش فقط «می‌خواند» و هیچ چیزی نمی‌نویسد. مصرف واقعی از فیلد
+# ``actual_consumption`` خودِ ردیف صف خوانده می‌شود — همان فیلدی که
+# ``recalculate_consumption`` از «تحویل منهای برگشت» نگه می‌دارد — تا هیچ
+# منطق موازی یا تعریف دومی از مصرف ایجاد نشود.
+#
+# منبع حقیقت موجودی انبار همچنان ``StockMovement`` است؛ این گزارش به دفتر
+# حرکات دست نمی‌زند و StockMovement جدیدی نمی‌سازد. برگشتی‌ها صرفاً
+# موجودی عمومی انبار هستند و در این گزارش هرگز به‌عنوان مصرف شمرده نمی‌شوند.
+# ---------------------------------------------------------------------------
+
+def daily_queue_filtered_queryset(date, *, worker_id=None, material_id=None,
+                                   status=None, include_cancelled=False):
+    """
+    queryset خام صف مواد روزانه برای *date* با فیلترهای اختیاری.
+
+    از این متد در صفحهٔ انبار و هر گزارش دیگری استفاده می‌شود تا تعریف
+    «یک ردیف صف» در یک نقطه بماند.
+    """
+    from .models import DailyMaterialQueue
+
+    qs = DailyMaterialQueue.objects.filter(work_date=date)
+
+    if worker_id:
+        qs = qs.filter(worker_id=worker_id)
+    if material_id:
+        qs = qs.filter(raw_material_id=material_id)
+    if status:
+        qs = qs.filter(status=status)
+    if not include_cancelled and status != 'cancelled':
+        # ردیف لغوشده نیاز فعالی ندارد و در گزارش عملیات روزانه گمراه‌کننده است.
+        # اما اگر کاربر صریحاً «لغو شده» را فیلتر کرده باشد، انتخاب او معتبر است.
+        qs = qs.exclude(status='cancelled')
+
+    return qs
+
+
+def daily_queue_summary(qs):
+    """
+    جمع روزانه از یک queryset صف — فقط خواندنی.
+
+    مجموع planned / delivered / returned / actual از همان فیلدهای ذخیره‌شدهٔ
+    خود ردیف صف می‌آید (نه محاسبهٔ موازی). شمارش وضعیت‌ها و تعارض‌ها با
+    ``filter=`` داخل همان یک ``aggregate`` انجام می‌شود تا برای هر گزارش
+    فقط یک کوئری اجرا شود.
+    """
+    from django.db.models import Count, Q, Sum
+
+    totals = qs.aggregate(
+        total_planned=Sum('planned_quantity'),
+        total_delivered=Sum('delivered_quantity'),
+        total_returned=Sum('returned_quantity'),
+        total_actual=Sum('actual_consumption'),
+        total_excess=Sum('excess_consumption'),
+        pending_count=Count('id', filter=Q(status='pending')),
+        delivered_count=Count('id', filter=Q(status='delivered')),
+        returned_count=Count('id', filter=Q(status='returned')),
+        conflict_count=Count('id', filter=Q(has_plan_conflict=True)),
+    )
+
+    return {
+        'total_planned': _q2(totals['total_planned'] or 0),
+        'total_delivered': _q2(totals['total_delivered'] or 0),
+        'total_returned': _q2(totals['total_returned'] or 0),
+        'total_actual': _q2(totals['total_actual'] or 0),
+        'total_excess': _q2(totals['total_excess'] or 0),
+        'pending_count': totals['pending_count'] or 0,
+        'delivered_count': totals['delivered_count'] or 0,
+        'returned_count': totals['returned_count'] or 0,
+        'conflict_count': totals['conflict_count'] or 0,
+    }
+
+
+def daily_material_report(date, *, worker_id=None, material_id=None, status=None):
+    """
+    گزارش مصرف مواد روزانه برای یک تاریخ کاری.
+
+    خروجی: dict با کلیدهای ``rows`` (صف آمادهٔ نمایش/صفحه‌بندی) و ``summary``.
+    هیچ نوشتنی در دیتابیس انجام نمی‌شود و planned_quantity دست‌نخورده می‌ماند.
+    """
+    base = daily_queue_filtered_queryset(
+        date, worker_id=worker_id, material_id=material_id, status=status,
+    )
+    summary = daily_queue_summary(base)
+
+    rows_qs = (
+        base
+        .select_related('worker', 'raw_material', 'raw_material__category')
+        .order_by(
+            'worker__first_name', 'worker__last_name', 'worker__username',
+            'raw_material__name',
+        )
+    )
+
+    return {'rows': rows_qs, 'summary': summary}
+
+
+def daily_queue_action_state(queue):
+    """
+    وضعیت اقدام‌های ممکن روی یک ردیف صف، برای نمایش در UI.
+
+    فقط می‌خواند و هیچ قاعدهٔ جدیدی نمی‌سازد: شرط‌ها دقیقاً همان‌هایی هستند که
+    ``execute_daily_delivery`` و ``execute_daily_return`` اعمال می‌کنند. UI نباید
+    این قاعده را از روی متن Badge یا با محاسبهٔ دستی تکرار کند.
+    """
+    planned = _q2(queue.planned_quantity)
+    delivered = _q2(queue.delivered_quantity)
+    already_returned = _q2(queue.returned_quantity)
+    max_returnable = _q2(max(delivered - already_returned, Decimal('0')))
+
+    can_deliver = (
+        not queue.has_transaction
+        and queue.status not in ('delivered', 'returned', 'closed', 'cancelled')
+        and planned > 0
+    )
+    can_return = (
+        queue.status != 'cancelled'
+        and delivered > 0
+        and max_returnable > 0
+    )
+
+    return {
+        'status': queue.status,
+        'status_display': queue.get_status_display(),
+        'can_deliver': can_deliver,
+        'can_return': can_return,
+        'max_returnable': str(max_returnable),
+    }
+
+
+def daily_closing_problems(qs):
+    """
+    ردیف‌هایی که بستن روز را ناامن می‌کنند — کاملاً فقط‌خواندنی.
+
+    هیچ قاعدهٔ کسب‌وکار جدیدی اختراع نمی‌شود؛ هر سه دسته مستقیماً از وضعیت و
+    فیلدهای موجود ``DailyMaterialQueue`` (Phase 3 و Phase 6) مشتق می‌شود:
+
+    * ``conflict``          → ``has_plan_conflict`` (همان پرچم Phase 3)
+    * ``incomplete``        → ``status='pending'`` با ``planned_quantity > 0``
+                              یعنی نیاز برنامه‌ریزی‌شده هنوز تحویل نشده است
+    * ``inconsistent``      → وضعیت ذخیره‌شده با مقدارهای تحویل/برگشت نمی‌خواند،
+                              دقیقاً مطابق همان چیزی که ``has_transaction``،
+                              ``computed_actual_consumption`` و قاعدهٔ گذار وضعیت
+                              در ``execute_daily_return`` تعریف کرده‌اند.
+
+    خروجی: لیستی از ``{'queue': row, 'reasons': [...]}``.
+    """
+    problems = []
+    for queue in qs:
+        planned = _q2(queue.planned_quantity)
+        delivered = _q2(queue.delivered_quantity)
+        returned = _q2(queue.returned_quantity)
+
+        reasons = set()
+        if queue.has_plan_conflict:
+            reasons.add('conflict')
+        if queue.status == 'pending' and planned > 0:
+            reasons.add('incomplete')
+        # ناسازگاری تراکنش: هر چهار حالت زیر در وضعیت‌های موجود صف معنا دارند
+        if returned > delivered:
+            reasons.add('inconsistent')
+        if queue.status in ('delivered', 'returned') and not queue.has_transaction:
+            reasons.add('inconsistent')
+        if queue.status == 'returned' and returned < delivered:
+            reasons.add('inconsistent')
+        if _q2(queue.actual_consumption) != _q2(queue.computed_actual_consumption):
+            reasons.add('inconsistent')
+
+        if reasons:
+            problems.append({'queue': queue, 'reasons': sorted(reasons)})
+
+    return problems
+
+
+def daily_closing_status(date, *, worker_id=None, material_id=None):
+    """
+    «کنترل و بستن روز» برای یک تاریخ کاری — فقط خواندنی.
+
+    هیچ نوشتنی انجام نمی‌دهد: نه ``StockMovement`` می‌سازد، نه تحویل/برگشتی
+    اجرا می‌کند و نه مقداری از صف را تغییر می‌دهد. اعداد از همان سرویس‌های
+    گزارش Phase 7 خوانده می‌شوند تا تعریف دومی از مصرف ساخته نشود.
+
+    وضعیت روز:
+        ``closable``      → هیچ ردیف کنترل‌نشده‌ای وجود ندارد
+        ``needs_review``  → دست‌کم یک conflict / ردیف ناقص / تراکنش ناسازگار
+    """
+    base = daily_queue_filtered_queryset(
+        date, worker_id=worker_id, material_id=material_id,
+    )
+    summary = daily_queue_summary(base)
+
+    problem_rows = (
+        base
+        .select_related('worker', 'raw_material')
+        .order_by('raw_material__name', 'worker__username')
+    )
+    problems = daily_closing_problems(problem_rows)
+
+    incomplete_count = sum(1 for p in problems if 'incomplete' in p['reasons'])
+    conflict_count = sum(1 for p in problems if 'conflict' in p['reasons'])
+    inconsistent_count = sum(1 for p in problems if 'inconsistent' in p['reasons'])
+
+    return {
+        'summary': summary,
+        'problems': problems,
+        'status': 'closable' if not problems else 'needs_review',
+        'closable': not problems,
+        'problem_count': len(problems),
+        'incomplete_count': incomplete_count,
+        'conflict_count': conflict_count,
+        'inconsistent_count': inconsistent_count,
+    }
+
+
+def get_daily_closing(date):
+    """سند تأیید روز، اگر ثبت شده باشد (فقط خواندنی)."""
+    from .models import DailyMaterialClosing
+
+    return DailyMaterialClosing.objects.filter(work_date=date).first()
+
+
+@transaction.atomic
+def confirm_daily_closing(*, date, closed_by, note=''):
+    """
+    ثبت «روز بررسی و تأیید شد» (Phase 9).
+
+    قوانین:
+        * روز دارای مشکل کنترل‌نشده بسته نمی‌شود؛
+        * یک روز دوبار بسته نمی‌شود؛
+        * هیچ ``StockMovement`` ایجاد نمی‌شود؛
+        * هیچ مقدار ``DailyMaterialQueue`` تغییر نمی‌کند.
+
+    وضعیت روز از ``daily_closing_status`` (فقط‌خواندنی) گرفته می‌شود، پس
+    قاعدهٔ تشخیص مشکل در یک نقطه می‌ماند.
+    """
+    from .models import DailyMaterialClosing
+
+    control = daily_closing_status(date)
+
+    if not control['closable']:
+        raise HandoverError(
+            f'این روز قابل بستن نیست: {control["problem_count"]} ردیف '
+            'نیازمند بررسی است (تعارض، ردیف ناقص یا تراکنش ناسازگار).'
+        )
+
+    if DailyMaterialClosing.objects.filter(work_date=date).exists():
+        raise HandoverError('این روز قبلاً بررسی و تأیید شده است.')
+
+    try:
+        closing = DailyMaterialClosing.objects.create(
+            work_date=date,
+            status='confirmed',
+            closed_by=closed_by,
+            note=(note or '')[:255],
+        )
+    except IntegrityError:
+        # unique_together روی work_date: دو درخواست هم‌زمان
+        raise HandoverError('این روز قبلاً بررسی و تأیید شده است.')
+
+    return closing
 
 
 def preview_daily_delivery(queue_id):
@@ -1130,17 +1691,11 @@ def preview_daily_delivery(queue_id):
     try:
         queue = DailyMaterialQueue.objects.get(pk=queue_id)
     except DailyMaterialQueue.DoesNotExist:
-        raise HandoverError('Daily material queue not found.')
+        raise HandoverError('ردیف صف مواد روزانه یافت نشد.')
 
     planned = _q2(queue.planned_quantity)
     pack = _q2(queue.raw_material.pack_size or 0)
-    if planned > 0 and pack > 0:
-        import math
-        packs = int(math.ceil(float(planned) / float(pack)))
-        physical = pack * packs
-    else:
-        packs = 0
-        physical = planned
+    packs, physical = _physical_for(planned, pack)
 
     return {
         'queue': queue,
@@ -1152,4 +1707,5 @@ def preview_daily_delivery(queue_id):
         'enough': physical <= _q2(queue.raw_material.current_stock),
         'name': queue.raw_material.name,
         'unit': queue.raw_material.get_unit_display(),
+        **daily_queue_action_state(queue),
     }

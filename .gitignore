@@ -7,6 +7,10 @@ __pycache__/
 cnc_archive/
 dr_archive/
 *.sqlite3
+# فایل‌های کنار دیتابیس SQLite که با الگوی بالا match نمی‌شوند.
+*.sqlite3-wal
+*.sqlite3-shm
+*.sqlite3-journal
 staticfiles/
 media/
 media/qr/

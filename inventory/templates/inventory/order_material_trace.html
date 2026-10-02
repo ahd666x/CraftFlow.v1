@@ -1,0 +1,128 @@
+{% extends "inventory/base.html" %}
+{% block title %}ردیابی مواد سفارش{% endblock %}
+
+{% block inventory_content %}
+{% include "inventory/_js_error_guard.html" %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <div>
+    <h1 class="h3 mb-1">ردیابی مواد سفارش #{{ order.id }}</h1>
+    <div class="small text-muted">
+      مسیر: سفارش ← تسک تولید ← مرحلهٔ نقاشی ← نیاز ماده ← صف روزانه ← تحویل ← برگشت ← مصرف واقعی ← حرکت انبار
+    </div>
+  </div>
+  <span class="badge bg-secondary">فقط خواندنی</span>
+</div>
+
+<ol class="breadcrumb small">
+  <li class="breadcrumb-item">سفارش</li>
+  <li class="breadcrumb-item">تولید</li>
+  <li class="breadcrumb-item">صف مواد روزانه</li>
+  <li class="breadcrumb-item active">مصرف</li>
+</ol>
+
+{% if trace.rows %}
+  <div class="row g-3 mb-3">
+    <div class="col-6 col-md-3">
+      <div class="card-modern h-100"><div class="card-body py-3">
+        <div class="text-muted small">مواد موردنیاز</div>
+        <div class="h5 mb-0">{{ trace.totals.planned|floatformat:2 }}</div>
+      </div></div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card-modern h-100"><div class="card-body py-3">
+        <div class="text-muted small">تحویل‌شده</div>
+        <div class="h5 mb-0">{{ trace.totals.delivered|floatformat:2 }}</div>
+      </div></div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card-modern h-100"><div class="card-body py-3">
+        <div class="text-muted small">برگشتی</div>
+        <div class="h5 mb-0">{{ trace.totals.returned|floatformat:2 }}</div>
+      </div></div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card-modern h-100"><div class="card-body py-3">
+        <div class="text-muted small">مصرف واقعی</div>
+        <div class="h5 mb-0">{{ trace.totals.actual|floatformat:2 }}</div>
+      </div></div>
+    </div>
+  </div>
+
+  <div class="card-modern mb-3">
+    <div class="card-body">
+      <h2 class="h6 mb-2">مواد سفارش</h2>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead>
+            <tr>
+              <th>ماده</th><th>واحد</th><th>مواد موردنیاز</th><th>تحویل‌شده</th>
+              <th>برگشتی</th><th>مصرف واقعی</th><th>وضعیت</th><th>تسک‌ها</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in trace.rows %}
+              <tr>
+                <td>{{ row.raw_material }}</td>
+                <td class="small text-muted">{{ row.unit }}</td>
+                <td>{{ row.planned|floatformat:2 }}</td>
+                <td>{{ row.delivered|floatformat:2 }}</td>
+                <td>{{ row.returned|floatformat:2 }}</td>
+                <td class="fw-bold">{{ row.actual|floatformat:2 }}</td>
+                <td>
+                  {% if row.status == 'conflict' %}
+                    <span class="badge bg-danger">تعارض</span>
+                  {% elif row.status == 'delivered' %}
+                    <span class="badge bg-success">تحویل شده</span>
+                  {% elif row.status == 'returned' %}
+                    <span class="badge bg-info text-dark">برگشت شده</span>
+                  {% else %}
+                    <span class="badge bg-warning text-dark">در انتظار</span>
+                  {% endif %}
+                </td>
+                <td class="small text-muted">{{ row.task_count }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="small text-muted mb-0 mt-2">
+        سهم هر سفارش از یک ردیف صف روزانه به نسبت سهمش از
+        <code>DailyMaterialQueueSource</code> محاسبه می‌شود؛ چون صف روزانه برای
+        «کارگر + ماده + تاریخ» مشترک است.
+      </p>
+    </div>
+  </div>
+
+  <div class="card-modern">
+    <div class="card-body">
+      <h2 class="h6 mb-2">حرکات انبار این سفارش ({{ trace.totals.movement_count }})</h2>
+      {% if trace.movements %}
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead>
+              <tr><th>تاریخ</th><th>ماده</th><th>نوع</th><th>مقدار</th><th>یادداشت</th></tr>
+            </thead>
+            <tbody>
+              {% for movement in trace.movements %}
+                <tr>
+                  <td class="text-nowrap">{{ movement.created_at|date:"Y/m/d H:i" }}</td>
+                  <td>{{ movement.raw_material.name }}</td>
+                  <td>{{ movement.get_movement_type_display }}</td>
+                  <td>{{ movement.quantity|floatformat:2 }}</td>
+                  <td class="small text-muted">{{ movement.note|default:"—" }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="text-muted mb-0">حرکت انباری برای این سفارش ثبت نشده است.</p>
+      {% endif %}
+    </div>
+  </div>
+{% else %}
+  <div class="alert alert-info mb-0">
+    برای این سفارش هیچ ردیف صف موادی ساخته نشده است (هنوز تسک نقاشی یا نیاز ماده ثبت نشده).
+  </div>
+{% endif %}
+{% endblock %}

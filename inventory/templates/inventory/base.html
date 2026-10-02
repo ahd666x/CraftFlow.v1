@@ -8,6 +8,16 @@
 <style>
     :root { --brand-accent: #16a34a; }
 </style>
+{# چاپ تمیز این پنل؛ print-base.css عمومی است و کلاس‌های این نوار را نمی‌شناسد. #}
+<style>
+    @media print {
+        .header-nav { display: none !important; }
+        .card-modern { border: 1px solid #999 !important; box-shadow: none !important; }
+        .table-responsive { overflow: visible !important; }
+        .fade-in { opacity: 1 !important; }
+        @page { size: A4 portrait; margin: 10mm; }
+    }
+</style>
 {% endblock %}
 
 {% block nav %}
@@ -23,6 +33,30 @@
         </a>
         <a href="{% url 'inventory:custody_board' %}" class="nav-link {% if active_tab == 'custody' %}active{% endif %}">
             <i class="bi bi-person-check"></i> تحویل روزانه نقاشی
+        </a>
+        <a href="{% url 'inventory:daily_material_queue' %}" class="nav-link {% if active_tab == 'daily_queue' %}active{% endif %}">
+            <i class="bi bi-clipboard2-data"></i> صف مواد روزانه
+        </a>
+        <a href="{% url 'inventory:daily_closing' %}" class="nav-link {% if active_tab == 'daily_closing' %}active{% endif %}">
+            <i class="bi bi-shield-check"></i> کنترل و بستن روز
+        </a>
+        <a href="{% url 'inventory:material_dashboard' %}" class="nav-link {% if active_tab == 'material_dashboard' %}active{% endif %}">
+            <i class="bi bi-speedometer2"></i> داشبورد مواد
+        </a>
+        <a href="{% url 'inventory:inventory_alerts' %}" class="nav-link {% if active_tab == 'inventory_alerts' %}active{% endif %}">
+            <i class="bi bi-bell"></i> هشدارها
+        </a>
+        <a href="{% url 'inventory:material_ledger' %}" class="nav-link {% if active_tab == 'material_ledger' %}active{% endif %}">
+            <i class="bi bi-journal-text"></i> دفتر مواد
+        </a>
+        <a href="{% url 'inventory:consumption_report' %}" class="nav-link {% if active_tab == 'consumption_report' %}active{% endif %}">
+            <i class="bi bi-graph-down"></i> تحلیل مصرف
+        </a>
+        <a href="{% url 'inventory:historical_reports' %}" class="nav-link {% if active_tab == 'historical_reports' %}active{% endif %}">
+            <i class="bi bi-calendar3"></i> گزارش‌های تاریخی
+        </a>
+        <a href="{% url 'inventory:data_integrity_audit' %}" class="nav-link {% if active_tab == 'audit' %}active{% endif %}">
+            <i class="bi bi-shield-exclamation"></i> حسابرسی داده
         </a>
         <a href="{% url 'inventory:supplier_list' %}" class="nav-link {% if active_tab == 'suppliers' %}active{% endif %}">
             <i class="bi bi-truck"></i> تامین‌کنندگان

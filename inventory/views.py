@@ -1,4 +1,5 @@
 import json
+import logging
 from decimal import Decimal, InvalidOperation
 
 from django.contrib import messages
@@ -7,7 +8,8 @@ from django.contrib.auth.models import User
 from django.core.paginator import Paginator
 from django.db.models import Q, Sum, Count, F, Case, When, Value, CharField, ProtectedError, DecimalField
 from django.db.models.functions import Coalesce
-from django.http import JsonResponse, HttpResponseForbidden
+from django.http import JsonResponse, HttpResponse, HttpResponseForbidden
+from django.utils import timezone
 from django.shortcuts import get_object_or_404, render, redirect
 from django.template.loader import render_to_string
 from django.db.transaction import atomic
@@ -17,7 +19,8 @@ from product.decorators import admin_or_manager_required, warehouse_or_manager_r
 from .models import (
     Supplier, RawMaterialCategory, RawMaterial,
     StockMovement, PurchaseOrder, PurchaseOrderItem,
-    MaterialCustody, MaterialIssue
+    MaterialCustody, MaterialIssue, DailyMaterialQueue,
+    DailyMaterialClosing,
 )
 from .forms import (
     SupplierForm, RawMaterialCategoryForm, RawMaterialForm,
@@ -26,6 +29,9 @@ from .forms import (
 
 from . import services
 from .services import HandoverError
+
+
+logger = logging.getLogger(__name__)
 
 
 # ============================================================
@@ -521,6 +527,587 @@ def custody_board(request):
         'only_open': only_open,
         'page_version': _page_version(),
     }))
+
+
+# ============================================================
+# Daily Material Queue (Phase 4)
+# ============================================================
+
+@login_required
+@warehouse_or_manager_required
+def daily_material_queue(request):
+    """صفحهٔ صف مواد روزانه انبار — مشتق از برنامهٔ نقاشی.
+
+    گزارش‌گیری و جمع‌ها در ``services.daily_material_report`` است تا منطق
+    مصرف یک تعریف داشته باشد؛ این ویو فقط فیلترها را می‌خواند و صفحه را
+    رندر می‌کند.
+    """
+    import jdatetime
+    from product.utils import parse_jalali_date
+
+    # تاریخ انتخابی به تقویم شمسی (مثل بقیهٔ صفحات برنامه) — پیش‌فرض: امروز.
+    # استفاده از parse_jalali_date عمداً مهم است: widget تاریخ در قالب، شمسی
+    # ارسال می‌کند و تفسیر آن به‌عنوان میلادی روز اشتباه را نشان می‌داد.
+    date_str = request.GET.get('date', '').strip()
+    if date_str:
+        try:
+            selected_date = parse_jalali_date(date_str)
+        except (ValueError, TypeError):
+            selected_date = jdatetime.date.today()
+    else:
+        selected_date = jdatetime.date.today()
+
+    def _int(raw):
+        try:
+            return int(raw) if raw not in (None, '') else None
+        except (TypeError, ValueError):
+            return None
+
+    worker_filter = request.GET.get('worker', '').strip()
+    material_filter = request.GET.get('material', '').strip()
+    status_filter = request.GET.get('status', '').strip()
+
+    report = services.daily_material_report(
+        selected_date.togregorian(),
+        worker_id=_int(worker_filter),
+        material_id=_int(material_filter),
+        status=status_filter or None,
+    )
+
+    paginator = Paginator(report['rows'], 25)
+    queues = paginator.get_page(request.GET.get('page'))
+
+    context = {
+        **_inventory_context('daily_queue'),
+        'queues': queues,
+        'summary': report['summary'],
+        'total_count': paginator.count,
+        'selected_gregorian': selected_date.togregorian(),
+        'date_str': selected_date.strftime('%Y-%m-%d'),
+        'paint_workers': _paint_workers(),
+        'materials': RawMaterial.objects.filter(is_active=True).order_by('category__name', 'name'),
+        'status_choices': DailyMaterialQueue.STATUS_CHOICES,
+        'worker_filter': worker_filter,
+        'material_filter': material_filter,
+        'status_filter': status_filter,
+        'page_version': _page_version(),
+    }
+    return _no_store(render(request, 'inventory/daily_material_queue.html', context))
+
+
+@login_required
+@warehouse_or_manager_required
+@require_POST
+def daily_queue_delivery(request, queue_id):
+    """تحویل مواد برای یک ردیف صف روزانه.
+
+    تمام منطق تحویل (مقدار بسته‌بندی، بررسی موجودی، ثبت حرکت انبار) در
+    ``services.execute_daily_delivery`` است؛ این ویو فقط آن را صدا می‌زند و
+    هیچ مقدار موجودی را مستقیم دستکاری نمی‌کند.
+    """
+    if request.headers.get('X-Requested-With') != 'XMLHttpRequest':
+        return HttpResponseForbidden()
+
+    try:
+        queue = services.execute_daily_delivery(
+            queue_id=queue_id,
+            delivered_by=request.user,
+            note=str(request.POST.get('note') or '').strip(),
+        )
+    except HandoverError as exc:
+        return JsonResponse({'success': False, 'error': str(exc)}, status=400)
+    except Exception:
+        # جزئیات خطا به کاربر نشان داده نمی‌شود؛ فقط ثبت می‌شود.
+        logger.exception('daily_queue_delivery: unexpected error for queue %s', queue_id)
+        return JsonResponse(
+            {'success': False, 'error': 'ثبت تحویل انجام نشد. لطفاً دوباره تلاش کنید.'},
+            status=500,
+        )
+
+    messages.success(
+        request,
+        f'تحویل مواد با موفقیت ثبت شد — «{queue.raw_material.name}» به '
+        f'«{queue.worker.get_full_name() or queue.worker.username}».',
+    )
+    return JsonResponse({
+        'success': True,
+        'delivered_quantity': str(queue.delivered_quantity),
+        'status': queue.status,
+        'status_display': queue.get_status_display(),
+        'actual_consumption': str(queue.actual_consumption),
+    })
+
+
+@login_required
+@warehouse_or_manager_required
+@require_POST
+def daily_queue_return(request, queue_id):
+    """ثبت بازگشت مواد برای یک ردیف صف روزانه."""
+    if request.headers.get('X-Requested-With') != 'XMLHttpRequest':
+        return HttpResponseForbidden()
+
+    try:
+        returned_quantity = request.POST.get('returned_quantity')
+        if returned_quantity in (None, ''):
+            return JsonResponse({'success': False, 'error': 'مقدار برگشتی را وارد کنید.'}, status=400)
+
+        queue = services.execute_daily_return(
+            queue_id=queue_id,
+            returned_by=request.user,
+            returned_quantity=returned_quantity,
+            note=str(request.POST.get('note') or '').strip(),
+        )
+    except HandoverError as exc:
+        return JsonResponse({'success': False, 'error': str(exc)}, status=400)
+    except Exception:
+        logger.exception('daily_queue_return: unexpected error for queue %s', queue_id)
+        return JsonResponse(
+            {'success': False, 'error': 'ثبت بازگشت انجام نشد. لطفاً دوباره تلاش کنید.'},
+            status=500,
+        )
+
+    messages.success(request, 'بازگشت مواد با موفقیت ثبت شد.')
+    return JsonResponse({
+        'success': True,
+        'returned_quantity': str(queue.returned_quantity),
+        'actual_consumption': str(queue.actual_consumption),
+        'excess_consumption': str(queue.excess_consumption),
+        'status': queue.status,
+        'status_display': queue.get_status_display(),
+    })
+
+
+@login_required
+@warehouse_or_manager_required
+def daily_closing(request):
+    """کنترل و بستن روز — فقط خواندنی (Phase 8).
+
+    هیچ نوشتنی انجام نمی‌شود؛ فقط از سرویس‌های گزارش Phase 7 خوانده می‌شود.
+    """
+    import jdatetime
+    from product.utils import parse_jalali_date
+
+    date_str = request.GET.get('date', '').strip()
+    if date_str:
+        try:
+            selected_date = parse_jalali_date(date_str)
+        except (ValueError, TypeError):
+            selected_date = jdatetime.date.today()
+    else:
+        selected_date = jdatetime.date.today()
+
+    def _int(raw):
+        try:
+            return int(raw) if raw not in (None, '') else None
+        except (TypeError, ValueError):
+            return None
+
+    worker_filter = request.GET.get('worker', '').strip()
+    material_filter = request.GET.get('material', '').strip()
+
+    control = services.daily_closing_status(
+        selected_date.togregorian(),
+        worker_id=_int(worker_filter),
+        material_id=_int(material_filter),
+    )
+    closing = services.get_daily_closing(selected_date.togregorian())
+
+    context = {
+        **_inventory_context('daily_closing'),
+        'control': control,
+        'closing': closing,
+        'already_closed': closing is not None,
+        'summary': control['summary'],
+        'problems': control['problems'],
+        'selected_date': selected_date,
+        'selected_gregorian': selected_date.togregorian(),
+        'date_str': selected_date.strftime('%Y-%m-%d'),
+        'paint_workers': _paint_workers(),
+        'materials': RawMaterial.objects.filter(is_active=True).order_by('category__name', 'name'),
+        'worker_filter': worker_filter,
+        'material_filter': material_filter,
+        'page_version': _page_version(),
+    }
+    return _no_store(render(request, 'inventory/daily_closing.html', context))
+
+
+@login_required
+@warehouse_or_manager_required
+@require_POST
+def daily_closing_confirm(request):
+    """ثبت «روز بررسی و تأیید شد» (Phase 9).
+
+    هیچ StockMovement ایجاد نمی‌کند و هیچ مقدار Queue را تغییر نمی‌دهد؛
+    فقط سند تأیید روز را ثبت می‌کند.
+    """
+    from . import reports  # noqa: F401  (بسته به مسیر استفاده می‌شود)
+    import jdatetime
+    from product.utils import parse_jalali_date
+
+    date_str = request.POST.get('date', '').strip()
+    try:
+        selected_date = parse_jalali_date(date_str) if date_str else jdatetime.date.today()
+    except (ValueError, TypeError):
+        messages.error(request, 'تاریخ واردشده معتبر نیست.')
+        return redirect('inventory:daily_closing')
+
+    try:
+        services.confirm_daily_closing(
+            date=selected_date.togregorian(),
+            closed_by=request.user,
+            note=request.POST.get('note', ''),
+        )
+    except services.HandoverError as exc:
+        messages.error(request, str(exc))
+    else:
+        messages.success(
+            request,
+            f'روز {selected_date.strftime("%Y/%m/%d")} بررسی و تأیید شد.',
+        )
+    return redirect('inventory:daily_closing')
+
+
+# ---------------------------------------------------------------------
+#  Phase 10 — دفتر گردش مواد
+# ---------------------------------------------------------------------
+
+def _report_filters(request):
+    """خواندن فیلترهای مشترک گزارش‌ها به‌صورت خوانا و بدون تکرار."""
+    def _int(name):
+        raw = request.GET.get(name, '').strip()
+        try:
+            return int(raw) if raw else None
+        except (TypeError, ValueError):
+            return None
+
+    return {
+        'date_from': _parse_date_param(request.GET.get('date_from')),
+        'date_to': _parse_date_param(request.GET.get('date_to')),
+        'material_id': _int('material'),
+        'worker_id': _int('worker'),
+        'order_id': _int('order'),
+        'movement_type': request.GET.get('movement_type', '').strip() or None,
+        'product_id': _int('product'),
+        'color_part': request.GET.get('color_part', '').strip() or None,
+        'status': request.GET.get('status', '').strip() or None,
+    }
+
+
+def _historical_kwargs(filters):
+    """فقط کلیدهایی که ``historical_report`` می‌پذیرد (مثلاً movement_type ندارد)."""
+    allowed = (
+        'date_from', 'date_to', 'material_id', 'worker_id', 'order_id',
+        'product_id', 'color_part', 'status',
+    )
+    return {key: filters[key] for key in allowed if key in filters}
+
+
+def _parse_date_param(raw):
+    """تاریخ میلادی از query string (YYYY-MM-DD)؛ در نبود مقدار، None."""
+    raw = (raw or '').strip()
+    if not raw:
+        return None
+    try:
+        return timezone.datetime.strptime(raw, '%Y-%m-%d').date()
+    except (ValueError, TypeError):
+        return None
+
+
+@login_required
+@warehouse_or_manager_required
+def material_ledger(request):
+    """دفتر گردش مواد بر اساس StockMovement — فقط خواندنی."""
+    from . import reports
+
+    filters = _report_filters(request)
+    ledger = reports.material_ledger(**{
+        k: v for k, v in filters.items()
+        if k in ('date_from', 'date_to', 'material_id', 'worker_id',
+                 'order_id', 'movement_type')
+    })
+
+    context = {
+        **_inventory_context('material_ledger'),
+        'ledger': ledger,
+        'rows': ledger['rows'],
+        'materials': ledger['materials'],
+        'movement_types': StockMovement.MOVEMENT_TYPES,
+        'paint_workers': _paint_workers(),
+        'filters': filters,
+        'page_version': _page_version(),
+    }
+    return _no_store(render(request, 'inventory/material_ledger.html', context))
+
+
+# ---------------------------------------------------------------------
+#  Phase 11 — تحلیل مصرف
+# ---------------------------------------------------------------------
+
+@login_required
+@warehouse_or_manager_required
+def consumption_report(request):
+    """Planned / Delivered / Returned / Actual / Variance — فقط خواندنی."""
+    from . import reports
+
+    filters = _report_filters(request)
+    report = reports.consumption_report(**{
+        k: v for k, v in filters.items()
+        if k in ('date_from', 'date_to', 'material_id', 'worker_id')
+    })
+
+    context = {
+        **_inventory_context('consumption_report'),
+        'report': report,
+        'rows': report['rows'],
+        'totals': report['totals'],
+        'materials': RawMaterial.objects.filter(is_active=True).order_by('name'),
+        'paint_workers': _paint_workers(),
+        'filters': filters,
+        'page_version': _page_version(),
+    }
+    return _no_store(render(request, 'inventory/consumption_report.html', context))
+
+
+# ---------------------------------------------------------------------
+#  Phase 12 — ردیابی مواد سفارش
+# ---------------------------------------------------------------------
+
+@login_required
+@warehouse_or_manager_required
+def order_material_traceability(request, order_id):
+    """مسیر کامل ماده از سفارش تا مصرف — فقط خواندنی."""
+    from django.shortcuts import get_object_or_404 as _get
+    from product.models import Order
+    from . import reports
+
+    order = _get(Order.objects.all(), pk=order_id)
+    trace = reports.order_material_traceability(order)
+
+    context = {
+        **_inventory_context('orders'),
+        'order': order,
+        'trace': trace,
+        'page_version': _page_version(),
+    }
+    return _no_store(render(request, 'inventory/order_material_trace.html', context))
+
+
+# ---------------------------------------------------------------------
+#  Phase 13 — داشبورد برنامه‌ریزی مواد
+# ---------------------------------------------------------------------
+
+@login_required
+@warehouse_or_manager_required
+def material_dashboard(request):
+    """داشبورد مدیریتی مواد + بخش انبار — فقط خواندنی."""
+    from . import reports
+    import jdatetime
+    from product.utils import parse_jalali_date
+
+    date_str = request.GET.get('date', '').strip()
+    if date_str:
+        try:
+            selected = parse_jalali_date(date_str)
+        except (ValueError, TypeError):
+            selected = jdatetime.date.today()
+    else:
+        selected = jdatetime.date.today()
+
+    data = reports.material_planning_dashboard(selected.togregorian())
+
+    context = {
+        **_inventory_context('material_dashboard'),
+        'data': data,
+        'manager': data['manager'],
+        'warehouse': data['warehouse'],
+        'date_str': selected.strftime('%Y-%m-%d'),
+        'selected_date': selected,
+        'page_version': _page_version(),
+    }
+    return _no_store(render(request, 'inventory/material_dashboard.html', context))
+
+
+# ---------------------------------------------------------------------
+#  Phase 14 — هشدارها
+# ---------------------------------------------------------------------
+
+@login_required
+@warehouse_or_manager_required
+def inventory_alerts(request):
+    """هشدارهای عملیاتی — فقط نمایش، بدون هیچ تراکنشی."""
+    from . import reports
+    import jdatetime
+    from product.utils import parse_jalali_date
+
+    date_str = request.GET.get('date', '').strip()
+    if date_str:
+        try:
+            selected = parse_jalali_date(date_str)
+        except (ValueError, TypeError):
+            selected = jdatetime.date.today()
+    else:
+        selected = jdatetime.date.today()
+
+    data = reports.inventory_alerts(selected.togregorian())
+
+    context = {
+        **_inventory_context('inventory_alerts'),
+        'alerts': data['alerts'],
+        'total': data['total'],
+        'date_str': selected.strftime('%Y-%m-%d'),
+        'page_version': _page_version(),
+    }
+    return _no_store(render(request, 'inventory/inventory_alerts.html', context))
+
+
+# ---------------------------------------------------------------------
+#  Phase 15 — گزارش‌های تاریخی
+# ---------------------------------------------------------------------
+
+@login_required
+@warehouse_or_manager_required
+def historical_reports(request):
+    """گزارش‌های تاریخی فقط‌خواندنی با خروجی HTML و Print."""
+    from . import reports
+
+    report_key = request.GET.get('report', 'consumption')
+    filters = _report_filters(request)
+    try:
+        data = reports.historical_report(report=report_key, **_historical_kwargs(filters))
+    except ValueError:
+        data = None
+
+    from product.models import Order, Product
+
+    context = {
+        **_inventory_context('historical_reports'),
+        'data': data,
+        'report_options': reports.HISTORICAL_REPORTS,
+        'selected_report': report_key,
+        'materials': RawMaterial.objects.filter(is_active=True).order_by('name'),
+        'paint_workers': _paint_workers(),
+        'orders': Order.objects.all().order_by('-id')[:200],
+        'products': Product.objects.filter(is_active=True).order_by('name')[:200],
+        'status_choices': DailyMaterialQueue.STATUS_CHOICES,
+        'filters': filters,
+        'page_version': _page_version(),
+    }
+    return _no_store(render(request, 'inventory/historical_reports.html', context))
+
+
+@login_required
+@warehouse_or_manager_required
+def historical_reports_csv(request):
+    """خروجی CSV همان گزارش تاریخی (بدون وابستگی خارجی)."""
+    import csv
+    from . import reports
+
+    report_key = request.GET.get('report', 'consumption')
+    try:
+        data = reports.historical_report(
+            report=report_key, **_historical_kwargs(_report_filters(request)))
+    except ValueError:
+        return HttpResponse('گزارش ناشناخته', status=400, content_type='text/plain; charset=utf-8')
+
+    response = HttpResponse(content_type='text/csv; charset=utf-8-sig')
+    filename = f'craftflow-{report_key}.csv'
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    # BOM تا Excel فارسی را درست باز کند
+    response.write('﻿')
+
+    writer = csv.writer(response)
+    writer.writerow(data['columns'])
+    for row in data['rows']:
+        writer.writerow(row)
+    return response
+
+
+# ---------------------------------------------------------------------
+#  Phase 16 — حسابرسی یکپارچگی داده
+# ---------------------------------------------------------------------
+
+@login_required
+@admin_or_manager_required
+def data_integrity_audit(request):
+    """تشخیص مشکلات یکپارچگی داده — فقط گزارش، بدون اصلاح خودکار."""
+    from . import reports
+
+    data = reports.data_integrity_audit()
+
+    context = {
+        **_inventory_context('audit'),
+        'data': data,
+        'issues': data['issues'],
+        'page_version': _page_version(),
+    }
+    return _no_store(render(request, 'inventory/data_integrity_audit.html', context))
+
+
+@login_required
+@warehouse_or_manager_required
+def daily_queue_sources(request, queue_id):
+    """منابع یک ردیف صف روزانه (برای تفکیک برنامه‌ریزی)."""
+    queue = get_object_or_404(DailyMaterialQueue.objects.select_related('worker', 'raw_material'), pk=queue_id)
+    sources = queue.sources.select_related('production_task__order_item__product', 'painting_stage__process').all()
+    state = services.daily_queue_action_state(queue)
+
+    rows = []
+    for src in sources:
+        rows.append({
+            'task_id': src.production_task_id,
+            'task_label': f"تسک #{src.production_task_id}",
+            'stage_name': src.painting_stage.name if src.painting_stage else '—',
+            'process_name': src.painting_stage.process.name if src.painting_stage and src.painting_stage.process else '—',
+            'color_part': src.production_task.color_part or '—',
+            'quantity': str(src.quantity),
+            'order_item': f"آیتم #{src.production_task.order_item_id}" if src.production_task.order_item_id else '—',
+        })
+
+    return JsonResponse({
+        'success': True,
+        'queue_id': queue.id,
+        'worker': queue.worker.get_full_name() or queue.worker.username,
+        'material': queue.raw_material.name,
+        'unit': queue.raw_material.get_unit_display(),
+        'planned_quantity': str(queue.planned_quantity),
+        'delivered_quantity': str(queue.delivered_quantity),
+        'returned_quantity': str(queue.returned_quantity),
+        'actual_consumption': str(queue.actual_consumption),
+        'excess_consumption': str(queue.excess_consumption),
+        'status': queue.status,
+        'status_display': queue.get_status_display(),
+        'has_plan_conflict': queue.has_plan_conflict,
+        'conflict_note': queue.conflict_note or '',
+        # وضعیت اقدام‌ها از سرویس می‌آید تا JS قاعده را تکرار نکند.
+        'can_deliver': state['can_deliver'],
+        'can_return': state['can_return'],
+        'max_returnable': state['max_returnable'],
+        'rows': rows,
+    })
+
+
+@login_required
+@warehouse_or_manager_required
+def daily_queue_preview_delivery(request, queue_id):
+    """پیش‌نمایش تحویل برای یک ردیف صف روزانه."""
+    try:
+        preview = services.preview_daily_delivery(queue_id)
+        return JsonResponse({
+            'success': True,
+            'planned': str(preview['planned']),
+            'pack_size': str(preview['pack_size']),
+            'packs': preview['packs'],
+            'physical': str(preview['physical']),
+            'stock': str(preview['stock']),
+            'enough': preview['enough'],
+            'name': preview['name'],
+            'unit': preview['unit'],
+            'status': preview['status'],
+            'status_display': preview['status_display'],
+            'can_deliver': preview['can_deliver'],
+        })
+    except services.HandoverError as exc:
+        return JsonResponse({'success': False, 'error': str(exc)}, status=400)
 
 
 def _post_data(request):

@@ -1,0 +1,156 @@
+{% extends "inventory/base.html" %}
+{% block title %}داشبورد برنامه‌ریزی مواد{% endblock %}
+
+{% block inventory_content %}
+{% include "inventory/_js_error_guard.html" %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <div>
+    <h1 class="h3 mb-1">داشبورد برنامه‌ریزی مواد</h1>
+    <div class="small text-muted">
+      تاریخ کاری: <code dir="ltr">{{ date_str }}</code> — فقط‌خواندنی
+    </div>
+  </div>
+  <div class="d-flex gap-2">
+    <a href="{% url 'inventory:inventory_alerts' %}?date={{ date_str }}" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-bell"></i> هشدارها
+    </a>
+    <a href="{% url 'inventory:daily_closing' %}?date={{ date_str }}" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-shield-check"></i> بستن روز
+    </a>
+  </div>
+</div>
+
+<h2 class="h5 mb-2"><i class="bi bi-person-gear"></i> نمای مدیریت</h2>
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-4 col-lg-2">
+    <div class="card-modern h-100"><div class="card-body py-3">
+      <div class="text-muted small">سفارش‌های فعال</div>
+      <div class="h5 mb-0">{{ manager.active_orders }}</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md-4 col-lg-2">
+    <div class="card-modern h-100"><div class="card-body py-3">
+      <div class="text-muted small">Painting Tasks</div>
+      <div class="h5 mb-0">{{ manager.painting_tasks }}</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md-4 col-lg-2">
+    <div class="card-modern h-100"><div class="card-body py-3">
+      <div class="text-muted small">مواد موردنیاز</div>
+      <div class="h5 mb-0">{{ manager.planned|floatformat:2 }}</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md-4 col-lg-2">
+    <div class="card-modern h-100"><div class="card-body py-3">
+      <div class="text-muted small">تحویل‌شده</div>
+      <div class="h5 mb-0">{{ manager.delivered|floatformat:2 }}</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md-4 col-lg-2">
+    <div class="card-modern h-100"><div class="card-body py-3">
+      <div class="text-muted small">برگشتی</div>
+      <div class="h5 mb-0">{{ manager.returned|floatformat:2 }}</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md-4 col-lg-2">
+    <div class="card-modern h-100"><div class="card-body py-3">
+      <div class="text-muted small">مصرف واقعی</div>
+      <div class="h5 mb-0">{{ manager.actual|floatformat:2 }}</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md-4 col-lg-2">
+    <div class="card-modern h-100"><div class="card-body py-3">
+      <div class="text-muted small">تعارض</div>
+      <div class="h5 mb-0 {% if manager.conflict_count %}text-danger{% endif %}">{{ manager.conflict_count }}</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md-4 col-lg-2">
+    <div class="card-modern h-100"><div class="card-body py-3">
+      <div class="text-muted small">نیازمند بررسی</div>
+      <div class="h5 mb-0 {% if manager.incomplete_count %}text-warning{% endif %}">{{ manager.incomplete_count }}</div>
+    </div></div>
+  </div>
+</div>
+
+{% if manager.conflict_rows %}
+<div class="card-modern mb-4">
+  <div class="card-body">
+    <h3 class="h6 mb-2">تعارض‌های امروز</h3>
+    <ul class="small mb-0">
+      {% for row in manager.conflict_rows %}
+        <li>{{ row.worker }} / {{ row.raw_material.name }} — {{ row.conflict_note|default:"برنامه تغییر کرده" }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+{% endif %}
+
+<h2 class="h5 mb-2"><i class="bi bi-box-seam"></i> نمای انبار</h2>
+<div class="card-modern mb-4">
+  <div class="card-body">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <h3 class="h6 mb-0">وضعیت موجودی</h3>
+      <span class="badge {% if warehouse.low_count %}bg-danger{% else %}bg-success{% endif %}">
+        {{ warehouse.low_count }} ماده کم‌موجود
+      </span>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead>
+          <tr>
+            <th>ماده</th><th>واحد</th><th>موجودی</th><th>حد هشدار</th><th>وضعیت</th><th>نیاز امروز</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in warehouse.materials %}
+            <tr class="{% if m.low %}table-warning{% endif %}">
+              <td>{{ m.name }}</td>
+              <td class="small text-muted">{{ m.unit }}</td>
+              <td class="fw-bold">{{ m.stock|floatformat:2 }}</td>
+              <td>{{ m.min_stock_alert|floatformat:2 }}</td>
+              <td>
+                {% if m.low %}<span class="badge bg-danger">کم‌موجود</span>
+                {% else %}<span class="badge bg-success">کافی</span>{% endif %}
+              </td>
+              <td>{% if m.needed_today %}<span class="badge bg-info text-dark">دارد</span>
+                {% else %}<span class="text-muted">—</span>{% endif %}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="card-modern">
+  <div class="card-body">
+    <h3 class="h6 mb-2">کارگران</h3>
+    {% if warehouse.workers %}
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead>
+            <tr>
+              <th>کارگر</th><th>کارهای امروز</th><th>مواد موردنیاز</th>
+              <th>تحویل</th><th>برگشت</th><th>مصرف</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for w in warehouse.workers %}
+              <tr>
+                <td>{{ w.name }}</td>
+                <td>{{ w.tasks }}</td>
+                <td>{{ w.planned|floatformat:2 }}</td>
+                <td>{{ w.delivered|floatformat:2 }}</td>
+                <td>{{ w.returned|floatformat:2 }}</td>
+                <td class="fw-bold">{{ w.actual|floatformat:2 }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="text-muted mb-0">برای این تاریخ کارگری در برنامهٔ نقاشی نیست.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -5,24 +5,12 @@ with open("product/utils.py", encoding="utf-8") as f:
     src = f.read()
 
 # Find the return block after schedule_paint_items_auto
-# Use a more flexible anchor
 old = "cnt, last_date, _ = schedule_paint_items_auto("
 idx = src.find(old)
 if idx == -1:
     print("ERROR: schedule_paint_items_auto not found")
 else:
     # Find the return statement after this
-    ret_idx = src.find("return {", idx)
-    # Find the closing of this return block (next 'def ' or end of function)
-    next_def = src.find("\n\ndef ", ret_idx)
-    if next_def == -1:
-        next_def = len(src)
-    
-    block = src[idx:next_def]
-    print("Block found:")
-    print(block[:500])
-    
-    # Insert sync call before the return
     insert_before = "        return {"
     insert_pos = src.find(insert_before, idx)
     if insert_pos != -1:

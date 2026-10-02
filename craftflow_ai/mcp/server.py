@@ -46,7 +46,8 @@ from craftflow_ai.mcp.adapter import MCPToolAdapter, create_adapter_for_initiali
 from craftflow_ai.mcp.schemas import get_all_mcp_tools
 from craftflow_ai.mcp.errors import (
     MCPError, validate_json_rpc_request, map_craftflow_error,
-    MCP_METHOD_NOT_FOUND, MCP_INVALID_REQUEST, MCP_INTERNAL_ERROR
+    MCP_METHOD_NOT_FOUND, MCP_INVALID_REQUEST, MCP_INTERNAL_ERROR,
+    MCP_INVALID_PARAMS
 )
 from craftflow_ai.mcp.auth import MCPAuthError
 
@@ -89,6 +90,9 @@ class MCPServer:
                 result = self._handle_shutdown(params)
             elif method == 'ping':
                 result = {}
+            elif method == 'notifications/initialized':
+                # Client notification that initialization is complete - no response needed
+                return None
             else:
                 raise MCPError(MCP_METHOD_NOT_FOUND, f'Unknown method: {method}')
 
@@ -166,7 +170,30 @@ class MCPServer:
             user_id=user_id,
         )
 
-        return result
+        # Convert to MCP CallToolResult format
+        return self._convert_to_mcp_result(result)
+
+    def _convert_to_mcp_result(self, result: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert CraftFlow tool result to MCP CallToolResult format."""
+        import json
+
+        success = result.get('success', False)
+        is_error = not success
+
+        if success:
+            data = result.get('data', {})
+            metadata = result.get('metadata', {})
+            # Include metadata in the response for debugging
+            content_text = json.dumps({'data': data, 'metadata': metadata}, ensure_ascii=False, default=str)
+        else:
+            error = result.get('error', {})
+            content_text = json.dumps({'error': error}, ensure_ascii=False, default=str)
+
+        return {
+            'content': [{'type': 'text', 'text': content_text}],
+            'isError': is_error,
+            'structuredContent': result,
+        }
 
     def _handle_shutdown(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Handle shutdown request."""
