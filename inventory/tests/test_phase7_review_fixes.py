@@ -373,6 +373,13 @@ class SourcesXssTests(ReviewBase):
         )
 
     def _queue_with_payload(self, payload):
+        # نیاز مصرف برای همین بخش رنگی هم باید وجود داشته باشد، وگرنه تسک از
+        # برنامهٔ روز خارج می‌شود و صف لغو می‌شود (و منابعش پاک می‌شود).
+        PaintingMaterialRequirement.objects.create(
+            process=self.process, raw_material=self.raw_pack4,
+            product=self.product, color_part=payload,
+            consumption_per_unit=Decimal('0.500'),
+        )
         task = self._task(quantity=6)
         task.color_part = payload
         task.save()
@@ -558,12 +565,15 @@ class QuantityPrecisionTests(ReviewBase):
         self.assertEqual(queue.sources.count(), 1)
 
     def test_31_two_tiny_requirements_accumulate_before_rounding(self):
-        # ۲ تاکسک × ۰٫۰۰۴ = ۰٫۰۰۸ →  گرد یک‌بار در انتها ⇒ ۰٫۰۱
-        # (گرد کردن هر منبع جداگانه هر دو را صفر می‌کرد)
+        # دو واحد کار مستقل × ۰٫۰۰۴ = ۰٫۰۰۸ → گرد یک‌بار در انتها ⇒ ۰٫۰۱
+        # (گرد کردن هر منبع جداگانه هر دو را صفر می‌کرد).
+        # دو آیتم جدا لازم است: مراحل یک آیتم یک واحد کار واحد هستند و نباید
+        # دوباره شمرده شوند.
         item_b = OrderItem.objects.create(order=self.order, product=self.product, quantity=2)
         Color.objects.create(part='بدنه', code='8', orderitem=item_b)
         self._task(quantity=1, start=self.day_start)
-        self._task(quantity=1, start=self.day_start + timezone.timedelta(hours=2))
+        self._task(quantity=1, start=self.day_start + timezone.timedelta(hours=2),
+                   item=item_b)
 
         queue = self._queue(raw=self.raw_tiny)
         self.assertEqual(queue.sources.count(), 2)
@@ -726,8 +736,15 @@ class SummaryQueryTests(ReviewBase):
     """I) جمع روزانه با یک aggregate."""
 
     def test_43_summary_runs_exactly_one_query(self):
+        # سه واحد کار مستقل (سه آیتم جدا): هر کدام برای دو ماده ردیف می‌سازد،
+        # اما چون کارگر و تاریخ یکسان است در ۲ ردیف صف ادغام می‌شوند:
+        # ۹٫۰۰ برای پک‌دار + ۰٫۰۷ برای مادهٔ کوچک.
         for _ in range(3):
-            self._task(quantity=6)
+            item = OrderItem.objects.create(
+                order=self.order, product=self.product, quantity=2,
+            )
+            Color.objects.create(part='بدنه', code='8', orderitem=item)
+            self._task(quantity=6, item=item)
 
         qs = services.daily_queue_filtered_queryset(self.today)
         with CaptureQueriesContext(connection) as captured:

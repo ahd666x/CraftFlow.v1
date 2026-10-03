@@ -778,8 +778,15 @@ def _packs_for(need, pack_size):
 
 
 def _resolve_painting_requirements_for_task(task):
-    from product.utils import get_painting_material_requirements_for_task
-    return get_painting_material_requirements_for_task(task)
+    """
+    تنها مسیر صف روزانه به نیاز نقاشی.
+
+    Returns ``(resolved, errors, context)`` از همان resolver canonical در
+    ``product.utils``؛ resolved هر عضوش dict با کلیدهای ``requirement`` و
+    ``raw_material`` (ماده واقعی) است.
+    """
+    from product.utils import get_resolved_painting_requirements_for_task
+    return get_resolved_painting_requirements_for_task(task)
 
 
 def _work_date(value):
@@ -815,6 +822,7 @@ _SKIP_REASONS = {
     'no_color_part': 'بدون بخش رنگی',
     'no_quantity': 'بدون مقدار تولید',
     'no_requirement': 'بدون فرمول مصرف',
+    'unresolved_material': 'نیاز به ماده اولیه واقعی نگاشت نشد',
 }
 
 
@@ -837,6 +845,30 @@ def task_queue_ineligibility(task):
     return None
 
 
+def _painting_work_unit_key(task, raw_material_id):
+    """
+    کلید «واحد کار نقاشی» — مبنای de-duplication نیاز مواد.
+
+    ``PaintingMaterialRequirement`` در سطح (process + product + color_part)
+    تعریف شده و هیچ FK به ``PaintingStage`` ندارد. یک ``OrderItem`` برای هر
+    مرحله یک ``ProductionTask`` جداگانه دارد، بنابراین اگر فرمول برای هر task
+    اعمال شود به تعداد مراحل ضرب می‌شود: ۶ مرحله × ۱٫۳ = ۷٫۸ به‌جای ۲٫۶.
+
+    واحد کار نقاشی = (order_item, color_part, painting_process, raw_material).
+
+    de-duplication داخل هر گروه (worker, raw_material) انجام می‌شود؛ بنابراین
+    دو کارگر مستقل که در یک روز روی دو واحد کار متفاوت کار می‌کنند هر کدام
+    نیاز خودشان را نگه می‌دارند، و همان واحد کار در روز دیگر دوباره شمرده
+    می‌شود چون صف هر روز مستقل است.
+    """
+    return (
+        task.order_item_id,
+        task.color_part or '',
+        task.painting_stage.process_id,
+        raw_material_id,
+    )
+
+
 def aggregate_queue_requirements(tasks):
     """
     Aggregate planned material needs for *tasks* (painting tasks of one day).
@@ -849,11 +881,17 @@ def aggregate_queue_requirements(tasks):
         * planned quantity comes from ProductionTask.quantity (the production
           quantity of that task) — never from completed_quantity, so a
           half-finished task keeps its full planned need (Decision 10);
-        * the worker is always the explicitly assigned one (Decision 3).
+        * the worker is always the explicitly assigned one (Decision 3);
+        * a process-level requirement is counted once per painting work unit
+          (see ``_painting_work_unit_key``) and not once per PaintingStage. When
+          several tasks share one work unit, the largest task quantity defines
+          the unit size and the remaining tasks are kept as traceable sources
+          with zero share, so ``sum(source.quantity) == planned_quantity``.
     """
     from collections import OrderedDict
     grouped = OrderedDict()
-    diagnostics = {'skipped': [], 'multistage_overlaps': []}
+    diagnostics = {'skipped': [], 'multistage_overlaps': [],
+                   'unresolved_materials': [], 'mapping_notes': []}
 
     for task in tasks:
         reason = task_queue_ineligibility(task)
@@ -865,12 +903,32 @@ def aggregate_queue_requirements(tasks):
                 )
             continue
 
-        requirements = _resolve_painting_requirements_for_task(task)
-        if not requirements:
-            diagnostics['skipped'].append(
-                {'task_id': task.pk, 'reason': 'no_requirement',
-                 'label': _SKIP_REASONS['no_requirement']}
+        resolved, resolution_errors, context = _resolve_painting_requirements_for_task(task)
+        if resolution_errors:
+            # نیاز وجود دارد ولی ماده واقعی‌اش قابل تعیین نیست؛ هیچ صفی با ماده
+            # حدسی ساخته نمی‌شود و علت دقیح گزارش می‌شود — حتی وقتی نیازهای
+            # دیگر همان تسک درست resolve شده باشند.
+            diagnostics['unresolved_materials'].extend(
+                error.as_dict() for error in resolution_errors
             )
+        if not resolved:
+            if resolution_errors:
+                diagnostics['skipped'].append(
+                    {'task_id': task.pk, 'reason': 'unresolved_material',
+                     'label': _SKIP_REASONS['unresolved_material'],
+                     'detail': resolution_errors[0].as_dict()}
+                )
+            else:
+                diagnostics['skipped'].append(
+                    {'task_id': task.pk, 'reason': 'no_requirement',
+                     'label': _SKIP_REASONS['no_requirement'],
+                     'detail': {
+                         'process_id': context.get('process_id'),
+                         'product_id': context.get('product_id'),
+                         'color_part': context.get('color_part'),
+                         'color_code': context.get('color_code'),
+                     }}
+                )
             continue
 
         worker = task.assigned_worker
@@ -880,12 +938,14 @@ def aggregate_queue_requirements(tasks):
         except (TypeError, ValueError):
             task_qty = Decimal('0')
 
-        for req in requirements:
-            raw = req.raw_material
-            if raw is None:
-                continue
+        for resolved_entry in resolved:
+            requirement = resolved_entry['requirement']
+            raw = resolved_entry['raw_material']
+            note = resolved_entry.get('note')
+            if note is not None:
+                diagnostics['mapping_notes'].append(note.as_dict())
             try:
-                consumption = Decimal(str(req.consumption_per_unit))
+                consumption = Decimal(str(requirement.consumption_per_unit))
             except (TypeError, ValueError):
                 consumption = Decimal('0')
             # جمع با دقت کامل انجام می‌شود و فقط یک‌بار هنگام نوشتن در دیتابیس
@@ -904,15 +964,48 @@ def aggregate_queue_requirements(tasks):
                     'quantity': Decimal('0'),
                     'sources': [],
                     'stages_by_process': {},
+                    'work_units': {},
                 }
-            entry['quantity'] = entry['quantity'] + qty
-            entry['sources'].append((task, stage, raw, qty))
-            stages = entry['stages_by_process'].setdefault(stage.process_id, {})
-            stages[stage.id] = stages.get(stage.id, Decimal('0')) + qty
 
-    # Decision 2 (report only): a process-level MaterialRequirement applied by
-    # several stages of the same process on the same day/worker/material is a
-    # known modelling gap. It is reported, never silently re-modelled here.
+            unit_key = _painting_work_unit_key(task, raw.pk)
+            unit = entry['work_units'].get(unit_key)
+            if unit is None:
+                entry['work_units'][unit_key] = {
+                    'raw_material': raw,
+                    'process_id': stage.process_id,
+                    'quantity': qty,
+                    'representative': (task, stage, raw, qty),
+                    'shared': [],
+                }
+            elif qty > unit['quantity']:
+                # بزرگ‌ترین مقدار تولید، اندازهٔ واحد کار را تعیین می‌کند.
+                # representative جابه‌جا می‌شود و سهم قبلی به صفر می‌رسد تا
+                # جمع منابع با مقدار صف برابر بماند.
+                unit['shared'].append(
+                    (unit['representative'][0], unit['representative'][1]))
+                unit['representative'] = (task, stage, raw, qty)
+                unit['quantity'] = qty
+            else:
+                unit['shared'].append((task, stage))
+
+    # جمع نهایی از واحدهای کاری یکتا ساخته می‌شود، نه از تعداد taskها.
+    for entry in grouped.values():
+        for unit in entry.pop('work_units').values():
+            entry['quantity'] += unit['quantity']
+            representative = unit['representative']
+            entry['sources'].append(representative)
+            for shared_task, shared_stage in unit['shared']:
+                # ردیف منبع بدون سهم مستقل: فقط نشان می‌دهد این مرحله در همان
+                # واحد کار نقاشی شریک است (traceability بدون افزودن به جمع).
+                entry['sources'].append(
+                    (shared_task, shared_stage, unit['raw_material'], Decimal('0')))
+            stages = entry['stages_by_process'].setdefault(unit['process_id'], {})
+            stage_id = representative[1].id
+            stages[stage_id] = stages.get(stage_id, Decimal('0')) + unit['quantity']
+
+    # Decision 2 (report only): چند واحد کار نقاشی از یک process که در یک روز و
+    # برای یک کارگر/ماده به صف رسیده‌اند گزارش می‌شوند. این دیگر بیش‌برنامه‌ریزی
+    # نیست؛ هر واحد کار جداگانه شمرده شده است.
     for (worker_id, raw_id), entry in grouped.items():
         for process_id, stages in entry['stages_by_process'].items():
             if len(stages) > 1:
@@ -929,9 +1022,13 @@ def aggregate_queue_requirements(tasks):
 
 def detect_multistage_overlaps(date):
     """
-    Report-only check (Phase 3): painting processes whose process-level
-    PaintingMaterialRequirement is consumed by more than one stage of the
-    same process on *date*. No database writes, no model changes.
+    Report-only check: painting work units of the same process that reach the
+    same worker/material on *date* through different stages. No database
+    writes, no model changes.
+
+    Since the requirement is counted once per painting work unit, this is a
+    planning observation (several colour parts/orders of one process reaching
+    one worker on one day), not a quantity inflation.
     """
     _tasks = _get_scheduled_painting_tasks(date)
     _grouped, diagnostics = aggregate_queue_requirements(_tasks)
@@ -943,10 +1040,42 @@ def log_queue_diagnostics(date, diagnostics):
     overlaps = diagnostics.get('multistage_overlaps') or []
     for item in overlaps:
         _logger.warning(
-            'sync_daily_material_queue: %s — process %s contributes to the same '
-            'worker/material through stages %s (total %s). PaintingMaterialRequirement '
-            'is process-level, so consumption may be counted per stage.',
+            'sync_daily_material_queue: %s — process %s reaches the same '
+            'worker/material through stages %s (total %s). Each painting work '
+            'unit is counted once; these are separate work units.',
             date, item['process_id'], item['stage_ids'], item['total_quantity'],
+        )
+    seen_notes = set()
+    for item in diagnostics.get('mapping_notes') or []:
+        note_key = (item.get('requirement_id'), item.get('process_id'),
+                    item.get('slot_raw_material_id'))
+        if note_key in seen_notes:
+            continue
+        seen_notes.add(note_key)
+        # نقص دادهٔ کاتالوگ: نیاز به مادهٔ FK خودش حل شد، پس این فقط گزارش است
+        # و عمداً در سطح info می‌ماند تا نویز عملیاتی نسازد.
+        _logger.info(
+            'sync_daily_material_queue: %s — نیاز نقاشی #%s (process=%s, '
+            'material=%s): %s',
+            date, item.get('requirement_id'), item.get('process_id'),
+            item.get('slot_raw_material_id'), item.get('label'),
+        )
+    seen_unresolved = set()
+    for item in diagnostics.get('unresolved_materials') or []:
+        unresolved_key = (item.get('requirement_id'), item.get('process_id'),
+                          item.get('slot_raw_material_id'), item.get('color_code'))
+        if unresolved_key in seen_unresolved:
+            continue
+        seen_unresolved.add(unresolved_key)
+        # نیاز نقاشی به ماده اولیه واقعی نگاشت نشد؛ عمداً هیچ صفی با ماده
+        # حدسی ساخته نمی‌شود، پس این ردیف‌ها باید توسط انسان اصلاح شوند.
+        _logger.error(
+            'sync_daily_material_queue: %s — نیاز نقاشی #%s (process=%s, '
+            'slot_raw_material=%s, color_code=%s) به ماده اولیه واقعی نگاشت '
+            'نشد: %s',
+            date, item.get('requirement_id'), item.get('process_id'),
+            item.get('slot_raw_material_id'), item.get('color_code'),
+            item.get('label'),
         )
     skipped = diagnostics.get('skipped') or []
     if skipped:
@@ -1074,7 +1203,15 @@ def build_daily_queue_for_date(date):
                 # Delivery/return history exists: keep it, flag the conflict.
                 if not queue.has_plan_conflict:
                     _mark_conflict(queue, CONFLICT_NOTE_DROPPED)
-            elif queue.status != 'cancelled':
+                continue
+            # بدون تراکنش واقعی، منابع برنامه‌ریزی هم به روز/کارگر قبلی تعلق دارند
+            # و باید پاک شوند؛ در غیر این صورت یک تسک که جابه‌جا شده هم در ردیف
+            # لغوشده و هم در ردیف جدید منبع می‌ماند و در ردیابیِ موادِ سفارش دوبار
+            # شمرده می‌شود. ردیف لغوشده قابل تحویل نیست، پس چیزی از تاریخچهٔ
+            # واقعی از دست نمی‌رود.
+            if queue.sources.exists():
+                queue.sources.all().delete()
+            if queue.status != 'cancelled':
                 queue.status = 'cancelled'
                 queue.save(update_fields=['status', 'updated_at'])
 
