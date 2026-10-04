@@ -2600,6 +2600,90 @@ def delayed_orders(request):
     return render(request, 'reports/delayed.html', {'orders': orders})
 
 
+def _daily_queue_consumption_lines(date_from=None, date_to=None):
+    """
+    مصرف واقعی Engine B (``DailyMaterialQueue``) به تفکیک منبع برنامه‌ریزی.
+
+    ``date_from``/``date_to`` تاریخ میلادی هستند (تقویم شمسی باید قبلاً
+    تبدیل شده باشد) و روی ``work_date`` فیلتر می‌شوند.
+
+    چرا از خود صف خوانده می‌شود و نه از ``StockMovement``:
+        حرکت انبارِ Engine B یک حرکت **aggregate** است (یک ردیف صف = یک حرکت)
+        و عمداً هیچ ``reference_task``/``reference_order_item`` ندارد؛ چون یک صف
+        می‌تواند چند تسک و چند آیتم داشته باشد و نسبت‌دادن کل مقدار به یکی از
+        آن‌ها انتساب جعلی می‌شد. منبع حقیقت traceability خودِ صف است:
+        ``DailyMaterialQueueSource → ProductionTask → order_item/painting_stage``.
+
+    چرا ``actual_consumption`` و نه ``delivered_quantity``:
+        مصرف واقعی تعریف خودِ صف است (``delivered - returned``). اگر مقدار
+        برگشتی به‌عنوان مصرف شمرده شود، گزارش عددی می‌دهد که هرگز مصرف نشده.
+
+    سهم هر منبع:
+        نسبت به مجموع سهم همهٔ منابع همان صف. اگر صف هیچ منبعی نداشته باشد
+        هیچ انتسابی ساخته نمی‌شود (به‌جای رد کردن مصرف، ردیف ساخته نمی‌شود).
+
+    Returns: iterable of dicts with ``item``, ``process``, ``color_part``,
+    ``raw_material``, ``quantity``.
+    """
+    from decimal import ROUND_HALF_UP
+    from inventory.models import DailyMaterialQueue
+
+    cent = Decimal('0.01')
+    queues = DailyMaterialQueue.objects.exclude(actual_consumption=0)
+    if date_from:
+        queues = queues.filter(work_date__gte=date_from)
+    if date_to:
+        queues = queues.filter(work_date__lte=date_to)
+    queues = queues.select_related('raw_material').prefetch_related(
+        'sources__painting_stage__process',
+        'sources__production_task__order_item__order',
+        'sources__production_task__order_item__product__category',
+    )
+
+    for queue in queues:
+        actual = Decimal(queue.actual_consumption or 0)
+        if actual == 0:
+            continue
+
+        shares = []
+        total_share = Decimal('0')
+        for source in queue.sources.all():
+            quantity = Decimal(source.quantity or 0)
+            if quantity <= 0:
+                continue
+            shares.append([source, quantity])
+            total_share += quantity
+        if not shares or total_share <= 0:
+            continue
+
+        # بزرگ‌ترین باقی‌مانده: جمع سهم‌ها دقیقاً برابر مصرف واقعی می‌شود.
+        allocations = []
+        allocated = Decimal('0')
+        for source, quantity in shares:
+            value = (actual * quantity / total_share).quantize(cent, rounding=ROUND_HALF_UP)
+            allocations.append([source, value])
+            allocated += value
+        remainder = (actual - allocated).quantize(cent, rounding=ROUND_HALF_UP)
+        if remainder:
+            largest = max(range(len(allocations)), key=lambda i: allocations[i][1])
+            allocations[largest][1] += remainder
+
+        for source, value in allocations:
+            task = source.production_task
+            if task is None or task.order_item_id is None:
+                continue
+            item = task.order_item
+            if item is None:
+                continue
+            yield {
+                'item': item,
+                'process': source.painting_stage.process,
+                'color_part': task.color_part,
+                'raw_material': source.raw_material,
+                'quantity': value,
+            }
+
+
 @login_required
 @admin_or_manager_required
 def report_material_consumption(request):
@@ -2713,6 +2797,35 @@ def report_material_consumption(request):
             mv.raw_material_id, {'raw_material': mv.raw_material, 'qty': Decimal('0')}
         )
         m['qty'] += mv.quantity
+
+    # ---- Engine B: صف مواد روزانه ----------------------------------
+    # این شاخه از «هویت» جدیدی استفاده می‌کند (خود ردیف صف، نه حرکت انبار)،
+    # پس هیچ حرکتی دوبار وارد گزارش نمی‌شود: حرکت‌های Engine A هیچ‌وقت به
+    # صف وصل نیستند و حرکت‌های Engine B هم هیچ reference ندارند، پس این دو
+    # مجموعه هیچ هم‌پوشانی ندارند.
+    # فیلتر تاریخ صف‌ها روی تقویم میلادی است (مثل فیلتر حرکت‌های بالا).
+    queue_date_from = date_from.togregorian() if date_from else None
+    queue_date_to = date_to.togregorian() if date_to else None
+    for line in _daily_queue_consumption_lines(queue_date_from, queue_date_to):
+        item = line['item']
+        process = line['process']
+
+        if process_id and (not process or str(process.id) != str(process_id)):
+            continue
+
+        if rokeshi_filter:
+            is_rok = _is_rokeshi(item, line['color_part'])
+            if rokeshi_filter == 'rokeshi' and not is_rok:
+                continue
+            if rokeshi_filter == 'poshshi' and is_rok:
+                continue
+
+        row = _get_row(item, process)
+        m = row['materials'].setdefault(
+            line['raw_material'].id,
+            {'raw_material': line['raw_material'], 'qty': Decimal('0')},
+        )
+        m['qty'] += line['quantity']
 
     defects = ProductionDefect.objects.select_related(
         'order_item__product', 'packaging_unit__order_item__product', 'task__painting_stage__process'

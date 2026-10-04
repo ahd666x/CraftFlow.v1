@@ -177,6 +177,16 @@ def production_issue_queue(request):
 
     if request.method == 'POST' and request.POST.get('action') == 'request':
         task = get_object_or_404(ProductionTask, pk=request.POST.get('task_id'))
+        # P4: برای نقاشی عادی، مسیر عملیاتی واحد «صف مواد روزانه» است.
+        # ساختن MaterialIssue برای تسک نقاشی یک مسیر موازی روی همان دفتر
+        # StockMovement می‌ساخت و مصرف را دوبار کم می‌کرد.
+        if task.station_name == 'paint':
+            messages.error(
+                request,
+                'برای نقاشی، درخواست مواد از صف روزانهٔ انبار ثبت می‌شود؛ '
+                'از صفحهٔ «صف مواد روزانه» برای همان تاریخ و کارگر اقدام کنید.',
+            )
+            return redirect('inventory:production_issue_queue')
         raw = get_object_or_404(RawMaterial, pk=request.POST.get('raw_material_id'))
         try:
             quantity = Decimal(request.POST.get('quantity', '0'))

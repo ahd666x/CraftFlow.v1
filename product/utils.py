@@ -2427,21 +2427,36 @@ post_delete.connect(_invalidate_on_change, sender=ColorCode)
 
 # ===================================================================
 #   خودکارسازی درخواست مواد اولیه از BOM
-#   وقتی تسک‌های نقاشی برنامه‌ریزی می‌شوند، درخواست مواد انباری
-#   به‌صورت خودکار ساخته می‌شود تا کارگران انبار بتوانند تحویل دهند.
 # ===================================================================
+#
+#   P4 — Normal Painting دیگر از این مسیر درخواست نمی‌سازد.
+#   مسیر عملیاتی واحد نقاشی عادی:
+#       DailyMaterialQueue → execute_daily_delivery → execute_daily_return
+#   صف مواد روزانه از قبل همین نیاز را می‌سازد (sync خودکار هنگام تغییر تسک)
+#   و برخلاف MaterialIssue هرگز تکراری نمی‌شود: به ازای هر painting work unit
+#   یک‌بار محاسبه می‌شود و به کارگر و روز مشخص نسبت دارد.
+#
+#   چرا ساختن هر دو، خطاست: هر دو روی یک دفتر StockMovement می‌نویسند، پس
+#   مصرف یک کار عادی نقاشی دوبار از موجودی کسر می‌شد.
+#
+#   این پرچم فقط مسیر «نقاشی عادی» را می‌بندد. MaterialIssue برای
+#   rework/defect (purpose='rework') و برای ایستگاه‌های غیرنقاشی دست‌نخورده
+#   و فعال می‌ماند. رکوردهای تاریخی هم حذف نمی‌شوند.
+NORMAL_PAINTING_ENGINE_IS_DAILY_QUEUE = True
+
 
 def auto_create_material_issues(tasks, requested_by=None, purpose='production'):
     """
     برای تسک‌های غیرنقاشی: مثل قبل، per-task.
-    برای تسک‌های نقاشی: به‌جای per-task، به ازای هر (order_item, color_part)
-    یکتا در لیست ورودی، فقط یک‌بار درخواست ساخته می‌شود (اگر از قبل نبوده).
+    برای تسک‌های نقاشی عادی: چیزی ساخته نمی‌شود (P4) — نیاز از صف مواد
+    روزانه می‌آید. برای rework (purpose='rework') رفتار قبلی حفظ می‌شود.
     """
     from inventory.models import MaterialIssue
     from decimal import Decimal
 
     created_count = 0
     skipped_count = 0
+    deferred_to_queue_count = 0
 
     paint_tasks = [t for t in tasks if t.station_name == 'paint' and t.order_item_id]
     other_tasks = [t for t in tasks if t.station_name != 'paint']
@@ -2474,7 +2489,19 @@ def auto_create_material_issues(tasks, requested_by=None, purpose='production'):
             existing_task_based.add(key)
             created_count += 1
 
-    # ---------- شاخه‌ی نقاشی: به سطح (order_item, color_part) تقلیل بده ----------
+    # ---------- شاخه‌ی نقاشی ----------
+    if purpose == 'production' and NORMAL_PAINTING_ENGINE_IS_DAILY_QUEUE:
+        # P4: نیاز نقاشی عادی از صف مواد روزانه می‌آید، نه از MaterialIssue.
+        deferred_to_queue_count = len(paint_tasks)
+        return {
+            'created': created_count,
+            'skipped': skipped_count,
+            'deferred_to_daily_queue': deferred_to_queue_count,
+            'total_raw': None,
+        }
+
+    # به سطح (order_item, color_part) تقلیل بده — فقط مسیر rework از این
+    # نقطه عبور می‌کند (یا وقتی پرچم بالا خاموش شده باشد).
     seen_item_colorparts = set()
     existing_paint = set(
         MaterialIssue.objects.exclude(status='cancelled')
@@ -2522,4 +2549,9 @@ def auto_create_material_issues(tasks, requested_by=None, purpose='production'):
             existing_paint.add(dedup_key)
             created_count += 1
 
-    return {'created': created_count, 'skipped': skipped_count, 'total_raw': None}
+    return {
+        'created': created_count,
+        'skipped': skipped_count,
+        'deferred_to_daily_queue': deferred_to_queue_count,
+        'total_raw': None,
+    }
