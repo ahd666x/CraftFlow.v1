@@ -2600,6 +2600,44 @@ def delayed_orders(request):
     return render(request, 'reports/delayed.html', {'orders': orders})
 
 
+def _allocate_actual_consumption(actual, shares):
+    """
+    تقسیم مصرف واقعی بین منابع یک صف — قرارداد P3.5.
+
+    ``shares`` لیستی از ``(منبع، مقدار)`` است. سهم هر منبع:
+        actual × quantity / Σ quantity
+    و باقی‌ماندهٔ rounding با Largest Remainder به بزرگ‌ترین سهم اضافه
+    می‌شود تا جمع سهم‌ها دقیقاً برابر ``actual`` شود.
+
+    این تابع محض محاسبات است: هیچ داده‌ای نمی‌خواند و نمی‌نویسد و
+    هر دو مصرف‌کنندهٔ آن (گزارش P3.5 و traceability P5) دقیقاً همان
+    فرمول را اجرا می‌کنند.
+    """
+    from decimal import ROUND_HALF_UP
+
+    cent = Decimal('0.01')
+    actual = Decimal(actual or 0)
+    total_share = Decimal('0')
+    for _source, quantity in shares:
+        total_share += Decimal(quantity or 0)
+    if actual == 0 or total_share <= 0:
+        return []
+
+    # بزرگ‌ترین باقی‌مانده: جمع سهم‌ها دقیقاً برابر مصرف واقعی می‌شود.
+    allocations = []
+    allocated = Decimal('0')
+    for source, quantity in shares:
+        value = (actual * Decimal(quantity or 0) / total_share).quantize(
+            cent, rounding=ROUND_HALF_UP)
+        allocations.append([source, value])
+        allocated += value
+    remainder = (actual - allocated).quantize(cent, rounding=ROUND_HALF_UP)
+    if remainder:
+        largest = max(range(len(allocations)), key=lambda i: allocations[i][1])
+        allocations[largest][1] += remainder
+    return allocations
+
+
 def _daily_queue_consumption_lines(date_from=None, date_to=None):
     """
     مصرف واقعی Engine B (``DailyMaterialQueue``) به تفکیک منبع برنامه‌ریزی.
@@ -2625,10 +2663,8 @@ def _daily_queue_consumption_lines(date_from=None, date_to=None):
     Returns: iterable of dicts with ``item``, ``process``, ``color_part``,
     ``raw_material``, ``quantity``.
     """
-    from decimal import ROUND_HALF_UP
     from inventory.models import DailyMaterialQueue
 
-    cent = Decimal('0.01')
     queues = DailyMaterialQueue.objects.exclude(actual_consumption=0)
     if date_from:
         queues = queues.filter(work_date__gte=date_from)
@@ -2646,29 +2682,13 @@ def _daily_queue_consumption_lines(date_from=None, date_to=None):
             continue
 
         shares = []
-        total_share = Decimal('0')
         for source in queue.sources.all():
             quantity = Decimal(source.quantity or 0)
             if quantity <= 0:
                 continue
             shares.append([source, quantity])
-            total_share += quantity
-        if not shares or total_share <= 0:
-            continue
 
-        # بزرگ‌ترین باقی‌مانده: جمع سهم‌ها دقیقاً برابر مصرف واقعی می‌شود.
-        allocations = []
-        allocated = Decimal('0')
-        for source, quantity in shares:
-            value = (actual * quantity / total_share).quantize(cent, rounding=ROUND_HALF_UP)
-            allocations.append([source, value])
-            allocated += value
-        remainder = (actual - allocated).quantize(cent, rounding=ROUND_HALF_UP)
-        if remainder:
-            largest = max(range(len(allocations)), key=lambda i: allocations[i][1])
-            allocations[largest][1] += remainder
-
-        for source, value in allocations:
+        for source, value in _allocate_actual_consumption(actual, shares):
             task = source.production_task
             if task is None or task.order_item_id is None:
                 continue
@@ -2682,6 +2702,116 @@ def _daily_queue_consumption_lines(date_from=None, date_to=None):
                 'raw_material': source.raw_material,
                 'quantity': value,
             }
+
+
+# ارجاع صف در note حرکات Engine B: خدمات تحویل/برگشت روزانه id صف
+# را در note حرکت ثبت می‌کنند («تحویل روزانه — صف #<id>»). این تنها
+# پیوند موجود بین حرکت aggregate و صف است؛ در schema FK نیست.
+_QUEUE_NOTE_RE = re.compile(r'صف\s*#(\d+)')
+
+
+def _engine_b_movements_for_queue(queue):
+    """
+    حرکات انبارِ Engine B که در ``note`` خود به این صف ارجاع داده‌اند.
+
+    حرکتی که note سفارشی دارد و این ارجاع را نمی‌خواند، منتسب نمی‌شود:
+    هیچ گمانه‌زنی تاریخی/مقداری انجام نمی‌شود تا انتساب جعلی ساخته نشود.
+    """
+    from inventory.models import StockMovement
+
+    linked = []
+    movements = StockMovement.objects.filter(
+        raw_material=queue.raw_material,
+        movement_type__in=('consumption', 'return'),
+    ).order_by('id')
+    for movement in movements:
+        match = _QUEUE_NOTE_RE.search(movement.note or '')
+        if match is not None and int(match.group(1)) == queue.pk:
+            linked.append(movement)
+    return linked
+
+
+def daily_queue_consumption_trace(queue):
+    """
+    P5 — traceability خواندنی برای مصرف واقعی یک صف روزانه (Engine B).
+
+    زنجیرهٔ بازگردانی:
+
+        StockMovement(consumption)
+          → DailyMaterialQueue        (پیوند از طریق ارجاع ``note``)
+          → DailyMaterialQueueSource  (FK — چند source؛ هیچ‌وقت به یکی نسبت
+                                       داده نمی‌شود)
+          → ProductionTask → PaintingStage → PaintingProcess
+          → OrderItem → Order / Product
+          → color_part (مقدار موجودِ CharField — FK نیست)
+
+    خواندنی‌است: هیچ نوشتنی انجام نمی‌دهد و مسیر عملیاتی را دستکاری
+    نمی‌کند. ``movement`` حرکت مصرفِ تحویل روزانه است؛ اگر هیچ حرکتی
+    به این صف ارجاع نکرده باشد (مثلاً تحویل با note سفارشی) ``None``
+    برمی‌گردد. اتصال قطعی رویه‌ای (FK از ``StockMovement`` به صف)
+    نیازمند migration است و در P5 ساخته نمی‌شود.
+
+    ``sources`` همهٔ منابع صف را برمی‌گرداند و ``allocated_quantity``
+    هر منبع با قرارداد P3.5 (سهم نسبی + Largest Remainder) محاسبه
+    می‌شود؛ جمع سهم‌ها دقیقاً برابر ``actual_consumption`` است. صفی
+    بدون منبع، لیست خالی برمی‌گرداند — هیچ trace جعلی ساخته نمی‌شود
+    و مصرف واقعی گزارش‌شده حذف نمی‌شود.
+    """
+    from inventory.models import DailyMaterialQueue
+
+    # همیشه یک کپی تازه از داده‌خوان می‌خوانیم تا نمونهٔ متوقفی که
+    # ممکن است پیش از تحویل/برگشت گرفته شده باشد، مصرف واقعی را پاک
+    # گزارش نکند.
+    pk = queue.pk if isinstance(queue, DailyMaterialQueue) else queue
+    row = DailyMaterialQueue.objects.get(pk=pk)
+
+    actual = Decimal(row.actual_consumption or 0)
+
+    movements = _engine_b_movements_for_queue(row)
+    consumption_movement = next(
+        (m for m in movements if m.movement_type == 'consumption'), None)
+    return_movements = [m for m in movements if m.movement_type == 'return']
+
+    sources = list(row.sources.all())
+    shares = []
+    for source in sources:
+        quantity = Decimal(source.quantity or 0)
+        if quantity > 0:
+            shares.append([source, quantity])
+    allocated_by_pk = {
+        source.pk: value
+        for source, value in _allocate_actual_consumption(actual, shares)
+    }
+
+    sources_out = []
+    for source in sources:
+        task = source.production_task
+        item = task.order_item if task is not None else None
+        stage = source.painting_stage
+        sources_out.append({
+            'source': source,
+            'production_task': task,
+            'painting_stage': stage,
+            'painting_process': stage.process if stage is not None else None,
+            'order_item': item,
+            'order': item.order if item is not None else None,
+            'product': item.product if item is not None else None,
+            'color_part': task.color_part if task is not None else '',
+            'source_quantity': Decimal(source.quantity or 0),
+            'allocated_quantity': allocated_by_pk.get(
+                source.pk, Decimal('0.00')),
+        })
+
+    return {
+        'queue': row,
+        'raw_material': row.raw_material,
+        'actual_consumption': actual,
+        'work_date': row.work_date,
+        'worker': row.worker,
+        'movement': consumption_movement,
+        'return_movements': return_movements,
+        'sources': sources_out,
+    }
 
 
 @login_required
