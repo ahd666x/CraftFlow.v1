@@ -48,7 +48,8 @@ from product.models import (
     ProductionTask,
 )
 
-TEMPLATE = Path('inventory/templates/inventory/daily_material_queue.html')
+REPO_ROOT = Path(__file__).resolve().parents[2]
+TEMPLATE = REPO_ROOT / 'inventory' / 'templates' / 'inventory' / 'daily_material_queue.html'
 
 
 class ReviewBase(TestCase):
@@ -349,7 +350,7 @@ class DateFilterTests(ReviewBase):
             self.assertNotIn('type="date"', line)
 
     def test_15_view_uses_shared_jalali_parser(self):
-        source = Path('inventory/views.py').read_text(encoding='utf-8')
+        source = (REPO_ROOT / 'inventory' / 'views.py').read_text(encoding='utf-8')
         self.assertIn('parse_jalali_date', source)
         # تفسیر دستی میلادی/شمسی با strptime نباید باقی بماند
         self.assertNotIn("jdatetime.datetime.strptime(date_str", source)
@@ -524,7 +525,7 @@ class SignalStationTests(ReviewBase):
         self.assertEqual(queue.planned_quantity, Decimal('3.00'))
 
     def test_28_previous_state_query_reads_station_name(self):
-        source = Path('inventory/signals.py').read_text(encoding='utf-8')
+        source = (REPO_ROOT / 'inventory' / 'signals.py').read_text(encoding='utf-8')
         pre_save = source[:source.index('@receiver(post_save')]
         self.assertIn("'station_name'", pre_save)
         # قبل و بعد نباید از یک منبع بخوانند
@@ -727,8 +728,12 @@ class RemovedDryRunTests(ReviewBase):
             )
 
     def test_42_no_dry_run_callers_remain(self):
-        for path in ('inventory/services.py', 'inventory/signals.py', 'product/utils.py'):
-            source = Path(path).read_text(encoding='utf-8')
+        for path in (
+            'inventory/services.py',
+            'inventory/signals.py',
+            'product/utils.py',
+        ):
+            source = (REPO_ROOT / path).read_text(encoding='utf-8')
             self.assertNotIn('dry_run', source, f'{path} هنوز dry_run دارد.')
 
 
