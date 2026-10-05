@@ -15,6 +15,7 @@ from product.utils import (
     get_painting_material_requirements_for_item_colorpart,
     auto_create_material_issues,
 )
+from product.views import daily_queue_consumption_trace
 from product.models import (
     Product, ProductCategory, ProductBOM, Part, Material,
     Order, OrderItem, Color, ProductionTask, ProductionEvent, Customer, WorkerProfile,
@@ -23,8 +24,9 @@ from product.models import (
     PaintingColorMaterialVariant, STATION_CHOICES, ProductionLog,
 )
 from inventory.models import (
-    RawMaterial, RawMaterialCategory, StockMovement, MaterialIssue,
+    DailyMaterialQueue, RawMaterial, RawMaterialCategory, StockMovement, MaterialIssue,
 )
+from inventory import services
 from inventory.views import _task_material_requirements
 
 
@@ -1056,114 +1058,189 @@ class PaintMaterialIssuePerItemTests(TestCase):
             color_part='بدنه',
             consumption_per_unit=Decimal('0.050'),
         )
-        
+
+        # Engine B: صف مواد روزانه برای تسک‌های نقاشیِ همین روز
+        cls.day = timezone.localdate()
+        cls.day_start = timezone.make_aware(
+            timezone.datetime.combine(cls.day, time(8, 0))
+        )
+
         # Create paint tasks (two stages for same order_item + color_part)
         cls.task1 = ProductionTask.objects.create(
             order=cls.order, order_item=cls.order_item, station_name='paint', step_order=10,
             quantity=5, status='pending', painting_stage=cls.stage1,
-            color_part='بدنه',
+            color_part='بدنه', assigned_worker=cls.user,
+            scheduled_start=cls.day_start,
         )
         cls.task2 = ProductionTask.objects.create(
             order=cls.order, order_item=cls.order_item, station_name='paint', step_order=20,
             quantity=5, status='pending', painting_stage=cls.stage2,
-            color_part='بدنه',
+            color_part='بدنه', assigned_worker=cls.user,
+            scheduled_start=cls.day_start,
         )
 
-    def test_paint_material_issue_created_once_per_item_colorpart(self):
-        """تست اینکه برای هر (order_item, color_part) فقط یک درخواست مواد ایجاد می‌شود"""
-        auto_create_material_issues([self.task1, self.task2], requested_by=self.user)
-        
-        # باید فقط 2 MaterialIssue وجود داشته باشد (رنگ و تینر)، نه 4 (2 تسک × 2 ماده)
-        issues = MaterialIssue.objects.filter(
-            purpose='production',
-            task__isnull=True,
-            order_item=self.order_item,
-            color_part='بدنه',
-        )
-        self.assertEqual(issues.count(), 2)
-        
-        # بررسی مقادیر: quantity = item.quantity * consumption_per_unit
-        paint_issue = issues.get(raw_material=self.paint_raw)
-        thinner_issue = issues.get(raw_material=self.thinner_raw)
-        
-        self.assertEqual(paint_issue.requested_quantity, Decimal('1.000'))  # 5 * 0.200
-        self.assertEqual(thinner_issue.requested_quantity, Decimal('0.250'))  # 5 * 0.050
+    def test_queue_need_created_once_per_item_colorpart(self):
+        """P4: برای هر واحد کار نقاشی (order_item, color_part, process)
+        نیاز فقط یک‌بار شمرده می‌شود — یک ردیف صف به ازای هر ماده
+        (نه یکی به ازای هر تسک/مرحله)، و هر دو مرحله در همان صف
+        به‌عنوان منابع قابل ردیابی حفظ می‌شوند."""
+        result = auto_create_material_issues([self.task1, self.task2], requested_by=self.user)
 
-    def test_paint_material_issue_quantity_matches_item_quantity(self):
-        """تست اینکه requested_quantity برابر item.quantity * consumption_per_unit است"""
-        auto_create_material_issues([self.task1, self.task2], requested_by=self.user)
-        
-        paint_issue = MaterialIssue.objects.get(
-            order_item=self.order_item, color_part='بدنه', raw_material=self.paint_raw
+        # P4: نقاشی عادی هیچ MaterialIssue تولیدی نمی‌سازد
+        self.assertEqual(result['created'], 0)
+        self.assertEqual(result['deferred_to_daily_queue'], 2)
+        self.assertEqual(
+            MaterialIssue.objects.filter(
+                purpose='production', order_item=self.order_item,
+            ).count(),
+            0,
+        )
+
+        paint_queue = DailyMaterialQueue.objects.get(
+            work_date=self.day, worker=self.user, raw_material=self.paint_raw,
+        )
+        thinner_queue = DailyMaterialQueue.objects.get(
+            work_date=self.day, worker=self.user, raw_material=self.thinner_raw,
+        )
+
+        # نیاز یک‌بار شمرده شده — نه ۲ بار (یک‌بار به ازای هر تسک/مرحله)
+        self.assertEqual(paint_queue.planned_quantity, Decimal('1.00'))   # 5 * 0.200
+        self.assertEqual(thinner_queue.planned_quantity, Decimal('0.25'))  # 5 * 0.050
+
+        # هر دو مرحلهٔ همان واحد کار نقاشی در همان صف قابل ردیابی‌اند:
+        # یک منبع با سهم واقعی و یک منبع صفر-سهم (فقط traceability)
+        self.assertEqual(paint_queue.sources.count(), 2)
+        self.assertEqual(thinner_queue.sources.count(), 2)
+        paint_share = sum(
+            (Decimal(str(s.quantity)) for s in paint_queue.sources.all()),
+            Decimal('0'),
+        )
+        thinner_share = sum(
+            (Decimal(str(s.quantity)) for s in thinner_queue.sources.all()),
+            Decimal('0'),
+        )
+        self.assertEqual(paint_share, Decimal('1.00'))
+        self.assertEqual(thinner_share, Decimal('0.25'))
+
+    def test_queue_planned_quantity_matches_item_quantity(self):
+        """P4: نیاز نقاشی عادی در صف روزانه ثبت می‌شود و
+        planned_quantity آن برابر item.quantity × consumption_per_unit
+        است (در سطح واحد کار نقاشی)."""
+        result = auto_create_material_issues([self.task1, self.task2], requested_by=self.user)
+
+        self.assertEqual(result['created'], 0)
+        self.assertEqual(result['deferred_to_daily_queue'], 2)
+        self.assertEqual(
+            MaterialIssue.objects.filter(order_item=self.order_item).count(), 0,
+        )
+
+        queue = DailyMaterialQueue.objects.get(
+            work_date=self.day, worker=self.user, raw_material=self.paint_raw,
         )
         # item.quantity = 5, consumption_per_unit = 0.200
         expected = Decimal('5') * Decimal('0.200')
-        self.assertEqual(paint_issue.requested_quantity, expected)
+        self.assertEqual(queue.planned_quantity, expected)
 
-    def test_paint_material_issue_task_is_none(self):
-        """تست اینکه برای درخواست‌های نقاشی جدید task برابر None است"""
-        auto_create_material_issues([self.task1], requested_by=self.user)
-        
-        issue = MaterialIssue.objects.get(
-            order_item=self.order_item, color_part='بدنه', raw_material=self.paint_raw
-        )
-        self.assertIsNone(issue.task)
-        self.assertEqual(issue.order_item, self.order_item)
-        self.assertEqual(issue.color_part, 'بدنه')
-        self.assertEqual(issue.painting_process, self.process)
+    def test_normal_painting_creates_no_item_level_issue(self):
+        """P4: نقاشی عادی هیچ MaterialIssue نمی‌سازد — نه سطح تسک و
+        نه سطح آیتم. هویت (آیتم سفارش، بخش رنگی، روند نقاشی) اکنون
+        در زنجیرهٔ منبع صف روزانه حفظ می‌شود."""
+        result = auto_create_material_issues([self.task1], requested_by=self.user)
 
-    def test_issue_material_for_paint_creates_stock_movement_with_order_item_ref(self):
-        """تست اینکه تحویل مواد برای نقاشی StockMovement با reference_order_item ایجاد می‌کند"""
-        auto_create_material_issues([self.task1], requested_by=self.user)
-        
-        issue = MaterialIssue.objects.get(
-            order_item=self.order_item, color_part='بدنه', raw_material=self.paint_raw
+        self.assertEqual(result['created'], 0)
+        self.assertEqual(result['deferred_to_daily_queue'], 1)
+        self.assertEqual(
+            MaterialIssue.objects.filter(order_item=self.order_item).count(), 0,
         )
-        
+
+        queue = DailyMaterialQueue.objects.get(
+            work_date=self.day, worker=self.user, raw_material=self.paint_raw,
+        )
+        source = queue.sources.get(production_task=self.task1)
+        self.assertEqual(source.production_task.order_item, self.order_item)
+        self.assertEqual(source.production_task.color_part, 'بدنه')
+        self.assertEqual(source.painting_stage.process, self.process)
+
+    def test_daily_delivery_creates_stock_movement_traceable_to_order_item(self):
+        """P4: تحویل مواد نقاشی عادی از صف روزانه (Engine B)
+        انجام می‌شود. حرکت مصرف aggregate است و به‌جای
+        reference_order_item مستقیم، از طریق زنجیرهٔ
+        صف → منبع → تسک به آیتم سفارش و بخش رنگی پیوند دارد."""
+        result = auto_create_material_issues([self.task1], requested_by=self.user)
+
+        self.assertEqual(result['created'], 0)
+        self.assertEqual(result['deferred_to_daily_queue'], 1)
+        self.assertEqual(
+            MaterialIssue.objects.filter(order_item=self.order_item).count(), 0,
+        )
+
+        queue = DailyMaterialQueue.objects.get(
+            work_date=self.day, worker=self.user, raw_material=self.paint_raw,
+        )
+        self.assertEqual(queue.planned_quantity, Decimal('1.00'))  # 5 * 0.200
+
         # اضافه کردن موجودی انبار
         StockMovement.objects.create(
             raw_material=self.paint_raw, movement_type='purchase',
             quantity=Decimal('100'), note='موجودی اولیه',
         )
-        
-        # شبیه‌سازی issue_material view
-        from django.test import Client
-        client = Client()
-        client.login(username='paintuser', password='testpass')
-        response = client.post(reverse('inventory:issue_material', args=[issue.id]), {'quantity': '1'})
-        
-        issue.refresh_from_db()
-        movement = issue.movements.get()
-        
+
+        services.execute_daily_delivery(queue_id=queue.pk, delivered_by=self.user)
+
+        movement = StockMovement.objects.filter(
+            raw_material=self.paint_raw, movement_type='consumption',
+        ).get()
         self.assertIsNone(movement.reference_task)
-        self.assertEqual(movement.reference_order_item, self.order_item)
-        self.assertEqual(movement.reference_color_part, 'بدنه')
+        self.assertIsNone(movement.reference_order_item)
+        self.assertEqual(movement.quantity, Decimal('1.00'))
 
-    def test_report_material_consumption_includes_new_style_movements(self):
-        """تست اینکه گزارش مصرف مواد درخواست‌های جدید را شامل می‌شود"""
-        auto_create_material_issues([self.task1], requested_by=self.user)
-        
-        issue = MaterialIssue.objects.get(
-            order_item=self.order_item, color_part='بدنه', raw_material=self.paint_raw
+        trace = daily_queue_consumption_trace(queue)
+        self.assertEqual(trace['movement'], movement)
+        self.assertEqual(trace['actual_consumption'], Decimal('1.00'))
+        src = next(
+            s for s in trace['sources'] if s['production_task'] == self.task1
         )
-        
+        self.assertEqual(src['order_item'], self.order_item)
+        self.assertEqual(src['color_part'], 'بدنه')
+        self.assertEqual(src['painting_process'], self.process)
+
+    def test_report_material_consumption_includes_queue_consumption(self):
+        """P4/P5: مصرف واقعی نقاشی عادی از صف روزانه (Engine B)
+        در گزارش مصرف مواد گنجانده می‌شود. مصرف از خودِ
+        صف خوانده می‌شود (actual_consumption پس از تحویل
+        واقعی) — هیچ حرکت جعلی و هیچ MaterialIssue‌ای ساخته
+        نمی‌شود."""
+        result = auto_create_material_issues([self.task1], requested_by=self.user)
+
+        self.assertEqual(result['created'], 0)
+        self.assertEqual(result['deferred_to_daily_queue'], 1)
+        self.assertEqual(
+            MaterialIssue.objects.filter(order_item=self.order_item).count(), 0,
+        )
+
+        queue = DailyMaterialQueue.objects.get(
+            work_date=self.day, worker=self.user, raw_material=self.paint_raw,
+        )
+
         # اضافه کردن موجودی انبار
         StockMovement.objects.create(
             raw_material=self.paint_raw, movement_type='purchase',
             quantity=Decimal('100'), note='موجودی اولیه',
         )
-        
-        # تحویل مواد
+
+        # تحویل واقعی نیاز از صف روزانه
+        services.execute_daily_delivery(queue_id=queue.pk, delivered_by=self.user)
+        queue.refresh_from_db()
+        self.assertEqual(queue.actual_consumption, Decimal('1.00'))
+
+        # گزارش
         from django.test import Client
         client = Client()
         client.login(username='paintuser', password='testpass')
-        client.post(reverse('inventory:issue_material', args=[issue.id]), {'quantity': '1'})
-        
-        # گزارش
         response = client.get(reverse('report_material_consumption'))
         self.assertEqual(response.status_code, 200)
         rows = response.context['report_rows']
-        
+
         # باید ردیفی برای این محصول و روند وجود داشته باشد
         found = False
         for row in rows:
@@ -1171,7 +1248,7 @@ class PaintMaterialIssuePerItemTests(TestCase):
                 found = True
                 self.assertIn(self.paint_raw.id, row['materials'])
                 self.assertEqual(row['materials'][self.paint_raw.id]['qty'], Decimal('1'))
-        self.assertTrue(found, 'گزارش باید درخواست‌های جدید نقاشی را نمایش دهد')
+        self.assertTrue(found, 'گزارش باید مصرف صف مواد روزانه نقاشی را نمایش دهد')
 
 
 class ConsolidatePaintMaterialIssuesCommandTests(TestCase):
