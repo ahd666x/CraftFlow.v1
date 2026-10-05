@@ -238,8 +238,8 @@ class PackageRoundingTests(DeliveryExecutionBase):
             raw_material=self.raw_pack4, movement_type='consumption'
         ).order_by('-id').first()
         self.assertEqual(movement.quantity, Decimal('4.00'))
-        # delivered_quantity مقدار مورد نیاز است، نه خروج فیزیکی بسته
-        self.assertEqual(queue.delivered_quantity, Decimal('3.00'))
+        # delivered_quantity مقدار فیزیکی تحویل‌شده (پک گرد‌شده) است، نه مقدار نیاز.
+        self.assertEqual(queue.delivered_quantity, Decimal('4.00'))
 
     def test_05_package_exact_multiple_no_over_delivery(self):
         """نیاز ۴ کیلو با بستهٔ ۴ کیلویی → دقیقاً ۴ کیلو."""
@@ -478,7 +478,8 @@ class IdempotencyTests(DeliveryExecutionBase):
         )
 
         queue.refresh_from_db()
-        self.assertEqual(queue.delivered_quantity, Decimal('2.00'))
+        # آیتم کنترل‌شده ۲ کیلو نیاز دارد؛ تحویل فیزیکی یک بستهٔ ۴ کیلویی است.
+        self.assertEqual(queue.delivered_quantity, Decimal('4.00'))
         movement = StockMovement.objects.filter(
             raw_material=self.raw_pack4, movement_type='consumption'
         ).order_by('-id').first()

@@ -597,8 +597,8 @@ class ReportQueryCountTests(ReportBase):
         for worker, item in ((self.worker_a, self.item_a), (self.worker_b, self.item_b)):
             self._make_task(worker=worker, order_item=item, quantity=4)
 
-        with self.assertNumQueries(6):
-            # 1 aggregate + 4 شمارش وضعیت + 1 شمارش تعارض
+        with self.assertNumQueries(1):
+            # 1 aggregate — شمارش وضعیت‌ها و تعارض‌ها همگی در همان یک کوئری‌اند.
             services.daily_queue_summary(
                 services.daily_queue_filtered_queryset(self.today)
             )

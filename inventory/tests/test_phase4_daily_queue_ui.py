@@ -344,7 +344,9 @@ class DailyQueueActionTests(DailyQueueUIBase):
 
         self.assertEqual(response.status_code, 200)
         queue.refresh_from_db()
-        self.assertEqual(queue.delivered_quantity, Decimal('1.00'))
+        # delivered_quantity مقدار فیزیکی تحویل‌شده (پک گرد‌شده) است، نه مقدار نیاز.
+        self.assertEqual(queue.delivered_quantity, Decimal('4.00'))
+        self.assertEqual(queue.actual_consumption, Decimal('4.00'))
         movement = StockMovement.objects.filter(
             raw_material=self.raw_kg4, movement_type='consumption'
         ).order_by('-id').first()
