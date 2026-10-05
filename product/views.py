@@ -3744,14 +3744,35 @@ def scan_packaging_unit(request, pk):
                 qty = Decimal('0')
 
             if qty <= 0:
-                messages.error(request, 'مقدار تحویل باید بزرگ‌تر از صفر باشد.')
+                messages.error(request, 'مقدار تحویل باید بزرگتر از صفر باشد.')
             else:
-                StockMovement.objects.create(
-                    raw_material=raw, movement_type='consumption', quantity=qty,
-                    reference_task_id=task_id, created_by=request.user,
-                    note=f'تحویل دستی هنگام اسکن بسته‌بندی — آیتم {item.id} (سفارش {item.order_id})',
-                )
-                messages.success(request, f'تحویل {qty} {raw.get_unit_display()} از «{raw.name}» ثبت شد.')
+                # P7: اگر نیاز نقاشی عادیِ همین تسک برای همین ماده
+                # از صف مواد روزانه تحویل شده باشد، بستهٔ فیزیکی
+                # قبلاً از انبار خارج شده و این مصرف دستی موجودی
+                # را دوبار کم می‌کند. ارتباط قطعی (تسک نقاشی + همان
+                # ماده + صف تحویل‌شده) وگرنه مصرف دستی مستقل معتبر
+                # باید بلاک نشود.
+                guard_task = None
+                if task_id:
+                    guard_task = ProductionTask.objects.filter(pk=task_id).first()
+                from inventory import services as inventory_services
+                if guard_task is not None and inventory_services.is_paint_need_delivered_by_queue(
+                        guard_task, raw):
+                    messages.error(
+                        request,
+                        'نیاز نقاشی این تسک برای این ماده از صف مواد '
+                        'روزانه تحویل شده و بسته از انبار خارج شده؛ '
+                        'ثبت مصرف دستی آن موجودی را دوبار کم می‌کند. '
+                        'از صفحهٔ «صف مواد روزانه» برای همان تاریخ و '
+                        'کارگر اقدام کنید.',
+                    )
+                else:
+                    StockMovement.objects.create(
+                        raw_material=raw, movement_type='consumption', quantity=qty,
+                        reference_task_id=task_id, created_by=request.user,
+                        note=f'تحویل دستی هنگام اسکن بسته‌بندی — آیتم {item.id} (سفارش {item.order_id})',
+                    )
+                    messages.success(request, f'تحویل {qty} {raw.get_unit_display()} از «{raw.name}» ثبت شد.')
                 return redirect('item_detail', pk=item.id)
 
         return render(request, 'scan_material_issue.html', {

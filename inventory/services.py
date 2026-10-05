@@ -1554,6 +1554,52 @@ def execute_daily_return(*, queue_id, returned_by, returned_quantity, note=''):
     return queue
 
 
+def is_paint_need_delivered_by_queue(task, raw_material):
+    """
+    P7 — آیا نیاز نقاشی عادیِ این تسک برای این ماده از صف مواد
+    روزانه **تحویل شده** است؟
+
+    خواندنی‌است و هیچ نوشتنی انجام نمی‌دهد. پاسخ ``True`` فقط
+    وقتی قطعی است، یعنی هر سه شرط همزمان برقرارند:
+
+        * تسک، تسک نقاشی است (``station_name='paint'``)؛
+        * مادهٔ مصرف دستی همان مادهٔ نیاز صف است؛
+        * حداقل یک ``DailyMaterialQueue`` با ``delivered_quantity > 0``
+          (تحویل واقعی — همان معنای ``has_transaction``) این تسک و
+          این ماده را به‌عنوان source دارد.
+
+    چرا همان ماده هم بخشی از شرط است:
+        مصرف دستی برای ماده‌ای دیگر هرگز تکرار تحویل صف نیست.
+        صرفاً وجود صف برای یک ماده در یک روز، مصرف دستی مستقل
+        معتبر را باید بلاک نکند.
+
+    چرا به‌جای property ``has_transaction`` روی فیلد فیلتر می‌کنیم:
+        ``has_transaction`` یک property پایتونی است و در queryset
+        قابل فیلتر نیست؛ معادل DB آن ``delivered_quantity > 0`` است
+        (برگشتی بدون تحویل ممکن نیست).
+
+    کاربرد:
+        گارد مصرف دستی (W13) — اگر بستهٔ فیزیکی نیاز نقاشی قبلاً
+        از انبار خارج شده است، مصرف دستی همان نیاز موجودی را دوبار
+        کم می‌کند. هیچ ربطی به Engine A (MaterialIssue) ندارد و
+        هیچ رفتاری در مسیر عملیاتی تغییر نمی‌کند.
+    """
+    from .models import DailyMaterialQueueSource
+
+    if task is None or raw_material is None:
+        return False
+    try:
+        if task.station_name != 'paint':
+            return False
+    except AttributeError:
+        return False
+    return DailyMaterialQueueSource.objects.filter(
+        production_task=task,
+        raw_material=raw_material,
+        queue__delivered_quantity__gt=0,
+    ).exists()
+
+
 # ---------------------------------------------------------------------------
 # گزارش مصرف مواد روزانه (Phase 7)
 #
