@@ -1685,6 +1685,30 @@ def stock_movement_list(request):
     return render(request, 'inventory/movements.html', context)
 
 
+def _is_paint_managed_material(raw_material_id):
+    """
+    W12 guard (P17): Material-level classification of paint-managed materials.
+
+    A RawMaterial is paint-managed if it appears in PaintingProcessMaterial
+    (the paint process catalog) or PaintingColorMaterialVariant (actual
+    color-specific paint materials consumed by paint processes). These tables
+    are paint-specific: their existence means the material is consumed by a
+    painting process and its inventory is tracked through Engine B
+    (DailyMaterialQueue), not through manual consumption entry.
+
+    Limitation: Materials listed in PaintingMaterialRequirement but absent
+    from both catalog tables are not caught. The resolver at
+    product/utils.py:296 already reports such cases as
+    'material_outside_process_catalog'. In a well-maintained system this
+    should not occur.
+    """
+    from product.models import PaintingProcessMaterial, PaintingColorMaterialVariant
+    return (
+        PaintingProcessMaterial.objects.filter(raw_material_id=raw_material_id).exists()
+        or PaintingColorMaterialVariant.objects.filter(raw_material_id=raw_material_id).exists()
+    )
+
+
 @login_required
 @admin_or_manager_required
 @require_http_methods(['POST'])
@@ -1695,6 +1719,20 @@ def stock_movement_create(request):
     if form.is_valid():
         movement = form.save(commit=False)
         movement.created_by = request.user
+        if movement.movement_type == 'consumption' and _is_paint_managed_material(
+            movement.raw_material_id
+        ):
+            return JsonResponse({
+                'success': False,
+                'errors': {
+                    '__all__': [
+                        'این ماده توسط صف مواد روزانه نقاشی مدیریت می‌شود؛ '
+                        'مصرف دستی از طریق این فرم مجاز نیست. '
+                        'از صفحهٔ «صف مواد روزانه» یا اسکن بسته‌بندی برای '
+                        'ثبت مصرف نقاشی استفاده کنید.'
+                    ]
+                },
+            })
         movement.save()
         return JsonResponse({
             'success': True,
