@@ -1,0 +1,159 @@
+{% extends 'storefront/layouts/store.html' %}
+{% load storefront_filters %}
+
+{% block title %}{{ product.name }} — فروشگاه{% endblock %}
+{% block meta_description %}{{ product.description|truncatewords:25 }}{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-6xl px-4 py-8">
+
+    <nav class="mb-6 text-sm text-stone-500">
+        <a href="{% url 'storefront:home' %}" class="hover:text-stone-800">خانه</a>
+        <span class="mx-1">/</span>
+        <a href="{% url 'storefront:category_detail' product.category.slug %}"
+           class="hover:text-stone-800">{{ product.category.name }}</a>
+        <span class="mx-1">/</span>
+        <span class="text-stone-800">{{ product.name }}</span>
+    </nav>
+
+    <div class="grid gap-8 lg:grid-cols-2">
+
+        {# ---------- گالری ---------- #}
+        <div>
+            <div class="card aspect-square overflow-hidden bg-stone-100">
+                {% if gallery %}
+                    <img id="gallery-main" src="{{ gallery.0.image.url }}" alt="{{ product.name }}"
+                         class="h-full w-full object-cover">
+                {% elif product.image %}
+                    <img id="gallery-main" src="{{ product.image.url }}" alt="{{ product.name }}"
+                         class="h-full w-full object-cover">
+                {% else %}
+                    <div class="grid h-full w-full place-items-center text-stone-400">
+                        <span>تصویری موجود نیست</span>
+                    </div>
+                {% endif %}
+            </div>
+
+            {% if gallery|length > 1 %}
+            <div class="mt-3 flex gap-2 overflow-x-auto">
+                {% for img in gallery %}
+                <button type="button"
+                        class="h-20 w-20 shrink-0 overflow-hidden rounded-default border border-stone-200 hover:border-primary-500"
+                        onclick="document.getElementById('gallery-main').src='{{ img.image.url }}'">
+                    <img src="{{ img.image.url }}" alt="{{ img.alt_text|default:product.name }}"
+                         class="h-full w-full object-cover" loading="lazy">
+                </button>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+
+        {# ---------- اطلاعات و افزودن به سبد ---------- #}
+        <div>
+            <h1 class="text-2xl font-bold text-stone-900">{{ product.name }}</h1>
+            <p class="mt-1 text-sm text-stone-500">دسته: {{ product.category.name }}</p>
+
+            {% if product.description %}
+            <p class="mt-4 whitespace-pre-line text-sm leading-7 text-stone-600">{{ product.description }}</p>
+            {% endif %}
+
+            {% if default_colors %}
+            <div class="mt-4">
+                <h2 class="mb-2 text-sm font-medium">رنگ‌های پیش‌فرض</h2>
+                <ul class="flex flex-wrap gap-3 text-sm text-stone-600">
+                    {% for part, code in default_colors.items %}
+                    <li class="rounded-default bg-stone-100 px-2 py-1">{{ part }}: {{ code }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+
+            {# Alpine اینجا فقط برای محاسبه‌ی زنده‌ی قیمت است. #}
+            <div class="card mt-6 p-5"
+                 x-data="dimensionPrice({
+                     basePrice: {{ product.base_price|default:0 }},
+                     dims: {
+                         length: {def: {{ product.length|default_if_none:'null' }}, editable: {{ product.length_editable|yesno:'true,false' }}, percent: {{ product.length_price_percent|default:0 }} },
+                         width:  {def: {{ product.width|default_if_none:'null' }},  editable: {{ product.width_editable|yesno:'true,false' }},  percent: {{ product.width_price_percent|default:0 }} },
+                         height: {def: {{ product.height|default_if_none:'null' }}, editable: {{ product.height_editable|yesno:'true,false' }}, percent: {{ product.height_price_percent|default:0 }} }
+                     }
+                 })">
+
+                <h2 class="mb-4 font-semibold">ابعاد (سانتی‌متر)</h2>
+
+                <div class="grid gap-4 sm:grid-cols-3">
+
+                    <div>
+                        <label class="label" for="dim-length">طول</label>
+                        <input id="dim-length" type="number" min="1"
+                               x-model.number="dims.length.value" @input="recalc()"
+                               class="input" x-bind:placeholder="'پیش‌فرض: ' + (dims.length.def ?? '—')">
+                        <p class="mt-1 text-xs text-stone-500"
+                           x-show="dims.length.editable && dims.length.def">
+                            هر سانتی‌متر: <span x-text="dims.length.percent"></span>٪ افزایش
+                        </p>
+                        <p class="mt-1 text-xs text-stone-400" x-show="!dims.length.editable">
+                            این بعد قابل تغییر نیست
+                        </p>
+                    </div>
+
+                    <div>
+                        <label class="label" for="dim-width">عرض</label>
+                        <input id="dim-width" type="number" min="1"
+                               x-model.number="dims.width.value" @input="recalc()"
+                               class="input" x-bind:placeholder="'پیش‌فرض: ' + (dims.width.def ?? '—')">
+                        <p class="mt-1 text-xs text-stone-500"
+                           x-show="dims.width.editable && dims.width.def">
+                            هر سانتی‌متر: <span x-text="dims.width.percent"></span>٪ افزایش
+                        </p>
+                        <p class="mt-1 text-xs text-stone-400" x-show="!dims.width.editable">
+                            این بعد قابل تغییر نیست
+                        </p>
+                    </div>
+
+                    <div>
+                        <label class="label" for="dim-height">ارتفاع</label>
+                        <input id="dim-height" type="number" min="1"
+                               x-model.number="dims.height.value" @input="recalc()"
+                               class="input" x-bind:placeholder="'پیش‌فرض: ' + (dims.height.def ?? '—')">
+                        <p class="mt-1 text-xs text-stone-500"
+                           x-show="dims.height.editable && dims.height.def">
+                            هر سانتی‌متر: <span x-text="dims.height.percent"></span>٪ افزایش
+                        </p>
+                        <p class="mt-1 text-xs text-stone-400" x-show="!dims.height.editable">
+                            این بعد قابل تغییر نیست
+                        </p>
+                    </div>
+
+                </div>
+
+                <div class="mt-5 flex items-center gap-3">
+                    <div>
+                        <label class="label" for="qty">تعداد</label>
+                        <input id="qty" name="quantity" type="number" min="1" value="1"
+                               x-model.number="quantity" class="input w-24">
+                    </div>
+                    <div class="mt-6">
+                        <span class="block text-xs text-stone-500">قیمت کل</span>
+                        <span class="text-xl font-bold text-primary-800"
+                              x-text="total().toLocaleString('fa-IR')"></span>
+                        <span class="text-xs text-stone-500"> تومان</span>
+                    </div>
+                </div>
+
+                <form method="post" action="{% url 'cart:cart_add' product.id %}"
+                      hx-post="{% url 'cart:cart_add' product.id %}"
+                      hx-target="#cart-count" hx-swap="innerHTML"
+                      class="mt-5">
+                    {% csrf_token %}
+                    <input type="hidden" name="length"  :value="dims.length.value ?? ''">
+                    <input type="hidden" name="width"   :value="dims.width.value ?? ''">
+                    <input type="hidden" name="height"  :value="dims.height.value ?? ''">
+                    <input type="hidden" name="quantity" :value="quantity">
+                    <button type="submit" class="btn-primary w-full">افزودن به سبد خرید</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,124 @@
+{% extends "inventory/base.html" %}
+{% load product_filters %}
+{% block title %}دریافت کالا{% endblock %}
+
+{% block inventory_content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+  <div>
+    <h1 class="h3 mb-1">دریافت کالا</h1>
+    <div class="small text-muted">بارکد را اسکن کنید و تعداد بسته را بزنید.</div>
+  </div>
+  <a href="{% url 'inventory:daily_material_queue' %}" class="btn btn-sm btn-outline-primary">
+    <i class="bi bi-clipboard2-data"></i> کار روزانه
+  </a>
+</div>
+
+<div class="row g-3">
+  <div class="col-12 col-lg-7">
+    <div class="card-modern">
+      <div class="card-body">
+        <form method="post" id="receiveForm" autocomplete="off">
+          {% csrf_token %}
+
+          <div class="mb-3">
+            <label class="form-label fw-bold" for="barcodeInput">بارکد ماده <span class="text-danger">*</span></label>
+            <input type="text" name="barcode" id="barcodeInput" class="form-control form-control-lg text-center"
+                   placeholder="بارکد را اسکن کنید" inputmode="numeric" dir="ltr" required autofocus>
+            <div class="form-text">
+              اگر بارکد شناخته نشد، خطا می‌گیرید تا کالای اشتباه وارد انبار نشود.
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-bold" for="packCountInput">تعداد بسته <span class="text-danger">*</span></label>
+            <input type="number" name="pack_count" id="packCountInput"
+                   class="form-control form-control-lg text-center" value="1" min="1" max="1000" step="1" required>
+            <div class="form-text">مقدار انبار از «اندازهٔ بستهٔ» همان ماده حساب می‌شود.</div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label" for="noteInput">یادداشت</label>
+            <input type="text" name="note" id="noteInput" class="form-control" maxlength="255"
+                   placeholder="اختیاری — مثلاً شمارهٔ حواله">
+          </div>
+
+          <button type="submit" class="btn btn-success btn-lg w-100">
+            <i class="bi bi-box-arrow-in-down"></i> ثبت دریافت
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-lg-5">
+    <div class="card-modern mb-3">
+      <div class="card-body">
+        <h2 class="h6 mb-3">آخرین دریافت‌ها</h2>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead class="table-light"><tr><th>ماده</th><th>مقدار</th><th>ثبت‌کننده</th><th>زمان</th></tr></thead>
+            <tbody>
+              {% for movement in recent_movements %}
+                <tr>
+                  <td>{{ movement.raw_material.name }}</td>
+                  <td class="fw-bold">{{ movement.quantity|floatformat:2 }} {{ movement.raw_material.get_unit_display }}</td>
+                  <td>{% if movement.created_by %}{{ movement.created_by.get_full_name|default:movement.created_by.username }}{% else %}—{% endif %}</td>
+                  <td class="small text-muted">{{ movement.created_at|persian_datetime }}</td>
+                </tr>
+              {% empty %}
+                <tr><td colspan="4" class="text-center text-muted py-4">هنوز دریافتی ثبت نشده است.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    {% if no_barcode_materials %}
+      <div class="card-modern">
+        <div class="card-body">
+          <h2 class="h6 mb-2"><i class="bi bi-exclamation-circle text-warning"></i> مواد بدون بارکد</h2>
+          <p class="small text-muted mb-2">
+            این مواد با اسکن دریافت نمی‌شوند. برای فعال شدن اسکن، در
+            <a href="{% url 'inventory:material_list' %}">مواد اولیه</a> بارکدشان را وارد کنید.
+          </p>
+          <ul class="small mb-0">
+            {% for material in no_barcode_materials %}
+              <li>{{ material.name }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block inventory_js %}
+<script>
+(function() {
+  'use strict';
+  // اسکنرها معمولاً بعد از هر اسکن Enter می‌فرستند؛ این کار را می‌گیریم تا
+  // فوکوس برای اسکن بعدی روی همان فیلد بماند و فرم دوباره ارسال نشود.
+  const form = document.getElementById('receiveForm');
+  const barcode = document.getElementById('barcodeInput');
+
+  form?.addEventListener('submit', event => {
+    if (!barcode.value.trim()) {
+      event.preventDefault();
+      return;
+    }
+    if (form.dataset.submitting === '1') {
+      event.preventDefault();
+      return;
+    }
+    form.dataset.submitting = '1';
+  });
+
+  barcode?.addEventListener('input', () => {
+    if (form) form.dataset.submitting = '0';
+    if (document.activeElement === barcode) return;
+  });
+})();
+</script>
+{% endblock %}

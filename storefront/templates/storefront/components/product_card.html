@@ -1,0 +1,45 @@
+{% load static %}
+{% load storefront_filters %}
+{% comment %}
+کارت محصول. انتظار دارد `product` در حلقه باشد.
+قیمت نمایش‌داده‌شده همیشه `base_price` است؛ قیمت ابعاد سفارشی در صفحه‌ی
+جزئیات محاسبه می‌شود، چون برای آن باید ابعاد را مشتری انتخاب کند.
+{% endcomment %}
+<a href="{% url 'storefront:product_detail' product.slug %}"
+   class="card group flex flex-col overflow-hidden transition hover:shadow-elevation-2">
+
+    <div class="aspect-square overflow-hidden bg-stone-100">
+        {% if product.image %}
+            <img src="{{ product.image.url }}" alt="{{ product.name }}"
+                 loading="lazy"
+                 class="h-full w-full object-cover transition duration-300 group-hover:scale-105">
+        {% else %}
+            <div class="grid h-full w-full place-items-center text-stone-400">
+                <svg class="h-12 w-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                          d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5A1.5 1.5 0 0021 19.5V6a1.5 1.5 0 00-1.5-1.5H4.5A1.5 1.5 0 003 6v13.5A1.5 1.5 0 004.5 21z"/>
+                </svg>
+            </div>
+        {% endif %}
+    </div>
+
+    <div class="flex flex-1 flex-col p-4">
+        <span class="text-xs text-stone-400">{{ product.category.name }}</span>
+        <h3 class="mt-1 line-clamp-2 font-medium text-stone-900 group-hover:text-primary-700">
+            {{ product.name }}
+        </h3>
+
+        {% if product.review_count %}
+        <div class="mt-1.5 flex items-center gap-1 text-xs text-amber-600">
+            <span aria-hidden="true">★</span>
+            <span>{{ product.average_rating }}</span>
+            <span class="text-stone-400">({{ product.review_count }})</span>
+        </div>
+        {% endif %}
+
+        <div class="mt-auto flex items-baseline gap-1 pt-3">
+            <span class="text-lg font-bold text-primary-800">{{ product.base_price|fa_price }}</span>
+            <span class="text-xs text-stone-500">تومان</span>
+        </div>
+    </div>
+</a>

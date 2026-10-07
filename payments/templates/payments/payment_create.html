@@ -1,0 +1,49 @@
+{% extends 'storefront/layouts/store.html' %}
+{% load storefront_filters %}
+
+{% block title %}پرداخت — فروشگاه{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-2xl px-4 py-8">
+    <h1 class="mb-6 text-2xl font-bold">پرداخت سفارش</h1>
+
+    <div class="card p-5">
+        <div class="mb-6 text-center">
+            <p class="text-sm text-stone-500">مبلغ قابل پرداخت</p>
+            <p class="text-2xl font-bold text-primary-800">{{ order.final_amount|fa_price }} تومان</p>
+        </div>
+
+        <form method="post" class="space-y-4">
+            {% csrf_token %}
+
+            <div class="space-y-3">
+                <label class="flex items-center gap-3 p-4 rounded-xl border-2 border-stone-200 cursor-pointer has-[:checked]:border-primary-600 has-[:checked]:bg-primary-50">
+                    <input type="radio" name="gateway" value="zarinpal" checked class="w-4 h-4 text-primary-600">
+                    <div>
+                        <p class="font-semibold">درگاه زرین‌پال</p>
+                        <p class="text-sm text-stone-500">پرداخت آنلاین با کارت بانکی</p>
+                    </div>
+                </label>
+
+                <label class="flex items-center gap-3 p-4 rounded-xl border-2 border-stone-200 cursor-pointer has-[:checked]:border-primary-600 has-[:checked]:bg-primary-50">
+                    <input type="radio" name="gateway" value="cash_on_delivery" class="w-4 h-4 text-primary-600">
+                    <div>
+                        <p class="font-semibold">پرداخت درب منزل</p>
+                        <p class="text-sm text-stone-500">پرداخت نقدی هنگام تحویل</p>
+                    </div>
+                </label>
+            </div>
+
+            <button type="submit" class="btn-primary w-full py-3 text-base">
+                ادامه به پرداخت
+            </button>
+        </form>
+
+        <div class="mt-6 text-center">
+            <a href="{% url 'storefront:order_detail' order.id %}" class="text-sm text-primary-600 hover:underline">
+                بازگشت به جزئیات سفارش
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

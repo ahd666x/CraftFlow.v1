@@ -1,0 +1,96 @@
+{% extends "inventory/base.html" %}
+{% load product_filters %}
+{% block title %}ردیابی مواد سفارش{% endblock %}
+
+{% block inventory_content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+  <div>
+    <h1 class="h3 mb-1">ردیابی مواد سفارش #{{ order.id }}</h1>
+    <div class="small text-muted">
+      {{ order.customer }} — {{ order.created_at|persian_date }}
+    </div>
+  </div>
+  <a href="{% url 'inventory:reports' %}" class="btn btn-sm btn-outline-primary">
+    <i class="bi bi-journal-text"></i> گزارش‌ها
+  </a>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-6 col-lg-3"><div class="card-modern h-100"><div class="card-body py-3">
+    <div class="text-muted small">نیاز برنامه‌ریزی‌شده</div>
+    <div class="h5 mb-0">{{ trace.totals.planned|floatformat:2 }}</div>
+  </div></div></div>
+  <div class="col-6 col-lg-3"><div class="card-modern h-100"><div class="card-body py-3">
+    <div class="text-muted small">تحویل‌شده</div>
+    <div class="h5 mb-0">{{ trace.totals.delivered|floatformat:2 }}</div>
+  </div></div></div>
+  <div class="col-6 col-lg-3"><div class="card-modern h-100"><div class="card-body py-3">
+    <div class="text-muted small">برگشتی</div>
+    <div class="h5 mb-0">{{ trace.totals.returned|floatformat:2 }}</div>
+  </div></div></div>
+  <div class="col-6 col-lg-3"><div class="card-modern h-100"><div class="card-body py-3">
+    <div class="text-muted small">مصرف واقعی</div>
+    <div class="h5 mb-0">{{ trace.totals.actual|floatformat:2 }}</div>
+    <div class="small text-muted">{{ trace.totals.movement_count }} حرکت انبار</div>
+  </div></div></div>
+</div>
+
+<div class="card-modern mb-3">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table align-middle mb-0">
+        <thead class="table-light">
+          <tr><th>ماده</th><th>واحد</th><th>سهم این سفارش</th><th>تحویل</th><th>برگشتی</th><th>مصرف واقعی</th><th>وضعیت</th><th>کارگران</th><th>تسک‌ها</th></tr>
+        </thead>
+        <tbody>
+          {% for row in trace.rows %}
+            <tr class="{% if row.status == 'conflict' %}table-warning{% endif %}">
+              <td><strong>{{ row.raw_material }}</strong></td>
+              <td>{{ row.unit }}</td>
+              <td class="fw-bold">{{ row.planned|floatformat:2 }}</td>
+              <td>{{ row.delivered|floatformat:2 }}</td>
+              <td>{{ row.returned|floatformat:2 }}</td>
+              <td class="fw-bold">{{ row.actual|floatformat:2 }}</td>
+              <td>
+                {% if row.status == 'conflict' %}
+                  <span class="badge bg-warning text-dark">مغایرت</span>
+                {% else %}
+                  <span class="badge bg-secondary">{{ row.status }}</span>
+                {% endif %}
+              </td>
+              <td>{{ row.workers|length }}</td>
+              <td>{{ row.task_count }}</td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="9" class="text-center text-muted py-5">برای این سفارش ماده‌ای در صف روزانه ثبت نشده است.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="card-modern">
+  <div class="card-body">
+    <h2 class="h6 mb-3">حرکات انبار مرتبط با این سفارش</h2>
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead class="table-light"><tr><th>تاریخ</th><th>ماده</th><th>نوع</th><th>مقدار</th><th>یادداشت</th></tr></thead>
+        <tbody>
+          {% for movement in trace.movements %}
+            <tr>
+              <td class="small">{{ movement.created_at|persian_datetime }}</td>
+              <td>{{ movement.raw_material.name }}</td>
+              <td>{{ movement.get_movement_type_display }}</td>
+              <td>{{ movement.quantity|floatformat:2 }} {{ movement.raw_material.get_unit_display }}</td>
+              <td class="small text-muted">{{ movement.note|default:"—" }}</td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="5" class="text-center text-muted py-4">حرکتی ثبت نشده است.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

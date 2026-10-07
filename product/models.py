@@ -4,6 +4,7 @@ from django.contrib.auth.models import User
 from django.urls import reverse
 import jdatetime
 from .fields import PersianDateField
+from storefront.managers import ActiveManager
 from io import BytesIO
 from django.core.files.base import ContentFile
 from django.conf import settings
@@ -14,6 +15,25 @@ from datetime import time
 
 logger = logging.getLogger(__name__)
 
+
+def unique_unicode_slug(text, model, pk=None, max_length=220):
+    """
+    ساخت اسلاگ یونیکد یکتا برای نام‌های فارسی.
+
+    نام محصولات و دسته‌ها فارسی‌اند و `slugify` پیش‌فرض جنگو همه‌ی حروف
+    غیرلاتین را حذف می‌کند؛ پس از `allow_unicode=True` استفاده می‌کنیم.
+    اگر اسلاگ تکراری بود، پسوند عددی می‌گذاریم.
+    """
+    from django.utils.text import slugify
+
+    base = slugify(text, allow_unicode=True)[:max_length] or 'item'
+    slug = base
+    counter = 1
+    while model._default_manager.filter(slug=slug).exclude(pk=pk).exists():
+        counter += 1
+        suffix = f'-{counter}'
+        slug = f'{base[:max_length - len(suffix)]}{suffix}'
+    return slug
 
 
 class Customer(models.Model):
@@ -39,7 +59,14 @@ class Customer(models.Model):
 
 class ProductCategory(models.Model):
     name = models.CharField(max_length=100, verbose_name="نام دسته")
+    slug = models.SlugField(max_length=120, unique=True, blank=True, allow_unicode=True, verbose_name="اسلاگ")
+    image = models.ImageField(upload_to='categories/', blank=True, null=True, verbose_name="تصویر دسته")
     is_active = models.BooleanField(default=True, verbose_name="فعال")
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = unique_unicode_slug(self.name, type(self), self.pk)
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.name
@@ -88,7 +115,17 @@ class Order(models.Model):
         ('planned', 'برنامه‌ریزی شده'),
         ('producing', 'در حال تولید'),
         ('completed', 'تکمیل شده'),
+        ('paid', 'پرداخت شده'),
+        ('shipped', 'ارسال شده'),
+        ('delivered', 'تحویل داده شده'),
+        ('cancelled', 'لغو شده'),
     )
+
+    # وضعیت‌هایی که دیگر نباید از بیرونِ چرخه‌ی تولید بازنویسی شوند.
+    # تا وقتی این‌ها وجود نداشتند، بازمحاسبه‌ی وضعیت از روی تسک‌ها بی‌خطر بود؛
+    # اما به‌محض اضافه شدن وضعیت مالی/ارسال، همان بازمحاسبه می‌توانست
+    # `paid` را با `producing` بازنویسی کند. این guard عمداً اینجا است.
+    LOCKED_STATUSES = {'paid', 'shipped', 'delivered', 'cancelled'}
 
     user = models.ForeignKey(User, null=True, on_delete=models.SET_NULL, verbose_name="نماینده")
     customer = models.ForeignKey(Customer, on_delete=models.PROTECT, verbose_name="مشتری")
@@ -105,6 +142,24 @@ class Order(models.Model):
         choices=ORDER_STATUS,
         default='draft',
         verbose_name="وضعیت سفارش"
+    )
+
+    # ---- لایه‌ی مالی فروشگاه ----
+    # همه‌ی این‌ها افزایشی‌اند و روی سفارش‌های موجود امن‌اند: مقادیر پیش‌فرض
+    # صفر/خالی هستند و تا وقتی فاز پرداخت اجرا نشود چیزی را نمی‌شکنند.
+    total_amount = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name="مبلغ کل")
+    discount_amount = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name="تخفیف")
+    final_amount = models.DecimalField(max_digits=15, decimal_places=0, default=0, verbose_name="مبلغ نهایی")
+    shipping_address = models.TextField(blank=True, verbose_name="آدرس ارسال نهایی")
+    tracking_code = models.CharField(max_length=100, blank=True, verbose_name="کد رهگیری")
+    paid_at = models.DateTimeField(null=True, blank=True, verbose_name="تاریخ پرداخت")
+    address = models.ForeignKey(
+        'storefront.Address', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='orders', verbose_name="آدرس انتخاب‌شده",
+    )
+    discount = models.ForeignKey(
+        'discounts.Discount', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='orders', verbose_name="تخفیف",
     )
 
     def __str__(self):
@@ -285,6 +340,7 @@ class Order(models.Model):
 class Product(models.Model):
     category = models.ForeignKey(ProductCategory,on_delete=models.PROTECT,related_name='products',verbose_name="دسته")
     name = models.CharField(max_length=200, verbose_name="نام محصول")
+    slug = models.SlugField(max_length=220, unique=True, blank=True, allow_unicode=True, verbose_name="اسلاگ")
     color = models.CharField(max_length=100, blank=True, verbose_name="رنگ")
     parts_list_key = models.CharField(max_length=255, blank=True, verbose_name="مسیر فایل")
     description = models.TextField(blank=True, verbose_name="توضیحات")
@@ -295,8 +351,48 @@ class Product(models.Model):
     image = models.ImageField(upload_to='product_images/', blank=True, null=True, verbose_name="عکس محصول")
     is_active = models.BooleanField(default=True, verbose_name="فعال")
 
+    # ---- ابعاد سفارشی و قیمت‌گذاری فروشگاه ----
+    # قیمت‌گذاری سه‌محوره جایگزینِ تک‌درصدیِ `price_increment_per_cm` می‌شود.
+    # فیلد بالا فعلاً نگه داشته می‌شود چون `OrderItem.calculate_price()` قدیمی
+    # هنوز از آن استفاده می‌کند؛ مهاجرت آن به `storefront.pricing` جداگانه و
+    # همراه با تست رگرسیون قیمت انجام می‌شود.
+    length = models.PositiveIntegerField(null=True, blank=True, verbose_name="طول پیش‌فرض (سانتی‌متر)")
+    width = models.PositiveIntegerField(null=True, blank=True, verbose_name="عرض پیش‌فرض (سانتی‌متر)")
+    height = models.PositiveIntegerField(null=True, blank=True, verbose_name="ارتفاع پیش‌فرض (سانتی‌متر)")
+    length_editable = models.BooleanField(default=True, verbose_name="امکان تغییر طول توسط مشتری")
+    width_editable = models.BooleanField(default=True, verbose_name="امکان تغییر عرض توسط مشتری")
+    height_editable = models.BooleanField(default=True, verbose_name="امکان تغییر ارتفاع توسط مشتری")
+    length_price_percent = models.DecimalField(max_digits=5, decimal_places=2, default=0, verbose_name="درصد افزایش قیمت به ازای هر سانتی‌متر طول")
+    width_price_percent = models.DecimalField(max_digits=5, decimal_places=2, default=0, verbose_name="درصد افزایش قیمت به ازای هر سانتی‌متر عرض")
+    height_price_percent = models.DecimalField(max_digits=5, decimal_places=2, default=0, verbose_name="درصد افزایش قیمت به ازای هر سانتی‌متر ارتفاع")
+
+    objects = models.Manager()
+    active_objects = ActiveManager()
+
     def __str__(self):
         return f"{self.category} - {self.name}"
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = unique_unicode_slug(self.name, type(self), self.pk)
+        super().save(*args, **kwargs)
+
+    @property
+    def average_rating(self):
+        """میانگین امتیاز نظرات. اگر کوئری annotate داشته باشد از همان استفاده می‌کند
+        تا در لیست‌ها query اضافه نزند."""
+        if hasattr(self, 'avg_rating') and self.avg_rating is not None:
+            return round(self.avg_rating, 1)
+        reviews = self.reviews.filter(is_active=True)
+        if not reviews.exists():
+            return 0
+        return round(sum(r.rating for r in reviews) / reviews.count(), 1)
+
+    @property
+    def review_count(self):
+        if hasattr(self, 'rev_count') and self.rev_count is not None:
+            return self.rev_count
+        return self.reviews.filter(is_active=True).count()
 
     class Meta:
         verbose_name = "محصول"
@@ -310,6 +406,13 @@ class OrderItem(models.Model):
     notes = models.CharField(max_length=200, blank=True, verbose_name="توضیحات")
     quantity = models.PositiveIntegerField(default=1, verbose_name="تعداد")
     size = models.CharField(max_length=100, blank=True, verbose_name="اندازه")
+
+    # ابعاد سفارشی نهایی که مشتری انتخاب کرده. `size` بالا فقط برای نمایش
+    # خوانا در تمپلیت‌هاست و از همین سه فیلد پر می‌شود؛ مبنای محاسبه قیمت
+    # همین‌هاست، نه رشته‌ی `size`.
+    length = models.PositiveIntegerField(null=True, blank=True, verbose_name="طول سفارشی (سانتی‌متر)")
+    width = models.PositiveIntegerField(null=True, blank=True, verbose_name="عرض سفارشی (سانتی‌متر)")
+    height = models.PositiveIntegerField(null=True, blank=True, verbose_name="ارتفاع سفارشی (سانتی‌متر)")
     qr_code = models.ImageField(upload_to='qr/', blank=True, null=True)
     unit_price = models.DecimalField(
         max_digits=12, decimal_places=0, default=0,verbose_name="قیمت")
@@ -868,6 +971,8 @@ class ProductionTask(models.Model):
         if self.order_id is None:
             return
         order = self.order
+        if order.status in Order.LOCKED_STATUSES:
+            return
         all_tasks = order.tasks.all()
         total = all_tasks.count()
         done = all_tasks.filter(status='done').count()
@@ -1008,6 +1113,26 @@ class ProductionDefect(models.Model):
                                     related_name='reported_defects', verbose_name='ثبت‌کننده')
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='زمان ثبت')
 
+    # ---- نیاز مواد جایگزین (موتور صف روزانه) ----
+    # این چهار فیلد همان چیزی را نگه می‌دارند که قبلاً یک MaterialIssue
+    # جداگانه برای هر خرابی می‌ساخت. حالا این نیاز مستقیماً به صف تحویل
+    # روزانه می‌رود و از همان تحویل/بازگشت معمولی عبور می‌کند.
+    material_raw_material = models.ForeignKey(
+        'inventory.RawMaterial', null=True, blank=True, on_delete=models.PROTECT,
+        related_name='defect_needs', verbose_name='مادهٔ جایگزین',
+    )
+    material_quantity = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='مقدار مادهٔ جایگزین',
+    )
+    material_worker = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='defect_material_needs', verbose_name='کارگرِ انجام‌دهندهٔ جبران',
+    )
+    material_work_date = models.DateField(
+        null=True, blank=True, verbose_name='تاریخ کاریِ تحویل',
+    )
+
     class Meta:
         verbose_name = 'خرابی تولید'
         verbose_name_plural = 'خرابی‌های تولید'
@@ -1147,6 +1272,14 @@ class PaintingProcessMaterial(models.Model):
         related_name='process_catalog_entries',
         verbose_name="مادة اولیه",
     )
+    stage = models.ForeignKey(
+        'PaintingStage',
+        on_delete=models.CASCADE,
+        related_name='catalog_materials',
+        verbose_name="مرحله نقاشی",
+        blank=True, null=True,
+        help_text="اگر مشخص شود، این ماده فقط برای این مرحله در صف روزانه انبار ظاهر می‌شود."
+    )
     is_color_variant = models.BooleanField(
         default=False,
         verbose_name="وابسته به کد رنگ سفارش",
@@ -1156,18 +1289,19 @@ class PaintingProcessMaterial(models.Model):
     class Meta:
         verbose_name = "ماده اولیه کاتالوگ روند"
         verbose_name_plural = "مواد اولیه کاتالوگ روندها"
-        unique_together = ('process', 'raw_material')
-        ordering = ['process__name', 'raw_material__name']
+        unique_together = ('process', 'raw_material', 'stage')
+        ordering = ['process__name', 'stage__order', 'raw_material__name']
 
     def __str__(self):
-        return f"{self.process.name} ← {self.raw_material.name}"
+        stage_part = f" / {self.stage.name}" if self.stage else ""
+        return f"{self.process.name}{stage_part} ← {self.raw_material.name}"
 
 
 class PaintingMaterialRequirement(models.Model):
     """
-    مقدار واقعی مصرف یک ماده اولیه‌ی متعلق به یک روند، برای یک (محصول + بخش رنگی)
-    مشخص. هم product و هم color_part الزامی هستند — دیگر هیچ حالت پیش‌فرض/
-    سراسری وجود ندارد؛ چون مثلاً دستگیره و بدنه با اینکه از یک روند عبور
+    مقدار واقعی مصرف یک ماده اولیه‌ی متعلق به یک روند، برای یک (محصول + بخش رنگی + مرحله)
+    مشخص. هم product و هم color_part و هم stage الزامی هستند — دیگر هیچ حالت پیش‌فرض/
+    سراسری وجود ندارد؛ چون مثلاً مرحله زیرکار و مرحله روکش با اینکه از یک روند عبور
     می‌کنند، مقدار مصرف کاملاً متفاوتی دارند و نمی‌توان یک مقدار مشترک گذاشت.
     """
     process = models.ForeignKey(
@@ -1175,6 +1309,13 @@ class PaintingMaterialRequirement(models.Model):
         on_delete=models.CASCADE,
         related_name='material_requirements',
         verbose_name="روند نقاشی",
+    )
+    stage = models.ForeignKey(
+        'PaintingStage',
+        on_delete=models.CASCADE,
+        related_name='material_requirements',
+        verbose_name="مرحله نقاشی",
+        blank=True, null=True,
     )
     raw_material = models.ForeignKey(
         'inventory.RawMaterial',
@@ -1201,11 +1342,12 @@ class PaintingMaterialRequirement(models.Model):
     class Meta:
         verbose_name = "فرمول مصرف مواد نقاشی"
         verbose_name_plural = "فرمول‌های مصرف مواد نقاشی"
-        unique_together = ('process', 'raw_material', 'product', 'color_part')
-        ordering = ['product__name', 'color_part', 'process__name', 'raw_material__name']
+        unique_together = ('process', 'stage', 'raw_material', 'product', 'color_part')
+        ordering = ['product__name', 'color_part', 'process__name', 'stage__order', 'raw_material__name']
 
     def __str__(self):
-        return f"{self.product} / {self.color_part} — {self.process.name} ← {self.raw_material} ({self.consumption_per_unit})"
+        stage_name = self.stage.name if self.stage else "—"
+        return f"{self.product} / {self.color_part} — {self.process.name} / {stage_name} ← {self.raw_material} ({self.consumption_per_unit})"
 
 
 class PaintingColorMaterialVariant(models.Model):

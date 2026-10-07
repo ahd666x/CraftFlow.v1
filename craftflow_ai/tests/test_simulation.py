@@ -14,6 +14,7 @@ import ast
 from decimal import Decimal
 from pathlib import Path
 
+from django.contrib.auth.models import User
 from django.test import TestCase
 
 from craftflow_ai.simulation import (
@@ -33,7 +34,7 @@ from craftflow_ai.simulation import (
     simulate_material_availability,
     simulate_order_priority,
 )
-from inventory.models import MaterialIssue, RawMaterial, StockMovement
+from inventory.models import DailyMaterialQueue, RawMaterial, StockMovement
 from product.models import Order, ProductionTask
 
 from .factories import make_leftover, make_order, make_raw_material, make_tasks
@@ -125,13 +126,26 @@ class UnavailableCapabilityTests(TestCase):
 
 class MaterialAvailabilityTests(TestCase):
     def setUp(self):
+        import jdatetime
         self.order = make_order(status='producing')
         self.tasks = make_tasks(self.order, stations=('cut',), statuses=('pending',))
         self.raw = make_raw_material(name='رنگ سناریو', stock=Decimal('0'))
-        MaterialIssue.objects.create(
-            task=self.tasks[0], raw_material=self.raw,
-            requested_quantity=Decimal('8'), issued_quantity=Decimal('0'),
-            purpose='production', status='requested',
+        self.work_date = jdatetime.date.today().strftime('%Y-%m-%d')
+        task = self.tasks[0]
+        worker = task.assigned_worker or User.objects.filter(is_active=True).first()
+        if not worker:
+            worker = User.objects.create_user(
+                username=f'test_worker_{User.objects.count() + 1}',
+                password='testpass',
+                email=f'test_worker_{User.objects.count() + 1}@example.com',
+            )
+        DailyMaterialQueue.objects.create(
+            work_date=self.work_date,
+            worker=worker,
+            raw_material=self.raw,
+            painting_stage=task.painting_stage,
+            planned_quantity=Decimal('8'),
+            status='pending',
         )
 
     def test_additional_quantity_moves_projected_stock(self):
@@ -156,11 +170,13 @@ class MaterialAvailabilityTests(TestCase):
         self.assertEqual(metrics['stock']['delta'], '100.00')
 
     def test_leftover_impact_is_reported(self):
+        """In Engine B, returns are part of current_stock, not a separate leftover."""
         make_leftover(self.raw, Decimal('8'))
         result = simulate_material_availability(self.raw.pk, 0)
         state = result.projected_state
-        self.assertEqual(state['baseline']['from_leftover'], '8.00')
-        self.assertEqual(state['baseline']['physical_required'], '0.00')
+        self.assertEqual(state['baseline']['from_leftover'], '0.00')
+        self.assertEqual(state['baseline']['from_stock'], '8.00')
+        self.assertEqual(state['baseline']['physical_required'], '8.00')
 
     def test_no_open_requests_is_reported_as_no_effect(self):
         other = make_raw_material(name='رنگ بدون درخواست', stock=Decimal('3'))
@@ -178,17 +194,17 @@ class MaterialAvailabilityTests(TestCase):
 
     def test_plan_logic_names_the_reused_service(self):
         result = simulate_material_availability(self.raw.pk, 10)
-        self.assertIn('build_plans', result.projected_state['plan_logic'])
+        self.assertIn('_physical_for', result.projected_state['plan_logic'])
 
     def test_simulation_does_not_touch_the_database(self):
         before = {
-            'issues': MaterialIssue.objects.count(),
+            'issues': DailyMaterialQueue.objects.count(),
             'movements': StockMovement.objects.count(),
             'stock': str(self.raw.current_stock),
         }
         simulate_material_availability(self.raw.pk, 500)
         self.raw.refresh_from_db()
-        self.assertEqual(MaterialIssue.objects.count(), before['issues'])
+        self.assertEqual(DailyMaterialQueue.objects.count(), before['issues'])
         self.assertEqual(StockMovement.objects.count(), before['movements'])
         self.assertEqual(str(self.raw.current_stock), before['stock'])
 

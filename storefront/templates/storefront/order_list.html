@@ -1,0 +1,37 @@
+{% extends 'storefront/layouts/store.html' %}
+{% load storefront_filters %}
+
+{% block title %}سفارش‌های من — فروشگاه{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-6xl px-4 py-8">
+    <h1 class="mb-6 text-2xl font-bold">سفارش‌های من</h1>
+
+    {% if orders %}
+    <div class="space-y-4">
+        {% for order in orders %}
+        <a href="{% url 'storefront:order_detail' order.id %}"
+           class="card block p-5 transition hover:shadow-elevation-2">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                    <span class="font-semibold">سفارش {{ order.id }}</span>
+                    <span class="mr-3 text-sm text-stone-500">{{ order.created_at }}</span>
+                    <span class="badge bg-stone-100 text-stone-700">{{ order.get_status_display }}</span>
+                </div>
+                <div class="text-left">
+                    <span class="block text-xs text-stone-500">{{ order.items.count }} آیتم</span>
+                    <span class="font-bold text-primary-800">{{ order.final_amount|fa_price }}</span>
+                    <span class="text-xs text-stone-500"> تومان</span>
+                </div>
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="rounded-default border border-dashed border-stone-300 p-10 text-center">
+        <p class="text-stone-500">هنوز سفارشی ثبت نکرده‌اید.</p>
+        <a href="{% url 'storefront:product_list' %}" class="btn-primary mt-4">شروع خرید</a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

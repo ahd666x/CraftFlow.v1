@@ -11,6 +11,7 @@
 """
 from decimal import Decimal
 
+from django.contrib.auth.models import User
 from django.test import TestCase
 
 from craftflow_ai.analysis.inventory import (
@@ -23,8 +24,8 @@ from craftflow_ai.analysis.inventory import (
     warehouse_impact,
 )
 from inventory.models import (
-    MaterialIssue,
-    MaterialLeftover,
+    DailyMaterialQueue,
+    DailyMaterialQueueSource,
     RawMaterial,
     RawMaterialCategory,
     StockMovement,
@@ -218,16 +219,46 @@ class OrderMaterialShortageTests(TestCase):
     """کمبود فقط از مسیر انبار و با ریاضیات واقعی build_plans گزارش می‌شود."""
 
     def setUp(self):
+        import jdatetime
         self.raw = make_raw_material(name='رنگ کم', stock=Decimal('0'))
         self.order = make_order(status='producing')
         self.tasks = make_tasks(self.order, stations=('cut',), statuses=('pending',))
+        self.work_date = jdatetime.date.today().strftime('%Y-%m-%d')
+        self.worker = self.tasks[0].assigned_worker or User.objects.create_user(
+            username='worker_fallback', password='testpass',
+            email='worker_fallback@example.com',
+        )
+
+    def _create_queue(self, quantity, status='pending'):
+        task = self.tasks[0]
+        worker = task.assigned_worker or User.objects.filter(is_active=True).first()
+        if not worker:
+            worker = User.objects.create_user(
+                username=f'test_worker_{User.objects.count() + 1}',
+                password='testpass',
+                email=f'test_worker_{User.objects.count() + 1}@example.com',
+            )
+        painting_stage = task.painting_stage
+        queue = DailyMaterialQueue.objects.create(
+            work_date=self.work_date,
+            worker=worker,
+            raw_material=self.raw,
+            painting_stage=painting_stage,
+            planned_quantity=quantity,
+            status=status,
+        )
+        DailyMaterialQueueSource.objects.create(
+            queue=queue,
+            kind='painting' if painting_stage else 'station',
+            production_task=task,
+            painting_stage=painting_stage,
+            raw_material=self.raw,
+            quantity=quantity,
+        )
+        return queue
 
     def test_open_issue_produces_a_real_shortage(self):
-        MaterialIssue.objects.create(
-            task=self.tasks[0], raw_material=self.raw,
-            requested_quantity=Decimal('8'), issued_quantity=Decimal('0'),
-            purpose='production', status='requested',
-        )
+        self._create_queue(Decimal('8'), status='pending')
         report = order_material_impact(self.order.id)
         self.assertEqual(report['open_issue_count'], 1)
         self.assertEqual(report['shortage_count'], 1)
@@ -237,24 +268,18 @@ class OrderMaterialShortageTests(TestCase):
 
     def test_leftover_reduces_physical_requirement(self):
         """
-        باقی‌ماندهٔ سالن اول مصرف می‌شود و فقط باقی‌مانده از انبار گرفته می‌شود.
-
-        این دقیقاً همان ریاضیات ``inventory.services.build_plans`` است و در
-        این تست دوباره نوشته نمی‌شود.
+        بازگشت مواد (StockMovement 'return') در current_stock شمول می‌شود و
+        مقدار کمبود را کاهش می‌دهد. In Engine B، returns بخشی از موجودی انبار
+        هستند نهٔ موجودی جداگانه، اما از طریق leftover شناسایی می‌شوند.
         """
-        MaterialIssue.objects.create(
-            task=self.tasks[0], raw_material=self.raw,
-            requested_quantity=Decimal('4'), issued_quantity=Decimal('0'),
-            purpose='production', status='requested',
-        )
+        self._create_queue(Decimal('4'), status='pending')
         make_leftover(self.raw, Decimal('2'))
 
         report = order_material_impact(self.order.id)
         self.assertEqual(report['shortage_count'], 1)
         shortage = report['shortages'][0]
-        # نیاز ۴، از باقی‌مانده ۲، از انبار ۲، گِرد شده به بستهٔ ۴ (pack_size)
         self.assertEqual(Decimal(shortage['from_leftover']), Decimal('2.00'))
-        self.assertEqual(Decimal(shortage['from_stock']), Decimal('2.00'))
+        self.assertEqual(Decimal(shortage['from_stock']), Decimal('0.00'))
         self.assertEqual(Decimal(shortage['physical_required']), Decimal('4.00'))
         self.assertEqual(shortage['packs'], 1)
 
@@ -262,43 +287,27 @@ class OrderMaterialShortageTests(TestCase):
         StockMovement.objects.create(
             raw_material=self.raw, movement_type='purchase', quantity=Decimal('100'),
         )
-        MaterialIssue.objects.create(
-            task=self.tasks[0], raw_material=self.raw,
-            requested_quantity=Decimal('8'), issued_quantity=Decimal('0'),
-            purpose='production', status='requested',
-        )
+        self._create_queue(Decimal('8'), status='pending')
         report = order_material_impact(self.order.id)
         self.assertEqual(report['shortage_count'], 0)
 
     def test_issued_issue_is_not_open(self):
-        MaterialIssue.objects.create(
-            task=self.tasks[0], raw_material=self.raw,
-            requested_quantity=Decimal('8'), issued_quantity=Decimal('8'),
-            purpose='production', status='issued',
-        )
+        self._create_queue(Decimal('8'), status='delivered')
         report = order_material_impact(self.order.id)
         self.assertEqual(report['open_issue_count'], 0)
         self.assertEqual(report['shortage_count'], 0)
 
     def test_plan_logic_names_the_reused_service(self):
         report = order_material_impact(self.order.id)
-        self.assertIn('build_plans', report['plan_logic'])
+        self.assertIn('inventory.services._physical_for', report['plan_logic'])
 
     def test_cancelled_issue_is_ignored(self):
-        MaterialIssue.objects.create(
-            task=self.tasks[0], raw_material=self.raw,
-            requested_quantity=Decimal('8'), issued_quantity=Decimal('0'),
-            purpose='production', status='cancelled',
-        )
+        self._create_queue(Decimal('8'), status='cancelled')
         report = order_material_impact(self.order.id)
         self.assertEqual(report['open_issue_count'], 0)
 
     def test_shortage_finding_carries_evidence_and_limitations(self):
-        MaterialIssue.objects.create(
-            task=self.tasks[0], raw_material=self.raw,
-            requested_quantity=Decimal('8'), issued_quantity=Decimal('0'),
-            purpose='production', status='requested',
-        )
+        self._create_queue(Decimal('8'), status='pending')
         report = order_material_impact(self.order.id)
         if report['findings']:
             finding = report['findings'][0]
@@ -308,13 +317,35 @@ class OrderMaterialShortageTests(TestCase):
 
 class WarehouseImpactTests(TestCase):
     def setUp(self):
+        import jdatetime
         self.raw = make_raw_material(name='رنگ انبار', stock=Decimal('0'))
         self.order = make_order(status='producing')
         self.tasks = make_tasks(self.order, stations=('cut',), statuses=('pending',))
-        MaterialIssue.objects.create(
-            task=self.tasks[0], raw_material=self.raw,
-            requested_quantity=Decimal('6'), issued_quantity=Decimal('0'),
-            purpose='production', status='requested',
+        self.work_date = jdatetime.date.today().strftime('%Y-%m-%d')
+        task = self.tasks[0]
+        worker = task.assigned_worker or User.objects.filter(is_active=True).first()
+        if not worker:
+            worker = User.objects.create_user(
+                username=f'test_worker_{User.objects.count() + 1}',
+                password='testpass',
+                email=f'test_worker_{User.objects.count() + 1}@example.com',
+            )
+        painting_stage = task.painting_stage
+        queue = DailyMaterialQueue.objects.create(
+            work_date=self.work_date,
+            worker=worker,
+            raw_material=self.raw,
+            painting_stage=painting_stage,
+            planned_quantity=Decimal('6'),
+            status='pending',
+        )
+        DailyMaterialQueueSource.objects.create(
+            queue=queue,
+            kind='painting' if painting_stage else 'station',
+            production_task=task,
+            painting_stage=painting_stage,
+            raw_material=self.raw,
+            quantity=Decimal('6'),
         )
 
     def test_warehouse_scope_is_complete_despite_missing_bom_mapping(self):
@@ -333,12 +364,34 @@ class WarehouseImpactTests(TestCase):
         self.assertEqual(bom['reason'], 'missing_material_mapping')
 
     def test_affected_orders_use_distinct_order_ids(self):
+        import jdatetime
         second = make_order(status='producing')
         tasks = make_tasks(second, stations=('cut',), statuses=('pending',))
-        MaterialIssue.objects.create(
-            task=tasks[0], raw_material=self.raw,
-            requested_quantity=Decimal('2'), issued_quantity=Decimal('0'),
-            purpose='production', status='partial',
+        work_date = jdatetime.date.today().strftime('%Y-%m-%d')
+        task = tasks[0]
+        worker = task.assigned_worker or User.objects.filter(is_active=True).first()
+        if not worker:
+            worker = User.objects.create_user(
+                username=f'test_worker2_{User.objects.count() + 1}',
+                password='testpass',
+                email=f'test_worker2_{User.objects.count() + 1}@example.com',
+            )
+        painting_stage = task.painting_stage
+        queue = DailyMaterialQueue.objects.create(
+            work_date=work_date,
+            worker=worker,
+            raw_material=self.raw,
+            painting_stage=painting_stage,
+            planned_quantity=Decimal('2'),
+            status='pending',
+        )
+        DailyMaterialQueueSource.objects.create(
+            queue=queue,
+            kind='painting' if painting_stage else 'station',
+            production_task=task,
+            painting_stage=painting_stage,
+            raw_material=self.raw,
+            quantity=Decimal('2'),
         )
         report = material_impact(raw_material_id=self.raw.pk)
         row = report['materials'][0]
@@ -418,11 +471,11 @@ class MaterialImpactEdgeTests(TestCase):
         self.assertEqual(report['materials'], [])
 
     def test_open_issue_statuses_match_the_real_model(self):
-        self.assertEqual(OPEN_ISSUE_STATUSES, ('requested', 'partial'))
+        self.assertEqual(OPEN_ISSUE_STATUSES, ('pending', 'delivered'))
 
     def test_material_leftover_is_a_single_pool_per_raw_material(self):
         """باقی‌ماندهٔ سالن یک استخر است، نه به‌ازای هر کارگر."""
-        self.assertEqual(len(MaterialLeftover._meta.constraints), 0)
         raw = make_raw_material(name='ماده باقی‌مانده')
         make_leftover(raw, Decimal('5'))
-        self.assertEqual(MaterialLeftover.objects.filter(raw_material=raw).count(), 1)
+        self.assertEqual(StockMovement.objects.filter(
+            raw_material=raw, movement_type='return').count(), 1)

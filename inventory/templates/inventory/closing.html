@@ -1,0 +1,151 @@
+{% extends "inventory/base.html" %}
+{% load product_filters %}
+{% block title %}کنترل و بستن روز{% endblock %}
+
+{% block inventory_content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+  <div>
+    <h1 class="h3 mb-1">کنترل و بستن روز</h1>
+    <div class="small text-muted">آخرین قدم شیفت انبار — نسخهٔ صفحه: <code>{{ page_version|default:"—" }}</code></div>
+  </div>
+  <a href="{% url 'inventory:daily_material_queue' %}?date={{ date_str }}" class="btn btn-sm btn-outline-primary">
+    <i class="bi bi-clipboard2-data"></i> صف مواد روزانه
+  </a>
+</div>
+
+<form method="get" class="d-flex gap-2 flex-wrap mb-3 no-print">
+  <label class="form-label small align-self-center mb-0" for="dateFilter">تاریخ کاری</label>
+  <input type="text" name="date" id="dateFilter" class="form-control form-control-sm text-center"
+         value="{{ date_str }}" placeholder="1405-07-10" inputmode="numeric"
+         pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}" maxlength="10" dir="ltr" style="max-width:130px">
+  <select name="worker" class="form-select form-select-sm" style="max-width:200px">
+    <option value="">همهٔ کارگران</option>
+    {% for w in paint_workers %}
+      <option value="{{ w.id }}" {% if worker_filter == w.id|stringformat:"s" %}selected{% endif %}>{{ w.get_full_name|default:w.username }}</option>
+    {% endfor %}
+  </select>
+  <select name="material" class="form-select form-select-sm" style="max-width:200px">
+    <option value="">همهٔ مواد</option>
+    {% for m in materials %}
+      <option value="{{ m.id }}" {% if material_filter == m.id|stringformat:"s" %}selected{% endif %}>{{ m.name }} ({{ m.get_unit_display }})</option>
+    {% endfor %}
+  </select>
+  <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-funnel"></i> بررسی کن</button>
+</form>
+
+<div class="row g-3 mb-3">
+  <div class="col-6 col-lg-3">
+    <div class="card-modern h-100"><div class="card-body py-3">
+      <div class="text-muted small">ردیف‌های صف</div>
+      <div class="h4 mb-0">{{ summary.total_planned|floatformat:2 }}</div>
+      <div class="small text-muted">مجموع نیاز برنامه‌ریزی‌شده</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="card-modern h-100"><div class="card-body py-3">
+      <div class="text-muted small">تحویل‌شده</div>
+      <div class="h4 mb-0">{{ summary.total_delivered|floatformat:2 }}</div>
+      <div class="small text-muted">{{ summary.delivered_count }} ردیف</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="card-modern h-100"><div class="card-body py-3">
+      <div class="text-muted small">برگشتی</div>
+      <div class="h4 mb-0">{{ summary.total_returned|floatformat:2 }}</div>
+      <div class="small text-muted">{{ summary.returned_count }} ردیف</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="card-modern h-100"><div class="card-body py-3">
+      <div class="text-muted small">مصرف واقعی</div>
+      <div class="h4 mb-0">{{ summary.total_actual|floatformat:2 }}</div>
+      <div class="small {% if summary.total_excess > 0 %}text-danger{% else %}text-muted{% endif %}">
+        اضافه: {{ summary.total_excess|floatformat:2 }}
+      </div>
+    </div></div>
+  </div>
+</div>
+
+{% if closing %}
+  <div class="alert alert-success d-flex align-items-start gap-2">
+    <i class="bi bi-patch-check-fill"></i>
+    <div>
+      <strong>این روز بسته شده است.</strong>
+      {{ closing.closed_by.get_full_name|default:closing.closed_by.username }}
+      در {{ closing.closed_at|persian_datetime }} روز را بررسی و تأیید کرد.
+      {% if closing.note %}<div class="small mt-1">{{ closing.note }}</div>{% endif %}
+    </div>
+  </div>
+{% elif control.closable %}
+  <div class="alert alert-success d-flex align-items-start gap-2">
+    <i class="bi bi-check-circle-fill"></i>
+    <div>
+      <strong>همه‌چیز کامل است.</strong>
+      هیچ ردیف ناقص، مغایرت یا تراکنش ناسازگاری برای این روز وجود ندارد و می‌توانید
+      روز را ببندید.
+    </div>
+  </div>
+  <div class="card-modern">
+    <div class="card-body">
+      <form method="post" action="{% url 'inventory:daily_closing_confirm' %}" class="d-flex gap-2 flex-wrap align-items-end">
+        {% csrf_token %}
+        <input type="hidden" name="date" value="{{ date_str }}">
+        <div class="flex-grow-1">
+          <label class="form-label" for="closingNote">یادداشت (اختیاری)</label>
+          <input type="text" name="note" id="closingNote" class="form-control form-control-sm" maxlength="255"
+                 placeholder="مثلاً همه‌چیز تحویل و برگشت شد">
+        </div>
+        <button type="submit" class="btn btn-success">
+          <i class="bi bi-shield-check"></i> ثبت «روز بررسی و تأیید شد»
+        </button>
+      </form>
+      <div class="form-text mt-2">
+        این ثبت هیچ حرکت انباری نمی‌سازد و هیچ مقداری را تغییر نمی‌دهد؛ فقط ثبت می‌کند
+        که روز دیده و تأیید شده است.
+      </div>
+    </div>
+  </div>
+{% else %}
+  <div class="alert alert-danger d-flex align-items-start gap-2">
+    <i class="bi bi-exclamation-octagon-fill"></i>
+    <div>
+      <strong>{{ control.problem_count }} ردیف</strong> باید قبل از بستن روز بررسی شود:
+      <span class="badge bg-warning text-dark ms-1">{{ control.incomplete_count }} ناقص</span>
+      <span class="badge bg-warning text-dark ms-1">{{ control.conflict_count }} مغایرت برنامه</span>
+      <span class="badge bg-warning text-dark ms-1">{{ control.inconsistent_count }} ناسازگار</span>
+    </div>
+  </div>
+
+  <div class="card-modern">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table align-middle mb-0">
+          <thead class="table-light"><tr><th>کارگر</th><th>ماده اولیه</th><th>وضعیت</th><th>تحویل</th><th>برگشتی</th><th>دلیل</th><th></th></tr></thead>
+          <tbody>
+            {% for problem in problems %}
+              <tr>
+                <td><strong>{{ problem.queue.worker.get_full_name|default:problem.queue.worker.username }}</strong></td>
+                <td>{{ problem.queue.raw_material.name }}</td>
+                <td><span class="badge bg-secondary">{{ problem.queue.get_status_display }}</span></td>
+                <td>{{ problem.queue.delivered_quantity|floatformat:2 }}</td>
+                <td>{{ problem.queue.returned_quantity|floatformat:2 }}</td>
+                <td>
+                  {% for reason in problem.reasons %}
+                    {% if reason == 'conflict' %}<span class="badge bg-warning text-dark">مغایرت برنامه</span>
+                    {% elif reason == 'incomplete' %}<span class="badge bg-primary">تحویل‌نشده</span>
+                    {% elif reason == 'inconsistent' %}<span class="badge bg-danger">ناسازگار</span>{% endif %}
+                  {% endfor %}
+                </td>
+                <td>
+                  <a href="{% url 'inventory:daily_material_queue' %}?date={{ date_str }}"
+                     class="btn btn-sm btn-outline-primary">رفتن به صف</a>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+{% endif %}
+{% endblock %}

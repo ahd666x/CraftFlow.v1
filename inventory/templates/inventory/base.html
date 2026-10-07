@@ -24,65 +24,43 @@
 <header class="header-nav">
     <a href="{% url 'dashboard' %}" class="brand-link">سلوی چوب</a>
 
+
     <nav class="nav-links">
-        {% comment %} <a href="{% url 'inventory:dashboard' %}" class="nav-link {% if active_tab == 'dashboard' %}active{% endif %}">
-            <i class="bi bi-speedometer2"></i> داشبورد
-        </a> {% endcomment %}
-        <a href="{% url 'inventory:production_issue_queue' %}" class="nav-link {% if active_tab == 'production_queue' %}active{% endif %}">
-            <i class="bi bi-clipboard2-check"></i> صف تحویل تولید
+        <a href="{% url 'inventory:daily_material_queue' %}"
+           class="nav-link {% if active_tab == 'queue' %}active{% endif %}">
+            <i class="bi bi-clipboard2-data"></i> کار روزانه
         </a>
-        <a href="{% url 'inventory:custody_board' %}" class="nav-link {% if active_tab == 'custody' %}active{% endif %}">
-            <i class="bi bi-person-check"></i> تحویل روزانه نقاشی
+        <a href="{% url 'inventory:raw_material_receive_scan' %}"
+           class="nav-link {% if active_tab == 'receive' %}active{% endif %}">
+            <i class="bi bi-barcode"></i> دریافت کالا
         </a>
-        <a href="{% url 'inventory:daily_material_queue' %}" class="nav-link {% if active_tab == 'daily_queue' %}active{% endif %}">
-            <i class="bi bi-clipboard2-data"></i> صف مواد روزانه
+        <a href="{% url 'inventory:daily_closing' %}"
+           class="nav-link {% if active_tab == 'closing' %}active{% endif %}">
+            <i class="bi bi-shield-check"></i> بستن روز
         </a>
-        <a href="{% url 'inventory:daily_closing' %}" class="nav-link {% if active_tab == 'daily_closing' %}active{% endif %}">
-            <i class="bi bi-shield-check"></i> کنترل و بستن روز
+
+        <span class="nav-separator" aria-hidden="true"></span>
+
+        <a href="{% url 'inventory:reports' %}"
+           class="nav-link {% if active_tab == 'reports' %}active{% endif %}">
+            <i class="bi bi-journal-text"></i> گزارش‌ها
         </a>
-        <a href="{% url 'inventory:material_dashboard' %}" class="nav-link {% if active_tab == 'material_dashboard' %}active{% endif %}">
-            <i class="bi bi-speedometer2"></i> داشبورد مواد
-        </a>
-        <a href="{% url 'inventory:inventory_alerts' %}" class="nav-link {% if active_tab == 'inventory_alerts' %}active{% endif %}">
-            <i class="bi bi-bell"></i> هشدارها
-        </a>
-        <a href="{% url 'inventory:material_ledger' %}" class="nav-link {% if active_tab == 'material_ledger' %}active{% endif %}">
-            <i class="bi bi-journal-text"></i> دفتر مواد
-        </a>
-        <a href="{% url 'inventory:consumption_report' %}" class="nav-link {% if active_tab == 'consumption_report' %}active{% endif %}">
-            <i class="bi bi-graph-down"></i> تحلیل مصرف
-        </a>
-        <a href="{% url 'inventory:historical_reports' %}" class="nav-link {% if active_tab == 'historical_reports' %}active{% endif %}">
-            <i class="bi bi-calendar3"></i> گزارش‌های تاریخی
-        </a>
-        <a href="{% url 'inventory:data_integrity_audit' %}" class="nav-link {% if active_tab == 'audit' %}active{% endif %}">
+        <a href="{% url 'inventory:data_integrity_audit' %}"
+           class="nav-link {% if active_tab == 'audit' %}active{% endif %}">
             <i class="bi bi-shield-exclamation"></i> حسابرسی داده
         </a>
-        <a href="{% url 'inventory:supplier_list' %}" class="nav-link {% if active_tab == 'suppliers' %}active{% endif %}">
-            <i class="bi bi-truck"></i> تامین‌کنندگان
-        </a>
-        <a href="{% url 'inventory:category_list' %}" class="nav-link {% if active_tab == 'categories' %}active{% endif %}">
-            <i class="bi bi-diagram-3"></i> دسته‌ها
-        </a>
-        <a href="{% url 'inventory:material_list' %}" class="nav-link {% if active_tab == 'materials' %}active{% endif %}">
+
+        <span class="nav-separator" aria-hidden="true"></span>
+
+        <a href="{% url 'inventory:material_list' %}"
+           class="nav-link {% if active_tab == 'materials' %}active{% endif %}">
             <i class="bi bi-box"></i> مواد اولیه
         </a>
-        <a href="{% url 'inventory:raw_material_receive_scan' %}" class="nav-link {% if active_tab == 'raw_material_receive_scan' %}active{% endif %}">
-            <i class="bi bi-barcode"></i> اسکن و دریافت
-        </a>
-        <a href="{% url 'inventory:movement_list' %}" class="nav-link {% if active_tab == 'movements' %}active{% endif %}">
-            <i class="bi bi-arrow-left-right"></i> گردش انبار
-        </a>
-
-        <a href="{% url 'inventory:purchase_order_list' %}" class="nav-link {% if active_tab == 'purchase_orders' %}active{% endif %}">
-            <i class="bi bi-receipt"></i> سفارشات خرید
-        </a>
-        <a href="{% url 'inventory:low_stock_report' %}" class="nav-link {% if active_tab == 'low_stock' %}active{% endif %}">
-            <i class="bi bi-exclamation-triangle"></i> کمبود موجودی
+        <a href="{% url 'inventory:category_list' %}"
+           class="nav-link {% if active_tab == 'categories' %}active{% endif %}">
+            <i class="bi bi-diagram-3"></i> دسته‌ها
         </a>
     </nav>
-
-
 </header>
 {% endblock %}
 

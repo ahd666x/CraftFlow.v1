@@ -52,6 +52,11 @@ INSTALLED_APPS = [
     'product',
     'inventory',
     'craftflow_ai',
+    'storefront',
+    'cart',
+    'discounts',
+    'payments',
+    'accounts',
     'rest_framework',
     'django.contrib.humanize',
 
@@ -80,6 +85,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'cart.context_processors.cart_totals',
             ],
         },
     },
@@ -155,7 +161,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
 LOGIN_URL = '/accounts/login/'
-LOGIN_REDIRECT_URL = '/customer/orders/'   # به‌جای shop
+LOGIN_REDIRECT_URL = '/'
 LOGOUT_REDIRECT_URL = '/'
 
 

@@ -1,0 +1,28 @@
+{% extends 'storefront/layouts/store.html' %}
+{% load storefront_filters %}
+
+{% block title %}دسته‌بندی‌ها — فروشگاه{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-6xl px-4 py-8">
+    <h1 class="mb-6 text-2xl font-bold">دسته‌بندی‌ها</h1>
+
+    {% if categories %}
+    <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+        {% for category in categories %}
+        <a href="{% url 'storefront:category_detail' category.slug %}"
+           class="card p-5 transition hover:shadow-elevation-2">
+            <span class="text-lg font-semibold text-stone-900">{{ category.name }}</span>
+            <span class="mt-1 block text-sm text-stone-500">
+                {{ category.product_count }} محصول
+            </span>
+        </a>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="rounded-default border border-dashed border-stone-300 p-10 text-center text-stone-500">
+        هنوز دسته‌بندی‌ای ثبت نشده است.
+    </p>
+    {% endif %}
+</div>
+{% endblock %}

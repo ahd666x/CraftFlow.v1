@@ -1,0 +1,82 @@
+{% extends 'storefront/layouts/store.html' %}
+{% load storefront_filters %}
+
+{% block title %}سبد خرید — فروشگاه{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-6xl px-4 py-8">
+    <h1 class="mb-6 text-2xl font-bold">سبد خرید شما</h1>
+
+    {% if cart.items.all %}
+    <div class="grid gap-8 lg:grid-cols-[1fr_22rem]">
+        <div class="card overflow-hidden">
+            <div class="flex items-center justify-between border-b border-stone-200 px-5 py-4">
+                <h2 class="font-semibold">آیتم‌های سبد خرید</h2>
+                <span class="text-sm text-stone-500">{{ cart.total_items }} قلم</span>
+            </div>
+            <div class="divide-y divide-stone-200">
+                {% for item in cart.items.all %}
+                    {% include 'cart/includes/cart_item_row.html' with item=item %}
+                {% endfor %}
+            </div>
+        </div>
+
+        <aside class="card h-fit p-5 lg:sticky lg:top-20">
+            <h2 class="mb-4 font-semibold">خلاصه سفارش</h2>
+
+            <div class="space-y-2 text-sm">
+                <div class="flex items-center justify-between text-stone-600">
+                    <span>جمع کل:</span>
+                    <span>{{ cart.total_price|fa_price }}</span>
+                </div>
+
+                {% if cart.discount %}
+                <div class="flex items-center justify-between text-emerald-700">
+                    <span>تخفیف ({{ cart.discount.code }}):</span>
+                    <span>-{{ cart.discount_amount|fa_price }}</span>
+                </div>
+                <form method="post" action="{% url 'discounts:remove_discount' %}" class="mb-2">
+                    {% csrf_token %}
+                    <button type="submit" class="text-xs text-red-600 hover:underline">حذف تخفیف</button>
+                </form>
+                {% endif %}
+
+                <div class="flex items-center justify-between border-t border-stone-200 pt-3 text-base font-bold">
+                    <span>مبلغ قابل پرداخت:</span>
+                    <span class="text-primary-800">{{ cart.final_price|fa_price }}</span>
+                </div>
+                <p class="text-xs text-stone-400">تومان</p>
+            </div>
+
+            {% if not cart.discount %}
+            <form method="post" action="{% url 'discounts:apply_discount' %}" class="mt-4 space-y-2">
+                {% csrf_token %}
+                <label class="label" for="code">کد تخفیف</label>
+                <div class="flex gap-2">
+                    <input id="code" name="code" type="text" class="input" placeholder="کد تخفیف" required>
+                    <button type="submit" class="btn-primary whitespace-nowrap">اعمال</button>
+                </div>
+            </form>
+            {% endif %}
+
+            <a href="{% url 'storefront:checkout' %}" class="btn-primary mt-4 block w-full py-3 text-center">
+                تکمیل سفارش
+            </a>
+            <a href="{% url 'storefront:product_list' %}" class="block text-center text-sm text-primary-600 hover:underline mt-3">
+                ادامه خرید
+            </a>
+        </aside>
+    </div>
+    {% else %}
+    <div class="card p-10 text-center">
+        <div class="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-stone-100">
+            <svg class="h-8 w-8 text-stone-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/>
+            </svg>
+        </div>
+        <p class="font-medium">سبد خرید شما خالی است.</p>
+        <a href="{% url 'storefront:product_list' %}" class="btn-primary mt-4 inline-block"> مشاهده محصولات</a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

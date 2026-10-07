@@ -4,22 +4,6 @@ from django.contrib.auth.models import User
 from django.db.models import Sum, Case, When, Value, DecimalField, F
 
 
-class Supplier(models.Model):
-    name = models.CharField(max_length=150, verbose_name="نام تامین‌کننده")
-    phone = models.CharField(max_length=20, blank=True, verbose_name="تلفن")
-    address = models.TextField(blank=True, verbose_name="آدرس")
-    is_active = models.BooleanField(default=True, verbose_name="فعال")
-    created_at = models.DateTimeField(auto_now_add=True, verbose_name="تاریخ ثبت")
-
-    def __str__(self):
-        return self.name
-
-    class Meta:
-        verbose_name = "تامین‌کننده"
-        verbose_name_plural = "تامین‌کنندگان"
-        ordering = ['name']
-
-
 class RawMaterialCategory(models.Model):
     name = models.CharField(max_length=100, unique=True, verbose_name="نام دسته")
 
@@ -40,6 +24,11 @@ class RawMaterial(models.Model):
         ('m', 'متر'),
     ]
 
+    #: تنها تعریف «کدام حرکت موجودی را کم می‌کند». هر گزارش و ویویی که علامت
+    #: موجودی را حساب می‌کند باید از همین فهرست استفاده کند تا یک حرکت در دو
+    #: جا با دو علامت شمرده نشود.
+    STOCK_DECREASING_TYPES = ('consumption', 'adjust_out')
+
     category = models.ForeignKey(RawMaterialCategory, on_delete=models.PROTECT, related_name='materials', verbose_name="دسته")
     name = models.CharField(max_length=150, verbose_name="نام ماده اولیه")
     code = models.CharField(max_length=50, blank=True, verbose_name="کد")
@@ -59,7 +48,8 @@ class RawMaterial(models.Model):
         agg = self.movements.aggregate(
             total=Sum(
                 Case(
-                    When(movement_type='consumption', then=-F('quantity')),
+                    When(movement_type__in=RawMaterial.STOCK_DECREASING_TYPES,
+                         then=-F('quantity')),
                     default=F('quantity'),
                     output_field=DecimalField()
                 )
@@ -87,36 +77,48 @@ class RawMaterial(models.Model):
 
 
 class StockMovement(models.Model):
+    """
+    دفتر واحد انبار.
+
+    هر تغییر موجودی یک ردیف این جدول است؛ هیچ جای دیگری مستقیم موجودی را
+    دستکاری نمی‌کند. سه منبع نوشتن وجود دارد و هر سه از صف روزانه یا اسکن
+    دریافت می‌آیند:
+
+        * ``purchase``    — اسکن و دریافت کالا (ورودی)
+        * ``consumption`` — تحویل از صف مواد روزانه (تن�� راه کسر بابت تولید)
+        * ``return``      — بازگشت پایان روز از صف مواد روزانه
+        * ``adjustment``  — اصلاح دستی انباردار (مثل شمارش نادرست)
+
+    ``daily_queue`` ردیف صف را نشان می‌دهد که این حرکت از آن آمده تا مصرف
+    قابل ردیابی تا سطح «کارگر و روز» بماند. ``reference_task`` و
+    ``reference_order_item`` مسیر دوم را نگه می‌دارند تا معلوم شود این حرکت
+    در نهایت برای کدام سفارش بوده است.
+    """
+
     MOVEMENT_TYPES = [
         ('purchase', 'خرید/ورود'),
-        ('consumption', 'مصرف'),
-        ('adjustment', 'اصلاحیه'),
-        ('return', 'مرجوعی'),
+        ('consumption', 'مصرف (تحویل به تولید)'),
+        ('return', 'مرجوعی از تولید'),
+        ('adjustment', 'اصلاحیه (افزایش)'),
+        ('adjust_out', 'اصلاحیه (کاهش)'),
     ]
 
     raw_material = models.ForeignKey(RawMaterial, on_delete=models.PROTECT, related_name='movements', verbose_name="ماده اولیه")
-    catalog_raw_material = models.ForeignKey(
-        RawMaterial,
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name='catalog_consumption_movements',
-        verbose_name="ماده اولیه ",
-        help_text="",
-    )
     movement_type = models.CharField(max_length=20, choices=MOVEMENT_TYPES, verbose_name="نوع")
     quantity = models.DecimalField(max_digits=12, decimal_places=2, verbose_name="مقدار")
     unit_price = models.DecimalField(max_digits=12, decimal_places=0, null=True, blank=True, verbose_name="قیمت واحد (ریال)")
-    supplier = models.ForeignKey(Supplier, null=True, blank=True, on_delete=models.SET_NULL, verbose_name="تامین‌کننده")
-    reference_task = models.ForeignKey('product.ProductionTask', null=True, blank=True, on_delete=models.SET_NULL, verbose_name="وظیفه تولید مرتبط")
+    reference_task = models.ForeignKey(
+        'product.ProductionTask', null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='material_movements', verbose_name='تسک تولید',
+    )
     reference_order_item = models.ForeignKey(
         'product.OrderItem', null=True, blank=True, on_delete=models.SET_NULL,
-        related_name='paint_material_movements', verbose_name='آیتم سفارش (برای نقاشی)'
+        related_name='material_movements', verbose_name='آیتم سفارش',
     )
-    reference_color_part = models.CharField(max_length=20, blank=True, verbose_name='بخش رنگی')
-    fulfilled_issue = models.ForeignKey(
-        'MaterialIssue', null=True, blank=True, on_delete=models.SET_NULL,
-        related_name='movements', verbose_name='درخواست مرتبط',
+    daily_queue = models.ForeignKey(
+        'DailyMaterialQueue', null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='movements', verbose_name='ردیف صف روزانه',
+        help_text='حرکت‌های تحویل و بازگشت به این ردیف صف وصل می‌شوند.',
     )
     note = models.CharField(max_length=255, blank=True, verbose_name="یادداشت")
     created_by = models.ForeignKey(User, null=True, on_delete=models.SET_NULL, verbose_name="ثبت‌کننده")
@@ -129,323 +131,28 @@ class StockMovement(models.Model):
         verbose_name = "گردش انبار"
         verbose_name_plural = "گردش انبار"
         ordering = ['-created_at']
-
-
-class MaterialLeftover(models.Model):
-    """
-    باقی‌ماندهٔ یک ماده اولیه در سالن تولید (مثلاً ۱ لیتر از قوطی ۴ لیتری که ۳ لیترش مصرف شده).
-
-    این مقدار قبلاً از موجودی انبار خارج شده است؛ پس ویرایش دستی آن (مثلاً ریختن/دورریز قوطی)
-    روی موجودی انبار اثری ندارد. در تحویل بعدی، ابتدا از همین مقدار کسر می‌شود.
-    """
-    raw_material = models.OneToOneField(
-        RawMaterial, on_delete=models.CASCADE, related_name='leftover', verbose_name='ماده اولیه'
-    )
-    quantity = models.DecimalField(max_digits=12, decimal_places=2, default=0, verbose_name='مقدار باقی‌مانده در سالن')
-    updated_at = models.DateTimeField(auto_now=True, verbose_name='آخرین تغییر')
-
-    class Meta:
-        verbose_name = 'باقی‌ماندهٔ سالن تولید'
-        verbose_name_plural = 'باقی‌ماندهٔ سالن تولید'
-
-    def __str__(self):
-        return f'{self.raw_material.name}: {self.quantity}'
-
-
-class MaterialCustody(models.Model):
-    """
-    مقدار «بازشده»ٔ یک ماده اولیه که هم‌اکنون فیزیکاً در دست یک کارگر (نقاش) است.
-
-    تفاوت با MaterialLeftover:
-      - کلید این رکورد (raw_material, held_by) است، نه فقط raw_material
-      - یعنی باقیماندهٔ هر نقاش جداگانه ردیابی می‌شود و با هم قاطی نمی‌شود
-    این مقدار قبلاً از موجودی انبار خارج شده (در execute_handover به‌صورت
-    StockMovement مصرف ثبت شده)، پس ویرایش آن روی موجودی انبار اثری ندارد.
-    """
-    raw_material = models.ForeignKey(
-        RawMaterial, on_delete=models.PROTECT,
-        related_name='custodies', verbose_name='ماده اولیه'
-    )
-    held_by = models.ForeignKey(
-        User, on_delete=models.PROTECT,
-        related_name='material_custodies', verbose_name='تحویل‌گیرنده (نقاش)'
-    )
-    quantity = models.DecimalField(
-        max_digits=12, decimal_places=2, default=0, verbose_name='مقدار باقی‌مانده نزد کارگر'
-    )
-    updated_at = models.DateTimeField(auto_now=True, verbose_name='آخرین تغییر')
-
-    class Meta:
-        verbose_name = 'امانت مواد نزد کارگر'
-        verbose_name_plural = 'امانت‌های مواد نزد کارگران'
-        ordering = ['-updated_at']
-        constraints = [
-            models.UniqueConstraint(
-                fields=['raw_material', 'held_by'],
-                name='uniq_material_custody_raw_held_by',
-            ),
+        indexes = [
+            models.Index(fields=['raw_material', 'movement_type']),
         ]
-
-    def __str__(self):
-        return f'{self.raw_material.name} — {self.held_by} : {self.quantity}'
-
-
-class MaterialCustodyReturn(models.Model):
-    """سند ثبت مقدار واقعی باقیمانده در پایان روز (توزین)."""
-    custody = models.ForeignKey(
-        MaterialCustody, on_delete=models.CASCADE, related_name='returns',
-        verbose_name='امانت'
-    )
-    raw_material = models.ForeignKey(
-        RawMaterial, on_delete=models.PROTECT, related_name='custody_returns',
-        verbose_name='ماده اولیه'
-    )
-    held_by = models.ForeignKey(
-        User, on_delete=models.PROTECT, related_name='material_custody_returns',
-        verbose_name='کارگر'
-    )
-    measured_quantity = models.DecimalField(
-        max_digits=12, decimal_places=2, verbose_name='مقدار توزین‌شده'
-    )
-    quantity_before = models.DecimalField(
-        max_digits=12, decimal_places=2, default=0, verbose_name='موجودی امانت قبل'
-    )
-    delta = models.DecimalField(
-        max_digits=12, decimal_places=2, default=0, verbose_name='اختلاف'
-    )
-    note = models.CharField(max_length=255, blank=True, verbose_name='یادداشت')
-    recorded_by = models.ForeignKey(
-        User, null=True, on_delete=models.SET_NULL,
-        related_name='recorded_custody_returns', verbose_name='ثبت‌کننده (انبار)'
-    )
-    created_at = models.DateTimeField(auto_now_add=True, verbose_name='زمان ثبت')
-
-    class Meta:
-        verbose_name = 'سند بازگشت امانت'
-        verbose_name_plural = 'اسناد بازگشت امانت'
-        ordering = ['-created_at']
-
-    warehouse_return = models.DecimalField(
-        max_digits=12, decimal_places=2, default=0,
-        verbose_name='مقدار بازگشتی فیزیکی به انبار',
-    )
-
-    def __str__(self):
-        return f'بازگشت #{self.pk} — {self.raw_material.name} — {self.measured_quantity}'
-
-
-class CustodyConsumption(models.Model):
-    """
-    انتساب مصرفِ ثبت‌شده در پایان روز به یک خرابی مشخص.
-
-    این جدول **هیچ اثری روی موجودی انبار ندارد**. موجودی از زمان تحویل (خروج کل
-    بسته از انبار) کسر شده و در پایان روز چیزی فیزیکی وارد انبار نشده است؛ بنابراین
-    ثبت مصرف، فقط «برای چه کاری این رنگ رفت» را نگه می‌دارد، نه اینکه موجودی را
-    دوباره کم کند.
-    """
-
-    custody_return = models.ForeignKey(
-        MaterialCustodyReturn, on_delete=models.CASCADE,
-        related_name='consumptions', verbose_name='سند بازگشت امانت',
-    )
-    raw_material = models.ForeignKey(
-        RawMaterial, on_delete=models.PROTECT, related_name='custody_consumptions',
-        verbose_name='ماده اولیه',
-    )
-    held_by = models.ForeignKey(
-        User, on_delete=models.PROTECT, related_name='custody_consumptions',
-        verbose_name='کارگر',
-    )
-    defect = models.ForeignKey(
-        'product.ProductionDefect', on_delete=models.PROTECT,
-        related_name='custody_consumptions', verbose_name='خرابی',
-    )
-    quantity = models.DecimalField(max_digits=12, decimal_places=2, verbose_name='مقدار مصرف‌شده')
-
-    class Meta:
-        verbose_name = 'انتساب مصرف امانت'
-        verbose_name_plural = 'انتساب‌های مصرف امانت'
-        ordering = ['id']
-        constraints = [
-            models.UniqueConstraint(
-                fields=['custody_return', 'defect'],
-                name='uniq_custody_consumption_return_defect',
-            ),
-            models.CheckConstraint(
-                condition=models.Q(quantity__gt=0),
-                name='custody_consumption_quantity_positive',
-            ),
-        ]
-
-    def __str__(self):
-        return f'{self.raw_material.name} — خرابی {self.defect_id} — {self.quantity}'
-
-
-class MaterialHandover(models.Model):
-    """یک سند تحویل گروهی: انبار‌دار چند درخواست را یک‌جا به یک تحویل‌گیرنده می‌دهد."""
-    issued_by = models.ForeignKey(
-        User, null=True, blank=True, on_delete=models.SET_NULL,
-        related_name='issued_handovers', verbose_name='تحویل‌دهنده (انبار)'
-    )
-    received_by = models.ForeignKey(
-        User, null=True, blank=True, on_delete=models.SET_NULL,
-        related_name='received_handovers', verbose_name='تحویل‌گیرنده'
-    )
-    note = models.CharField(max_length=255, blank=True, verbose_name='یادداشت')
-    created_at = models.DateTimeField(auto_now_add=True, verbose_name='زمان تحویل')
-
-    class Meta:
-        verbose_name = 'سند تحویل مواد'
-        verbose_name_plural = 'اسناد تحویل مواد'
-        ordering = ['-created_at']
-
-    def __str__(self):
-        return f'سند تحویل {self.pk}'
-
-
-class MaterialHandoverLine(models.Model):
-    """خلاصهٔ هر ماده اولیه در یک سند تحویل (برای ردیابی قوطی‌ها و باقی‌مانده)."""
-    handover = models.ForeignKey(MaterialHandover, on_delete=models.CASCADE, related_name='lines', verbose_name='سند تحویل')
-    raw_material = models.ForeignKey(RawMaterial, on_delete=models.PROTECT, related_name='handover_lines', verbose_name='ماده اولیه')
-    required_quantity = models.DecimalField(max_digits=12, decimal_places=2, verbose_name='جمع مورد نیاز')
-    leftover_used = models.DecimalField(max_digits=12, decimal_places=2, default=0, verbose_name='کسر از باقی‌ماندهٔ سالن')
-    from_stock_quantity = models.DecimalField(max_digits=12, decimal_places=2, default=0, verbose_name='خروج فیزیکی از انبار')
-    pack_size = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name='حجم هر بسته (در زمان تحویل)')
-    packs_count = models.PositiveIntegerField(default=0, verbose_name='تعداد بسته/قوطی')
-    leftover_before = models.DecimalField(max_digits=12, decimal_places=2, default=0, verbose_name='باقی‌مانده قبل از تحویل')
-    leftover_after = models.DecimalField(max_digits=12, decimal_places=2, default=0, verbose_name='باقی‌مانده بعد از تحویل')
-
-    class Meta:
-        verbose_name = 'ردیف سند تحویل'
-        verbose_name_plural = 'ردیف‌های سند تحویل'
-        ordering = ['handover', 'raw_material__name']
-
-    def __str__(self):
-        return f'{self.handover_id} — {self.raw_material.name}'
-
-
-class MaterialIssue(models.Model):
-    """A traceable request and hand-over of material from warehouse to production."""
-    STATUS_CHOICES = [
-        ('requested', 'در انتظار تحویل'),
-        ('partial', 'تحویل ناقص'),
-        ('issued', 'تحویل شده'),
-        ('cancelled', 'لغو شده'),
-    ]
-    PURPOSE_CHOICES = [
-        ('production', 'برنامه تولید'),
-        ('rework', 'جبران خرابی / ساخت مجدد'),
-    ]
-
-    task = models.ForeignKey('product.ProductionTask', null=True, blank=True,
-                             on_delete=models.SET_NULL, related_name='material_issues', verbose_name='تسک تولید')
-    defect = models.ForeignKey('product.ProductionDefect', null=True, blank=True,
-                               on_delete=models.SET_NULL, related_name='material_issues', verbose_name='گزارش خرابی')
-    packaging_unit = models.ForeignKey(
-        'product.PackagingUnit', null=True, blank=True,
-        on_delete=models.SET_NULL, related_name='material_issues', verbose_name='واحد بسته‌بندی'
-    )
-    order_item = models.ForeignKey(
-        'product.OrderItem', null=True, blank=True,
-        on_delete=models.SET_NULL, related_name='material_issues', verbose_name='آیتم سفارش'
-    )
-    painting_process = models.ForeignKey(
-        'product.PaintingProcess', null=True, blank=True,
-        on_delete=models.SET_NULL, related_name='material_issues', verbose_name='روند نقاشی'
-    )
-    color_part = models.CharField(
-        max_length=20, blank=True, verbose_name='بخش رنگی'
-    )
-    raw_material = models.ForeignKey(RawMaterial, on_delete=models.PROTECT,
-                                      related_name='issues', verbose_name='ماده اولیه')
-    handover = models.ForeignKey(
-        'MaterialHandover', null=True, blank=True,
-        on_delete=models.SET_NULL, related_name='issues', verbose_name='آخرین سند تحویل'
-    )
-    requested_quantity = models.DecimalField(max_digits=12, decimal_places=2, verbose_name='مقدار مورد نیاز')
-    issued_quantity = models.DecimalField(max_digits=12, decimal_places=2, default=0, verbose_name='مقدار تحویل شده')
-    purpose = models.CharField(max_length=20, choices=PURPOSE_CHOICES, default='production', verbose_name='علت درخواست')
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='requested', verbose_name='وضعیت')
-    note = models.CharField(max_length=255, blank=True, verbose_name='یادداشت')
-    requested_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL,
-                                     related_name='requested_material_issues', verbose_name='درخواست کننده')
-    issued_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL,
-                                  related_name='issued_material_issues', verbose_name='تحویل دهنده')
-    received_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL,
-                                    related_name='received_material_issues', verbose_name='تحویل گیرنده')
-    created_at = models.DateTimeField(auto_now_add=True, verbose_name='زمان درخواست')
-    issued_at = models.DateTimeField(null=True, blank=True, verbose_name='زمان تحویل')
-
-    class Meta:
-        verbose_name = 'درخواست تحویل مواد'
-        verbose_name_plural = 'درخواست‌های تحویل مواد'
-        ordering = ['status', '-created_at']
-
-    def __str__(self):
-        return f'{self.raw_material} - {self.requested_quantity} ({self.get_status_display()})'
-
-
-class PurchaseOrder(models.Model):
-    STATUS_CHOICES = [
-        ('draft', 'پیش‌نویس'),
-        ('ordered', 'سفارش‌شده'),
-        ('received', 'دریافت‌شده'),
-    ]
-
-    supplier = models.ForeignKey(Supplier, on_delete=models.PROTECT, verbose_name="تامین‌کننده")
-    created_at = models.DateTimeField(auto_now_add=True, verbose_name="تاریخ ایجاد")
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft', verbose_name="وضعیت")
-    note = models.TextField(blank=True, verbose_name="یادداشت")
-    created_by = models.ForeignKey(User, null=True, on_delete=models.SET_NULL, verbose_name="ثبت‌کننده")
-
-    def __str__(self):
-        return f"PO-{self.id}: {self.supplier.name} ({self.get_status_display()})"
-
-    class Meta:
-        verbose_name = "سفارش خرید"
-        verbose_name_plural = "سفارشات خرید"
-        ordering = ['-created_at']
-
-
-class PurchaseOrderItem(models.Model):
-    purchase_order = models.ForeignKey(PurchaseOrder, on_delete=models.CASCADE, related_name='items', verbose_name="سفارش خرید")
-    raw_material = models.ForeignKey(RawMaterial, on_delete=models.PROTECT, verbose_name="ماده اولیه")
-    quantity = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="مقدار")
-    unit_price = models.DecimalField(max_digits=12, decimal_places=0, verbose_name="قیمت واحد (ریال)")
-    received_quantity = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name="مقدار دریافت‌شده")
-
-    @property
-    def line_total(self):
-        return self.quantity * self.unit_price
-
-    def __str__(self):
-        return f"{self.raw_material.name} x {self.quantity}"
-
-    class Meta:
-        verbose_name = "آیتم سفارش خرید"
-        verbose_name_plural = "آیتم‌های سفارش خرید"
-        ordering = ['purchase_order', 'id']
 
 
 # ============================================================
-#  مدل‌های روزانه انبار — نسخهٔ جدید (Painting Schedule → Derived)
+#  صف تحویل مواد روزانه — تنها مسیر تحویل مواد به تولید
 # ============================================================
 
 class DailyMaterialQueue(models.Model):
     """
-    یک رکورد «صف تحویل مواد روزانه» برای یک (کارگر + ماده + تاریخ).
+    یک ردیف «چه کسی، چه روزی، چه مقداری از چه ماده‌ای لازم دارد».
 
-    این مدل **از برنامهٔ نقاشی مشتق می‌شود** (PaintingStage / ProductionTask /
-    PaintingMaterialRequirement) و نه اینکه خودش برنامهٔ مستقلی باشد.
+    این تنها جدولی است که انباردار برای تحویل با آن کار می‌کند و از هر سه
+    منبع نیاز مشتق می‌شود:
 
-    مثلاً:
-        تاریخ: 1405/07/10
-        کارگر: عباس
-        ماده: رنگ سفید
-        planned_quantity: 3 kg   (از 3 PaintingTask مختلف جمع‌شده)
+        * ایستگاه نقاشی  — ``ProductionTask(station='paint')`` از برنامهٔ نقاشی
+        * سایر ایستگاه‌ها — ``ProductionTask(part.material.raw_material)``
+        * جبران خرابی   — ``ProductionDefect`` با مادهٔ جایگزین تعیین‌شده
 
-    انباردار فقط این اعداد را می‌بیند؛ traceability به Taskهای منبع در
-    ``DailyMaterialQueueSource`` نگهداری می‌شود.
+    چون نیاز از برنامه مشتق می‌شود، انباردار چیزی وارد نمی‌کند و درخواست
+    تکراری ساخته نمی‌شود: هر واحد کار فقط یک‌بار شمرده می‌شود.
     """
 
     STATUS_CHOICES = [
@@ -465,10 +172,20 @@ class DailyMaterialQueue(models.Model):
         RawMaterial, on_delete=models.CASCADE,
         related_name='daily_queues', verbose_name="ماده اولیه",
     )
+    painting_stage = models.ForeignKey(
+        'product.PaintingStage', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='daily_queues',
+        verbose_name="مرحله نقاشی",
+        help_text="مرحله نقاشی که این ردیف صف مربوط به آن است (برای ردیابی تفکیک شده).",
+    )
+    color_part = models.CharField(
+        max_length=50, blank=True, verbose_name="بخش رنگی",
+        help_text="بخش رنگی (مثلاً بدنه، درب) برای تفکیک نیازهای هم‌مرحله.",
+    )
     planned_quantity = models.DecimalField(
         max_digits=12, decimal_places=2, default=0,
-        verbose_name="نیاز برنامه‌ریزی‌شده (امروز)",
-        help_text="Snapshot نیازی که از برنامهٔ نقاشی گرفته شده است.",
+        verbose_name="نیاز برنامه‌ریزی‌شده",
+        help_text="نیازی که از برنامهٔ تولید گرفته شده است.",
     )
     delivered_quantity = models.DecimalField(
         max_digits=12, decimal_places=2, default=0,
@@ -497,7 +214,7 @@ class DailyMaterialQueue(models.Model):
         default=False,
         verbose_name="تعارض برنامه با تراکنش",
         help_text=(
-            "وقتی برنامهٔ نقاشی بعد از تحویل/برگشت تغییر کند، موجودی و "
+            "وقتی برنامهٔ تولید بعد از تحویل/بازگشت تغییر کند، موجودی و "
             "تاریخچهٔ واقعی دست‌نخورده می‌ماند و فقط این پرچم فعال می‌شود."
         ),
     )
@@ -508,13 +225,14 @@ class DailyMaterialQueue(models.Model):
     updated_at = models.DateTimeField(auto_now=True, verbose_name="بروزرسانی")
 
     class Meta:
-        verbose_name = "صف مواد روزانه"
+        verbose_name = "ردیف صف مواد روزانه"
         verbose_name_plural = "صف‌های مواد روزانه"
-        ordering = ['work_date', 'worker', 'raw_material']
-        unique_together = ('work_date', 'worker', 'raw_material')
+        ordering = ['work_date', 'worker', 'raw_material', 'painting_stage', 'color_part']
+        unique_together = ('work_date', 'worker', 'raw_material', 'painting_stage', 'color_part')
         indexes = [
             models.Index(fields=['work_date', 'worker']),
             models.Index(fields=['work_date', 'status']),
+            models.Index(fields=['work_date', 'painting_stage']),
         ]
 
     def __str__(self):
@@ -525,7 +243,7 @@ class DailyMaterialQueue(models.Model):
 
     @property
     def has_transaction(self):
-        """آیا تحویل یا برگشت واقعی برای این صف ثبت شده است؟"""
+        """آیا تحویل یا بازگشت واقعی برای این صف ثبت شده است؟"""
         return bool(
             (self.delivered_quantity and self.delivered_quantity > 0)
             or (self.returned_quantity and self.returned_quantity > 0)
@@ -533,7 +251,7 @@ class DailyMaterialQueue(models.Model):
 
     def recalculate_consumption(self, commit=False):
         """
-        مقادیر مشتق‌شده (مصرف واقعی / مصرف اضافه) را از تحویل و برگشت
+        مقادیر مشتق‌شده (مصرف واقعی / مصرف اضافه) را از تحویل و بازگشت
         دوباره حساب می‌کند. planned_quantity و وضعیت انجام تسک دست‌نخورده می‌مانند.
         """
         actual = self.computed_actual_consumption
@@ -560,29 +278,47 @@ class DailyMaterialQueue(models.Model):
 
 class DailyMaterialQueueSource(models.Model):
     """
-    traceability از ``DailyMaterialQueue`` به منابع برنامه‌ریزی.
+    ردیابی اینکه نیازِ یک ردیف صف از کجا آمده است.
 
-    هر رکورد نشان می‌دهد که بخشی از planned_quantity یک DailyMaterialQueue
-    از کدام ProductionTask / PaintingMaterialRequirement آمده است.
+    هر ردیف نشان می‌دهد چه سهمی از ``planned_quantity`` از یک منبع گرفته
+    شده. ``kind`` تعیین می‌کند منبع چیست:
 
-    مثلاً:
-        DailyMaterialQueue: عباس | رنگ سفید | 3kg
-            ├── ProductionTask A → 1kg (PaintingStage: رنگ‌آمیزی سفید مرحله 1)
-            ├── ProductionTask B → 1kg (PaintingStage: رنگ‌آمیزی سفید مرحله 2)
-            └── ProductionTask C → 1kg (PaintingStage: سندیس مرحله 1)
+        * ``painting`` — تسک ایستگاه نقاشی و مرحلهٔ آن
+        * ``station``  — تسک سایر ایستگاه‌ها (نیاز از قطعه/ماده می‌آید)
+        * ``rework``   — جبران یک خرابی
+
+    مثال:
+        ردیف صف: عباس | رنگ سفید | ۳ کیلو
+            ├── نقاشی  — تسک A → ۱ (روند رنگ‌آمیزی سفید، مرحله ۱)
+            ├── نقاشی  — تسک B → ۱ (روند رنگ‌آمیزی سفید، مرحله ۲)
+            └── جبران  — خرابی #۱۲ → ۱
     """
+
+    KIND_CHOICES = [
+        ('painting', 'ایستگاه نقاشی'),
+        ('station', 'سایر ایستگاه‌ها'),
+        ('rework', 'جبران خرابی'),
+    ]
 
     queue = models.ForeignKey(
         DailyMaterialQueue, on_delete=models.CASCADE,
-        related_name='sources', verbose_name="صف روزانه",
+        related_name='sources', verbose_name="ردیف صف",
+    )
+    kind = models.CharField(
+        max_length=20, choices=KIND_CHOICES, default='painting',
+        verbose_name="نوع منبع",
     )
     production_task = models.ForeignKey(
-        'product.ProductionTask', on_delete=models.CASCADE,
+        'product.ProductionTask', null=True, blank=True, on_delete=models.CASCADE,
         related_name='daily_queue_sources', verbose_name="تسک تولید",
     )
     painting_stage = models.ForeignKey(
-        'product.PaintingStage', on_delete=models.CASCADE,
+        'product.PaintingStage', null=True, blank=True, on_delete=models.CASCADE,
         related_name='daily_queue_sources', verbose_name="مرحله نقاشی",
+    )
+    defect = models.ForeignKey(
+        'product.ProductionDefect', null=True, blank=True, on_delete=models.CASCADE,
+        related_name='daily_queue_sources', verbose_name="خرابی",
     )
     raw_material = models.ForeignKey(
         RawMaterial, on_delete=models.CASCADE,
@@ -597,10 +333,11 @@ class DailyMaterialQueueSource(models.Model):
     class Meta:
         verbose_name = "منبع صف روزانه"
         verbose_name_plural = "منابع صف‌های روزانه"
-        ordering = ['queue', 'production_task']
-        unique_together = ('queue', 'production_task', 'painting_stage', 'raw_material')
+        ordering = ['queue', 'kind', 'id']
 
     def __str__(self):
+        if self.kind == 'rework':
+            return f"{self.queue} ← خرابی {self.defect_id} / {self.quantity}"
         return (
             f"{self.queue} ← تسک {self.production_task_id} / "
             f"مرحله {self.painting_stage_id} / {self.quantity}"
@@ -609,13 +346,13 @@ class DailyMaterialQueueSource(models.Model):
 
 class DailyMaterialClosing(models.Model):
     """
-    تأیید نهایی روز (Phase 9): «روز بررسی و تأیید شد».
+    تأیید نهایی روز: «روز بررسی و تأیید شد».
 
     این مدل فقط یک سند تأیید است و هیچ اثر انباری یا برنامه‌ای ندارد:
 
         * ``StockMovement`` ایجاد نمی‌کند؛
         * مقادیر ``DailyMaterialQueue`` را تغییر نمی‌دهد؛
-        * فقط ثبت می‌کند که مدیر/انباردار روز را دیده و تأیید کرده است.
+        * فقط ثبت می‌کند که انباردار روز را دیده و تأیید کرده است.
 
     شرط ثبت (در ``services.confirm_daily_closing`` و نه در این مدل) این است که
     روز «مشکل کنترل‌نشده» نداشته باشد. ``work_date`` یکتا است تا یک روز دوبار

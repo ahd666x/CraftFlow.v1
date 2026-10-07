@@ -1,0 +1,102 @@
+{% extends 'storefront/layouts/store.html' %}
+{% load storefront_filters %}
+
+{% block title %}تسویه‌ی سفارش — فروشگاه{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-6xl px-4 py-8">
+    <h1 class="mb-6 text-2xl font-bold">تسویه‌ی سفارش</h1>
+
+    <div class="grid gap-8 lg:grid-cols-[1fr_22rem]">
+
+        <form method="post" action="{% url 'storefront:checkout' %}" class="space-y-6">
+            {% csrf_token %}
+
+            <section class="card p-5">
+                <h2 class="mb-4 font-semibold">اطلاعات تماس</h2>
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <div>
+                        <label class="label" for="name">نام و نام خانوادگی</label>
+                        <input id="name" name="name" type="text" class="input"
+                               value="{{ customer.name|default:user.get_full_name }}" required>
+                    </div>
+                    <div>
+                        <label class="label" for="phone">شماره موبایل</label>
+                        <input id="phone" name="phone" type="tel" class="input"
+                               value="{{ customer.phone }}" required>
+                    </div>
+                </div>
+            </section>
+
+            <section class="card p-5">
+                <h2 class="mb-4 font-semibold">آدرس ارسال</h2>
+
+                {% if addresses %}
+                <div class="mb-4">
+                    <label class="label" for="address_id">آدرس‌های ذخیره‌شده</label>
+                    <select id="address_id" name="address_id" class="input">
+                        <option value="">— انتخاب کنید —</option>
+                        {% for address in addresses %}
+                        <option value="{{ address.pk }}">{{ address }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% endif %}
+
+                <div>
+                    <label class="label" for="shipping_address">آدرس کامل ارسال</label>
+                    <textarea id="shipping_address" name="shipping_address" rows="3"
+                              class="input" required></textarea>
+                </div>
+
+                <div class="mt-4">
+                    <label class="label" for="notes">توضیحات سفارش (اختیاری)</label>
+                    <textarea id="notes" name="notes" rows="2" class="input"></textarea>
+                </div>
+            </section>
+
+            <button type="submit" class="btn-primary w-full py-3 text-base">
+                ثبت نهایی سفارش
+            </button>
+        </form>
+
+        <aside class="card h-fit p-5 lg:sticky lg:top-20">
+            <h2 class="mb-4 font-semibold">خلاصه‌ی سفارش</h2>
+
+            <ul class="space-y-3">
+                {% for item in items %}
+                <li class="flex items-start justify-between gap-3 text-sm">
+                    <div>
+                        <span class="block">{{ item.product.name }}</span>
+                        <span class="text-xs text-stone-500">
+                            {% if item.has_custom_dimensions %}
+                                {% if item.custom_length %}طول {{ item.custom_length }}{% endif %}
+                                {% if item.custom_width %} / عرض {{ item.custom_width }}{% endif %}
+                                {% if item.custom_height %} / ارتفاع {{ item.custom_height }}{% endif %}
+                                سانتی‌متر
+                            {% else %}
+                                ابعاد پیش‌فرض
+                            {% endif %}
+                            × {{ item.quantity }}
+                        </span>
+                    </div>
+                    <span class="whitespace-nowrap">{{ item.total_price|fa_price }}</span>
+                </li>
+                {% endfor %}
+            </ul>
+
+            <div class="mt-4 border-t border-stone-200 pt-4">
+                <div class="flex items-center justify-between text-sm text-stone-600">
+                    <span>جمع اقلام</span>
+                    <span>{{ cart.total_price|fa_price }}</span>
+                </div>
+                <div class="mt-2 flex items-center justify-between">
+                    <span class="font-semibold">مبلغ نهایی</span>
+                    <span class="text-lg font-bold text-primary-800">{{ cart.total_price|fa_price }}</span>
+                </div>
+                <p class="mt-1 text-xs text-stone-400">تومان</p>
+            </div>
+        </aside>
+    </div>
+</div>
+{% endblock %}

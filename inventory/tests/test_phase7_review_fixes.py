@@ -49,7 +49,7 @@ from product.models import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-TEMPLATE = REPO_ROOT / 'inventory' / 'templates' / 'inventory' / 'daily_material_queue.html'
+TEMPLATE = REPO_ROOT / 'inventory' / 'templates' / 'inventory' / 'queue.html'
 
 
 class ReviewBase(TestCase):
@@ -101,12 +101,12 @@ class ReviewBase(TestCase):
 
         # planned = 6 × 0.5 = 3 kg  →  با پک ۴ باید ۴ کیلو تحویل شود
         PaintingMaterialRequirement.objects.create(
-            process=cls.process, raw_material=cls.raw_pack4, product=cls.product,
+            process=cls.process, stage=cls.stage, raw_material=cls.raw_pack4, product=cls.product,
             color_part='بدنه', consumption_per_unit=Decimal('0.500'),
         )
         # نیاز بسیار کوچک برای آزمون دقت
         PaintingMaterialRequirement.objects.create(
-            process=cls.process, raw_material=cls.raw_tiny, product=cls.product,
+            process=cls.process, stage=cls.stage, raw_material=cls.raw_tiny, product=cls.product,
             color_part='بدنه', consumption_per_unit=Decimal('0.004'),
         )
 
@@ -237,7 +237,7 @@ class DeliveryAccountingTests(ReviewBase):
 
     def test_07_no_pack_size_delivers_planned_exactly(self):
         PaintingMaterialRequirement.objects.create(
-            process=self.process, raw_material=self.raw, product=self.product,
+            process=self.process, stage=self.stage, raw_material=self.raw, product=self.product,
             color_part='بدنه', consumption_per_unit=Decimal('0.500'),
         )
         self._task(quantity=6)
@@ -377,7 +377,7 @@ class SourcesXssTests(ReviewBase):
         # نیاز مصرف برای همین بخش رنگی هم باید وجود داشته باشد، وگرنه تسک از
         # برنامهٔ روز خارج می‌شود و صف لغو می‌شود (و منابعش پاک می‌شود).
         PaintingMaterialRequirement.objects.create(
-            process=self.process, raw_material=self.raw_pack4,
+            process=self.process, stage=self.stage, raw_material=self.raw_pack4,
             product=self.product, color_part=payload,
             consumption_per_unit=Decimal('0.500'),
         )
@@ -431,13 +431,19 @@ class CancelledFilterTests(ReviewBase):
     """D) فیلتر «لغو شده» باید کار کند."""
 
     def _cancelled_row(self):
-        """همهٔ ردیف‌های آن روز لغو می‌شوند (هر تسک دو ماده دارد)."""
-        self._task(quantity=6)
+        """ردیف صف برای تسکی که از برنامه حذف شده (لغو شده)."""
+        # ابتدا تسک و صف می‌سازیم
+        task = self._task(quantity=6)
         rows = list(DailyMaterialQueue.objects.filter(work_date=self.today))
         self.assertTrue(rows)
+        # حالا تسک را از برنامه حذف می‌کنیم (یا منتقل می‌کنیم)
+        task.delete()
+        # Sync مجدد صف - ردیف‌های بدون تسک باید لغو شوند
+        services.sync_queue_for_date(self.today)
+        # حالا ردیف‌ها باید cancelled باشند
+        rows = list(DailyMaterialQueue.objects.filter(work_date=self.today))
         for row in rows:
-            row.status = 'cancelled'
-            row.save(update_fields=['status'])
+            self.assertEqual(row.status, 'cancelled')
         return rows
 
     def test_21_cancelled_rows_are_hidden_by_default(self):
@@ -590,7 +596,7 @@ class QuantityPrecisionTests(ReviewBase):
 
     def test_33_three_decimal_consumption_rounds_once(self):
         PaintingMaterialRequirement.objects.create(
-            process=self.process, raw_material=self.raw, product=self.product,
+            process=self.process, stage=self.stage, raw_material=self.raw, product=self.product,
             color_part='بدنه', consumption_per_unit=Decimal('0.125'),
         )
         item = OrderItem.objects.create(order=self.order, product=self.product, quantity=3)
@@ -603,7 +609,7 @@ class QuantityPrecisionTests(ReviewBase):
 
     def test_34_zero_consumption_is_still_ignored(self):
         PaintingMaterialRequirement.objects.create(
-            process=self.process, raw_material=self.raw, product=self.product,
+            process=self.process, stage=self.stage, raw_material=self.raw, product=self.product,
             color_part='بدنه', consumption_per_unit=Decimal('0'),
         )
         item = OrderItem.objects.create(order=self.order, product=self.product, quantity=5)

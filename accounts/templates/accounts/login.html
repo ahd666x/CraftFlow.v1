@@ -1,0 +1,38 @@
+{% extends 'storefront/layouts/store.html' %}
+
+{% block title %}ورود — فروشگاه{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-md px-4 py-8">
+    <div class="card p-6">
+        <h1 class="mb-6 text-center text-xl font-bold">ورود به حساب</h1>
+
+        <form method="post" class="space-y-4">
+            {% csrf_token %}
+            {% if form.non_field_errors %}
+            <div class="rounded-lg bg-red-50 p-3 text-sm text-red-700">{{ form.non_field_errors }}</div>
+            {% endif %}
+
+            <div>
+                <label for="{{ form.username.id_for_label }}" class="label">نام کاربری یا ایمیل</label>
+                {{ form.username }}
+            </div>
+
+            <div>
+                <label for="{{ form.password.id_for_label }}" class="label">کلمه عبور</label>
+                {{ form.password }}
+            </div>
+
+            <button type="submit" class="btn-primary w-full py-3">ورود</button>
+        </form>
+
+        <div class="mt-6 text-center text-sm text-stone-500">
+            هنوز حساب ندارید؟
+            <a href="{% url 'accounts:register' %}" class="text-primary-600 hover:underline">ثبت‌نام کنید</a>
+        </div>
+        <div class="mt-2 text-center">
+            <a href="{% url 'accounts:password_reset' %}" class="text-xs text-stone-400 hover:underline">کلمه عبور خود را فراموش کرده‌اید؟</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

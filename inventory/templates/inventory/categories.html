@@ -1,200 +1,146 @@
 {% extends "inventory/base.html" %}
-{% block title %}مدیریت دسته‌های مواد اولیه{% endblock %}
+{% block title %}دسته‌های مواد{% endblock %}
 
 {% block inventory_content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h2>📋 مدیریت دسته‌های مواد اولیه</h2>
-    <button class="btn btn-modern" id="btnNewCategory" data-bs-toggle="modal" data-bs-target="#categoryModal">
-        <i class="bi bi-plus-circle"></i> دسته جدید
-    </button>
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+  <div>
+    <h1 class="h3 mb-1">دسته‌های مواد</h1>
+    <div class="small text-muted">دسته‌بندی مواد اولیه — نسخهٔ صفحه: <code>{{ page_version|default:"—" }}</code></div>
+  </div>
+  <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#categoryFormModal">
+    <i class="bi bi-plus-lg"></i> دستهٔ جدید
+  </button>
 </div>
 
-<div class="row mb-3">
-    <div class="col-md-6">
-        <form method="get" class="d-flex" id="searchForm">
-            <input type="text" name="search" class="form-control me-2" placeholder="جستجو..." value="{{ search }}">
-            <button type="submit" class="btn btn-outline-secondary">جستجو</button>
-        </form>
-    </div>
-</div>
-
-<div class="table-responsive">
-    <table class="table table-hover">
-        <thead>
+<div class="card-modern">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead class="table-light"><tr><th>نام دسته</th><th>تعداد مواد</th><th></th></tr></thead>
+        <tbody>
+          {% for category in categories %}
             <tr>
-                <th>نام دسته</th>
-                <th>تعداد مواد</th>
-                <th>عملیات</th>
+              <td><strong>{{ category.name }}</strong></td>
+              <td>{{ category.material_count }}</td>
+              <td>
+                <div class="btn-group btn-group-sm">
+                  <a href="{% url 'inventory:material_list' %}?category={{ category.id }}"
+                     class="btn btn-outline-secondary">مواد</a>
+                  <button type="button" class="btn btn-outline-primary btn-edit-category"
+                          data-id="{{ category.id }}" data-name="{{ category.name }}">ویرایش</button>
+                  <form method="post" action="{% url 'inventory:category_delete' category.id %}"
+                        onsubmit="return confirm('دسته «{{ category.name|escapejs }}» حذف شود؟');">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-outline-danger">حذف</button>
+                  </form>
+                </div>
+              </td>
             </tr>
-        </thead>
-        <tbody id="categoryTableBody">
-            {% include "inventory/_category_rows.html" %}
+          {% empty %}
+            <tr><td colspan="3" class="text-center text-muted py-5"><i class="bi bi-inbox"></i> دسته‌ای ثبت نشده است.</td></tr>
+          {% endfor %}
         </tbody>
-    </table>
+      </table>
+    </div>
+  </div>
 </div>
 
-{% if categories.has_other_pages %}
-<nav>
-    <ul class="pagination justify-content-center">
-        {% if categories.has_previous %}
-        <li class="page-item"><a class="page-link" href="#" data-page="{{ categories.previous_page_number }}">قبلی</a></li>
-        {% endif %}
-        <li class="page-item active"><span class="page-link">{{ categories.number }}</span></li>
-        {% if categories.has_next %}
-        <li class="page-item"><a class="page-link" href="#" data-page="{{ categories.next_page_number }}">بعدی</a></li>
-        {% endif %}
-    </ul>
-</nav>
-{% endif %}
-
-<div class="modal fade" id="categoryModal" tabindex="-1" data-bs-backdrop="static">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <form id="categoryForm">
-                {% csrf_token %}
-                <input type="hidden" name="action" id="formAction" value="create">
-                <input type="hidden" name="category_id" id="categoryId">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="modalTitle">دسته جدید</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="mb-3">
-                        <label class="form-label">نام دسته <span class="text-danger">*</span></label>
-                        <input type="text" name="name" class="form-control" required>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
-                    <button type="submit" class="btn btn-modern">ذخیره</button>
-                </div>
-            </form>
+<div class="modal fade" id="categoryFormModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title" id="categoryFormTitle">دستهٔ جدید</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="بستن"></button>
+      </div>
+      <form method="post" id="categoryForm">
+        {% csrf_token %}
+        <div class="modal-body">
+          <div id="categoryFormErrors" class="alert alert-danger d-none"></div>
+          <label class="form-label" for="c_name">نام دسته <span class="text-danger">*</span></label>
+          <input type="text" name="name" id="c_name" class="form-control" required
+                 placeholder="مثلاً رنگ، آستر، یراق‌آلات">
         </div>
-    </div>
-</div>
-
-<div class="modal fade" id="deleteModal" tabindex="-1" data-bs-backdrop="static">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header bg-danger text-white">
-                <h5 class="modal-title">تأیید حذف</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <p>آیا از حذف این دسته اطمینان دارید؟</p>
-                <p class="text-muted small" id="deleteItemName"></p>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
-                <button type="button" class="btn btn-danger" id="confirmDeleteBtn">حذف</button>
-            </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+          <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> ذخیره</button>
         </div>
+      </form>
     </div>
+  </div>
 </div>
 {% endblock %}
 
 {% block inventory_js %}
 <script>
 (function() {
-    var currentDeleteUrl = null;
-    var deleteModal = new bootstrap.Modal(document.getElementById('deleteModal'));
+  'use strict';
+  const csrfToken = '{{ csrf_token }}';
+  const detailBase = "{% url 'inventory:category_detail' 0 %}".replace('/0/detail/', '/');
+  const createUrl = "{% url 'inventory:category_create' %}";
+  const modalEl = document.getElementById('categoryFormModal');
+  const modal = modalEl ? bootstrap.Modal.getOrCreateInstance(modalEl) : null;
+  const form = document.getElementById('categoryForm');
+  const nameInput = document.getElementById('c_name');
+  const errorsBox = document.getElementById('categoryFormErrors');
+  const title = document.getElementById('categoryFormTitle');
 
-    function getCsrfToken() {
-        let cookieValue = null;
-        const name = 'csrftoken';
-        if (document.cookie && document.cookie !== '') {
-            const cookies = document.cookie.split(';');
-            for (let i = 0; i < cookies.length; i++) {
-                const c = cookies[i].trim();
-                if (c.substring(0, name.length + 1) === (name + '=')) {
-                    cookieValue = decodeURIComponent(c.substring(name.length + 1));
-                    break;
-                }
-            }
-        }
-        return cookieValue;
+  function clearErrors() {
+    errorsBox.classList.add('d-none');
+    errorsBox.textContent = '';
+  }
+
+  function showErrors(errors) {
+    errorsBox.textContent = '';
+    Object.keys(errors).forEach(field => {
+      const line = document.createElement('div');
+      line.textContent = field + ': ' + errors[field].join(' — ');
+      errorsBox.appendChild(line);
+    });
+    errorsBox.classList.remove('d-none');
+  }
+
+  modalEl?.addEventListener('show.bs.modal', event => {
+    if (event.relatedTarget && event.relatedTarget.matches('[data-bs-target="#categoryFormModal"]')) {
+      form.reset();
+      form.action = createUrl;
+      title.textContent = 'دستهٔ جدید';
+      clearErrors();
     }
+  });
 
-    $('#categoryForm').on('submit', function(e) {
-        e.preventDefault();
-        var isEdit = $('#formAction').val() === 'edit';
-        var id = $('#categoryId').val();
-        var url = isEdit ? '/inventory/categories/' + id + '/edit/' : '/inventory/categories/create/';
-
-        $.ajax({
-            url: url,
-            method: 'POST',
-            headers: {'X-Requested-With': 'XMLHttpRequest', 'X-CSRFToken': getCsrfToken()},
-            data: $(this).serialize(),
-            success: function(data) {
-                if (data.success) { location.reload(); }
-                else { alert('خطا: ' + JSON.stringify(data.errors || data)); }
-            },
-            error: function() { alert('خطای ارتباط با سرور'); }
-        });
+  document.querySelectorAll('.btn-edit-category').forEach(button => {
+    button.addEventListener('click', () => {
+      form.reset();
+      clearErrors();
+      form.action = detailBase + button.dataset.id + '/edit/';
+      title.textContent = 'ویرایش دسته';
+      nameInput.value = button.dataset.name || '';
+      modal.show();
     });
+  });
 
-    function resetCategoryForm() {
-        $('#categoryForm')[0].reset();
-        $('#formAction').val('create');
-        $('#categoryId').val('');
-        $('#modalTitle').text('دسته جدید');
+  form?.addEventListener('submit', async event => {
+    event.preventDefault();
+    clearErrors();
+    try {
+      const response = await fetch(form.action, {
+        method: 'POST',
+        headers: {
+          'X-CSRFToken': csrfToken,
+          'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: new FormData(form)
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        showErrors(data.errors || { 'خطا': ['ذخیره نشد.'] });
+        return;
+      }
+      window.location.reload();
+    } catch (err) {
+      showErrors({ 'خطا': [err.message] });
     }
-
-    $('#btnNewCategory').on('click', function() {
-        resetCategoryForm();
-    });
-
-    $('#categoryModal').on('show.bs.modal', function() {
-        if ($('#formAction').val() !== 'edit') {
-            resetCategoryForm();
-        }
-    });
-
-    $(document).on('click', '.edit-category', function() {
-        var id = $(this).data('id');
-        $.getJSON('/inventory/categories/' + id + '/detail/', function(data) {
-            $('#modalTitle').text('ویرایش دسته');
-            $('#formAction').val('edit');
-            $('#categoryId').val(data.id);
-            $('#categoryForm [name="name"]').val(data.name);
-            new bootstrap.Modal(document.getElementById('categoryModal')).show();
-        });
-    });
-
-    $('.delete-category').on('click', function() {
-        var id = $(this).data('id');
-        var name = $(this).data('name');
-        currentDeleteUrl = '/inventory/categories/' + id + '/delete/';
-        $('#deleteItemName').text('دسته: ' + name);
-        deleteModal.show();
-    });
-
-    $('#confirmDeleteBtn').on('click', function() {
-        if (!currentDeleteUrl) return;
-        $.ajax({
-            url: currentDeleteUrl,
-            method: 'POST',
-            headers: {'X-Requested-With': 'XMLHttpRequest', 'X-CSRFToken': getCsrfToken()},
-            success: function(data) {
-                if (data.success) { location.reload(); }
-            }
-        });
-    });
-
-    function loadPage(page) {
-        var params = { search: $('input[name="search"]').val() || '', page: page };
-        $.get('/inventory/categories/', params, function(data) {
-            if (data.table_html) {
-                $('#categoryTableBody').html(data.table_html);
-            }
-        });
-    }
-
-    $(document).on('click', '.pagination .page-link[data-page]', function(e) {
-        e.preventDefault();
-        loadPage($(this).data('page'));
-    });
+  });
 })();
 </script>
 {% endblock %}

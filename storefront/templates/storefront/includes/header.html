@@ -1,0 +1,43 @@
+{% load static %}
+<header class="sticky top-0 z-sticky border-b border-stone-200 bg-white">
+    <div class="mx-auto flex max-w-6xl items-center gap-4 px-4 py-3">
+
+        <a href="{% url 'storefront:home' %}" class="flex items-center gap-2 text-lg font-bold text-primary-800">
+            <span class="grid h-9 w-9 place-items-center rounded-default bg-primary-700 text-white">س</span>
+            فروشگاه
+        </a>
+
+        <nav class="hidden items-center gap-1 md:flex">
+            <a href="{% url 'storefront:product_list' %}"
+               class="rounded-default px-3 py-2 text-sm hover:bg-stone-100">محصولات</a>
+            <a href="{% url 'storefront:category_list' %}"
+               class="rounded-default px-3 py-2 text-sm hover:bg-stone-100">دسته‌بندی‌ها</a>
+            {% if user.is_authenticated %}
+            <a href="{% url 'storefront:order_list' %}"
+               class="rounded-default px-3 py-2 text-sm hover:bg-stone-100">سفارش‌های من</a>
+            {% endif %}
+        </nav>
+
+        <form action="{% url 'storefront:product_list' %}" method="get" class="mr-auto hidden max-w-xs flex-1 sm:block">
+            <input type="search" name="q" value="{{ q }}" placeholder="جستجوی محصول…"
+                   class="input py-1.5">
+        </form>
+
+        <div class="flex items-center gap-2">
+            {% if user.is_authenticated %}
+                <span class="hidden text-sm text-stone-500 sm:inline">{{ user.username }}</span>
+            {% else %}
+                <a href="{% url 'login' %}" class="btn-outline py-1.5">ورود</a>
+            {% endif %}
+
+            <a href="{% url 'cart:cart_detail' %}"
+               class="relative inline-flex items-center gap-2 rounded-default border border-stone-300 px-3 py-1.5 text-sm hover:bg-stone-50">
+                <span>سبد خرید</span>
+                <span id="cart-count"
+                      class="grid h-5 min-w-[1.25rem] place-items-center rounded-full bg-primary-700 px-1 text-xs text-white">
+                    {{ cart_total_items|default:0 }}
+                </span>
+            </a>
+        </div>
+    </div>
+</header>

@@ -1,0 +1,58 @@
+{% extends "inventory/base.html" %}
+{% block title %}حسابرسی داده{% endblock %}
+
+{% block inventory_content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+  <div>
+    <h1 class="h3 mb-1">حسابرسی داده</h1>
+    <div class="small text-muted">
+      فقط‌خواندنی — هیچ‌چیز را خودکار اصلاح نمی‌کند.
+    </div>
+  </div>
+  <a href="{% url 'inventory:reports' %}" class="btn btn-sm btn-outline-primary">
+    <i class="bi bi-journal-text"></i> گزارش‌ها
+  </a>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-4"><div class="card-modern h-100"><div class="card-body py-3">
+    <div class="text-muted small">کل موارد</div><div class="h4 mb-0">{{ total }}</div>
+  </div></div></div>
+  <div class="col-4"><div class="card-modern h-100"><div class="card-body py-3">
+    <div class="text-muted small">بحرانی</div>
+    <div class="h4 mb-0 {% if critical %}text-danger{% endif %}">{{ critical }}</div>
+  </div></div></div>
+  <div class="col-4"><div class="card-modern h-100"><div class="card-body py-3">
+    <div class="text-muted small">هشدار</div>
+    <div class="h4 mb-0 {% if warning %}text-warning{% endif %}">{{ warning }}</div>
+  </div></div></div>
+</div>
+
+{% if issues %}
+  <div class="card-modern">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead class="table-light"><tr><th>شدت</th><th>مشکل</th><th>شرح</th><th>مورد</th><th>مرجع</th></tr></thead>
+          <tbody>
+            {% for issue in issues %}
+              <tr class="{% if issue.severity == 'critical' %}table-danger{% else %}table-warning{% endif %}">
+                <td><span class="badge {% if issue.severity == 'critical' %}bg-danger{% else %}bg-warning text-dark{% endif %}">{{ issue.severity }}</span></td>
+                <td>{{ issue.problem }}</td>
+                <td class="small">{{ issue.description }}</td>
+                <td class="small text-muted">{{ issue.object|default:"—" }}</td>
+                <td class="small text-muted">{{ issue.reference|default:"—" }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+{% else %}
+  <div class="alert alert-success">
+    <i class="bi bi-check-circle-fill"></i>
+    هیچ ناسازگاری‌ای پیدا نشد.
+  </div>
+{% endif %}
+{% endblock %}

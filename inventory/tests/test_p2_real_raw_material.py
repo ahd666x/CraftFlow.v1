@@ -114,16 +114,17 @@ class RawMaterialChainBase(TestCase):
         )
 
         # فرمول: ماده ثابت + اسلات رنگ‌وابسته
-        cls.thinner_req = PaintingMaterialRequirement.objects.create(
-            process=cls.process, raw_material=cls.thinner,
-            product=cls.product, color_part='بدنه',
-            consumption_per_unit=Decimal('0.400'),
-        )
-        cls.slot_req = PaintingMaterialRequirement.objects.create(
-            process=cls.process, raw_material=cls.slot,
-            product=cls.product, color_part='بدنه',
-            consumption_per_unit=CONSUMPTION,
-        )
+        for stage in cls.stages:
+            PaintingMaterialRequirement.objects.create(
+                process=cls.process, stage=stage, raw_material=cls.thinner,
+                product=cls.product, color_part='بدنه',
+                consumption_per_unit=Decimal('0.400'),
+            )
+            PaintingMaterialRequirement.objects.create(
+                process=cls.process, stage=stage, raw_material=cls.slot,
+                product=cls.product, color_part='بدنه',
+                consumption_per_unit=CONSUMPTION,
+            )
 
         cls.customer = Customer.objects.create(name='مشتری P2', phone='09120000001')
         cls.order = Order.objects.create(
@@ -184,8 +185,10 @@ class ValidRawMaterialTests(RawMaterialChainBase):
         by_requirement = {
             entry['requirement'].pk: entry['raw_material'] for entry in resolved
         }
-        self.assertEqual(by_requirement[self.thinner_req.pk], self.thinner)
-        self.assertEqual(by_requirement[self.slot_req.pk], self.paint_code_8)
+        thinner_req = PaintingMaterialRequirement.objects.get(process=self.process, stage=self.stages[0], raw_material=self.thinner)
+        slot_req = PaintingMaterialRequirement.objects.get(process=self.process, stage=self.stages[0], raw_material=self.slot)
+        self.assertEqual(by_requirement[thinner_req.pk], self.thinner)
+        self.assertEqual(by_requirement[slot_req.pk], self.paint_code_8)
 
     def test_02_queue_uses_the_real_raw_material_not_the_slot(self):
         """queue باید ماده واقعی بگیرد، نه اسلات رنگ‌وابسته."""
@@ -340,15 +343,16 @@ class MissingMappingTests(RawMaterialChainBase):
         # نیاز ماده ثابت هنوز درست resolve می‌شود، پس تسک skip نمی‌شود؛ فقط
         # نیاز رنگ گزارش می‌شود و هیچ صفی روی اسلات ساخته نمی‌شود.
         self.assertEqual(diagnostics['skipped'], [])
-        self.assertIn((self.worker.pk, self.thinner.pk), grouped)
-        self.assertNotIn((self.worker.pk, self.slot.pk), grouped)
+        # New key format: (worker_id, raw_material_id, stage_id, color_part)
+        self.assertIn((self.worker.pk, self.thinner.pk, self.stages[0].pk, 'بدنه'), grouped)
+        self.assertNotIn((self.worker.pk, self.slot.pk, self.stages[0].pk, 'بدنه'), grouped)
 
     def test_10b_task_is_skipped_when_no_requirement_resolves(self):
         """وقتی هیچ نیازی resolve نشود، تسک skip و علت گزارش می‌شود."""
         item = self._make_item(code='8')
         self._stage_tasks(item, stages=self.stages[:1])
         self.variant_8.delete()
-        self.thinner_req.delete()
+        PaintingMaterialRequirement.objects.filter(process=self.process, raw_material=self.thinner).delete()
 
         tasks = services._get_scheduled_painting_tasks(self.day1)
         grouped, diagnostics = services.aggregate_queue_requirements(tasks)
@@ -372,7 +376,7 @@ class MissingMappingTests(RawMaterialChainBase):
             code='P2-OUT', unit='lit',
         )
         req = PaintingMaterialRequirement.objects.create(
-            process=self.process, raw_material=outsider,
+            process=self.process, stage=self.stages[0], raw_material=outsider,
             product=self.product, color_part='پایه',
             consumption_per_unit=Decimal('1.000'),
         )
@@ -392,7 +396,7 @@ class MissingMappingTests(RawMaterialChainBase):
             code='P2-OUT', unit='lit',
         )
         PaintingMaterialRequirement.objects.create(
-            process=self.process, raw_material=outsider,
+            process=self.process, stage=self.stages[0], raw_material=outsider,
             product=self.product, color_part='بدنه',
             consumption_per_unit=Decimal('0.500'),
         )
@@ -402,7 +406,8 @@ class MissingMappingTests(RawMaterialChainBase):
         tasks = services._get_scheduled_painting_tasks(self.day1)
         grouped, diagnostics = services.aggregate_queue_requirements(tasks)
 
-        self.assertIn((self.worker.pk, outsider.pk), grouped)
+        # New key format: (worker_id, raw_material_id, stage_id, color_part)
+        self.assertIn((self.worker.pk, outsider.pk, self.stages[0].pk, 'بدنه'), grouped)
         self.assertEqual(len(diagnostics['mapping_notes']), 1)
         self.assertEqual(
             diagnostics['mapping_notes'][0]['reason'],
@@ -428,17 +433,17 @@ class MissingMappingTests(RawMaterialChainBase):
 # Test 4 — P1 روی ماده واقعی درست کار می‌کند
 # ---------------------------------------------------------------------------
 class P1DedupWithRealMaterialTests(RawMaterialChainBase):
-    def test_13_three_stages_of_one_work_unit_count_once(self):
+    def test_13_three_stages_create_three_queue_rows(self):
         item = self._make_item(code='8')
         tasks = self._stage_tasks(item)
 
-        queue = self._queue(self.paint_code_8)
-        self.assertEqual(queue.planned_quantity, Decimal('1.30'))
-        self.assertEqual(queue.sources.count(), len(tasks))
-        self.assertEqual(
-            sum((s.quantity for s in queue.sources.all()), Decimal('0')),
-            queue.planned_quantity,
+        queues = DailyMaterialQueue.objects.filter(
+            work_date=self.day1, worker=self.worker, raw_material=self.paint_code_8
         )
+        self.assertEqual(queues.count(), 3)
+        for q in queues:
+            self.assertEqual(q.planned_quantity, Decimal('1.30'))
+            self.assertEqual(q.sources.count(), 1)
 
     def test_14_p1_grouping_keys_use_the_real_material(self):
         """کلید واحد کار نقاشی و گروه صف باید روی ماده واقعی ساخته شوند."""
@@ -447,8 +452,9 @@ class P1DedupWithRealMaterialTests(RawMaterialChainBase):
 
         grouped, _diagnostics = services.aggregate_queue_requirements([task])
 
-        self.assertIn((self.worker.pk, self.paint_code_8.pk), grouped)
-        self.assertNotIn((self.worker.pk, self.slot.pk), grouped)
+        # New key format: (worker_id, raw_material_id, stage_id, color_part)
+        self.assertIn((self.worker.pk, self.paint_code_8.pk, self.stages[0].pk, 'بدنه'), grouped)
+        self.assertNotIn((self.worker.pk, self.slot.pk, self.stages[0].pk, 'بدنه'), grouped)
         unit_key = services._painting_work_unit_key(task, self.paint_code_8.pk)
         self.assertEqual(unit_key[-1], self.paint_code_8.pk)
 
@@ -560,14 +566,17 @@ class QueueSourceTraceabilityTests(RawMaterialChainBase):
         item = self._make_item(code='8')
         tasks = self._stage_tasks(item)
 
-        queue = self._queue(self.paint_code_8)
-        sources = DailyMaterialQueueSource.objects.filter(queue=queue)
-        self.assertEqual({s.production_task_id for s in sources},
-                         {t.id for t in tasks})
-        self.assertEqual({s.painting_stage_id for s in sources},
-                         {s.pk for s in self.stages})
-        self.assertEqual({s.raw_material_id for s in sources},
-                         {self.paint_code_8.pk})
+        queues = DailyMaterialQueue.objects.filter(
+            work_date=self.day1, worker=self.worker, raw_material=self.paint_code_8
+        )
+        self.assertEqual(queues.count(), 3)
+        for q in queues:
+            sources = DailyMaterialQueueSource.objects.filter(queue=q)
+            self.assertEqual(sources.count(), 1)
+            source = sources.first()
+            self.assertIn(source.production_task_id, {t.id for t in tasks})
+            self.assertIn(source.painting_stage_id, {s.pk for s in self.stages})
+            self.assertEqual(source.raw_material_id, self.paint_code_8.pk)
 
     def test_22_report_traceability_uses_the_real_material(self):
         item = self._make_item(code='8')
@@ -579,7 +588,8 @@ class QueueSourceTraceabilityTests(RawMaterialChainBase):
         material_ids = {row['raw_material_id'] for row in report['rows']}
         self.assertIn(self.paint_code_8.pk, material_ids)
         self.assertNotIn(self.slot.pk, material_ids)
-        self.assertEqual(report['totals']['planned'], Decimal('1.70'))
+        # 3 stages × (1.30 + 0.40) = 5.10 total planned
+        self.assertEqual(report['totals']['planned'], Decimal('5.10'))
 
     def test_23_requirement_row_in_db_is_never_rewritten_by_sync(self):
         """resolver نباید FK ذخیره‌شدهٔ requirement را تغییر دهد."""
@@ -588,8 +598,9 @@ class QueueSourceTraceabilityTests(RawMaterialChainBase):
 
         services.sync_daily_material_queue(self.day1)
 
-        self.slot_req.refresh_from_db()
-        self.assertEqual(self.slot_req.raw_material_id, self.slot.pk)
+        slot_req = PaintingMaterialRequirement.objects.get(process=self.process, stage=self.stages[0], raw_material=self.slot)
+        slot_req.refresh_from_db()
+        self.assertEqual(slot_req.raw_material_id, self.slot.pk)
 
     def test_24_legacy_resolver_helper_agrees_with_the_canonical_one(self):
         """تابع سازگاری قدیمی باید همان ماده واقعی resolver را برگرداند."""

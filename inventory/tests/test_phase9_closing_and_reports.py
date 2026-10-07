@@ -73,7 +73,7 @@ class Base(TestCase):
 
         for raw in (cls.raw, cls.raw2):
             PaintingMaterialRequirement.objects.create(
-                process=cls.process, raw_material=raw, product=cls.product,
+                process=cls.process, stage=cls.stage, raw_material=raw, product=cls.product,
                 color_part='بدنه', consumption_per_unit=Decimal('1.000'))
             StockMovement.objects.create(
                 raw_material=raw, movement_type='purchase',
@@ -224,14 +224,14 @@ class ClosingConfirmationTests(Base):
         response = self._get('daily_closing')
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'روز بررسی و تأیید شد')
-        self.assertFalse(response.context['already_closed'])
+        self.assertIsNone(response.context['closing'])
 
     def test_12_closing_page_shows_closed_state(self):
         self._task()
         self._settle()
         services.confirm_daily_closing(date=self.today, closed_by=self.warehouse)
         response = self._get('daily_closing')
-        self.assertTrue(response.context['already_closed'])
+        self.assertIsNotNone(response.context['closing'])
         self.assertContains(response, 'این روز بسته شده است')
 
 
@@ -470,76 +470,69 @@ class ReportServiceTests(Base):
 
 
 class NewPageRenderTests(Base):
-    def test_37_ledger_page(self):
+    def test_37_reports_page_overview_tab(self):
+        """گزارش‌ها: تب نگاه کلی (material_dashboard + alerts)."""
         self._task()
-        response = self._get('material_ledger')
+        response = self._get('reports', params={'tab': 'overview'})
         self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, 'inventory/material_ledger.html')
+        self.assertTemplateUsed(response, 'inventory/reports.html')
+        self.assertIn('dashboard', response.context)
+        self.assertIn('alerts', response.context)
 
-    def test_38_consumption_page(self):
+    def test_38_reports_page_ledger_tab(self):
+        """گزارش‌ها: تب دفتر گردش انبار."""
         self._task()
-        response = self._get('consumption_report')
+        response = self._get('reports', params={'tab': 'ledger'})
         self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, 'inventory/consumption_report.html')
+        self.assertTemplateUsed(response, 'inventory/reports.html')
+        self.assertIn('ledger', response.context)
 
-    def test_39_dashboard_page(self):
+    def test_39_reports_page_consumption_tab(self):
+        """گزارش‌ها: تب تحلیل مصرف."""
         self._task()
-        response = self._get('material_dashboard', params={'date': self.jalali})
+        response = self._get('reports', params={'tab': 'consumption'})
         self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, 'inventory/material_dashboard.html')
+        self.assertTemplateUsed(response, 'inventory/reports.html')
+        self.assertIn('consumption', response.context)
 
-    def test_40_alerts_page(self):
+    def test_40_reports_page_history_tab(self):
+        """گزارش‌ها: تب گزارش‌های تاریخی."""
         self._task()
-        response = self._get('inventory_alerts', params={'date': self.jalali})
+        response = self._get('reports', params={'tab': 'history'})
         self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, 'inventory/inventory_alerts.html')
+        self.assertTemplateUsed(response, 'inventory/reports.html')
+        self.assertIn('history', response.context)
 
-    def test_41_historical_page(self):
-        self._task()
-        response = self._get('historical_reports')
-        self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, 'inventory/historical_reports.html')
-
-    def test_42_historical_csv_export(self):
-        self._task()
-        response = self._get('historical_reports_csv')
-        self.assertEqual(response.status_code, 200)
-        self.assertIn('text/csv', response['Content-Type'])
-
-    def test_43_audit_page(self):
+    def test_41_audit_page(self):
+        """حسابرسی یکپارچگی داده."""
         self._task()
         response = self._get('data_integrity_audit', user=self.superuser)
         self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, 'inventory/data_integrity_audit.html')
+        self.assertTemplateUsed(response, 'inventory/audit.html')
 
-    def test_44_audit_page_requires_manager(self):
+    def test_42_audit_page_requires_manager(self):
         self._task()
         response = self._get('data_integrity_audit', user=self.plain)
         self.assertNotEqual(response.status_code, 200)
 
-    def test_45_order_trace_page(self):
+    def test_43_order_trace_page(self):
+        """مسیر ماده از سفارش تا تحویل و بازگشت."""
         self._task()
         response = self._get('order_material_traceability', args=[self.order.pk])
         self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, 'inventory/order_material_trace.html')
+        self.assertTemplateUsed(response, 'inventory/order_trace.html')
 
-    def test_46_report_pages_require_permission(self):
+    def test_44_report_tabs_require_permission(self):
+        """همهٔ تب‌های گزارش‌ها نیاز به مجوز انبار/مدیر دارند."""
         self._task()
-        for name, args in (
-            ('material_ledger', None),
-            ('consumption_report', None),
-            ('material_dashboard', None),
-            ('inventory_alerts', None),
-            ('historical_reports', None),
-        ):
-            response = self._get(name, user=self.plain, args=args)
-            self.assertNotEqual(response.status_code, 200, name)
+        for tab in ('overview', 'ledger', 'consumption', 'history'):
+            response = self._get('reports', user=self.plain, params={'tab': tab})
+            self.assertNotEqual(response.status_code, 200, tab)
 
-    def test_47_navigation_contains_new_pages(self):
+    def test_45_navigation_contains_new_pages(self):
+        """نوار ناوبری شامل مسیرهای جدید است."""
         response = self._get('daily_material_queue')
-        for name in ('material_ledger', 'consumption_report', 'material_dashboard',
-                     'inventory_alerts', 'historical_reports',
-                     'data_integrity_audit', 'daily_closing'):
-            self.assertContains(response, reverse(f'inventory:{name}', args=[1])
-                                if name == 'order_material_traceability'
-                                else reverse(f'inventory:{name}'))
+        # تمام مسیرهای موجود در urls.py
+        for name in ('reports', 'data_integrity_audit', 'daily_closing',
+                     'raw_material_receive_scan', 'daily_material_queue'):
+            self.assertContains(response, reverse(f'inventory:{name}'))

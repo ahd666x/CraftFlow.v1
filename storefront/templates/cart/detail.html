@@ -1,0 +1,48 @@
+{% extends 'storefront/layouts/store.html' %}
+{% load storefront_filters %}
+
+{% block title %}سبد خرید — فروشگاه{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-6xl px-4 py-8">
+    <h1 class="mb-6 text-2xl font-bold">سبد خرید</h1>
+
+    {% if items %}
+    <div class="grid gap-8 lg:grid-cols-[1fr_22rem]">
+
+        <div class="space-y-4">
+            {% for item in items %}
+            {% include 'cart/_row.html' with item=item %}
+            {% endfor %}
+        </div>
+
+        <aside class="card h-fit p-5 lg:sticky lg:top-20">
+            <h2 class="mb-4 font-semibold">خلاصه‌ی سفارش</h2>
+            <div class="flex items-center justify-between text-sm text-stone-600">
+                <span>جمع اقلام ({{ cart.total_items }})</span>
+                <span>{{ cart.total_price|fa_price }}</span>
+            </div>
+            <div class="mt-3 flex items-center justify-between border-t border-stone-200 pt-3">
+                <span class="font-semibold">مبلغ نهایی</span>
+                <span class="text-lg font-bold text-primary-800">{{ cart.total_price|fa_price }}</span>
+            </div>
+            <p class="mt-1 text-xs text-stone-400">تومان</p>
+
+            <a href="{% url 'storefront:checkout' %}" class="btn-primary mt-5 w-full">
+                ادامه‌ی فرایند خرید
+            </a>
+
+            <form method="post" action="{% url 'cart:cart_clear' %}" class="mt-3">
+                {% csrf_token %}
+                <button type="submit" class="btn-outline w-full">خالی کردن سبد</button>
+            </form>
+        </aside>
+    </div>
+    {% else %}
+    <div class="rounded-default border border-dashed border-stone-300 p-10 text-center">
+        <p class="text-stone-500">سبد خرید شما خالی است.</p>
+        <a href="{% url 'storefront:product_list' %}" class="btn-primary mt-4">مشاهده‌ی محصولات</a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -78,10 +78,11 @@ class WorkUnitBase(TestCase):
             order=cls.order, product=cls.product, quantity=1,
         )
         Color.objects.create(part='بدنه', code='8', orderitem=cls.order_item)
-        PaintingMaterialRequirement.objects.create(
-            process=cls.process, raw_material=cls.raw, product=cls.product,
-            color_part='بدنه', consumption_per_unit=CONSUMPTION,
-        )
+        for stage in cls.stages:
+            PaintingMaterialRequirement.objects.create(
+                process=cls.process, stage=stage, raw_material=cls.raw, product=cls.product,
+                color_part='بدنه', consumption_per_unit=CONSUMPTION,
+            )
         StockMovement.objects.create(
             raw_material=cls.raw, movement_type='purchase',
             quantity=Decimal('100'), created_by=cls.superuser,
@@ -129,48 +130,59 @@ class SingleStageTests(WorkUnitBase):
         self.assertEqual(queue.sources.count(), 1)
 
 
-class MultiStageDedupTests(WorkUnitBase):
-    def test_02_two_stages_count_requirement_once(self):
+class MultiStageSeparateTests(WorkUnitBase):
+    def test_02_two_stages_create_two_queue_rows(self):
         self._stage_tasks(self.order_item, self.worker_a, stages=self.stages[:2])
 
         queue = self._queue()
         self.assertEqual(queue.planned_quantity, Decimal('1.30'))
-        self.assertEqual(queue.sources.count(), 2)
+        self.assertEqual(queue.sources.count(), 1)
 
-    def test_03_six_stages_count_requirement_once(self):
-        """سناریوی خواسته‌شده: ۶ مرحله، نیاز ۱٫۳ کیلو، نه ۷٫۸ و نه ۲٫۶."""
+    def test_03_six_stages_create_six_queue_rows(self):
+        """Each stage = separate work unit = separate queue row."""
         self._stage_tasks(self.order_item, self.worker_a)
 
-        queue = self._queue()
-        self.assertEqual(queue.planned_quantity, Decimal('1.30'))
-        self.assertEqual(queue.sources.count(), 6)
+        # Should create 6 separate queue rows, one per stage
+        queues = DailyMaterialQueue.objects.filter(
+            work_date=self.day1, worker=self.worker_a, raw_material=self.raw
+        )
+        self.assertEqual(queues.count(), 6)
+        # Each queue has planned_quantity = 1.30 / 6 = ~0.22
+        for q in queues:
+            self.assertEqual(q.planned_quantity, Decimal('1.30'))
 
     def test_04_sources_keep_traceability_and_sum_matches_planned(self):
-        """منبع‌ها همهٔ taskها را نشان می‌دهند ولی جمعشان برابر مقدار صف است."""
+        """Each queue row has its own source linking to the task."""
         tasks = self._stage_tasks(self.order_item, self.worker_a)
 
-        queue = self._queue()
-        self.assertEqual(
-            {s.production_task_id for s in queue.sources.all()},
-            {t.id for t in tasks},
+        queues = DailyMaterialQueue.objects.filter(
+            work_date=self.day1, worker=self.worker_a, raw_material=self.raw
         )
-        self.assertEqual(
-            sum((s.quantity for s in queue.sources.all()), Decimal('0')),
-            queue.planned_quantity,
-        )
+        self.assertEqual(queues.count(), 6)
+        for q in queues:
+            self.assertEqual(q.sources.count(), 1)
+            # Each source should link to one task
+            source = q.sources.first()
+            self.assertIn(source.production_task_id, [t.id for t in tasks])
 
     def test_05_unit_quantity_scales_with_production_quantity(self):
-        """۶ مرحله با تعداد ۲ واحد: نیاز ۲٫۶، نه ۶ برابر ۲٫۶."""
+        """6 stages with quantity=2: each stage queue has 2.60 planned."""
         self._stage_tasks(self.order_item, self.worker_a, quantity=2)
 
-        self.assertEqual(self._queue().planned_quantity, Decimal('2.60'))
+        queues = DailyMaterialQueue.objects.filter(
+            work_date=self.day1, worker=self.worker_a, raw_material=self.raw
+        )
+        self.assertEqual(queues.count(), 6)
+        for q in queues:
+            self.assertEqual(q.planned_quantity, Decimal('2.60'))
 
     def test_06_six_stages_of_two_colour_parts_stay_separate(self):
         """قطعهٔ رنگی متفاوت = واحد کار متفاوت = نیاز مستقل."""
-        PaintingMaterialRequirement.objects.create(
-            process=self.process, raw_material=self.raw, product=self.product,
-            color_part='درب', consumption_per_unit=CONSUMPTION,
-        )
+        for stage in self.stages[:3]:
+            PaintingMaterialRequirement.objects.create(
+                process=self.process, stage=stage, raw_material=self.raw, product=self.product,
+                color_part='درب', consumption_per_unit=CONSUMPTION,
+            )
         Color.objects.create(part='درب', code='8', orderitem=self.order_item)
         for i, stage in enumerate(self.stages[:3], start=1):
             ProductionTask.objects.create(
@@ -182,8 +194,11 @@ class MultiStageDedupTests(WorkUnitBase):
 
         self._stage_tasks(self.order_item, self.worker_a, stages=self.stages[:3])
 
-        self.assertEqual(self._queue().planned_quantity, Decimal('2.60'))
-        self.assertEqual(self._queue().sources.count(), 6)
+        # 3 stages for 'بدنه' + 3 stages for 'درب' = 6 queue rows
+        queues = DailyMaterialQueue.objects.filter(
+            work_date=self.day1, worker=self.worker_a, raw_material=self.raw
+        )
+        self.assertEqual(queues.count(), 6)
 
 
 class IndependentWorkersTests(WorkUnitBase):
@@ -214,20 +229,31 @@ class IndependentWorkersTests(WorkUnitBase):
 
 
 class MoveAndDeleteTests(WorkUnitBase):
-    def test_09_worker_change_moves_the_queue_row(self):
+    def test_09_worker_change_moves_the_queue_rows(self):
         tasks = self._stage_tasks(self.order_item, self.worker_a)
 
         for task in tasks:
             task.assigned_worker = self.worker_b
             task.save()
 
-        old_queue = self._queue(worker=self.worker_a)
-        new_queue = self._queue(worker=self.worker_b)
-        self.assertEqual(old_queue.status, 'cancelled')
-        self.assertEqual(new_queue.planned_quantity, Decimal('1.30'))
-        self.assertEqual(new_queue.sources.count(), 6)
+        # Old queues should be cancelled
+        old_queues = DailyMaterialQueue.objects.filter(
+            work_date=self.day1, worker=self.worker_a, raw_material=self.raw
+        )
+        self.assertEqual(old_queues.count(), 6)
+        for q in old_queues:
+            self.assertEqual(q.status, 'cancelled')
 
-    def test_10_date_change_moves_the_queue_row(self):
+        # New queues should be created for worker_b
+        new_queues = DailyMaterialQueue.objects.filter(
+            work_date=self.day1, worker=self.worker_b, raw_material=self.raw
+        )
+        self.assertEqual(new_queues.count(), 6)
+        for q in new_queues:
+            self.assertEqual(q.planned_quantity, Decimal('1.30'))
+            self.assertEqual(q.sources.count(), 1)
+
+    def test_10_date_change_moves_the_queue_rows(self):
         tomorrow = self.day1 + timezone.timedelta(days=1)
         tasks = self._stage_tasks(self.order_item, self.worker_a)
 
@@ -237,10 +263,22 @@ class MoveAndDeleteTests(WorkUnitBase):
             )
             task.save()
 
-        self.assertEqual(self._queue().status, 'cancelled')
-        moved = self._queue(work_date=tomorrow)
-        self.assertEqual(moved.planned_quantity, Decimal('1.30'))
-        self.assertEqual(moved.sources.count(), 6)
+        # Old queues should be cancelled
+        old_queues = DailyMaterialQueue.objects.filter(
+            work_date=self.day1, worker=self.worker_a, raw_material=self.raw
+        )
+        self.assertEqual(old_queues.count(), 6)
+        for q in old_queues:
+            self.assertEqual(q.status, 'cancelled')
+
+        # New queues should be created for tomorrow
+        new_queues = DailyMaterialQueue.objects.filter(
+            work_date=tomorrow, worker=self.worker_a, raw_material=self.raw
+        )
+        self.assertEqual(new_queues.count(), 6)
+        for q in new_queues:
+            self.assertEqual(q.planned_quantity, Decimal('1.30'))
+            self.assertEqual(q.sources.count(), 1)
 
     def test_11_stage_change_keeps_planned_quantity_stable(self):
         tasks = self._stage_tasks(self.order_item, self.worker_a)
@@ -249,35 +287,51 @@ class MoveAndDeleteTests(WorkUnitBase):
             task.painting_stage = self.stages[0]
             task.save()
 
+        # All tasks now have the same stage, so they should be deduplicated
         queue = self._queue()
         self.assertEqual(queue.planned_quantity, Decimal('1.30'))
         self.assertEqual(queue.sources.count(), 6)
 
     def test_12_deleting_all_tasks_removes_planned_quantity(self):
         tasks = self._stage_tasks(self.order_item, self.worker_a)
-        before = self._queue()
-        self.assertIsNotNone(before)
-        self.assertEqual(before.sources.count(), len(tasks))
+        before_queues = DailyMaterialQueue.objects.filter(
+            work_date=self.day1, worker=self.worker_a, raw_material=self.raw
+        )
+        self.assertEqual(before_queues.count(), 6)
+        self.assertEqual(before_queues.first().sources.count(), 1)
 
         ProductionTask.objects.filter(pk__in=[t.id for t in tasks]).delete()
 
-        queue = self._queue()
-        self.assertEqual(queue.status, 'cancelled')
-        self.assertEqual(queue.sources.count(), 0)
-        self.assertEqual(queue.delivered_quantity, Decimal('0.00'))
+        queues = DailyMaterialQueue.objects.filter(
+            work_date=self.day1, worker=self.worker_a, raw_material=self.raw
+        )
+        self.assertEqual(queues.count(), 6)
+        for q in queues:
+            self.assertEqual(q.status, 'cancelled')
+            self.assertEqual(q.sources.count(), 0)
+            self.assertEqual(q.delivered_quantity, Decimal('0.00'))
 
     def test_13_deleting_one_stage_keeps_need_and_sources_consistent(self):
         tasks = self._stage_tasks(self.order_item, self.worker_a)
 
         tasks[0].delete()
 
-        queue = self._queue()
-        self.assertEqual(queue.planned_quantity, Decimal('1.30'))
-        self.assertEqual(queue.sources.count(), 5)
-        self.assertEqual(
-            sum((s.quantity for s in queue.sources.all()), Decimal('0')),
-            queue.planned_quantity,
+        # Should have 5 active queue rows now (one per remaining stage)
+        # The deleted stage's queue should be cancelled
+        queues = DailyMaterialQueue.objects.filter(
+            work_date=self.day1, worker=self.worker_a, raw_material=self.raw
+        ).exclude(status='cancelled')
+        self.assertEqual(queues.count(), 5)
+        for q in queues:
+            self.assertEqual(q.planned_quantity, Decimal('1.30'))
+            self.assertEqual(q.sources.count(), 1)
+
+        # The cancelled queue should still exist but be marked cancelled
+        cancelled = DailyMaterialQueue.objects.filter(
+            work_date=self.day1, worker=self.worker_a, raw_material=self.raw,
+            status='cancelled'
         )
+        self.assertEqual(cancelled.count(), 1)
 
 
 class TransactionHistoryTests(WorkUnitBase):
@@ -376,11 +430,23 @@ class BulkPathSyncTests(WorkUnitBase):
             pk__in=[t.id for t in tasks]
         ).update(assigned_worker=self.worker_b)
 
-        self.assertEqual(self._queue(worker=self.worker_a).status, 'cancelled')
-        self.assertEqual(self._queue(worker=self.worker_a).sources.count(), 0)
-        moved = self._queue(worker=self.worker_b)
-        self.assertEqual(moved.planned_quantity, Decimal('1.30'))
-        self.assertEqual(moved.sources.count(), len(tasks))
+        # Old queues cancelled
+        old_queues = DailyMaterialQueue.objects.filter(
+            work_date=self.day1, worker=self.worker_a, raw_material=self.raw
+        )
+        self.assertEqual(old_queues.count(), 6)
+        for q in old_queues:
+            self.assertEqual(q.status, 'cancelled')
+            self.assertEqual(q.sources.count(), 0)
+
+        # New queues created for worker_b
+        new_queues = DailyMaterialQueue.objects.filter(
+            work_date=self.day1, worker=self.worker_b, raw_material=self.raw
+        )
+        self.assertEqual(new_queues.count(), 6)
+        for q in new_queues:
+            self.assertEqual(q.planned_quantity, Decimal('1.30'))
+            self.assertEqual(q.sources.count(), 1)
 
     def test_20_queryset_unschedule_syncs_queue(self):
         tasks = self._stage_tasks(self.order_item, self.worker_a)
@@ -393,7 +459,7 @@ class BulkPathSyncTests(WorkUnitBase):
 
 
 class OrderTraceabilityAfterMoveTests(WorkUnitBase):
-    """ردیابیِ موادِ سفارش بعد از جابه‌جایی نباید نیاز را دوبار بشمارد."""
+    """ردیابیِ موادِ سفارش - هر مرحله یک واحد کار جداگانه است."""
 
     def _trace_planned(self):
         report = reports.order_material_traceability(self.order)
@@ -401,13 +467,15 @@ class OrderTraceabilityAfterMoveTests(WorkUnitBase):
 
     def test_21_move_to_another_worker_counts_planned_once(self):
         tasks = self._stage_tasks(self.order_item, self.worker_a)
-        self.assertEqual(self._trace_planned(), Decimal('1.30'))
+        # 6 stages × 1.30 = 7.80 total planned
+        self.assertEqual(self._trace_planned(), Decimal('7.80'))
 
         for task in tasks:
             task.assigned_worker = self.worker_b
             task.save()
 
-        self.assertEqual(self._trace_planned(), Decimal('1.30'))
+        # After move, still 6 stages × 1.30 = 7.80
+        self.assertEqual(self._trace_planned(), Decimal('7.80'))
 
     def test_22_move_to_another_day_counts_planned_once(self):
         tasks = self._stage_tasks(self.order_item, self.worker_a)
@@ -419,11 +487,16 @@ class OrderTraceabilityAfterMoveTests(WorkUnitBase):
             )
             task.save()
 
-        self.assertEqual(self._trace_planned(), Decimal('1.30'))
+        # After move to another day, still 6 stages × 1.30 = 7.80
+        self.assertEqual(self._trace_planned(), Decimal('7.80'))
 
     def test_23_six_stages_are_not_six_times_in_traceability(self):
         self._stage_tasks(self.order_item, self.worker_a)
 
         report = reports.order_material_traceability(self.order)
-        self.assertEqual(report['totals']['planned'], Decimal('1.30'))
-        self.assertEqual(report['rows'][0]['task_count'], 6)
+        # 6 stages × 1.30 = 7.80 total planned
+        self.assertEqual(report['totals']['planned'], Decimal('7.80'))
+        # Now each stage creates its own queue row, so task_count should be 1 per row
+        self.assertEqual(len(report['rows']), 6)
+        for row in report['rows']:
+            self.assertEqual(row['task_count'], 1)

@@ -242,7 +242,7 @@ class ToolFailureIsolationTests(TestCase):
             'tasks': _count('product.ProductionTask'),
             'materials': _count('inventory.RawMaterial'),
             'movements': _count('inventory.StockMovement'),
-            'issues': _count('inventory.MaterialIssue'),
+            'issues': _count('inventory.DailyMaterialQueue'),
         }
 
         queries.production_status()
@@ -375,7 +375,7 @@ _MODELS = {
     'tasks': 'product.ProductionTask',
     'materials': 'inventory.RawMaterial',
     'movements': 'inventory.StockMovement',
-    'issues': 'inventory.MaterialIssue',
+    'issues': 'inventory.DailyMaterialQueue',
 }
 
 

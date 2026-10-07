@@ -1,88 +1,69 @@
+"""
+نشانی‌های پنل انبار.
+
+فقط سه مسیر کاری واقعی وجود دارد و بقیه فقط‌خواندنی‌اند:
+
+    /                         ← صفحهٔ اصلی: صف مواد روزانه
+    /raw-material/receive/    ← اسکن و دریافت کالا
+    /daily-closing/           ← کنترل و بستن روز
+
+گزارش‌ها همه در یک مسیر‌اند و فقط با پارامتر ``tab`` از هم جدا می‌شوند.
+"""
 from django.urls import path
+
 from . import views
 
 app_name = 'inventory'
 
 urlpatterns = [
-    path('', views.inventory_dashboard, name='dashboard'),
-    path('suppliers/', views.supplier_list, name='supplier_list'),
-    path('suppliers/<int:supplier_id>/detail/', views.supplier_detail_api, name='supplier_detail'),
-    path('suppliers/create/', views.supplier_create, name='supplier_create'),
-    path('suppliers/<int:supplier_id>/edit/', views.supplier_edit, name='supplier_edit'),
-    path('suppliers/<int:supplier_id>/delete/', views.supplier_delete, name='supplier_delete'),
+    # ---- ۱) کار روزانهٔ انبار ----
+    path('', views.daily_material_queue, name='daily_material_queue'),
+    path('daily-closing/', views.daily_closing, name='daily_closing'),
+    path('daily-closing/confirm/', views.daily_closing_confirm,
+         name='daily_closing_confirm'),
 
+    # ---- ۲) دریافت کالا ----
+    path('raw-material/receive/scan/', views.raw_material_receive_scan,
+         name='raw_material_receive_scan'),
+
+    # ---- ۳) صف روزانه: اقدام‌ها ----
+    path('daily-queue/<int:queue_id>/delivery/',
+         views.daily_queue_delivery, name='daily_queue_delivery'),
+    path('daily-queue/<int:queue_id>/return/',
+         views.daily_queue_return, name='daily_queue_return'),
+    path('daily-queue/<int:queue_id>/sources/',
+         views.daily_queue_sources, name='daily_queue_sources'),
+    path('daily-queue/<int:queue_id>/preview-delivery/',
+         views.daily_queue_preview_delivery,
+         name='daily_queue_preview_delivery'),
+
+    # ---- تنظیمات: مواد اولیه ----
+    path('materials/', views.material_list, name='material_list'),
+    path('materials/<int:material_id>/detail/',
+         views.material_detail_api, name='material_detail'),
+    path('materials/create/', views.material_create, name='material_create'),
+    path('materials/<int:material_id>/edit/',
+         views.material_edit, name='material_edit'),
+    path('materials/<int:material_id>/delete/',
+         views.material_delete, name='material_delete'),
+
+    # ---- تنظیمات: دسته‌ها ----
     path('categories/', views.category_list, name='category_list'),
-    path('categories/<int:category_id>/detail/', views.category_detail_api, name='category_detail'),
+    path('categories/<int:category_id>/detail/',
+         views.category_detail_api, name='category_detail'),
     path('categories/create/', views.category_create, name='category_create'),
-    path('categories/<int:category_id>/edit/', views.category_edit, name='category_edit'),
-    path('categories/<int:category_id>/delete/', views.category_delete, name='category_delete'),
+    path('categories/<int:category_id>/edit/',
+         views.category_edit, name='category_edit'),
+    path('categories/<int:category_id>/delete/',
+         views.category_delete, name='category_delete'),
 
-    path('materials/', views.raw_material_list, name='material_list'),
-    path('materials/<int:material_id>/detail/', views.raw_material_detail_api, name='material_detail'),
-    path('materials/create/', views.raw_material_create, name='material_create'),
-    path('materials/<int:material_id>/edit/', views.raw_material_edit, name='material_edit'),
-    path('materials/<int:material_id>/delete/', views.raw_material_delete, name='material_delete'),
-
-    path('movements/', views.stock_movement_list, name='movement_list'),
-    path('movements/create/', views.stock_movement_create, name='movement_create'),
-    path('production-queue/', views.production_issue_queue, name='production_issue_queue'),
-    path('production-queue/<int:issue_id>/cancel/', views.cancel_material_issue, name='cancel_material_issue'),
-    path('production-queue/<int:issue_id>/issue/', views.issue_material, name='issue_material'),
-
-    # Group Handover API
-    path('handover/preview/', views.handover_preview, name='handover_preview'),
-    path('handover/create/', views.handover_create, name='handover_create'),
-
-    # Aggregate Handover (یک مقدار کل، پخش‌شده بین درخواست‌های باز)
-    path('handover/aggregate/preview/', views.aggregate_handover_preview, name='aggregate_handover_preview'),
-    path('handover/aggregate/create/', views.aggregate_handover_create, name='aggregate_handover_create'),
-
-    # Material Custody (باقی‌ماندهٔ بسته‌های باز نزد هر نقاش)
-    path('custody/', views.custody_board, name='custody_board'),
-    path('custody/return/', views.custody_return, name='custody_return'),
-    path('custody/defect-choices/', views.defect_choices, name='defect_choices'),
-
-    # Daily Material Queue (Phase 4)
-    path('daily-material-queue/', views.daily_material_queue, name='daily_material_queue'),
-    path('daily-material-queue/closing/', views.daily_closing, name='daily_closing'),
-    path('daily-material-queue/closing/confirm/', views.daily_closing_confirm, name='daily_closing_confirm'),
-
-    # Phase 10 — دفتر گردش مواد
-    path('material-ledger/', views.material_ledger, name='material_ledger'),
-    # Phase 11 — تحلیل مصرف
-    path('consumption-report/', views.consumption_report, name='consumption_report'),
-    # Phase 12 — ردیابی مواد سفارش
-    path('orders/<int:order_id>/material-trace/', views.order_material_traceability,
-         name='order_material_traceability'),
-    # Phase 13 — داشبورد برنامه‌ریزی مواد
-    path('material-dashboard/', views.material_dashboard, name='material_dashboard'),
-    # Phase 14 — هشدارها
-    path('alerts/', views.inventory_alerts, name='inventory_alerts'),
-    # Phase 15 — گزارش‌های تاریخی
-    path('reports/historical/', views.historical_reports, name='historical_reports'),
-    path('reports/historical/csv/', views.historical_reports_csv,
-         name='historical_reports_csv'),
-    # Phase 16 — حسابرسی یکپارچگی داده
+    # ---- گزارش‌ها ----
+    path('reports/', views.reports_view, name='reports'),
     path('audit/data-integrity/', views.data_integrity_audit,
          name='data_integrity_audit'),
+    path('orders/<int:order_id>/material-trace/',
+         views.order_material_traceability, name='order_material_traceability'),
 
-    path('daily-material-queue/<int:queue_id>/delivery/', views.daily_queue_delivery, name='daily_queue_delivery'),
-    path('daily-material-queue/<int:queue_id>/return/', views.daily_queue_return, name='daily_queue_return'),
-    path('daily-material-queue/<int:queue_id>/sources/', views.daily_queue_sources, name='daily_queue_sources'),
-    path('daily-material-queue/<int:queue_id>/preview-delivery/', views.daily_queue_preview_delivery, name='daily_queue_preview_delivery'),
-
-    path('purchase-orders/', views.purchase_order_list, name='purchase_order_list'),
-    path('purchase-orders/<int:order_id>/detail/', views.purchase_order_detail_api, name='purchase_order_detail'),
-    path('purchase-orders/create/', views.purchase_order_create, name='purchase_order_create'),
-    path('purchase-orders/<int:order_id>/edit/', views.purchase_order_edit, name='purchase_order_edit'),
-    path('purchase-orders/<int:order_id>/delete/', views.purchase_order_delete, name='purchase_order_delete'),
-    path('purchase-orders/<int:order_id>/receive/', views.purchase_order_receive, name='purchase_order_receive'),
-    path('purchase-orders/<int:order_id>/items/add/', views.purchase_order_item_add, name='purchase_order_item_add'),
-    path('purchase-orders/items/<int:item_id>/delete/', views.purchase_order_item_delete, name='purchase_order_item_delete'),
-
-    path('low-stock/', views.low_stock_report, name='low_stock_report'),
-
-    # Raw Material Barcode Scan for Receiving
-    path('raw-material/receive/scan/', views.raw_material_receive_scan, name='raw_material_receive_scan'),
-    path('raw-material/receive/scan/api/', views.raw_material_receive_scan_api, name='raw_material_receive_scan_api'),
+    # ---- اصلاح موجودی ----
+    path('stock/adjust/', views.stock_adjustment, name='stock_adjustment'),
 ]

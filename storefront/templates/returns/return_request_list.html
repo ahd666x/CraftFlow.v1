@@ -1,0 +1,50 @@
+{% extends 'storefront/layouts/store.html' %}
+{% load storefront_filters %}
+
+{% block title %}درخواست‌های مرجوعی — فروشگاه{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-4xl px-4 py-8">
+    <h1 class="mb-6 text-2xl font-bold">درخواست‌های مرجوعی</h1>
+
+    {% if requests %}
+    <div class="card overflow-hidden">
+        <table class="table-modern">
+            <thead>
+                <tr>
+                    <th>آیتم سفارش</th>
+                    <th>کاربر</th>
+                    <th>دلیل</th>
+                    <th>وضعیت</th>
+                    <th>تاریخ</th>
+                    <th>عملیات</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for req in requests %}
+                <tr>
+                    <td class="font-medium">#{{ req.order_item.id }}</td>
+                    <td>@{{ req.user.username }}</td>
+                    <td class="text-sm text-stone-600">{{ req.reason|truncate:60 }}</td>
+                    <td>
+                        <span class="badge badge-{% if req.status == 'pending' %}warning{% elif req.status == 'approved' %}success{% elif req.status == 'rejected' %}danger{% else %}primary{% endif %}">
+                            {{ req.get_status_display }}
+                        </span>
+                    </td>
+                    <td class="text-sm text-stone-500">{{ req.created_at|date:"Y/m/d" }}</td>
+                    <td>
+                        <a href="{% url 'storefront:return_detail' req.pk %}" class="btn-sm btn-secondary">جزئیات</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="card p-10 text-center">
+        <p class="text-stone-500">درخواست مرجوعی‌ای یافت نشد.</p>
+        <a href="{% url 'storefront:order_list' %}" class="btn-primary mt-4 inline-block">بازگشت به سفارش‌ها</a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

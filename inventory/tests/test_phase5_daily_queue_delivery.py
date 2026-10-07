@@ -94,7 +94,7 @@ class DeliveryExecutionBase(TestCase):
 
         for raw in (cls.raw, cls.raw_pack4, cls.raw_pack0):
             PaintingMaterialRequirement.objects.create(
-                process=cls.process, raw_material=raw, product=cls.product,
+                process=cls.process, stage=cls.stage, raw_material=raw, product=cls.product,
                 color_part='بدنه', consumption_per_unit=Decimal('0.500'),
             )
 
@@ -468,23 +468,37 @@ class IdempotencyTests(DeliveryExecutionBase):
             )
         self.assertIn('یافت نشد', str(ctx.exception))
 
-    def test_19_service_accepts_controlled_partial_delivery(self):
-        """قابلیت تحویل کنترل‌شدهٔ جزئی باید حفظ شود (بدون UI جدید)."""
-        queue = self._build_queue(self.raw_pack4, '8')
+    def test_19_delivery_is_rounded_up_to_whole_packs(self):
+        """
+        در Engine B تحویل «به ازای هر ردیف صف» است و مقدارش از قانون بسته‌بندی
+        می‌آید: نیاز ۲ کیلویی با بستهٔ ۴ کیلویی یعنی یک بستهٔ کامل (۴ کیلو).
+
+        پارامتر ``items`` قدیمی حذف شده چون یک صف، یک نیاز دارد؛ دادن فهرست
+        نیاز به تحویل یعنی پذیرفتن کسری بسته و ناسازگاری موجودی فیزیکی.
+        """
+        queue = self._build_queue(self.raw_pack4, '2')
 
         services.execute_daily_delivery(
             queue_id=queue.pk, delivered_by=self.superuser,
-            items=[(1, Decimal('2'))],
         )
 
         queue.refresh_from_db()
-        # آیتم کنترل‌شده ۲ کیلو نیاز دارد؛ تحویل فیزیکی یک بستهٔ ۴ کیلویی است.
         self.assertEqual(queue.delivered_quantity, Decimal('4.00'))
         movement = StockMovement.objects.filter(
             raw_material=self.raw_pack4, movement_type='consumption'
         ).order_by('-id').first()
         # ۲ کیلو نیاز → یک بستهٔ ۴ کیلویی
         self.assertEqual(movement.quantity, Decimal('4.00'))
+
+    def test_19b_delivery_service_rejects_a_legacy_items_argument(self):
+        """API قدیمی نباید بی‌صدا کار کند؛ خطای روشن بدهد."""
+        queue = self._build_queue(self.raw_pack4, '8')
+
+        with self.assertRaises(TypeError):
+            services.execute_daily_delivery(
+                queue_id=queue.pk, delivered_by=self.superuser,
+                items=[(1, Decimal('2'))],
+            )
 
 
 class AtomicityTests(DeliveryExecutionBase):
@@ -584,13 +598,23 @@ class DeliveryPermissionTests(DeliveryExecutionBase):
         queue.refresh_from_db()
         self.assertEqual(queue.status, 'delivered')
 
-    def test_26_success_message_is_persian(self):
+    def test_26_success_message_names_material_worker_and_amount(self):
+        """
+        پیام موفقیت باید به انباردار بگوید چه چیزی، به چه کسی و چقدر تحویل شد —
+        نه اینکه فقط بگوید «موفق بود».
+        """
         queue = self._build_queue(self.raw, '2')
 
         response = self._post_delivery(queue)
         payload = json.loads(response.content)
         self.assertEqual(payload['status'], 'delivered')
 
-        # پیام موفقیت فارسی از طریق messages framework ثبت شده است
-        messages = [str(m) for m in response.wsgi_request._messages]
-        self.assertTrue(any('موفقیت' in m for m in messages), messages)
+        stored = [str(m) for m in response.wsgi_request._messages]
+        self.assertTrue(
+            any(
+                queue.raw_material.name in m
+                and queue.worker.get_full_name() in m
+                for m in stored
+            ),
+            stored,
+        )

@@ -9,8 +9,8 @@ import jdatetime
 from django.contrib.auth.models import Group, User
 
 from inventory.models import (
-    MaterialIssue,
-    MaterialLeftover,
+    DailyMaterialQueue,
+    DailyMaterialQueueSource,
     RawMaterial,
     RawMaterialCategory,
     StockMovement,
@@ -177,19 +177,43 @@ def make_tasks(order, stations=('cut', 'cnc'), status='pending', statuses=None):
 
 
 def make_open_issue(raw, order, quantity=Decimal('8')):
-    """درخواست مواد باز (status=requested) برای آزمون کمبود."""
-    return MaterialIssue.objects.create(
-        task=order.tasks.first(),
+    """درخواست مواد باز (status=pending) برای آزمون کمبود."""
+    task = order.tasks.first()
+    work_date = jdatetime.date.today().strftime('%Y-%m-%d')
+    
+    worker = task.assigned_worker or User.objects.filter(is_active=True).first()
+    if not worker:
+        worker = User.objects.create_user(
+            username=f'test_worker_{User.objects.count() + 1}',
+            password=PASSWORD,
+            email=f'test_worker_{User.objects.count() + 1}@example.com',
+        )
+    
+    painting_stage = task.painting_stage
+    
+    queue = DailyMaterialQueue.objects.create(
+        work_date=work_date,
+        worker=worker,
         raw_material=raw,
-        requested_quantity=quantity,
-        issued_quantity=Decimal('0'),
-        purpose='production',
-        status='requested',
+        painting_stage=painting_stage,
+        planned_quantity=quantity,
+        status='pending',
     )
+    DailyMaterialQueueSource.objects.create(
+        queue=queue,
+        kind='painting' if painting_stage else 'station',
+        production_task=task,
+        painting_stage=painting_stage,
+        raw_material=raw,
+        quantity=quantity,
+    )
+    return queue
 
 
 def make_leftover(raw, quantity):
-    row, _ = MaterialLeftover.objects.get_or_create(raw_material=raw)
-    row.quantity = quantity
-    row.save()
-    return row
+    # Engine B: no MaterialLeftover model - use StockMovement return
+    return StockMovement.objects.create(
+        raw_material=raw,
+        movement_type='return',
+        quantity=quantity,
+    )

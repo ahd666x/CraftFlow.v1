@@ -1,0 +1,51 @@
+{% load storefront_filters %}
+{% comment %}
+یک سطر سبد. `item` از نوع CartItem است.
+{% endcomment %}
+<div class="card flex flex-wrap items-center gap-4 p-4">
+    {% if item.product.image %}
+    <a href="{% url 'storefront:product_detail' item.product.slug %}"
+       class="h-20 w-20 shrink-0 overflow-hidden rounded-default bg-stone-100">
+        <img src="{{ item.product.image.url }}" alt="{{ item.product.name }}"
+             class="h-full w-full object-cover" loading="lazy">
+    </a>
+    {% endif %}
+
+    <div class="min-w-0 flex-1">
+        <a href="{% url 'storefront:product_detail' item.product.slug %}"
+           class="font-medium text-stone-900 hover:text-primary-700">
+            {{ item.product.name }}
+        </a>
+        <div class="mt-0.5 text-sm text-stone-500">
+            {% if item.has_custom_dimensions %}
+                {% if item.custom_length %}طول {{ item.custom_length }}{% endif %}
+                {% if item.custom_width %} / عرض {{ item.custom_width }}{% endif %}
+                {% if item.custom_height %} / ارتفاع {{ item.custom_height }}{% endif %}
+                سانتی‌متر
+            {% else %}
+                ابعاد پیش‌فرض
+            {% endif %}
+        </div>
+        <div class="mt-0.5 text-sm text-stone-500">
+            قیمت واحد: {{ item.unit_price|fa_price }} تومان
+        </div>
+    </div>
+
+    <form method="post" action="{% url 'cart:cart_update' item.product.id %}"
+          class="flex items-center gap-2">
+        {% csrf_token %}
+        <input type="number" name="quantity" value="{{ item.quantity }}" min="1"
+               class="input w-20 py-1.5" onchange="this.form.submit()">
+    </form>
+
+    <div class="text-left">
+        <span class="block text-lg font-bold">{{ item.total_price|fa_price }}</span>
+        <span class="text-xs text-stone-500">تومان</span>
+    </div>
+
+    <form method="post" action="{% url 'cart:cart_remove' item.product.id %}">
+        {% csrf_token %}
+        <button type="submit" class="btn-outline px-3 py-1.5 text-xs"
+                aria-label="حذف {{ item.product.name }}">حذف</button>
+    </form>
+</div>

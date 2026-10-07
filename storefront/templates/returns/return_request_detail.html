@@ -1,0 +1,37 @@
+{% extends 'storefront/layouts/store.html' %}
+
+{% block title %}جزئیات مرجوعی — فروشگاه{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-2xl px-4 py-8">
+    <h1 class="mb-6 text-2xl font-bold">جزئیات درخواست مرجوعی</h1>
+
+    <div class="card p-6 space-y-4">
+        <div>
+            <span class="text-xs text-stone-400">آیتم سفارش</span>
+            <p class="font-medium">#{{ request_obj.order_item.id }}</p>
+        </div>
+        <div>
+            <span class="text-xs text-stone-400">کاربر</span>
+            <p class="font-medium">@{{ request_obj.user.username }}</p>
+        </div>
+        <div>
+            <span class="text-xs text-stone-400">دلیل</span>
+            <p class="font-medium">{{ request_obj.reason }}</p>
+        </div>
+        <div>
+            <span class="text-xs text-stone-400">وضعیت</span>
+            <p class="font-medium">{{ request_obj.get_status_display }}</p>
+        </div>
+        {% if request_obj.admin_note %}
+        <div>
+            <span class="text-xs text-stone-400">یادداشت مدیر</span>
+            <p class="font-medium">{{ request_obj.admin_note }}</p>
+        </div>
+        {% endif %}
+        <div>
+            <a href="{% url 'storefront:return_list' %}" class="btn-secondary">بازگشت به لیست</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

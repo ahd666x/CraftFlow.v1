@@ -90,7 +90,7 @@ class DailyQueueUIBase(TestCase):
         cls.order_item_2 = _make_item('second')
 
         PaintingMaterialRequirement.objects.create(
-            process=cls.process, raw_material=cls.raw, product=cls.product,
+            process=cls.process, stage=cls.stage_1, raw_material=cls.raw, product=cls.product,
             color_part='بدنه', consumption_per_unit=Decimal('0.500'),
         )
 
@@ -145,7 +145,7 @@ class DailyQueuePageTests(DailyQueueUIBase):
         response = self.client.get(reverse('inventory:daily_material_queue'))
 
         self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, 'inventory/daily_material_queue.html')
+        self.assertTemplateUsed(response, 'inventory/queue.html')
         # صفحه نباید خطای سرور بدهد
         self.assertNotIn(b'Internal Server Error', response.content)
 
@@ -397,10 +397,6 @@ class DailyQueueActionTests(DailyQueueUIBase):
 
         # برگشتی = موجودی عمومی انبار (بدون امانت کارگر)
         self.assertEqual(self.raw.current_stock, stock_after_delivery + Decimal('0.40'))
-        self.assertFalse(
-            self.raw.custodies.exists(),
-            'برگشتی نباید امانت کارگر بسازد.',
-        )
 
     def test_24_return_cannot_exceed_delivered(self):
         self._make_task(worker=self.worker_a, start=self.day_start, quantity=2)

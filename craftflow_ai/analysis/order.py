@@ -35,7 +35,6 @@ from craftflow_ai.analysis.evidence import (
 )
 from craftflow_ai.analysis.inventory import (
     OPEN_DEFECT_STATUSES,
-    OPEN_ISSUE_STATUSES,
     bom_mapping_coverage,
     order_material_impact,
 )
@@ -435,13 +434,12 @@ def _materials_domain(order):
     impact = order_material_impact(order.id)
     evidence = [
         Evidence(
-            metric='open_material_issues',
+            metric='pending_queue_rows',
             value=impact['open_issue_count'],
-            unit='request',
-            source='inventory.MaterialIssue',
+            unit='queue row',
+            source='inventory.DailyMaterialQueue',
             query=(
-                'material issues of this order via task.order_id or '
-                f'order_item.order_id where status in {list(OPEN_ISSUE_STATUSES)}'
+                'pending daily queue rows of this order via source task/order item/defect'
             ),
         ),
         Evidence(
@@ -1035,11 +1033,10 @@ def _delay_facts(order, rows, tasks, age_days, days, now):
             derived=True,
         ),),
         'blocked_material': (Evidence(
-            metric='open_material_issues', value=blocked_material, unit='request',
-            source='inventory.MaterialIssue',
+            metric='pending_queue_rows', value=blocked_material, unit='queue row',
+            source='inventory.DailyMaterialQueue',
             query=(
-                'open material issues of this order where status in '
-                f'{list(OPEN_ISSUE_STATUSES)}'
+                "pending daily queue rows of this order where status = 'pending'"
             ),
         ),),
         'blocked_quality': (Evidence(

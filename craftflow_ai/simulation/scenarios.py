@@ -36,10 +36,8 @@ from craftflow_ai.simulation.models import (
     q2,
 )
 
-from inventory.models import MaterialIssue, MaterialLeftover, RawMaterial
+from inventory.models import DailyMaterialQueue, RawMaterial
 from product.models import Order, ProductionTask
-
-OPEN_ISSUE_STATUSES = ('requested', 'partial')
 
 # اولویت‌های معتبر همان مقادیر فیلد Order.priority در CraftFlow هستند.
 PRIORITY_CHOICES = tuple(
@@ -89,7 +87,7 @@ PRODUCTION_SEQUENCE = unavailable(
 # ----------------------------------------------------------------------
 
 def material_snapshot(raw_material_id) -> Snapshot:
-    """snapshot موجودی، باقی‌ماندهٔ سالن و درخواست‌های باز یک ماده."""
+    """snapshot موجودی و ردیف‌های «در انتظار تحویل» صف روزانه برای یک ماده."""
     raw = (
         RawMaterial.objects
         .filter(pk=raw_material_id)
@@ -98,19 +96,14 @@ def material_snapshot(raw_material_id) -> Snapshot:
     materials = ()
     if raw is not None:
         stock = raw.current_stock or Decimal('0')
-        leftover = (
-            MaterialLeftover.objects
-            .filter(raw_material_id=raw.pk)
-            .values_list('quantity', flat=True)
-            .first()
-        ) or Decimal('0')
+        # در Engine B چیزی نزد کارگر باقی نمی‌ماند، پس leftover همیشه صفر است و
+        # نیازِ باز همان «نیاز برنامه‌ریزی‌شدهٔ ردیف‌های pending» است.
         issues = tuple(
-            OpenIssueSnapshot(pk=issue.pk, remaining_quantity=q2(
-                (issue.requested_quantity or Decimal('0'))
-                - (issue.issued_quantity or Decimal('0'))
+            OpenIssueSnapshot(pk=queue.pk, remaining_quantity=q2(
+                queue.planned_quantity or Decimal('0')
             ))
-            for issue in MaterialIssue.objects
-            .filter(raw_material_id=raw.pk, status__in=OPEN_ISSUE_STATUSES)
+            for queue in DailyMaterialQueue.objects
+            .filter(raw_material_id=raw.pk, status='pending')
             .order_by('id')
         )
         materials = (MaterialSnapshot(
@@ -122,7 +115,7 @@ def material_snapshot(raw_material_id) -> Snapshot:
                 current_stock=q2(stock),
                 min_stock_alert=q2(raw.min_stock_alert or 0),
             ),
-            leftover=q2(leftover),
+            leftover=q2(0),
             issues=issues,
         ),)
 

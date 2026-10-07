@@ -1,0 +1,176 @@
+"""
+مدل‌های اختصاصی لایه‌ی فروشگاه.
+
+قاعده‌ی مهم این ماژول: هیچ‌چیز اینجا «کپی» از مدل‌های `product` نیست.
+`Product`، `ProductCategory`، `Part`، `BOM`، `Color` و کل چرخه‌ی تولید
+متعلق به `product` باقی می‌مانند و از این ماژول به آن‌ها ارجاع می‌دهیم.
+مدل‌هایی که در `product` وجود ندارند (گالری، نظرات، آدرس، مرجوعی، مقایسه)
+اینجا تعریف می‌شوند.
+"""
+from django.conf import settings
+from django.db import models
+
+from storefront.base import TimeStampedModel
+
+
+class ColorOption(TimeStampedModel):
+    """
+    پالت رنگ سراسری فروشگاه.
+
+    توجه به نام: در `product` هم مدلی به نام `Color` وجود دارد، اما آن یک
+    رکورد «رنگ انتخابیِ یک آیتم سفارش» است، نه یک رنگ از کاتالوگ. این مدل
+    همان کاتالوگ رنگ است و عمداً نام متفاوتی گرفته تا با آن اشتباه نشود و
+    هر دو بتوانند کنار هم وجود داشته باشند.
+    """
+    name = models.CharField(max_length=50, unique=True, verbose_name="نام رنگ")
+    code = models.CharField(max_length=7, blank=True, verbose_name="کد رنگ (هگز)")
+    is_active = models.BooleanField(default=True, verbose_name="فعال")
+
+    class Meta:
+        verbose_name = "رنگ کاتالوگ"
+        verbose_name_plural = "رنگ‌های کاتالوگ"
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
+class ProductImage(TimeStampedModel):
+    """تصاویر گالری محصول. رنگِ تصویر به پالت `ColorOption` وصل است."""
+    product = models.ForeignKey(
+        'product.Product', on_delete=models.CASCADE, related_name='images',
+        verbose_name="محصول",
+    )
+    color = models.ForeignKey(
+        ColorOption, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='images', verbose_name="رنگ",
+    )
+    image = models.ImageField(upload_to='products/', verbose_name="تصویر")
+    alt_text = models.CharField(max_length=200, blank=True, verbose_name="متن جایگزین")
+    is_active = models.BooleanField(default=True, verbose_name="فعال")
+
+    class Meta:
+        verbose_name = "تصویر محصول"
+        verbose_name_plural = "تصاویر محصول"
+        ordering = ['id']
+
+    def __str__(self):
+        return f"{self.product.name} - #{self.pk}"
+
+
+class ProductReview(TimeStampedModel):
+    product = models.ForeignKey(
+        'product.Product', on_delete=models.CASCADE, related_name='reviews',
+        verbose_name="محصول",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='product_reviews', verbose_name="کاربر",
+    )
+    rating = models.PositiveSmallIntegerField(
+        choices=[(i, i) for i in range(1, 6)], verbose_name="امتیاز",
+    )
+    comment = models.TextField(blank=True, verbose_name="نظر")
+    image = models.ImageField(upload_to='reviews/', blank=True, null=True, verbose_name="تصویر نظر")
+    is_active = models.BooleanField(default=True, verbose_name="فعال")
+
+    class Meta:
+        verbose_name = "نظر محصول"
+        verbose_name_plural = "نظرات محصول"
+        unique_together = ['product', 'user']
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.user.username} - {self.product.name} ({self.rating})"
+
+
+class ComparisonList(TimeStampedModel):
+    """لیست مقایسه‌ی محصولات، دامنه‌اش نشست کاربر است."""
+    session_key = models.CharField(max_length=40, db_index=True, verbose_name="کلید جلسه")
+    products = models.ManyToManyField(
+        'product.Product', related_name='comparisons', verbose_name="محصولات مقایسه",
+    )
+    is_active = models.BooleanField(default=True, verbose_name="فعال")
+
+    class Meta:
+        verbose_name = "لیست مقایسه"
+        verbose_name_plural = "لیست‌های مقایسه"
+
+    def __str__(self):
+        return f"مقایسه محصولات - {self.session_key}"
+
+
+class Address(TimeStampedModel):
+    """دفتر آدرس کاربر."""
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='store_addresses', verbose_name="کاربر",
+    )
+    title = models.CharField(max_length=50, verbose_name="عنوان آدرس")
+    recipient = models.CharField(max_length=100, verbose_name="گیرنده")
+    province = models.CharField(max_length=100, blank=True, verbose_name="استان")
+    city = models.CharField(max_length=100, blank=True, verbose_name="شهر")
+    postal_code = models.CharField(max_length=10, blank=True, verbose_name="کد پستی")
+    address = models.TextField(verbose_name="آدرس کامل")
+    is_default = models.BooleanField(default=False, verbose_name="آدرس پیش‌فرض")
+    is_active = models.BooleanField(default=True, verbose_name="فعال")
+
+    class Meta:
+        verbose_name = "آدرس"
+        verbose_name_plural = "آدرس‌ها"
+        ordering = ['-is_default', '-created_at']
+
+    def __str__(self):
+        return f"{self.title} - {self.city}"
+
+
+class ReturnRequest(TimeStampedModel):
+    """درخواست مرجوعی برای یک آیتم سفارش."""
+    STATUS_CHOICES = [
+        ('pending', 'در انتظار بررسی'),
+        ('approved', 'تایید شده'),
+        ('rejected', 'رد شده'),
+        ('refunded', 'بازپرداخت شده'),
+    ]
+
+    order_item = models.ForeignKey(
+        'product.OrderItem', on_delete=models.CASCADE,
+        related_name='return_requests', verbose_name="آیتم سفارش",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='return_requests', verbose_name="کاربر",
+    )
+    reason = models.TextField(verbose_name="دلیل مرجوعی")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending', verbose_name="وضعیت")
+    admin_note = models.TextField(blank=True, verbose_name="یادداشت مدیر")
+    processed_at = models.DateTimeField(null=True, blank=True, verbose_name="تاریخ پردازش")
+    is_active = models.BooleanField(default=True, verbose_name="فعال")
+
+    class Meta:
+        verbose_name = "درخواست مرجوعی"
+        verbose_name_plural = "درخواست‌های مرجوعی"
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"مرجوعی #{self.pk}"
+
+    def approve(self, admin_note=''):
+        from django.utils import timezone
+        self.status = 'approved'
+        self.admin_note = admin_note
+        self.processed_at = timezone.now()
+        self.save()
+
+    def reject(self, admin_note=''):
+        from django.utils import timezone
+        self.status = 'rejected'
+        self.admin_note = admin_note
+        self.processed_at = timezone.now()
+        self.save()
+
+    def refund(self):
+        from django.utils import timezone
+        self.status = 'refunded'
+        self.processed_at = timezone.now()
+        self.save()

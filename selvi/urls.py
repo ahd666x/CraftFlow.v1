@@ -7,10 +7,16 @@ from django.views.static import serve
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('accounts/login/', auth_views.LoginView.as_view(template_name='registration/login.html'), name='login'),
-    path('accounts/logout/', auth_views.LogoutView.as_view(), name='logout'),
+    path('accounts/', include('accounts.urls')),
+    path('logout/', auth_views.LogoutView.as_view(), name='logout'),
     re_path(r'^media/(?P<path>.*)$', login_required(serve), {'document_root': settings.MEDIA_ROOT}),
     path('', include('product.urls')),
     path('inventory/', include('inventory.urls')),
     path('craftflow-ai/', include('craftflow_ai.urls')),
+    # فروشگاه روی پیشوند /shop سوار می‌شود تا با پنل تولید قاطی نشود.
+    # قالب‌های فروشگاه هم namespace مستقل `storefront/` دارند.
+    path('shop/', include('storefront.urls')),
+    path('cart/', include('cart.urls')),
+    path('discounts/', include('discounts.urls')),
+    path('payments/', include('payments.urls')),
 ]

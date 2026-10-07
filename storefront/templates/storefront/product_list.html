@@ -1,0 +1,70 @@
+{% extends 'storefront/layouts/store.html' %}
+{% load storefront_filters %}
+
+{% block title %}
+{% if current_category %}{{ current_category.name }}{% else %}محصولات{% endif %} — فروشگاه
+{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-6xl px-4 py-8">
+
+    <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <h1 class="text-2xl font-bold">
+            {% if current_category %}{{ current_category.name }}{% else %}همه محصولات{% endif %}
+        </h1>
+
+        <form method="get" class="flex items-center gap-2">
+            {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
+            {% if selected_category %}<input type="hidden" name="category" value="{{ selected_category }}">{% endif %}
+            <label for="sort" class="text-sm text-stone-600">مرتب‌سازی:</label>
+            <select name="sort" id="sort" onchange="this.form.submit()" class="input w-auto py-1.5">
+                <option value="" {% if not sort %}selected{% endif %}>جدیدترین</option>
+                <option value="price_asc" {% if sort == 'price_asc' %}selected{% endif %}>ارزان‌ترین</option>
+                <option value="price_desc" {% if sort == 'price_desc' %}selected{% endif %}>گران‌ترین</option>
+                <option value="name" {% if sort == 'name' %}selected{% endif %}>نام</option>
+            </select>
+        </form>
+    </div>
+
+    <div class="grid gap-8 lg:grid-cols-[16rem_1fr]">
+
+        <aside class="lg:sticky lg:top-20 lg:self-start">
+            <div class="card p-4">
+                <h2 class="mb-3 font-semibold">دسته‌بندی</h2>
+                <ul class="space-y-1 text-sm">
+                    <li>
+                        <a href="{% url 'storefront:product_list' %}"
+                           class="block rounded px-2 py-1.5 hover:bg-stone-100
+                                  {% if not selected_category %}bg-stone-100 font-medium{% endif %}">
+                            همه
+                        </a>
+                    </li>
+                    {% for category in categories %}
+                    <li>
+                        <a href="{% url 'storefront:category_detail' category.slug %}"
+                           class="block rounded px-2 py-1.5 hover:bg-stone-100
+                                  {% if selected_category == category.slug %}bg-stone-100 font-medium{% endif %}">
+                            {{ category.name }}
+                        </a>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </aside>
+
+        <div>
+            {% if products %}
+            <div class="grid grid-cols-2 gap-4 md:grid-cols-3">
+                {% for product in products %}
+                    {% include 'storefront/components/product_card.html' with product=product %}
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="rounded-default border border-dashed border-stone-300 p-10 text-center text-stone-500">
+                محصولی با این فیلتر پیدا نشد.
+            </p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

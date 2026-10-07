@@ -1,0 +1,247 @@
+{% extends "inventory/base.html" %}
+{% load product_filters %}
+{% block title %}گزارش‌ها{% endblock %}
+
+{% block inventory_content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+  <div>
+    <h1 class="h3 mb-1">گزارش‌ها</h1>
+    <div class="small text-muted">همهٔ گزارش‌های انبار در همین صفحه — فقط‌خواندنی.</div>
+  </div>
+  <a href="{% url 'inventory:data_integrity_audit' %}" class="btn btn-sm btn-outline-warning">
+    <i class="bi bi-shield-exclamation"></i> حسابرسی داده
+  </a>
+</div>
+
+<ul class="nav nav-tabs mb-3">
+  {% for key, label in tabs %}
+    <li class="nav-item">
+      <a class="nav-link {% if tab == key %}active{% endif %}"
+         href="?tab={{ key }}{% if filters.date_from %}&date_from={{ filters.date_from|date:'Y-m-d' }}{% endif %}{% if filters.date_to %}&date_to={{ filters.date_to|date:'Y-m-d' }}{% endif %}{% if filters.material_id %}&material={{ filters.material_id }}{% endif %}{% if filters.worker_id %}&worker={{ filters.worker_id }}{% endif %}{% if filters.order_id %}&order={{ filters.order_id }}{% endif %}{% if key == 'history' %}&report={{ history_report_key|default:'consumption' }}{% endif %}">{{ label }}</a>
+    </li>
+  {% endfor %}
+</ul>
+
+<form method="get" class="d-flex gap-2 flex-wrap mb-3 no-print">
+  <input type="hidden" name="tab" value="{{ tab }}">
+  <input type="text" name="date_from" class="form-control form-control-sm text-center" style="max-width:130px"
+         placeholder="از 1405-07-01" value="{% if filters.date_from %}{{ filters.date_from|date:'Y-m-d' }}{% endif %}"
+         pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}" maxlength="10" dir="ltr" title="تاریخ شمسی">
+  <input type="text" name="date_to" class="form-control form-control-sm text-center" style="max-width:130px"
+         placeholder="تا 1405-07-31" value="{% if filters.date_to %}{{ filters.date_to|date:'Y-m-d' }}{% endif %}"
+         pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}" maxlength="10" dir="ltr" title="تاریخ شمسی">
+  <select name="material" class="form-select form-select-sm" style="max-width:200px">
+    <option value="">همهٔ مواد</option>
+    {% for m in materials %}
+      <option value="{{ m.id }}" {% if filters.material_id == m.id %}selected{% endif %}>{{ m.name }}</option>
+    {% endfor %}
+  </select>
+  <select name="worker" class="form-select form-select-sm" style="max-width:200px">
+    <option value="">همهٔ کارگران</option>
+    {% for w in paint_workers %}
+      <option value="{{ w.id }}" {% if filters.worker_id == w.id %}selected{% endif %}>{{ w.get_full_name|default:w.username }}</option>
+    {% endfor %}
+  </select>
+  <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-funnel"></i> فیلتر</button>
+  <a href="?tab={{ tab }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-x-circle"></i> پاک</a>
+</form>
+
+{# ---------------- نگاه کلی ---------------- #}
+{% if tab == 'overview' %}
+  <div class="row g-3 mb-3">
+    <div class="col-6 col-lg-3"><div class="card-modern h-100"><div class="card-body py-3">
+      <div class="text-muted small">سفارش‌های فعال</div><div class="h4 mb-0">{{ dashboard.manager.active_orders }}</div>
+    </div></div></div>
+    <div class="col-6 col-lg-3"><div class="card-modern h-100"><div class="card-body py-3">
+      <div class="text-muted small">تسک‌های نقاشی</div><div class="h4 mb-0">{{ dashboard.manager.painting_tasks }}</div>
+    </div></div></div>
+    <div class="col-6 col-lg-3"><div class="card-modern h-100"><div class="card-body py-3">
+      <div class="text-muted small">ردیف‌های صف</div><div class="h4 mb-0">{{ dashboard.manager.queue_rows }}</div>
+    </div></div></div>
+    <div class="col-6 col-lg-3"><div class="card-modern h-100"><div class="card-body py-3">
+      <div class="text-muted small">مغایرت برنامه</div>
+      <div class="h4 mb-0 {% if dashboard.manager.conflict_count %}text-danger{% endif %}">{{ dashboard.manager.conflict_count }}</div>
+    </div></div></div>
+  </div>
+
+  <div class="card-modern mb-3">
+    <div class="card-body">
+      <h2 class="h6 mb-3">موجودی و نیاز امروز</h2>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead class="table-light">
+            <tr><th>ماده</th><th>دسته</th><th>موجودی</th><th>حد هشدار</th><th>نیاز امروز</th></tr>
+          </thead>
+          <tbody>
+            {% for row in dashboard.warehouse.materials %}
+              <tr class="{% if row.low %}table-warning{% endif %}">
+                <td>{{ row.name }}</td>
+                <td class="small text-muted">{{ row.category }}</td>
+                <td class="fw-bold">{{ row.stock|floatformat:2 }} {{ row.unit }}</td>
+                <td>{{ row.min_stock_alert|floatformat:2 }}</td>
+                <td>{% if row.needed_today %}<span class="badge bg-primary">دارد</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="5" class="text-center text-muted py-4">مادهٔ فعالی ثبت نشده است.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="card-modern mb-3">
+    <div class="card-body">
+      <h2 class="h6 mb-3"><i class="bi bi-exclamation-triangle"></i> کمبود موجودی ({{ low_stock|length }})</h2>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead class="table-light"><tr><th>ماده</th><th>موجودی</th><th>حد هشدار</th><th>کمبود</th></tr></thead>
+          <tbody>
+            {% for row in low_stock %}
+              <tr class="table-warning">
+                <td>{{ row.name }}</td>
+                <td>{{ row.stock|floatformat:2 }} {{ row.unit }}</td>
+                <td>{{ row.min_stock_alert|floatformat:2 }}</td>
+                <td class="fw-bold text-danger">{{ row.shortage|floatformat:2 }}</td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="4" class="text-center text-muted py-4">موجودی همهٔ مواد بالای حد هشدار است.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="card-modern">
+    <div class="card-body">
+      <h2 class="h6 mb-3"><i class="bi bi-bell"></i> هشدارهای عملیاتی ({{ alert_total }})</h2>
+      <ul class="mb-0">
+        {% for alert in alerts %}
+          <li class="{% if alert.severity == 'critical' %}text-danger{% elif alert.severity == 'warning' %}text-warning{% endif %}">
+            <strong>{{ alert.title }}</strong> — {{ alert.message }}
+            {% if alert.url %}<a href="{{ alert.url }}">رفتن</a>{% endif %}
+          </li>
+        {% empty %}
+          <li class="text-muted">هشداری وجود ندارد.</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+
+{# ---------------- دفتر گردش انبار ---------------- #}
+{% elif tab == 'ledger' %}
+  <div class="card-modern">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead class="table-light">
+            <tr><th>تاریخ</th><th>ماده</th><th>نوع</th><th>مقدار</th><th>اثر</th><th>مانده</th><th>مرجع</th><th>ثبت‌کننده</th></tr>
+          </thead>
+          <tbody>
+            {% for row in ledger.rows %}
+              {% with movement=row.movement %}
+              <tr>
+                <td class="small">{{ movement.created_at|persian_datetime }}</td>
+                <td>{{ movement.raw_material.name }}</td>
+                <td>{{ movement.get_movement_type_display }}</td>
+                <td>{{ movement.quantity|floatformat:2 }} {{ movement.raw_material.get_unit_display }}</td>
+                <td class="{% if row.signed < 0 %}text-danger{% else %}text-success{% endif %} fw-bold">
+                  {{ row.signed|floatformat:2 }}
+                </td>
+                <td class="fw-bold">{{ row.balance|floatformat:2 }}</td>
+                <td class="small text-muted">{{ row.reference|default:"—" }}</td>
+                <td class="small text-muted">{% if movement.created_by %}{{ movement.created_by.get_full_name|default:"—" }}{% else %}—{% endif %}</td>
+              </tr>
+              {% endwith %}
+            {% empty %}
+              <tr><td colspan="8" class="text-center text-muted py-4">حرکتی در این بازه ثبت نشده است.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% if ledger.truncated %}
+    <div class="alert alert-info mt-3 mb-0">
+      فقط {{ ledger.limit }} حرکت آخر نمایش داده شده است (مجموع {{ ledger.total_count }}).
+      برای دیدن بقیه، بازهٔ تاریخ را کوچک‌تر کنید.
+    </div>
+  {% endif %}
+
+{# ---------------- تحلیل مصرف ---------------- #}
+{% elif tab == 'consumption' %}
+  <div class="row g-3 mb-3">
+    <div class="col-6 col-lg-2"><div class="card-modern h-100"><div class="card-body py-3">
+      <div class="text-muted small">برنامه‌ریزی‌شده</div><div class="h5 mb-0">{{ consumption.totals.planned|floatformat:2 }}</div>
+    </div></div></div>
+    <div class="col-6 col-lg-2"><div class="card-modern h-100"><div class="card-body py-3">
+      <div class="text-muted small">تحویل‌شده</div><div class="h5 mb-0">{{ consumption.totals.delivered|floatformat:2 }}</div>
+    </div></div></div>
+    <div class="col-6 col-lg-2"><div class="card-modern h-100"><div class="card-body py-3">
+      <div class="text-muted small">برگشتی</div><div class="h5 mb-0">{{ consumption.totals.returned|floatformat:2 }}</div>
+    </div></div></div>
+    <div class="col-6 col-lg-2"><div class="card-modern h-100"><div class="card-body py-3">
+      <div class="text-muted small">مصرف واقعی</div><div class="h5 mb-0">{{ consumption.totals.actual|floatformat:2 }}</div>
+    </div></div></div>
+    <div class="col-6 col-lg-2"><div class="card-modern h-100"><div class="card-body py-3">
+      <div class="text-muted small">مصرف اضافه</div>
+      <div class="h5 mb-0 {% if consumption.totals.excess > 0 %}text-danger{% endif %}">{{ consumption.totals.excess|floatformat:2 }}</div>
+    </div></div></div>
+    <div class="col-6 col-lg-2"><div class="card-modern h-100"><div class="card-body py-3">
+      <div class="text-muted small">اختلاف کل</div>
+      <div class="h5 mb-0 {% if consumption.totals.variance < 0 %}text-warning{% elif consumption.totals.variance > 0 %}text-danger{% endif %}">{{ consumption.totals.variance|floatformat:2 }}</div>
+    </div></div></div>
+  </div>
+  <div class="card-modern">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead class="table-light">
+            <tr><th>ماده</th><th>برنامه</th><th>تحویل</th><th>برگشتی</th><th>مصرف واقعی</th><th>اضافه</th><th>اختلاف</th><th>تعارض</th></tr>
+          </thead>
+          <tbody>
+            {% for row in consumption.rows %}
+              <tr class="{% if row.conflicts %}table-warning{% endif %}">
+                <td>{{ row.raw_material }}</td>
+                <td>{{ row.planned|floatformat:2 }}</td>
+                <td>{{ row.delivered|floatformat:2 }}</td>
+                <td>{{ row.returned|floatformat:2 }}</td>
+                <td class="fw-bold">{{ row.actual|floatformat:2 }}</td>
+                <td class="{% if row.excess > 0 %}text-danger{% endif %}">{{ row.excess|floatformat:2 }}</td>
+                <td class="{% if row.variance < 0 %}text-warning{% elif row.variance > 0 %}text-danger{% endif %}">{{ row.variance|floatformat:2 }}</td>
+                <td>{{ row.conflicts }}</td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="8" class="text-center text-muted py-4">داده‌ای در این بازه نیست.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+{# ---------------- گزارش‌های تاریخی ---------------- #}
+{% elif tab == 'history' %}
+  <div class="card-modern">
+    <div class="card-body">
+      <h2 class="h6 mb-3">{{ history.title }}</h2>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead class="table-light">
+            {% for column in history.columns %}<th>{{ column }}</th>{% endfor %}
+          </thead>
+          <tbody>
+            {% for row in history.rows %}
+              <tr>{% for cell in row %}<td>{{ cell }}</td>{% endfor %}</tr>
+            {% empty %}
+              <tr><td colspan="{{ history.columns|length }}" class="text-center text-muted py-4">داده‌ای در این بازه نیست.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="form-text mt-2">{{ history.total }} ردیف</div>
+    </div>
+  </div>
+{% endif %}
+{% endblock %}

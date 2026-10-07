@@ -1,0 +1,43 @@
+<tr class="cart-item-row" id="cart-item-{{ item.id }}">
+    <td class="px-5 py-4">
+        <div class="flex items-center gap-4">
+            <div class="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-lg bg-stone-100">
+                <span class="text-xs text-stone-400">تصویر</span>
+            </div>
+            <div>
+                <p class="font-medium">{{ item.product.name }}</p>
+                <div class="mt-1 text-xs text-stone-500">
+                    {% if item.has_custom_dimensions %}
+                        {% if item.custom_length %}طول {{ item.custom_length }}{% endif %}
+                        {% if item.custom_width %} / عرض {{ item.custom_width }}{% endif %}
+                        {% if item.custom_height %} / ارتفاع {{ item.custom_height }}{% endif %}
+                        سانتی‌متر
+                    {% else %}
+                        ابعاد پیش‌/default
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </td>
+    <td class="px-5 py-4 text-center">
+        <span class="inline-flex items-center rounded-lg border border-stone-200">
+            <a href="{% url 'cart:cart_remove' item.product.id %}" class="flex h-8 w-8 items-center justify-center text-stone-500 hover:bg-stone-100">&minus;</a>
+            <span class="w-10 text-center text-sm font-medium">{{ item.quantity }}</span>
+            <a href="#" class="flex h-8 w-8 items-center justify-center text-stone-500 hover:bg-stone-100">+</a>
+        </span>
+    </td>
+    <td class="px-5 py-4 text-left">
+        <span class="font-medium">{{ item.unit_price|default:0|fa_price }}</span>
+        <span class="text-xs text-stone-400">تومان</span>
+    </td>
+    <td class="px-5 py-4 text-left">
+        <span class="font-semibold">{{ item.total_price|fa_price }}</span>
+        <span class="text-xs text-stone-400">تومان</span>
+    </td>
+    <td class="px-5 py-4 text-center">
+        <form method="post" action="{% url 'cart:cart_remove' item.product.id %}">
+            {% csrf_token %}
+            <button type="submit" class="text-xs text-red-600 hover:underline">حذف</button>
+        </form>
+    </td>
+</tr>

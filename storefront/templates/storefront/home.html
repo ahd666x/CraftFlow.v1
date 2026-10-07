@@ -1,0 +1,45 @@
+{% extends 'storefront/layouts/store.html' %}
+{% load storefront_filters %}
+
+{% block title %}فروشگاه — خانه{% endblock %}
+
+{% block content %}
+<section class="border-b border-stone-200 bg-white">
+    <div class="mx-auto max-w-6xl px-4 py-12 text-center">
+        <h1 class="text-3xl font-bold text-stone-900">محصولات را ببینید و سفارش دهید</h1>
+        <p class="mx-auto mt-3 max-w-2xl text-stone-600">
+            ابعاد دلخواهتان را انتخاب کنید؛ قیمت نهایی بر اساس همان ابعاد محاسبه می‌شود.
+        </p>
+        <a href="{% url 'storefront:product_list' %}" class="btn-primary mt-6">مشاهده همه محصولات</a>
+    </div>
+</section>
+
+{% if categories %}
+<section class="mx-auto max-w-6xl px-4 py-8">
+    <h2 class="mb-4 text-xl font-semibold">دسته‌بندی‌ها</h2>
+    <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        {% for category in categories %}
+        <a href="{% url 'storefront:category_detail' category.slug %}"
+           class="card px-4 py-3 text-center text-sm hover:shadow-elevation-2">
+            {{ category.name }}
+        </a>
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
+
+<section class="mx-auto max-w-6xl px-4 pb-12">
+    <h2 class="mb-4 text-xl font-semibold">جدیدترین محصولات</h2>
+    {% if products %}
+    <div class="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
+        {% for product in products %}
+            {% include 'storefront/components/product_card.html' with product=product %}
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="rounded-default border border-dashed border-stone-300 p-8 text-center text-stone-500">
+        هنوز محصولی ثبت نشده است.
+    </p>
+    {% endif %}
+</section>
+{% endblock %}

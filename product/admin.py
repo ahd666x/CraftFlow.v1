@@ -464,10 +464,10 @@ class PaintingProcessMaterialAdmin(admin.ModelAdmin):
 
 @admin.register(PaintingMaterialRequirement)
 class PaintingMaterialRequirementAdmin(admin.ModelAdmin):
-    list_display = ['product', 'color_part', 'process', 'raw_material', 'consumption_per_unit']
-    list_filter = ['process', 'color_part']
+    list_display = ['product', 'color_part', 'process', 'stage', 'raw_material', 'consumption_per_unit']
+    list_filter = ['process', 'stage', 'color_part']
     search_fields = ['product__name', 'raw_material__name']
-    autocomplete_fields = ['product', 'raw_material']
+    autocomplete_fields = ['product', 'raw_material', 'stage']
 
 
 @admin.register(PaintingColorMaterialVariant)

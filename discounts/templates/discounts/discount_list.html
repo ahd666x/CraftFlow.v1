@@ -1,0 +1,80 @@
+{% extends 'storefront/layouts/store.html' %}
+{% load jformat %}
+
+{% block title %}تخفیف‌ها — فروشگاه{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-6xl px-4 py-8">
+    <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+            <h1 class="text-2xl font-bold">تخفیف‌ها</h1>
+            <p class="text-sm text-stone-500">مدیریت کدهای تخفیف و شرایط اعتبار</p>
+        </div>
+        <a href="{% url 'discounts:discount_create' %}" class="btn-primary">
+            <svg class="ml-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+            </svg>
+            ایجاد تخفیف جدید
+        </a>
+    </div>
+
+    <div class="card overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="table-modern">
+                <thead>
+                    <tr>
+                        <th>کد تخفیف</th>
+                        <th>نوع</th>
+                        <th>مقدار</th>
+                        <th>کاربرد</th>
+                        <th>وضعیت</th>
+                        <th>اعتبار</th>
+                        <th>عملیات</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for discount in discounts %}
+                    <tr>
+                        <td class="font-medium text-primary-700">{{ discount.code }}</td>
+                        <td>{{ discount.get_discount_type_display }}</td>
+                        <td class="font-medium">{{ discount.value }}</td>
+                        <td>
+                            {% if discount.max_uses > 0 %}
+                                {% widthratio discount.used_count discount.max_uses 100 as used_pct %}
+                                <div class="flex items-center gap-2">
+                                    <div class="flex-1 h-2 bg-stone-200 rounded-full overflow-hidden">
+                                        <div class="h-full rounded-full transition-all duration-300 {% if used_pct >= 100 %}bg-red-500{% elif used_pct >= 80 %}bg-amber-500{% else %}bg-primary-500{% endif %}" style="width: {% if used_pct > 100 %}100{% else %}{{ used_pct }}{% endif %}%"></div>
+                                    </div>
+                                    <span class="text-xs text-stone-500 whitespace-nowrap">{{ discount.used_count }} / {{ discount.max_uses }}</span>
+                                </div>
+                            {% else %}
+                                <span class="text-sm text-stone-500">نامحدود</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if discount.is_active %}
+                                <span class="badge badge-success">عالی</span>
+                            {% else %}
+                                <span class="badge badge-danger">غیرعالی</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="flex flex-col gap-1">
+                                <span class="text-sm">{{ discount.valid_from|date:"Y/m/d" }} تا {{ discount.valid_until|date:"Y/m/d" }}</span>
+                            </div>
+                        </td>
+                        <td>
+                            <a href="{% url 'discounts:discount_update' discount.pk %}" class="btn-sm btn-secondary">ویرایش</a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="7" class="py-8 text-center text-stone-500">تخفیفی یافت نشد.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

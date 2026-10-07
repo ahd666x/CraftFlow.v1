@@ -84,36 +84,16 @@ def log_production_event(task, event_type, user=None, old_status='', new_status=
 
 def consume_material_for_task(task):
     """
-    برای یک تسک تکمیل‌شده که part و material آن به یک RawMaterial متصل است،
-    یک StockMovement مصرفی ثبت می‌کند. Idempotent است: اگر قبلاً برای همین
-    تسک ثبت شده باشد، دوباره ثبت نمی‌کند.
+    در Engine B هیچ مصرف خودکاری هنگام تکمیل تسک رخ نمی‌دهد.
+
+    کسر بابت تولید فقط از یک مسیر انجام می‌شود:
+    ``DailyMaterialQueue → execute_daily_delivery``.
+
+    اگر این تابع کاری می‌کرد، بسته‌ای که انبار از صف روزانه بیرون داده دوباره کم
+    می‌شد. برای همین عمداً بی‌اثر است؛ نقطهٔ تماس باقی مانده تا فراخوانی‌های
+    قدیمی (مثل ``ProductionTask.save``) نشکنند.
     """
-    if not task.part or not task.part.material:
-        return None
-    material = task.part.material
-    if not material.raw_material_id:
-        return None
-
-    try:
-        from inventory.models import StockMovement
-        if StockMovement.objects.filter(reference_task=task, movement_type='consumption').exists():
-            return None
-
-        qty = Decimal(task.completed_quantity or 0) * Decimal(material.consumption_per_unit or 1)
-        if qty <= 0:
-            return None
-
-        return StockMovement.objects.create(
-            raw_material=material.raw_material,
-            movement_type='consumption',
-            quantity=qty,
-            reference_task=task,
-            note=f'مصرف خودکار - تسک #{task.id} ({task.get_station_name_display()})',
-            created_by=task.scanned_by,
-        )
-    except Exception:
-        logger.exception("خطا در مصرف خودکار مواد اولیه برای تسک %s", task.pk)
-        return None
+    return None
 
 
 def _get_task_actual_color_code(task):
@@ -360,12 +340,12 @@ def get_resolved_painting_requirements_for_task(task):
     Returns ``(resolved, errors, context)``:
         resolved: [{'requirement': ..., 'raw_material': ...}] — ماده واقعی
         errors:   [PaintingMaterialResolutionError] — قابل ردیابی
-        context:  {'process_id', 'product_id', 'color_part', 'color_code'}
+        context:  {'process_id', 'stage_id', 'product_id', 'color_part', 'color_code'}
 
     هیچ requirementای در صورت resolve نشدن به مادهٔ اشتباه تبدیل نمی‌شود.
     """
     context = {
-        'process_id': None, 'product_id': None,
+        'process_id': None, 'stage_id': None, 'product_id': None,
         'color_part': task.color_part, 'color_code': None,
     }
     if task.station_name != 'paint' or not task.painting_stage_id:
@@ -377,6 +357,7 @@ def get_resolved_painting_requirements_for_task(task):
 
     process = task.painting_stage.process
     context['process_id'] = process.pk
+    context['stage_id'] = task.painting_stage_id
     context['product_id'] = task.order_item.product_id
 
     from .models import PaintingMaterialRequirement
@@ -386,6 +367,8 @@ def get_resolved_painting_requirements_for_task(task):
             process_id=process.pk,
             product_id=context['product_id'],
             color_part=task.color_part,
+        ).filter(
+            Q(stage_id=task.painting_stage_id) | Q(stage__isnull=True)
         ).select_related('raw_material')
     )
 
@@ -529,21 +512,15 @@ def invalidate_caches():
 
 
 def cancel_unissued_paint_material_requests(pairs):
-    """pairs: iterable of (order_item_id, color_part). If no paint task remains for that item/color, cancel unissued requested material issues."""
-    from inventory.models import MaterialIssue
-    for item_id, color_part in set(pairs):
-        if not item_id:
-            continue
-        if ProductionTask.objects.filter(station_name='paint', order_item_id=item_id, color_part=color_part or '').exists():
-            continue
-        MaterialIssue.objects.filter(
-            order_item_id=item_id,
-            color_part=color_part or '',
-            task__isnull=True,
-            purpose='production',
-            status='requested',
-            issued_quantity=0,
-        ).update(status='cancelled')
+    """
+    Engine A حذف شده است: دیگر «درخواست پیش‌نویس مواد» وجود ندارد.
+
+    کاری که این تابع قبلاً می‌کرد — لغو درخواست‌های تحویل‌نشده — در Engine B
+    معنا ندارد، چون صف روزانه از برنامه *مشتق* می‌شود و با حذف یا تغییر تسک
+    خودش به‌روز می‌شود (سیگنال‌های ``inventory.signals``). بنابراین این تابع فقط
+    یک نقطهٔ تماسِ بی‌اثر است تا فراخوانی‌های قدیمی نشکنند.
+    """
+    return None
 
 
 def _get_process_cache():
@@ -2426,132 +2403,56 @@ post_delete.connect(_invalidate_on_change, sender=ColorCode)
 
 
 # ===================================================================
-#   خودکارسازی درخواست مواد اولیه از BOM
+#   نیاز مواد از برنامه (Engine B)
 # ===================================================================
 #
-#   P4 — Normal Painting دیگر از این مسیر درخواست نمی‌سازد.
-#   مسیر عملیاتی واحد نقاشی عادی:
-#       DailyMaterialQueue → execute_daily_delivery → execute_daily_return
-#   صف مواد روزانه از قبل همین نیاز را می‌سازد (sync خودکار هنگام تغییر تسک)
-#   و برخلاف MaterialIssue هرگز تکراری نمی‌شود: به ازای هر painting work unit
-#   یک‌بار محاسبه می‌شود و به کارگر و روز مشخص نسبت دارد.
+#   در Engine B هیچ «درخواست مواد»ی ساخته نمی‌شود. نیاز هر روز از خودِ برنامهٔ
+#   تولید مشتق می‌شود:
 #
-#   چرا ساختن هر دو، خطاست: هر دو روی یک دفتر StockMovement می‌نویسند، پس
-#   مصرف یک کار عادی نقاشی دوبار از موجودی کسر می‌شد.
+#       ProductionTask / ProductionDefect
+#              -> inventory.services.aggregate_queue_requirements
+#              -> DailyMaterialQueue
+#              -> انباردار تحویل و بازگشت را ثبت می‌کند
 #
-#   این پرچم فقط مسیر «نقاشی عادی» را می‌بندد. MaterialIssue برای
-#   rework/defect (purpose='rework') و برای ایستگاه‌های غیرنقاشی دست‌نخورده
-#   و فعال می‌ماند. رکوردهای تاریخی هم حذف نمی‌شوند.
-NORMAL_PAINTING_ENGINE_IS_DAILY_QUEUE = True
+#   یعنی نه ردیف پیش‌نویسی برای لغو کردن مانده و نه شمارش تکراری ممکن است: هر
+#   واحد کار فقط یک‌بار شمرده می‌شود.
+#
+#   تابع‌های پایین فقط نقطه‌های تماس سازگار برای فراخوانی‌های قدیمی‌اند.
+
+
+def sync_queue_for_tasks(tasks):
+    """
+    صف روزانهٔ تسک‌های داده‌شده را Sync می‌کند.
+
+    در حالت عادی سیگنال‌های ``inventory.signals`` همین کار را خودکار انجام
+    می‌دهند؛ این تابع برای جایی است که تسک‌ها با ``bulk_create`` ساخته
+    می‌شوند و سیگنال ``post_save`` روی آن‌ها اجرا نشده است.
+    """
+    task_ids = [task.pk for task in tasks if getattr(task, 'pk', None)]
+    if not task_ids:
+        return 0
+    try:
+        from inventory.services import sync_queue_for_tasks as _sync
+        _sync(task_ids)
+    except Exception:
+        logger.exception(
+            'sync_queue_for_tasks: queue sync failed for %s tasks', len(task_ids))
+        return 0
+    return len(task_ids)
 
 
 def auto_create_material_issues(tasks, requested_by=None, purpose='production'):
     """
-    برای تسک‌های غیرنقاشی: مثل قبل، per-task.
-    برای تسک‌های نقاشی عادی: چیزی ساخته نمی‌شود (P4) — نیاز از صف مواد
-    روزانه می‌آید. برای rework (purpose='rework') رفتار قبلی حفظ می‌شود.
+    سازگاری با فراخوانی‌های قدیمی: هیچ درخواستی نمی‌سازد، فقط صف را Sync می‌کند.
+
+    خروجی همان کلیدهای قبلی را نگه می‌دارد تا فراخوانی‌ها نشکنند، ولی
+    ``created`` همیشه صفر است چون دیگر چیزی ساخته نمی‌شود.
     """
-    from inventory.models import MaterialIssue
-    from decimal import Decimal
-
-    created_count = 0
-    skipped_count = 0
-    deferred_to_queue_count = 0
-
-    paint_tasks = [t for t in tasks if t.station_name == 'paint' and t.order_item_id]
-    other_tasks = [t for t in tasks if t.station_name != 'paint']
-
-    # ---------- شاخه‌ی غیرنقاشی: بدون تغییر (per-task) ----------
-    existing_task_based = set(
-        MaterialIssue.objects.exclude(status='cancelled')
-        .filter(task__isnull=False)
-        .values_list('task_id', 'raw_material_id')
-    )
-    for task in other_tasks:
-        try:
-            from inventory.views import _task_material_requirements
-            rows = _task_material_requirements(task)
-        except Exception:
-            rows = []
-        for raw_material, quantity in rows:
-            if not raw_material or not quantity or quantity <= 0:
-                continue
-            key = (task.id, raw_material.id)
-            if key in existing_task_based:
-                skipped_count += 1
-                continue
-            MaterialIssue.objects.create(
-                task=task, raw_material=raw_material,
-                requested_quantity=quantity, purpose=purpose, status='requested',
-                requested_by=requested_by,
-                note='درخواست خودکار از برنامه تولید',
-            )
-            existing_task_based.add(key)
-            created_count += 1
-
-    # ---------- شاخه‌ی نقاشی ----------
-    if purpose == 'production' and NORMAL_PAINTING_ENGINE_IS_DAILY_QUEUE:
-        # P4: نیاز نقاشی عادی از صف مواد روزانه می‌آید، نه از MaterialIssue.
-        deferred_to_queue_count = len(paint_tasks)
-        return {
-            'created': created_count,
-            'skipped': skipped_count,
-            'deferred_to_daily_queue': deferred_to_queue_count,
-            'total_raw': None,
-        }
-
-    # به سطح (order_item, color_part) تقلیل بده — فقط مسیر rework از این
-    # نقطه عبور می‌کند (یا وقتی پرچم بالا خاموش شده باشد).
-    seen_item_colorparts = set()
-    existing_paint = set(
-        MaterialIssue.objects.exclude(status='cancelled')
-        .filter(order_item__isnull=False, task__isnull=True)
-        .values_list('order_item_id', 'color_part', 'raw_material_id')
-    )
-
-    for task in paint_tasks:
-        key = (task.order_item_id, task.color_part or '')
-        if key in seen_item_colorparts:
-            continue
-        seen_item_colorparts.add(key)
-
-        item = task.order_item
-        process, requirements = get_painting_material_requirements_for_item_colorpart(
-            item, task.color_part
-        )
-        if not process or not requirements:
-            continue
-
-        for req in requirements:
-            quantity = Decimal(item.quantity) * req.consumption_per_unit
-            if quantity <= 0:
-                continue
-            dedup_key = (item.id, task.color_part or '', req.raw_material.id)
-            if dedup_key in existing_paint:
-                skipped_count += 1
-                continue
-
-            MaterialIssue.objects.create(
-                task=None,
-                order_item=item,
-                color_part=task.color_part or '',
-                painting_process=process,
-                raw_material=req.raw_material,
-                requested_quantity=quantity,
-                purpose=purpose,
-                status='requested',
-                requested_by=requested_by,
-                note=(
-                    f'نیاز نقاشی: سفارش {item.order_id} / آیتم {item.id} / '
-                    f'{item.product.name} / {task.color_part} / روند {process.name}'
-                ),
-            )
-            existing_paint.add(dedup_key)
-            created_count += 1
-
+    task_list = list(tasks or [])
+    sync_queue_for_tasks(task_list)
     return {
-        'created': created_count,
-        'skipped': skipped_count,
-        'deferred_to_daily_queue': deferred_to_queue_count,
+        'created': 0,
+        'skipped': len(task_list),
+        'deferred_to_daily_queue': len(task_list),
         'total_raw': None,
     }
