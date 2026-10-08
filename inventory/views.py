@@ -274,10 +274,12 @@ def daily_queue_delivery(request, queue_id):
         return HttpResponseForbidden()
 
     try:
+        raw_quantity = (request.POST.get('quantity') or '').strip() or None
         queue = services.execute_daily_delivery(
             queue_id=queue_id,
             delivered_by=request.user,
             note=str(request.POST.get('note') or '').strip(),
+            quantity=raw_quantity,
         )
     except HandoverError as exc:
         return JsonResponse({'success': False, 'error': str(exc)}, status=400)
@@ -288,6 +290,7 @@ def daily_queue_delivery(request, queue_id):
             status=500,
         )
 
+    state = services.daily_queue_action_state(queue)
     messages.success(
         request,
         f'«{queue.raw_material.name}» تحویل {queue.worker.get_full_name() or queue.worker.username} '
@@ -299,6 +302,9 @@ def daily_queue_delivery(request, queue_id):
         'status': queue.status,
         'status_display': queue.get_status_display(),
         'actual_consumption': str(queue.actual_consumption),
+        'suggested_delivery': state['suggested_delivery'],
+        'auto_returnable': state['auto_returnable'],
+        'can_auto_return': state['can_auto_return'],
     })
 
 
@@ -306,22 +312,31 @@ def daily_queue_delivery(request, queue_id):
 @warehouse_or_manager_required
 @require_POST
 def daily_queue_return(request, queue_id):
-    """ثبت بازگشت پایان روز برای یک ردیف صف."""
+    """ثبت بازگشت پایان روز برای یک ردیف صف.
+
+    اگر ``returned_quantity`` خالی باشد، برگشت خودکار مازاد
+    (``delivered - planned``) انجام می‌شود؛ هر تفاوی در مصرف از طریق
+    ``recalculate_consumption`` ثبت می‌شود.
+    """
     if not _is_xhr(request):
         return HttpResponseForbidden()
 
     raw_quantity = request.POST.get('returned_quantity')
-    if raw_quantity in (None, ''):
-        return JsonResponse(
-            {'success': False, 'error': 'مقدار برگشتی را وارد کنید.'}, status=400)
 
     try:
-        queue = services.execute_daily_return(
-            queue_id=queue_id,
-            returned_by=request.user,
-            returned_quantity=raw_quantity,
-            note=str(request.POST.get('note') or '').strip(),
-        )
+        if raw_quantity in (None, ''):
+            queue = services.execute_auto_return(
+                queue_id=queue_id,
+                returned_by=request.user,
+                note=str(request.POST.get('note') or '').strip(),
+            )
+        else:
+            queue = services.execute_daily_return(
+                queue_id=queue_id,
+                returned_by=request.user,
+                returned_quantity=raw_quantity,
+                note=str(request.POST.get('note') or '').strip(),
+            )
     except HandoverError as exc:
         return JsonResponse({'success': False, 'error': str(exc)}, status=400)
     except Exception:
@@ -332,6 +347,40 @@ def daily_queue_return(request, queue_id):
         )
 
     messages.success(request, f'بازگشت «{queue.raw_material.name}» ثبت شد.')
+    return JsonResponse({
+        'success': True,
+        'returned_quantity': str(queue.returned_quantity),
+        'actual_consumption': str(queue.actual_consumption),
+        'excess_consumption': str(queue.excess_consumption),
+        'status': queue.status,
+        'status_display': queue.get_status_display(),
+    })
+
+
+@login_required
+@warehouse_or_manager_required
+@require_POST
+def daily_queue_auto_return(request, queue_id):
+    """ثبت برگشت خودکار مازاد تحویل برای یک ردیف صف."""
+    if not _is_xhr(request):
+        return HttpResponseForbidden()
+
+    try:
+        queue = services.execute_auto_return(
+            queue_id=queue_id,
+            returned_by=request.user,
+            note=str(request.POST.get('note') or '').strip(),
+        )
+    except HandoverError as exc:
+        return JsonResponse({'success': False, 'error': str(exc)}, status=400)
+    except Exception:
+        logger.exception('daily_queue_auto_return: unexpected error for queue %s', queue_id)
+        return JsonResponse(
+            {'success': False, 'error': 'برگشت خودکار انجام نشد. لطفاً دوباره تلاش کنید.'},
+            status=500,
+        )
+
+    messages.success(request, f'برگشت خودکار «{queue.raw_material.name}» ثبت شد.')
     return JsonResponse({
         'success': True,
         'returned_quantity': str(queue.returned_quantity),
@@ -364,6 +413,9 @@ def daily_queue_sources(request, queue_id):
         'max_returnable': payload['max_returnable'],
         'can_return': payload['can_return'],
         'can_deliver': payload['can_deliver'],
+        'suggested_delivery': payload['suggested_delivery'],
+        'auto_returnable': payload['auto_returnable'],
+        'can_auto_return': payload['can_auto_return'],
         'status': payload['status'],
         'status_display': payload['status_display'],
         'rows': [
@@ -406,6 +458,15 @@ def daily_queue_preview_delivery(request, queue_id):
         'status': preview['status'],
         'status_display': preview['status_display'],
         'can_deliver': preview['can_deliver'],
+        'remaining': str(preview['remaining']),
+        'open_remainder': str(preview['open_remainder']),
+        'from_open': str(preview['from_open']),
+        'from_new_pack': str(preview['from_new_pack']),
+        'remainder_after': str(preview['remainder_after']),
+        'can_add_extra': preview['can_add_extra'],
+        'suggested_delivery': str(preview['suggested_delivery']),
+        'auto_returnable': str(preview['auto_returnable']),
+        'can_auto_return': preview['can_auto_return'],
     })
 
 

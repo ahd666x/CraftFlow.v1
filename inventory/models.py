@@ -157,6 +157,7 @@ class DailyMaterialQueue(models.Model):
 
     STATUS_CHOICES = [
         ('pending', 'در انتظار تحویل'),
+        ('partial', 'تحویل ناقص'),
         ('delivered', 'تحویل شده'),
         ('returned', 'برگشت ثبت شده'),
         ('closed', 'پایان روز بسته شد'),
@@ -298,6 +299,7 @@ class DailyMaterialQueueSource(models.Model):
         ('painting', 'ایستگاه نقاشی'),
         ('station', 'سایر ایستگاه‌ها'),
         ('rework', 'جبران خرابی'),
+        ('carryover', 'انتقال کسری از روز قبل'),
     ]
 
     queue = models.ForeignKey(
@@ -327,6 +329,10 @@ class DailyMaterialQueueSource(models.Model):
     quantity = models.DecimalField(
         max_digits=12, decimal_places=2, default=0,
         verbose_name="سهم از این منبع",
+    )
+    carryover_from = models.ForeignKey(
+        'DailyMaterialQueue', null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='carried_sources', verbose_name="ردیف مبدأ کسری",
     )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="تاریخ ایجاد")
 

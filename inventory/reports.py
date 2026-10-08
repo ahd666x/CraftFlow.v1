@@ -178,7 +178,7 @@ def consumption_report(*, date=None, date_from=None, date_to=None,
     ذخیره‌شدهٔ صف خوانده می‌شود. ``variance`` صرفاً اختلاف عددی
     ``actual - planned`` است، نه قاعدهٔ مصرف تازه.
     """
-    qs = DailyMaterialQueue.objects.filter(status__in=('pending', 'delivered', 'returned'))
+    qs = DailyMaterialQueue.objects.filter(status__in=('pending', 'partial', 'delivered', 'returned'))
     if date:
         qs = qs.filter(work_date=date)
     if date_from:
@@ -781,7 +781,7 @@ def data_integrity_audit():
         if queue.status == 'cancelled' and queue.has_transaction:
             add('cancelled_with_transaction', 'critical', label, reference,
                 'ردیف لغوشدهtransaction دارد (تحویل یا برگشت ثبت شده).')
-        if queue.status in ('delivered', 'returned') and not queue.has_transaction:
+        if queue.status in ('delivered', 'returned', 'partial') and not queue.has_transaction:
             add('transaction_mismatch', 'warning', label, reference,
                 f'وضعیت «{queue.get_status_display()}» است ولی '
                 'هیچ تحویل/برگشتی ثبت نشده.')
@@ -808,15 +808,22 @@ def data_integrity_audit():
                 add('incomplete_source', 'warning', f'منبع #{source.pk}',
                     f'queue={source.queue_id}',
                     'منبع جبران خرابی بدون خرابی است.')
+        if source.kind == 'carryover':
+            if source.carryover_from_id is None:
+                add('incomplete_source', 'warning', f'منبع #{source.pk}',
+                    f'queue={source.queue_id}',
+                    'منبع انتقال کسری بدون ردیف مبدأ است.')
+            continue
         elif source.kind == 'painting':
             if source.production_task_id is None or source.painting_stage_id is None:
                 add('incomplete_source', 'warning', f'منبع #{source.pk}',
                     f'queue={source.queue_id}',
                     'منبع نقاشی بدون تسک یا بدون مرحلهٔ نقاشی است.')
-        elif source.production_task_id is None:
-            add('incomplete_source', 'warning', f'منبع #{source.pk}',
-                f'queue={source.queue_id}',
-                'منبع ایستگاه بدون تسک تولید است.')
+        elif source.kind == 'station':
+            if source.production_task_id is None:
+                add('incomplete_source', 'warning', f'منبع #{source.pk}',
+                    f'queue={source.queue_id}',
+                    'منبع ایستگاه بدون تسک تولید است.')
 
     # مصرف بدون ردیف صف: تنها راه مجاز برای ثبت مصرف، صف روزانه است.
     for movement in (

@@ -124,7 +124,7 @@
           {% for queue in queues %}
             {% with excess=queue.excess_consumption|floatformat:"-2" %}
             <tr data-queue="{{ queue.id }}"
-                class="{% if queue.has_plan_conflict %}table-warning{% endif %} {% if queue.status == 'delivered' %}table-success{% elif queue.status == 'returned' %}table-info{% elif queue.status == 'closed' %}table-secondary{% endif %}">
+                class="{% if queue.has_plan_conflict %}table-warning{% endif %} {% if queue.status == 'delivered' %}table-success{% elif queue.status == 'returned' %}table-info{% elif queue.status == 'partial' %}table-warning{% elif queue.status == 'closed' %}table-secondary{% endif %}">
               <td>
                 <strong>{{ queue.worker.get_full_name|default:queue.worker.username }}</strong>
                 {% if queue.has_plan_conflict %}
@@ -142,27 +142,35 @@
               <td class="fw-bold">{{ queue.actual_consumption|floatformat:2 }}</td>
               <td class="{% if queue.excess_consumption > 0 %}text-danger fw-bold{% else %}text-muted{% endif %}">{{ excess }}</td>
               <td>
-                <span class="badge {% if queue.status == 'pending' %}bg-primary{% elif queue.status == 'delivered' %}bg-success{% elif queue.status == 'returned' %}bg-info text-dark{% else %}bg-secondary{% endif %}">
+                <span class="badge {% if queue.status == 'pending' %}bg-primary{% elif queue.status == 'partial' %}bg-warning text-dark{% elif queue.status == 'delivered' %}bg-success{% elif queue.status == 'returned' %}bg-info text-dark{% else %}bg-secondary{% endif %}">
                   {{ queue.get_status_display }}
                 </span>
               </td>
-              <td>
-                <div class="btn-group btn-group-sm" role="group">
-                  {% if queue.status == 'pending' %}
-                    <button type="button" class="btn btn-outline-primary btn-preview-delivery" data-queue="{{ queue.id }}" title="تحویل این ردیف">
-                      <i class="bi bi-box-arrow-in-down"></i> تحویل
-                    </button>
-                  {% endif %}
-                  {% if queue.status == 'delivered' or queue.status == 'returned' %}
-                    <button type="button" class="btn btn-outline-warning btn-return" data-queue="{{ queue.id }}" title="ثبت بازگشت">
-                      <i class="bi bi-box-arrow-up"></i> بازگشت
-                    </button>
-                  {% endif %}
-                  <button type="button" class="btn btn-outline-info btn-sources" data-queue="{{ queue.id }}" title="این نیاز از کجا آمده">
-                    <i class="bi bi-diagram-3"></i>
-                  </button>
-                </div>
-              </td>
+               <td>
+                 <div class="btn-group btn-group-sm" role="group">
+                   {% if queue.status == 'pending' or queue.status == 'partial' or queue.status == 'delivered' %}
+                     {% if queue.returned_quantity == 0 %}
+                       <button type="button" class="btn btn-outline-primary btn-preview-delivery" data-queue="{{ queue.id }}" title="تحویل این ردیف">
+                         <i class="bi bi-box-arrow-in-down"></i>
+                         {% if queue.status == 'delivered' %}تحویل اضافه{% elif queue.status == 'partial' %}تکمیل تحویل{% else %}تحویل{% endif %}
+                       </button>
+                     {% endif %}
+                   {% endif %}
+                    {% if queue.status == 'delivered' or queue.status == 'partial' %}
+                      <button type="button" class="btn btn-outline-warning btn-return" data-queue="{{ queue.id }}" title="ثبت بازگشت">
+                        <i class="bi bi-box-arrow-up"></i> بازگشت
+                      </button>
+                      {% if queue.status == 'delivered' and queue.delivered_quantity > queue.planned_quantity and queue.returned_quantity == 0 %}
+                        <button type="button" class="btn btn-outline-info btn-auto-return" data-queue="{{ queue.id }}" title="برگشت خودکار مازاد">
+                          <i class="bi bi-arrow-left-right"></i>
+                        </button>
+                      {% endif %}
+                    {% endif %}
+                   <button type="button" class="btn btn-outline-info btn-sources" data-queue="{{ queue.id }}" title="این نیاز از کجا آمده">
+                     <i class="bi bi-diagram-3"></i>
+                   </button>
+                 </div>
+               </td>
             </tr>
             {% endwith %}
           {% empty %}
@@ -218,17 +226,19 @@
           <div class="col-4"><label class="form-label">برنامه‌ریزی‌شده</label><div class="form-control-plaintext fw-bold" id="deliveryPlanned">—</div></div>
           <div class="col-4"><label class="form-label">اندازهٔ بسته</label><div class="form-control-plaintext" id="deliveryPackSize">—</div></div>
           <div class="col-4"><label class="form-label">تعداد بسته</label><div class="form-control-plaintext" id="deliveryPacks">—</div></div>
-          <div class="col-4"><label class="form-label">خروج فیزیکی</label><div class="form-control-plaintext fw-bold text-primary" id="deliveryPhysical">—</div></div>
-          <div class="col-4"><label class="form-label">موجودی انبار</label><div class="form-control-plaintext" id="deliveryStock">—</div></div>
-          <div class="col-4"><label class="form-label">کافی است؟</label><div class="form-control-plaintext" id="deliveryEnough">—</div></div>
+           <div class="col-4"><label class="form-label">خروج فیزیکی</label><div class="form-control-plaintext fw-bold text-primary" id="deliveryPhysical">—</div></div>
+           <div class="col-4"><label class="form-label">پیشنهادی برای تحویل</label><div class="form-control-plaintext fw-bold text-success" id="deliverySuggested">—</div></div>
+           <div class="col-4"><label class="form-label">موجودی انبار</label><div class="form-control-plaintext" id="deliveryStock">—</div></div>
+           <div class="col-4"><label class="form-label">کافی است؟</label><div class="form-control-plaintext" id="deliveryEnough">—</div></div>
         </div>
-        <div id="deliveryFormArea">
-          <label class="form-label fw-bold" for="deliveryQuantityInput">مقدار تحویل</label>
-          <input type="text" class="form-control form-control-sm" id="deliveryQuantityInput" readonly>
-          <div class="form-text">نیاز به تعداد بستهٔ کامل گرد می‌شود؛ همین عدد از انبار کم می‌شود.</div>
-          <label class="form-label mt-2" for="deliveryNoteInput">یادداشت</label>
-          <input type="text" class="form-control form-control-sm" id="deliveryNoteInput" maxlength="255">
-        </div>
+         <div id="deliveryFormArea">
+           <label class="form-label fw-bold" for="deliveryQuantityInput">مقدار تحویل</label>
+           <input type="number" step="0.01" min="0.01" class="form-control form-control-sm" id="deliveryQuantityInput">
+           <div class="form-text" id="deliveryBreakdown"></div>
+           <div class="form-text">نیاز به تعداد بستهٔ کامل گرد می‌شود؛ همین عدد از انبار کم می‌شود.</div>
+           <label class="form-label mt-2" for="deliveryNoteInput">یادداشت</label>
+           <input type="text" class="form-control form-control-sm" id="deliveryNoteInput" maxlength="255">
+         </div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
@@ -256,19 +266,23 @@
           <div class="col-4"><label class="form-label">تحویل‌شده</label><div class="form-control-plaintext fw-bold" id="returnDelivered">—</div></div>
           <div class="col-4"><label class="form-label">برگشتی قبلی</label><div class="form-control-plaintext" id="returnAlready">—</div></div>
           <div class="col-4"><label class="form-label">مصرف واقعی</label><div class="form-control-plaintext" id="returnActual">—</div></div>
-          <div class="col-6"><label class="form-label">قابل بازگشت (حداکثر)</label><div class="form-control-plaintext fw-bold text-primary" id="returnMaxReturnable">—</div></div>
-        </div>
-        <label class="form-label fw-bold" for="returnQuantityInput">مقدار برگشتی <span class="text-danger">*</span></label>
-        <input type="number" class="form-control form-control-sm" id="returnQuantityInput" min="0" step="0.01" required>
-        <div class="form-text">مقداری که کارگر به انبار بازگردانده است؛ موجودی انبار به همین اندازه برمی‌گردد.</div>
-        <label class="form-label mt-2" for="returnNoteInput">یادداشت</label>
-        <input type="text" class="form-control form-control-sm" id="returnNoteInput" maxlength="255">
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
-        <button type="button" class="btn btn-warning" id="confirmReturnBtn" disabled>
-          <i class="bi bi-check-lg"></i> ثبت بازگشت
-        </button>
+           <div class="col-6"><label class="form-label">قابل بازگشت (حداکثر)</label><div class="form-control-plaintext fw-bold text-primary" id="returnMaxReturnable">—</div></div>
+           <div class="col-6"><label class="form-label">برگشت خودکار پیشنهادی</label><div class="form-control-plaintext fw-bold text-success" id="returnAutoReturnable">—</div></div>
+         </div>
+         <label class="form-label fw-bold" for="returnQuantityInput">مقدار برگشتی <span class="text-danger">*</span></label>
+         <input type="number" class="form-control form-control-sm" id="returnQuantityInput" min="0" step="0.01" required>
+         <div class="form-text">مقداری که کارگر به انبار بازگردانده است؛ موجودی انبار به همین اندازه برمی‌گردد.</div>
+         <label class="form-label mt-2" for="returnNoteInput">یادداشت</label>
+         <input type="text" class="form-control form-control-sm" id="returnNoteInput" maxlength="255">
+       </div>
+       <div class="modal-footer">
+         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+         <button type="button" class="btn btn-warning" id="confirmReturnBtn" disabled>
+           <i class="bi bi-check-lg"></i> ثبت بازگشت
+         </button>
+         <button type="button" class="btn btn-info" id="autoReturnBtn" disabled>
+           <i class="bi bi-arrow-left-right"></i> برگشت خودکار مازاد
+         </button>
       </div>
     </div>
   </div>
@@ -312,6 +326,7 @@
   const urls = {
     delivery: "{% url 'inventory:daily_queue_delivery' 0 %}".replace('/0/', '/{id}/'),
     returns: "{% url 'inventory:daily_queue_return' 0 %}".replace('/0/', '/{id}/'),
+    autoReturn: "{% url 'inventory:daily_queue_auto_return' 0 %}".replace('/0/', '/{id}/'),
     preview: "{% url 'inventory:daily_queue_preview_delivery' 0 %}".replace('/0/', '/{id}/'),
     sources: "{% url 'inventory:daily_queue_sources' 0 %}".replace('/0/', '/{id}/')
   };
@@ -367,6 +382,7 @@
   const deliveryAlert = el('deliveryAlert');
   const confirmDeliveryBtn = el('confirmDeliveryBtn');
   let activeDeliveryId = null;
+  let defaultPhysical = '';
 
   async function loadDeliveryPreview(queueId) {
     clearAlert(deliveryAlert);
@@ -382,14 +398,24 @@
         ? data.pack_size + ' ' + data.unit : 'بسته‌بندی ندارد';
       el('deliveryPacks').textContent = data.packs || '—';
       el('deliveryPhysical').textContent = data.physical + ' ' + data.unit;
+      el('deliverySuggested').textContent = (data.suggested_delivery != null && data.suggested_delivery !== undefined)
+        ? data.suggested_delivery + ' ' + data.unit : '—';
       el('deliveryStock').textContent = data.stock + ' ' + data.unit;
       el('deliveryEnough').textContent = data.enough ? 'بله' : 'خیر';
       el('deliveryEnough').className = 'form-control-plaintext ' + (data.enough ? 'text-success' : 'text-danger fw-bold');
-      el('deliveryQuantityInput').value = data.physical;
-      el('deliveryNoteInput').value = '';
+
+      defaultPhysical = data.suggested_delivery || data.physical;
+      const suggestedVal = parseFloat(data.suggested_delivery);
+      el('deliveryQuantityInput').value = suggestedVal > 0
+        ? data.suggested_delivery
+        : (parseFloat(data.physical) > 0 ? data.physical : '');
+      el('deliveryBreakdown').textContent = parseFloat(data.from_open) > 0 || parseFloat(data.from_new_pack) > 0
+        ? 'از بستهٔ ناقص: ' + data.from_open + ' — از بستهٔ جدید: ' + data.from_new_pack +
+          ' — باقی‌ماندهٔ بسته باز پس از تحویل: ' + data.remainder_after + ' ' + data.unit
+        : '';
 
       // وضعیت قابل‌تحویل بودن از سرویس می‌آید، نه از متن Badge.
-      if (!data.can_deliver) {
+      if (!data.can_deliver && !data.can_add_extra) {
         el('deliveryFormArea').style.display = 'none';
         setAlert(deliveryAlert,
           'این ردیف در وضعیت فعلی قابل تحویل نیست: ' + (data.status_display || data.status || ''));
@@ -411,9 +437,10 @@
     if (!activeDeliveryId) return;
     busy(confirmDeliveryBtn, true);
     try {
-      await postForm(urls.delivery.replace('{id}', activeDeliveryId), {
-        note: el('deliveryNoteInput').value || ''
-      });
+      const body = { note: el('deliveryNoteInput').value || '' };
+      const typed = el('deliveryQuantityInput').value;
+      if (typed) body.quantity = typed;
+      await postForm(urls.delivery.replace('{id}', activeDeliveryId), body);
       window.location.reload();
     } catch (err) {
       setAlert(deliveryAlert, err.message);
@@ -426,13 +453,14 @@
   const returnModal = returnModalEl ? bootstrap.Modal.getOrCreateInstance(returnModalEl) : null;
   const returnAlert = el('returnAlert');
   const confirmReturnBtn = el('confirmReturnBtn');
+  const autoReturnBtn = el('autoReturnBtn');
   let activeReturnId = null;
 
   async function loadReturnData(queueId) {
     clearAlert(returnAlert);
     busy(confirmReturnBtn, true);
+    autoReturnBtn.disabled = true;
     try {
-      // قاعدهٔ «حداکثر قابل بازگشت» از سرویس می‌آید و در جاوااسکریپت تکرار نمی‌شود.
       const data = await getJSON(urls.sources.replace('{id}', queueId));
       activeReturnId = queueId;
       el('returnMaterialName').textContent = data.material;
@@ -441,6 +469,7 @@
       el('returnAlready').textContent = data.returned_quantity;
       el('returnActual').textContent = data.actual_consumption;
       el('returnMaxReturnable').textContent = data.max_returnable;
+      el('returnAutoReturnable').textContent = data.auto_returnable || '—';
 
       if (!data.can_return) {
         setAlert(returnAlert, 'برای این ردیف در حال حاضر مقداری قابل بازگشت وجود ندارد.');
@@ -449,7 +478,14 @@
         return;
       }
       el('returnQuantityInput').max = data.max_returnable;
-      el('returnQuantityInput').value = data.max_returnable;
+      const autoReturnable = parseFloat(data.auto_returnable) || 0;
+      if (autoReturnable > 0) {
+        el('returnQuantityInput').value = data.auto_returnable;
+        autoReturnBtn.disabled = false;
+      } else {
+        el('returnQuantityInput').value = data.max_returnable;
+        autoReturnBtn.disabled = true;
+      }
       el('returnNoteInput').value = '';
       busy(confirmReturnBtn, false, '<i class="bi bi-check-lg"></i> ثبت بازگشت');
     } catch (err) {
@@ -475,6 +511,20 @@
     try {
       await postForm(urls.returns.replace('{id}', activeReturnId), {
         returned_quantity: quantity,
+        note: el('returnNoteInput').value || ''
+      });
+      window.location.reload();
+    } catch (err) {
+      setAlert(returnAlert, err.message);
+      busy(confirmReturnBtn, false, '<i class="bi bi-check-lg"></i> ثبت بازگشت');
+    }
+  });
+
+  autoReturnBtn?.addEventListener('click', async () => {
+    if (!activeReturnId) return;
+    busy(confirmReturnBtn, true);
+    try {
+      await postForm(urls.autoReturn.replace('{id}', activeReturnId), {
         note: el('returnNoteInput').value || ''
       });
       window.location.reload();
@@ -514,7 +564,7 @@
     }
   }
 
-  el('dailyQueueTable')?.addEventListener('click', event => {
+  el('dailyQueueTable')?.addEventListener('click', async event => {
     const row = event.target.closest('tr[data-queue]');
     if (!row) return;
     const queueId = row.dataset.queue;
@@ -523,6 +573,16 @@
       activeDeliveryId = queueId;
       loadDeliveryPreview(queueId);
       deliveryModal.show();
+    } else if (event.target.closest('.btn-auto-return')) {
+      try {
+        await postForm(urls.autoReturn.replace('{id}', queueId), {});
+        window.location.reload();
+      } catch (err) {
+        const alertBox = document.createElement('div');
+        alertBox.className = 'alert alert-danger';
+        alertBox.textContent = err.message;
+        document.querySelector('tbody tr[data-queue="' + queueId + '"]').closest('.card').prepend(alertBox);
+      }
     } else if (event.target.closest('.btn-return')) {
       loadReturnData(queueId);
       returnModal.show();
@@ -533,6 +593,7 @@
 
   deliveryModalEl?.addEventListener('hidden.bs.modal', () => {
     activeDeliveryId = null;
+    defaultPhysical = '';
     clearAlert(deliveryAlert);
   });
   returnModalEl?.addEventListener('hidden.bs.modal', () => {

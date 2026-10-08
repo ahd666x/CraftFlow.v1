@@ -31,6 +31,8 @@ urlpatterns = [
          views.daily_queue_delivery, name='daily_queue_delivery'),
     path('daily-queue/<int:queue_id>/return/',
          views.daily_queue_return, name='daily_queue_return'),
+    path('daily-queue/<int:queue_id>/auto-return/',
+         views.daily_queue_auto_return, name='daily_queue_auto_return'),
     path('daily-queue/<int:queue_id>/sources/',
          views.daily_queue_sources, name='daily_queue_sources'),
     path('daily-queue/<int:queue_id>/preview-delivery/',

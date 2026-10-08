@@ -57,7 +57,10 @@ INSTALLED_APPS = [
     'discounts',
     'payments',
     'accounts',
+    'api',
     'rest_framework',
+    'rest_framework_simplejwt',
+    'drf_spectacular',
     'django.contrib.humanize',
 
 ]
@@ -161,8 +164,8 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
 LOGIN_URL = '/accounts/login/'
-LOGIN_REDIRECT_URL = '/'
-LOGOUT_REDIRECT_URL = '/'
+LOGIN_REDIRECT_URL = '/shop/'
+LOGOUT_REDIRECT_URL = '/shop/'
 
 
 STATIC_ROOT = BASE_DIR / 'staticfiles'
@@ -245,4 +248,36 @@ LOGGING = {
             'propagate': False,
         },
     },
+}
+
+# --- REST Framework / API ---
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'rest_framework.authentication.SessionAuthentication',
+        'rest_framework.authentication.BasicAuthentication',
+    ),
+    'DEFAULT_PERMISSION_CLASSES': (
+        'rest_framework.permissions.IsAuthenticatedOrReadOnly',
+    ),
+    'DEFAULT_RENDERER_CLASSES': (
+        'rest_framework.renderers.JSONRenderer',
+        'rest_framework.renderers.BrowsableAPIRenderer',
+    ),
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 20,
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+}
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'CraftFlow Store API',
+    'DESCRIPTION': 'API برای فروشگاه آنلاین و تولید سفارشات',
+    'VERSION': '1.0.0',
+}
+
+from datetime import timedelta
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(hours=2),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    'AUTH_HEADER_TYPES': ('Bearer',),
 }

@@ -128,6 +128,31 @@ def _packs_for(need, pack_size):
     return _physical_for(need, pack_size)
 
 
+def _suggested_delivery(need, pack_size, stock):
+    """
+    مقدار پیشنهادی تحویل: موجودی انبار منهای یک بستهٔ کامل.
+
+    هدف این است که همواره یک بستهٔ کامل در انبار باقی بماند. اگر موجودی
+    بیش از یک بسته باشد، مقدار ``stock - pack_size`` پیشنهاد می‌شود؛ باقی‌مانده
+    نیاز از این مقدار مصرف می‌شود و مازاد به‌صورت خودکار در پایان روز برمی‌گردد.
+    اگر موجودی کمتر از یا مساوی یک بسته باشد، تمام موجودی تحویل می‌شود.
+
+    بدون اندازه بستهٔ ثابت (``pack_size <= 0``) مقدار نیاز به‌صورت دقیق
+    برمی‌گردد.
+    """
+    need = _q2(need)
+    pack = _q2(pack_size or 0)
+    stock_val = _q2(stock or 0)
+
+    if pack <= 0:
+        return need
+
+    if stock_val > pack:
+        return stock_val - pack
+
+    return need
+
+
 def receive_quantity(raw_material, pack_count):
     """
     مقدار انبار از تعداد بسته — قانون ورود کالا.
@@ -170,9 +195,42 @@ def _task_date(task):
 def _day_bounds(date):
     """بازهٔ [start, end) برای یک تاریخ کاری، با آگاهی از منطقهٔ زمانی."""
     from datetime import datetime, timedelta
+
     day_start = datetime.combine(date, datetime.min.time())
     start = day_start if timezone.is_aware(day_start) else timezone.make_aware(day_start)
     return start, start + timedelta(days=1)
+
+
+def _is_working(date):
+    import jdatetime
+    from product.utils import is_working_day
+
+    return is_working_day(jdatetime.date.fromgregorian(date=date))
+
+
+def _shift_working_date(date, step, limit=14):
+    """نزدیک‌ترین روز کاری قبل (step=-1) یا بعد (step=+1)؛ جمعه و تعطیلات رد می‌شوند."""
+    from datetime import timedelta
+
+    current = date
+    for _ in range(limit):
+        current = current + timedelta(days=step)
+        if _is_working(current):
+            return current
+    return None
+
+
+def _delivery_status(queue):
+    """وضعیت ردیف از روی مقادیر؛ تنها تعریف این قاعده."""
+    delivered = _q2(queue.delivered_quantity)
+    returned = _q2(queue.returned_quantity)
+    if delivered <= 0:
+        return 'pending'
+    if returned >= delivered:
+        return 'returned'
+    if delivered < _q2(queue.planned_quantity):
+        return 'partial'
+    return 'delivered'
 
 
 # ---------------------------------------------------------------------------
@@ -379,6 +437,7 @@ def aggregate_queue_requirements(tasks, date=None):
             _accumulate_station_task(task, grouped, diagnostics)
 
     _accumulate_rework_needs(grouped, diagnostics, date)
+    _accumulate_carryover(grouped, diagnostics, date)
 
     # نهایی‌سازی پیش از سنجش هم‌پوشانی لازم است: واحدهای کار نقاشی تا وقتی به
     # سهم قطعی تبدیل نشده باشند در ``stages_by_process`` ثبت نمی‌شوند و تشخیص
@@ -552,6 +611,30 @@ def _accumulate_rework_needs(grouped, diagnostics, date=None):
         entry = _entry_for(grouped, worker, raw, None, '')
         entry['quantity'] += qty
         entry['sources'].append(('rework', None, None, defect, raw, qty))
+
+
+def _accumulate_carryover(grouped, diagnostics, date):
+    """
+    کسری تحویل روز کاری قبل (ردیف partial) را به همان کارگر و ماده در *date* می‌آورد.
+    در tuple منبع، جایگاه `task` برای نوع carryover ردیف مبدأ را نگه می‌دارد.
+    """
+    if date is None:
+        return
+    previous = _shift_working_date(date, -1)
+    if previous is None:
+        return
+    rows = (
+        DailyMaterialQueue.objects
+        .filter(work_date=previous, status='partial', delivered_quantity__gt=0)
+        .select_related('worker', 'raw_material')
+    )
+    for row in rows:
+        shortfall = _q2(row.planned_quantity) - _q2(row.delivered_quantity)
+        if shortfall <= 0:
+            continue
+        entry = _entry_for(grouped, row.worker, row.raw_material, None, '')
+        entry['quantity'] += shortfall
+        entry['sources'].append(('carryover', row, None, None, row.raw_material, shortfall))
 
 
 def _finalise_grouped(grouped):
@@ -790,14 +873,13 @@ def build_daily_queue_for_date(date):
             # منابع فقط برای ردیف‌های بدون حرکت واقعی تازه می‌شوند.
             queue.sources.all().delete()
             for kind, task, stage, defect, raw, qty in entry['sources']:
+                origin = task if kind == 'carryover' else None
                 DailyMaterialQueueSource.objects.create(
-                    queue=queue,
-                    kind=kind,
-                    production_task=task,
-                    painting_stage=stage,
-                    defect=defect,
-                    raw_material=raw,
-                    quantity=_q2(qty),
+                    queue=queue, kind=kind,
+                    production_task=None if origin else task,
+                    carryover_from=origin,
+                    painting_stage=stage, defect=defect,
+                    raw_material=raw, quantity=_q2(qty),
                 )
 
         # ردیف‌هایی که دیگر جزو برنامه نیستند.
@@ -963,49 +1045,54 @@ def sync_queue_safe(task_ids=None, date=None):
 # ---------------------------------------------------------------------------
 
 @transaction.atomic
-def execute_daily_delivery(*, queue_id, delivered_by, note=''):
+def execute_daily_delivery(*, queue_id, delivered_by, note='', quantity=None):
     """
     تحویل مواد برای یک ردیف صف — تنها نقطهٔ کسر موجودی بابت تولید.
 
-    مقدار تحویل با قانون بسته‌بندی حساب می‌شود::
-
-        physical = ceil(planned / pack_size) * pack_size   اگر pack_size > 0
-        physical = planned                                 در غیر این صورت
-
-    و همان ``physical`` در ``StockMovement(consumption)`` ثبت می‌شود.
-
-    این تابع تنها منبع حقیقتِ «مقدار قابل تحویل» است؛ فراخوان (ویو/UI) نباید
-    قانون بسته‌بندی را دوباره پیاده کند.
-
-    Idempotency / هم‌روندی:
-        ردیف صف برای کل عملیات با ``select_for_update`` قفل می‌شود، پس دو
-        درخواست هم‌زمان هرگز هر دو موجودی را کم نمی‌کنند. هر ردیفی که از
-        قبل حرکت واقعی دارد (``has_transaction``) رد می‌شود — این وضعیت‌هایی
-        مثل ``returned`` را هم پوشش می‌دهد که بررسی سادهٔ وضعیت ممکن است
-        تحویل دوباره را جا بیندازد.
+    quantity=None → باقی‌ماندهٔ نیاز تحویل می‌شود (بار اول با گرد کردن به بسته،
+                    بارهای بعد دقیقاً باقی‌مانده).
+    quantity=X    → انباردار مقدار دلخواه (کمتر یا بیشتر از نیاز) را تحویل می‌دهد.
+    مازاد روی نیاز در excess_consumption می‌آید؛ کسری در روز کاری بعد منتقل می‌شود.
     """
     try:
         queue = DailyMaterialQueue.objects.select_for_update().get(pk=queue_id)
     except DailyMaterialQueue.DoesNotExist:
         raise HandoverError('ردیف صف مواد روزانه یافت نشد.')
 
-    if queue.has_transaction or queue.status in ('delivered', 'returned', 'closed'):
-        raise HandoverError('این ردیف قبلاً تحویل داده شده است و تحویل دوبارهٔ آن ممکن نیست.')
-
     if queue.status == 'cancelled':
         raise HandoverError(
             'این ردیف از برنامهٔ روز حذف شده است؛ تا زمانی که نیاز آن در '
             'برنامه نباشد، تحویل ممکن نیست.'
         )
+    if queue.status in ('returned', 'closed') or _q2(queue.returned_quantity) > 0:
+        raise HandoverError(
+            'این ردیف قبلاً تحویل داده شده است و تحویل دوبارهٔ آن ممکن نیست.'
+        )
 
     planned = _q2(queue.planned_quantity)
+    delivered_before = _q2(queue.delivered_quantity)
     pack = _q2(queue.raw_material.pack_size or 0)
-
-    if planned <= 0:
-        raise HandoverError('مقدار برنامه‌ریزی‌شده برای این ردیف صفر است؛ تحویلی انجام نمی‌شود.')
-
     stock = _q2(queue.raw_material.current_stock)
-    packs, physical = _physical_for(planned, pack, stock=stock)
+
+    if quantity is None:
+        if planned <= 0:
+            raise HandoverError('مقدار برنامه‌ریزی‌شده برای این ردیف صفر است؛ تحویلی انجام نمی‌شود.')
+        remaining = _q2(planned - delivered_before)
+        if remaining <= 0:
+            raise HandoverError(
+                'این ردیف قبلاً تحویل داده شده است. برای تحویل اضافه، مقدار را صریحاً وارد کنید.'
+            )
+        if delivered_before > 0:
+            physical = remaining
+        else:
+            _packs, physical = _physical_for(remaining, pack, stock=stock)
+    else:
+        try:
+            physical = _q2(quantity)
+        except (TypeError, ValueError, ArithmeticError, InvalidOperation):
+            raise HandoverError('مقدار تحویل معتبر نیست.')
+        if not physical.is_finite() or physical <= 0:
+            raise HandoverError('مقدار تحویل باید بزرگ‌تر از صفر باشد.')
 
     if physical > stock:
         raise HandoverError(
@@ -1013,8 +1100,6 @@ def execute_daily_delivery(*, queue_id, delivered_by, note=''):
             f'مقدار تحویل {physical} لازم است اما موجودی {stock} است.'
         )
 
-    # تا این‌جا هیچ نوشتنی انجام نشده؛ از این نقطه به بعد حرکت انبار و به‌روزرسانی
-    # صف در همان تراکنش انجام می‌شود، پس خطا هیچ تغییری باقی نمی‌گذارد.
     StockMovement.objects.create(
         raw_material=queue.raw_material,
         movement_type='consumption',
@@ -1023,20 +1108,20 @@ def execute_daily_delivery(*, queue_id, delivered_by, note=''):
         created_by=delivered_by,
         note=(note or '')[:255] or f'تحویل روزانه — {queue.raw_material.name} به {queue.worker}',
     )
-    # مقدار ثبت‌شده در صف باید دقیقاً همان چیزی باشد که از انبار کم شده است.
-    # planned_quantity دست‌نخورده می‌ماند و مابه‌التفاوت (پک اضافه) یا مصرف
-    # اضافه گزارش می‌شود یا به‌صورت برگشتی برمی‌گردد. اگر اینجا مقدار نیاز
-    # ذخیره شود، موجودی انبار با صف reconcile نمی‌شود و پک اضافه هرگز
-    # قابل برگشت نیست.
-    queue.delivered_quantity = physical
-    queue.status = 'delivered'
+    queue.delivered_quantity = _q2(delivered_before + physical)
+    queue.status = _delivery_status(queue)
     queue.recalculate_consumption()
     queue.save(update_fields=[
         'delivered_quantity', 'status',
         'actual_consumption', 'excess_consumption', 'updated_at',
     ])
 
-    _mark_rework_defects_delivered(queue)
+    if queue.status != 'partial':
+        _mark_rework_defects_delivered(queue)
+
+    next_date = _shift_working_date(queue.work_date, +1)
+    if next_date is not None:
+        transaction.on_commit(lambda d=next_date: request_queue_sync([d]))
     return queue
 
 
@@ -1123,11 +1208,67 @@ def execute_daily_return(*, queue_id, returned_by, returned_quantity, note=''):
         note=(note or '')[:255] or f'بازگشت روزانه — {queue.raw_material.name} از {queue.worker}',
     )
     queue.returned_quantity = _q2(already_returned + ret)
-    if queue.returned_quantity >= delivered:
-        queue.status = 'returned'
-    else:
-        queue.status = 'delivered'
+    queue.status = _delivery_status(queue)
     # planned_quantity و منابع برنامه‌ریزی دست‌نخورده می‌مانند.
+    queue.recalculate_consumption()
+    queue.save(update_fields=[
+        'returned_quantity', 'status',
+        'actual_consumption', 'excess_consumption', 'updated_at',
+    ])
+
+    return queue
+
+
+@transaction.atomic
+def execute_auto_return(*, queue_id, returned_by, note=''):
+    """
+    برگشت خودکار مازاد تحویل در پایان روز کاری.
+
+    وقتی یک ردیف تحویل داده می‌شود، مقدار ``delivered - planned`` مازاد
+    محسوب می‌شود؛ این مقدار به‌صورت خودکار در پایان روز برگشت داده می‌شود تا
+    مصرف واقعی دقیقاً معادل نیاز برنامه‌ریزی‌شده باشد.
+
+    اگر انباردار مقدار برگشت دستی ثبت کرده باشد، مازاد قبلی کمتر می‌شود؛ هر
+    تفاوی بین مجموع برگشت‌ها و «مازاد خودکار» به‌عنوان مصرف اضافه یا کم
+    از طریق ``recalculate_consumption`` ثبت می‌شود.
+
+    این تابع idempotent است؛ صدور همزمان آن برای یک ردیف دوباره نمی‌شود.
+    """
+    try:
+        queue = DailyMaterialQueue.objects.select_for_update().get(pk=queue_id)
+    except DailyMaterialQueue.DoesNotExist:
+        raise HandoverError('ردیف صف مواد روزانه یافت نشد.')
+
+    if queue.status == 'cancelled':
+        raise HandoverError(
+            'این ردیف از برنامهٔ روز حذف شده است؛ برگشت برای آن ثبت نمی‌شود.'
+        )
+
+    delivered = _q2(queue.delivered_quantity)
+    planned = _q2(queue.planned_quantity)
+    already_returned = _q2(queue.returned_quantity)
+
+    if delivered <= 0:
+        raise HandoverError('این ردیف هنوز تحویل نشده است؛ ابتدا تحویل را ثبت کنید.')
+
+    actual_consumption = _q2(delivered - already_returned)
+    excess = _q2(actual_consumption - planned)
+    if excess <= 0:
+        return queue
+
+    max_returnable = actual_consumption
+    actual_return = _q2(min(excess, max_returnable))
+
+    StockMovement.objects.create(
+        raw_material=queue.raw_material,
+        movement_type='return',
+        quantity=actual_return,
+        daily_queue=queue,
+        created_by=returned_by,
+        note=(note or '')[:255] or f'برگشت خودکار مازاد تحویل — {queue.raw_material.name}',
+    )
+    queue.returned_quantity = _q2(already_returned + actual_return)
+    queue.status = _delivery_status(queue)
     queue.recalculate_consumption()
     queue.save(update_fields=[
         'returned_quantity', 'status',
@@ -1304,15 +1445,34 @@ def daily_queue_action_state(queue):
     delivered = _q2(queue.delivered_quantity)
     already_returned = _q2(queue.returned_quantity)
     max_returnable = _q2(max(delivered - already_returned, Decimal('0')))
+    remaining = _q2(max(planned - delivered, Decimal('0')))
+    no_returns = already_returned <= 0
 
     can_deliver = (
-        not queue.has_transaction
-        and queue.status not in ('delivered', 'returned', 'closed', 'cancelled')
+        queue.status in ('pending', 'partial')
+        and no_returns
         and planned > 0
+        and remaining > 0
+    )
+    can_add_extra = (
+        queue.status in ('partial', 'delivered')
+        and no_returns
+        and delivered > 0
     )
     can_return = (
-        queue.status != 'cancelled'
+        queue.status not in ('cancelled', 'returned')
         and delivered > 0
+        and max_returnable > 0
+    )
+
+    pack = _q2(queue.raw_material.pack_size or 0)
+    stock = _q2(queue.raw_material.current_stock)
+    suggested = _suggested_delivery(remaining, pack, stock)
+    auto_returnable = _q2(max(delivered - planned, Decimal('0')))
+    can_auto_return = (
+        queue.status in ('delivered', 'partial')
+        and no_returns
+        and auto_returnable > 0
         and max_returnable > 0
     )
 
@@ -1322,6 +1482,11 @@ def daily_queue_action_state(queue):
         'can_deliver': can_deliver,
         'can_return': can_return,
         'max_returnable': str(max_returnable),
+        'remaining': str(remaining),
+        'can_add_extra': can_add_extra,
+        'suggested_delivery': str(suggested),
+        'auto_returnable': str(auto_returnable),
+        'can_auto_return': can_auto_return,
     }
 
 
@@ -1359,6 +1524,8 @@ def daily_closing_problems(qs):
         if queue.status in ('delivered', 'returned') and not queue.has_transaction:
             reasons.add('inconsistent')
         if queue.status == 'returned' and returned < delivered:
+            reasons.add('inconsistent')
+        if queue.status == 'partial' and not queue.has_transaction:
             reasons.add('inconsistent')
         if _q2(queue.actual_consumption) != _q2(queue.computed_actual_consumption):
             reasons.add('inconsistent')
@@ -1463,7 +1630,23 @@ def preview_daily_delivery(queue_id):
     planned = _q2(queue.planned_quantity)
     pack = _q2(queue.raw_material.pack_size or 0)
     stock = _q2(queue.raw_material.current_stock)
-    packs, physical = _physical_for(planned, pack, stock=stock)
+
+    delivered = _q2(queue.delivered_quantity)
+    remaining = _q2(max(planned - delivered, Decimal('0')))
+    if delivered > 0:
+        packs, physical = 0, remaining
+    else:
+        physical = _suggested_delivery(remaining, pack, stock)
+        packs = _packs_for(remaining, pack)[0] if pack > 0 else 0
+
+    open_remainder = _q2(stock % pack) if pack > 0 else ZERO
+    from_open = _q2(min(physical, open_remainder))
+    from_new_pack = _q2(physical - from_open)
+    remainder_after = _q2((stock - physical) % pack) if pack > 0 else ZERO
+
+    suggested_delivery = _suggested_delivery(
+        _q2(max(planned - delivered, Decimal('0'))), pack, stock,
+    )
 
     return {
         'queue': queue,
@@ -1475,7 +1658,13 @@ def preview_daily_delivery(queue_id):
         'enough': physical <= stock,
         'name': queue.raw_material.name,
         'unit': queue.raw_material.get_unit_display(),
+        'remaining': remaining,
+        'open_remainder': open_remainder,
+        'from_open': from_open,
+        'from_new_pack': from_new_pack,
+        'remainder_after': remainder_after,
         **daily_queue_action_state(queue),
+        'suggested_delivery': suggested_delivery,
     }
 
 
@@ -1497,12 +1686,32 @@ def queue_sources(queue_id):
             'production_task', 'painting_stage', 'painting_stage__process',
             'production_task__order_item',
             'defect', 'defect__order', 'defect__order_item__product',
+            'carryover_from',
         )
         .order_by('kind', 'id')
     ):
         task = source.production_task
         stage = source.painting_stage
         process = stage.process if stage and stage.process_id else None
+
+        if source.kind == 'carryover':
+            origin = source.carryover_from
+            rows.append({
+                'kind': 'carryover',
+                'kind_display': 'انتقال کسری',
+                'label': f'کسری ردیف #{origin.pk}' if origin else 'کسری روز قبل',
+                'detail': (
+                    f'{origin.work_date} — تحویل {_q2(origin.delivered_quantity)} '
+                    f'از {_q2(origin.planned_quantity)}' if origin else ''
+                ),
+                'quantity': _q2(source.quantity),
+                'task_label': '',
+                'stage_name': '',
+                'process_name': '',
+                'color_part': '',
+                'order_item': '',
+            })
+            continue
 
         if source.kind == 'rework':
             defect = source.defect

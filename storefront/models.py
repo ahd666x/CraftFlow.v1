@@ -192,8 +192,8 @@ class SiteSettings(TimeStampedModel):
     is_maintenance = models.BooleanField(default=False, verbose_name='در حالت تعمیرات')
 
     class Meta:
-        verbose_name = ' regulation settings سایت'
-        verbose_name_plural = ' regulation settings سایت'
+        verbose_name = ' settings سایت'
+        verbose_name_plural = ' settings سایت'
 
     def __str__(self):
         return self.site_name
