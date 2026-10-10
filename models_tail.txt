@@ -1,47 +1,4 @@
-"""
-مدل‌های اختصاصی لایه‌ی فروشگاه.
-
-قاعده‌ی مهم این ماژول: هیچ‌چیز اینجا «کپی» از مدل‌های `product` نیست.
-`Product`، `ProductCategory`، `Part`، `BOM`، `Color` و کل چرخه‌ی تولید
-متعلق به `product` باقی می‌مانند و از این ماژول به آن‌ها ارجاع می‌دهیم.
-مدل‌هایی که در `product` وجود ندارند (گالری، نظرات، آدرس، مرجوعی، مقایسه)
-اینجا تعریف می‌شوند.
-"""
-from django.conf import settings
-from django.db import models
-
-from storefront.base import TimeStampedModel
-
-
-class ColorOption(TimeStampedModel):
-    """
-    پالت رنگ سراسری فروشگاه.
-
-    توجه به نام: در `product` هم مدلی به نام `Color` وجود دارد، اما آن یک
-    رکورد «رنگ انتخابیِ یک آیتم سفارش» است، نه یک رنگ از کاتالوگ. این مدل
-    همان کاتالوگ رنگ است و عمداً نام متفاوتی گرفته تا با آن اشتباه نشود و
-    هر دو بتوانند کنار هم وجود داشته باشند.
-    """
-    name = models.CharField(max_length=50, unique=True, verbose_name="نام رنگ")
-    code = models.CharField(max_length=7, blank=True, verbose_name="کد رنگ (هگز)")
-    is_active = models.BooleanField(default=True, verbose_name="فعال")
-
-    class Meta:
-        verbose_name = "رنگ کاتالوگ"
-        verbose_name_plural = "رنگ‌های کاتالوگ"
-        ordering = ['name']
-
-    def __str__(self):
-        return self.name
-
-
-class ProductImage(TimeStampedModel):
-    """تصاویر گالری محصول. رنگِ تصویر به پالت `ColorOption` وصل است."""
-    product = models.ForeignKey(
-        'product.Product', on_delete=models.CASCADE, related_name='images',
-        verbose_name="محصول",
-    )
-    color = models.ForeignKey(
+eignKey(
         ColorOption, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='images', verbose_name="رنگ",
     )

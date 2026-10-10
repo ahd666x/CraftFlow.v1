@@ -293,7 +293,6 @@ requirements.txt  →  Django==6.0.6
 - ~~`accounts` بدون تعویض `AUTH_USER_MODEL`~~ → **انجام شد** (از `UserProfile` یک‌تایی استفاده می‌کند).
 - ~~`storefront/admin.py` برای مدل‌های فروشگاه~~ → **انجام شد**.
 - ~~صفحه‌ی پرداخت و مرجوعی در UI~~ → **انجام شد** (payments + returns templates).
-- ~~اپ `api` (فاز ۸)~~ → **انجام شد** (DRF + JWT + drf_spectacular).
 
 ### فاز ۵–۷ (انجام‌شده در ۱۴۰۵/۰۷/۱۵)
 - **اپ `payments`** ساخته شد: `Payment` (یک‌تایی سفارش) + `Transaction` + دو درگاه `ZarinpalGateway` و `CashOnDeliveryGateway` + `PaymentGatewayFactory`.
@@ -312,17 +311,3 @@ requirements.txt  →  Django==6.0.6
 - **پرداخت:** افزودن به سبد → تسویه → ساخت سفارش → پرداخت COD → verify → سفارش به `paid` تغییر وضعیت داد و `Payment` به `success` تغییر یافت. ✅
 - **تخفیف:** اعمال کد `SAVE10` (۱۰٪) → `Cart.discount_amount = 200` و `final_price = 1800` → سفارش ثبت‌شده `discount_id = 1`، `discount_amount = 200`، `final_amount = 1800` را دارد. ✅
 - `manage.py check`: بدون خطا. ✅
-
-### فاز ۸ (انجام‌شده در ۱۴۰۵/۰۷/۱۶)
-- **اپ `api`** با DRF پورت شد: `ProductViewSet`، `ProductCategoryViewSet`، `CartViewSet`، `OrderViewSet`، `DiscountViewSet`، `ProductionTaskViewSet` + `CurrentUserView` + JWT auth (`TokenObtainPairView`/`TokenRefreshView`) + `drf_spectacular` schema.
-- `INSTALLED_APPS` به `api`، `rest_framework`، `rest_framework_simplejwt`، `drf_spectacular` گسترش یافت.
-- `REST_FRAMEWORK` و `SIMPLE_JWT` در `selvi/settings.py` پیکربندی شدند.
-- مسیرها در `selvi/urls.py` زیر `/api/v1/` ثبت شدند.
-- `api/signals.py` برای ساخت خودکار `Cart` در هنگام ثبت‌نام کاربر (از `Cart.objects.get_or_create`).
-- smoke test: `/api/v1/products/` (۴ محصول)، `/api/v1/categories/` (۴ دسته)، `/api/v1/cart/` (سبد خالی)، `/api/v1/auth/users/me/` (پروفایل کاربر)، `/api/v1/auth/token/` (JWT pair) — همه ۲۰۰. ✅
-
-### نکات پایانی
-- `Product.image` و `ProductCategory.image` فیلدهای `ImageField` دارند و از طریق ادمین `product` قابل آپلود هستند.
-- برای لوگو و عکس کاور صفحه home، مدل `SiteSettings` (singleton) در `storefront` ساخته شد تا ادمین بتواند از طریق ادمین Django آن را تغییر دهد.
-- همه مسیرهای ورود/خروج/ثبت‌نام/بازیابی رمز عبور به namespace `accounts:` تغییر یافتند (`product/templates/base.html`، `base_shop.html`، `registration/login.html`، `storefront/includes/header.html`).
-- `manage.py check` بدون خطا. ✅

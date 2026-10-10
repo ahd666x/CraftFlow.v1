@@ -59,14 +59,14 @@
                     </li>
                     {% endif %}
                     <li class="nav-item">
-                        <form action="{% url 'accounts:logout' %}" method="post" class="m-0">
+                        <form action="{% url 'logout' %}" method="post" class="m-0">
                             {% csrf_token %}
                             <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-box-arrow-left"></i> خروج</button>
                         </form>
                     </li>
                 {% else %}
                     <li class="nav-item">
-                        <a href="{% url 'accounts:login' %}" class="btn btn-sm btn-primary">ورود</a>
+                        <a href="{% url 'login' %}" class="btn btn-sm btn-primary">ورود</a>
                     </li>
                 {% endif %}
             </ul>

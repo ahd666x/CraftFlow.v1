@@ -576,7 +576,7 @@ def main():
         pack = Decimal(str(mat.pack_size or 0))
         planned = Decimal(str(q.planned_quantity))
         stock = Decimal(str(mat.current_stock))
-        _packs, physical = _physical_for(planned, float(pack) if pack > 0 else 0, stock=stock)
+        _packs, physical = _physical_for(planned, float(pack) if pack > 0 else 0, stock)
         material_needs[mat.id] = material_needs.get(mat.id, Decimal('0')) + Decimal(str(physical))
 
     for mat_id, total_physical in material_needs.items():
@@ -623,7 +623,7 @@ def main():
             planned = _q2(q.planned_quantity)
             stock = _q2(mat.current_stock)
 
-            packs, physical = _physical_for(planned, pack, stock=stock)
+            packs, physical = _physical_for(planned, pack, stock)
 
             print(f'  مقدار: {mat.name} / {q.worker} | planned={planned} | '
                   f'pack={pack} | packs={packs} | physical(تحویل)={physical} | '

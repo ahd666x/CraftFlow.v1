@@ -59,13 +59,13 @@
                     <li class="nav-item">
                         <span class="nav-link text-muted small">{{ user.username }}</span>
                     </li>
-                    <form action="{% url 'accounts:logout' %}" method="post" style="display: inline;">
+                    <form action="{% url 'logout' %}" method="post" style="display: inline;">
                         {% csrf_token %}
                         <button type="submit" class="btn btn-link nav-link text-danger">خروج</button>
                     </form>
                 {% else %}
                     <li class="nav-item">
-                        <a class="nav-link" href="{% url 'accounts:login' %}">ورود / ثبت‌نام</a>
+                        <a class="nav-link" href="{% url 'login' %}">ورود / ثبت‌نام</a>
                     </li>
                 {% endif %}
             </ul>
