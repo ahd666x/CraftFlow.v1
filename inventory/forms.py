@@ -79,7 +79,7 @@ class RawMaterialForm(forms.ModelForm):
         """
         barcode = (self.cleaned_data.get('barcode') or '').strip()
         if not barcode:
-            return barcode
+            return None
         clash = RawMaterial.objects.filter(barcode=barcode)
         if self.instance.pk:
             clash = clash.exclude(pk=self.instance.pk)

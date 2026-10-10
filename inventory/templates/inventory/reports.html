@@ -131,6 +131,55 @@
 
 {# ---------------- دفتر گردش انبار ---------------- #}
 {% elif tab == 'ledger' %}
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h2 class="h6 mb-1">دفتر گردش انبار</h2>
+      <div class="small text-muted">{{ ledger.total_count }} حرکت — {{ ledger.rows|length }} نمایش‌داده‌شده</div>
+    </div>
+    <div class="d-flex gap-2">
+      <a href="{% url 'inventory:material_ledger_export' %}?{{ request.GET.urlencode }}&format=csv"
+         class="btn btn-sm btn-outline-success"><i class="bi bi-file-earmark-spreadsheet"></i> CSV</a>
+      <a href="{% url 'inventory:material_ledger_export' %}?{{ request.GET.urlencode }}&format=xlsx"
+         class="btn btn-sm btn-outline-primary"><i class="bi bi-file-earmark-excel"></i> Excel</a>
+    </div>
+  </div>
+  <div class="card-modern mb-3">
+    <div class="card-header bg-light">
+      <i class="bi bi-sliders"></i> اصلاح دستی موجودی (فقط انبار/ادمین)
+    </div>
+    <div class="card-body">
+      <form method="post" action="{% url 'inventory:stock_adjustment' %}" class="row g-2 align-items-end">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+        <div class="col-md-3">
+          <label class="form-label small">ماده</label>
+          <select name="raw_material" class="form-select form-select-sm" required>
+            <option value="">انتخاب کنید</option>
+            {% for m in ledger.materials %}
+              <option value="{{ m.id }}">{{ m.name }} (موجودی: {{ m.current_stock|floatformat:2 }} {{ m.get_unit_display }})</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small">مقدار (<span class="text-danger">*</span>)</label>
+          <input type="number" name="quantity" class="form-control form-control-sm" step="0.01" required
+                 placeholder="+ برای افزایش / - برای کاهش">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label small">دلیل (الزامی)</label>
+          <input type="text" name="note" class="form-control form-control-sm" maxlength="255" required
+                 placeholder="مثلاً: اصلاح شمارش فیزیکی، تلفات، بی‌ریز">
+        </div>
+        <div class="col-md-2">
+          <button type="submit" class="btn btn-warning w-100"><i class="bi bi-pencil-square"></i> اعمال اصلاحیه</button>
+        </div>
+      </form>
+      <div class="form-text mt-1">
+        <strong>قوانین:</strong> مقدار مثبت = افزایش موجودی (adjustment)، منفی = کاهش (adjust_out).
+        برای adjust_out موجودی نمی‌تواند منفی شود. یادداشت/دلیل الزامی است.
+      </div>
+    </div>
+  </div>
   <div class="card-modern">
     <div class="card-body p-0">
       <div class="table-responsive">
@@ -164,8 +213,8 @@
   </div>
   {% if ledger.truncated %}
     <div class="alert alert-info mt-3 mb-0">
-      فقط {{ ledger.limit }} حرکت آخر نمایش داده شده است (مجموع {{ ledger.total_count }}).
-      برای دیدن بقیه، بازهٔ تاریخ را کوچک‌تر کنید.
+      نمایش {{ ledger.limit }} حرکت آخر (مجموع {{ ledger.total_count }}).
+      برای خروجی کامل از دکمه‌های CSV/Excel استفاده کنید.
     </div>
   {% endif %}
 

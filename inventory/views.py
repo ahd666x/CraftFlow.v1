@@ -27,7 +27,12 @@ from django.shortcuts import get_object_or_404, render, redirect
 from django.db.transaction import atomic
 from django.views.decorators.http import require_http_methods, require_POST
 
-from product.decorators import warehouse_or_manager_required
+from product.decorators import (
+    warehouse_or_manager_required,
+    warehouse_receive_required,
+    warehouse_deliver_required,
+    day_close_required,
+)
 
 from . import reports
 from . import services
@@ -40,6 +45,8 @@ from .models import (
     RawMaterial,
     RawMaterialCategory,
     StockMovement,
+    StockCount,
+    StockCountLine,
 )
 from .services import HandoverError
 
@@ -83,15 +90,12 @@ def _page_version():
 
 
 def _paint_workers():
-    """کارگران فعال؛ اگر پروفایل مرحله‌ای نبود، همهٔ کاربران فعال."""
-    workers = list(
-        User.objects.filter(is_active=True, workerprofile__stage__isnull=False)
+    """کارگران فعال با پروفایل کارگری (workerprofile)."""
+    return list(
+        User.objects.filter(is_active=True, workerprofile__isnull=False)
+        .select_related('workerprofile')
         .order_by('first_name', 'last_name', 'username')
     )
-    if workers:
-        return workers
-    return list(User.objects.filter(is_active=True).order_by(
-        'first_name', 'last_name', 'username'))
 
 
 def _active_materials():
@@ -141,7 +145,7 @@ def _is_xhr(request):
 # ============================================================
 
 @login_required
-@warehouse_or_manager_required
+@warehouse_receive_required
 def raw_material_receive_scan(request):
     """
     تنها راه ورود کالا به انبار.
@@ -218,7 +222,8 @@ def daily_material_queue(request):
     ثبت می‌کند. برای همین تاریخ کاری همیشه «امروز» است مگر کاربر تاریخ دیگری
     را انتخاب کند.
     """
-    services.sync_queue_for_date(_today_gregorian_from_request(request))
+    # No automatic sync on GET - sync happens on task changes or manual refresh
+    # services.sync_queue_for_date(_today_gregorian_from_request(request))
 
     date_str = request.GET.get('date', '').strip()
     selected = _parse_date_param(date_str)
@@ -237,6 +242,10 @@ def daily_material_queue(request):
     paginator = Paginator(report['rows'], 25)
     queues = paginator.get_page(request.GET.get('page'))
 
+    diagnostics = report.get('diagnostics', {})
+    unresolved_materials = diagnostics.get('unresolved_materials', [])
+    skipped = diagnostics.get('skipped', [])
+
     context = {
         **_inventory_context('queue'),
         'queues': queues,
@@ -252,6 +261,8 @@ def daily_material_queue(request):
         'material_filter': request.GET.get('material', '').strip(),
         'status_filter': request.GET.get('status', '').strip(),
         'page_version': _page_version(),
+        'unresolved_materials': unresolved_materials,
+        'skipped_tasks': skipped,
     }
     return _no_store(render(request, 'inventory/queue.html', context))
 
@@ -266,7 +277,7 @@ def _today_gregorian_from_request(request):
 
 
 @login_required
-@warehouse_or_manager_required
+@warehouse_deliver_required
 @require_POST
 def daily_queue_delivery(request, queue_id):
     """ثبت تحویل یک ردیف صف — تنها نقطهٔ کسر موجودی بابت تولید."""
@@ -309,7 +320,7 @@ def daily_queue_delivery(request, queue_id):
 
 
 @login_required
-@warehouse_or_manager_required
+@warehouse_deliver_required
 @require_POST
 def daily_queue_return(request, queue_id):
     """ثبت بازگشت پایان روز برای یک ردیف صف.
@@ -358,7 +369,7 @@ def daily_queue_return(request, queue_id):
 
 
 @login_required
-@warehouse_or_manager_required
+@warehouse_deliver_required
 @require_POST
 def daily_queue_auto_return(request, queue_id):
     """ثبت برگشت خودکار مازاد تحویل برای یک ردیف صف."""
@@ -392,6 +403,71 @@ def daily_queue_auto_return(request, queue_id):
 
 
 @login_required
+@warehouse_deliver_required
+@require_POST
+def daily_queue_cancel(request, queue_id):
+    """لغو/کنار گذاشتن یک ردیف صف (فقط برای pending بدون تراکنش)."""
+    if not _is_xhr(request):
+        return HttpResponseForbidden()
+
+    try:
+        queue = services.cancel_daily_queue(
+            queue_id=queue_id,
+            cancelled_by=request.user,
+            note=str(request.POST.get('note') or '').strip(),
+        )
+    except HandoverError as exc:
+        return JsonResponse({'success': False, 'error': str(exc)}, status=400)
+    except Exception:
+        logger.exception('daily_queue_cancel: unexpected error for queue %s', queue_id)
+        return JsonResponse(
+            {'success': False, 'error': 'لغو ردیف انجام نشد. لطفاً دوباره تلاش کنید.'},
+            status=500,
+        )
+
+    messages.success(request, f'ردیف «{queue.raw_material.name}» لغو شد.')
+    return JsonResponse({
+        'success': True,
+        'status': queue.status,
+        'status_display': queue.get_status_display(),
+    })
+
+
+@login_required
+@warehouse_deliver_required
+@require_POST
+def daily_queue_batch_auto_return(request):
+    """برگشت خودکار انبوه تمام ردیف‌های دارای مازاد برای یک تاریخ."""
+    if not _is_xhr(request):
+        return HttpResponseForbidden()
+
+    date_str = request.POST.get('date', '').strip()
+    parsed = _parse_date_param(date_str)
+    if parsed is None:
+        return JsonResponse({'success': False, 'error': 'تاریخ معتبر نیست.'}, status=400)
+
+    try:
+        processed, total_returned, ids = services.execute_batch_auto_return(
+            date=parsed.togregorian(),
+            returned_by=request.user,
+            note=str(request.POST.get('note') or '').strip(),
+        )
+    except Exception:
+        logger.exception('daily_queue_batch_auto_return: unexpected error for date %s', date_str)
+        return JsonResponse(
+            {'success': False, 'error': 'برگشت خودکار انبوه انجام نشد.'},
+            status=500,
+        )
+
+    return JsonResponse({
+        'success': True,
+        'processed': processed,
+        'total_returned': str(total_returned),
+        'queue_ids': ids,
+    })
+
+
+@login_required
 @warehouse_or_manager_required
 def daily_queue_sources(request, queue_id):
     """«این نیاز از کجا آمده» — ردیابی منابع یک ردیف صف."""
@@ -416,6 +492,7 @@ def daily_queue_sources(request, queue_id):
         'suggested_delivery': payload['suggested_delivery'],
         'auto_returnable': payload['auto_returnable'],
         'can_auto_return': payload['can_auto_return'],
+        'can_cancel': payload['can_cancel'],
         'status': payload['status'],
         'status_display': payload['status_display'],
         'rows': [
@@ -490,7 +567,8 @@ def daily_closing(request):
         parsed = jdatetime.date.today()
 
     selected_gregorian = parsed.togregorian()
-    services.sync_queue_for_date(selected_gregorian)
+    # No automatic sync on GET - sync happens on task changes or manual refresh
+    # services.sync_queue_for_date(selected_gregorian)
 
     control = services.daily_closing_status(
         selected_gregorian,
@@ -517,7 +595,7 @@ def daily_closing(request):
 
 
 @login_required
-@warehouse_or_manager_required
+@day_close_required
 @require_POST
 def daily_closing_confirm(request):
     """ثبت سند «روز بررسی و تأیید شد»."""
@@ -526,11 +604,14 @@ def daily_closing_confirm(request):
         import jdatetime
         parsed = jdatetime.date.today()
 
+    force = request.POST.get('force') == 'true'
+
     try:
         services.confirm_daily_closing(
             date=parsed.togregorian(),
             closed_by=request.user,
             note=request.POST.get('note', ''),
+            force=force,
         )
     except HandoverError as exc:
         messages.error(request, str(exc))
@@ -544,7 +625,7 @@ def daily_closing_confirm(request):
 # ============================================================
 
 @login_required
-@warehouse_or_manager_required
+@warehouse_receive_required
 @require_POST
 def stock_adjustment(request):
     """
@@ -562,12 +643,32 @@ def stock_adjustment(request):
         messages.error(request, 'مقدار اصلاحیه معتبر نیست.')
         return redirect('inventory:reports')
 
+    if amount == 0:
+        messages.error(request, 'مقدار اصلاحیه نمی‌تواند صفر باشد.')
+        return redirect('inventory:reports')
+
+    # require reason for adjustment
+    note = str(request.POST.get('note') or '').strip()
+    if not note:
+        messages.error(request, 'یادداشت/دلیل اصلاحیه الزامی است.')
+        return redirect('inventory:reports')
+
+    # Validate adjust_out won't make stock negative
+    if amount < 0:
+        if raw_material.current_stock + amount < 0:
+            messages.error(
+                request,
+                f'موجودی «{raw_material.name}» ({raw_material.current_stock}) '
+                f'برای اصلاح کاهشی {abs(amount)} کافی نیست.'
+            )
+            return redirect('inventory:reports')
+
     try:
         services.create_stock_adjustment(
             raw_material=raw_material,
             quantity=amount,
             created_by=request.user,
-            note=str(request.POST.get('note') or '').strip(),
+            note=note,
         )
     except HandoverError as exc:
         messages.error(request, str(exc))
@@ -576,7 +677,11 @@ def stock_adjustment(request):
             request,
             f'موجودی «{raw_material.name}» اصلاح شد.',
         )
-    return redirect(request.POST.get('next') or 'inventory:reports')
+    # Safe redirect: only allow internal URLs
+    next_url = request.POST.get('next', '')
+    if next_url and next_url.startswith('/'):
+        return redirect(next_url)
+    return redirect('inventory:reports')
 
 
 # ============================================================
@@ -651,9 +756,11 @@ def reports_view(request):
 
 def _report_filters(request):
     """فیلترهای مشترک گزارش‌ها، خوانا و بدون تکرار."""
+    date_from = _parse_date_param(request.GET.get('date_from'))
+    date_to = _parse_date_param(request.GET.get('date_to'))
     return {
-        'date_from': _parse_date_param(request.GET.get('date_from')),
-        'date_to': _parse_date_param(request.GET.get('date_to')),
+        'date_from': date_from.togregorian() if date_from else None,
+        'date_to': date_to.togregorian() if date_to else None,
         'material_id': _int(request.GET.get('material')),
         'worker_id': _int(request.GET.get('worker')),
         'order_id': _int(request.GET.get('order')),
@@ -672,6 +779,224 @@ def data_integrity_audit(request):
         'page_version': _page_version(),
     }
     return render(request, 'inventory/audit.html', context)
+
+
+# ============================================================
+# شمارش انبار (Stocktake)
+# ============================================================
+
+@login_required
+@warehouse_or_manager_required
+def stock_count_list(request):
+    """فهرست سندهای شمارش انبار."""
+    qs = StockCount.objects.select_related('created_by', 'approved_by').all()
+    context = {
+        **_inventory_context('stock_count'),
+        'counts': qs,
+        'page_version': _page_version(),
+    }
+    return render(request, 'inventory/stock_count_list.html', context)
+
+
+@login_required
+@warehouse_or_manager_required
+def stock_count_create(request):
+    """ایجاد سند شمارش انبار جدید."""
+    if request.method == 'POST':
+        import jdatetime
+        from django.db import transaction
+        note = request.POST.get('note', '').strip()
+        date_str = request.POST.get('date', '').strip()
+        parsed = _parse_date_param(date_str)
+        if parsed is None:
+            messages.error(request, 'تاریخ معتبر نیست.')
+            return redirect('inventory:stock_count_create')
+        
+        count_date = parsed.togregorian()
+        
+        with transaction.atomic():
+            # Create stock count with draft status
+            stock_count = StockCount.objects.create(
+                date=count_date,
+                note=note,
+                created_by=request.user,
+                status='draft',
+            )
+            # Pre-populate lines with all active materials and their current stock
+            materials = RawMaterial.objects.filter(is_active=True).select_related('category')
+            for material in materials:
+                StockCountLine.objects.create(
+                    stock_count=stock_count,
+                    raw_material=material,
+                    system_quantity=material.current_stock,
+                    counted_quantity=material.current_stock,  # Default to current stock
+                )
+        
+        messages.success(request, f'سند شمارش برای {parsed.strftime("%Y/%m/%d")} ساخته شد.')
+        return redirect('inventory:stock_count_detail', count_id=stock_count.pk)
+    
+    context = {
+        **_inventory_context('stock_count'),
+        'page_version': _page_version(),
+        'today_jalali': jdatetime.date.today(),
+    }
+    return render(request, 'inventory/stock_count_create.html', context)
+
+
+@login_required
+@warehouse_or_manager_required
+def stock_count_detail(request, count_id):
+    """نمایش و ویرایش خطوط سند شمارش (فقط در حالت draft)."""
+    stock_count = get_object_or_404(StockCount, pk=count_id)
+    lines = stock_count.lines.select_related('raw_material', 'raw_material__category').all()
+    
+    if request.method == 'POST' and stock_count.can_edit():
+        # Update counted quantities
+        for line in lines:
+            key = f'counted_{line.pk}'
+            if key in request.POST:
+                try:
+                    line.counted_quantity = Decimal(request.POST[key] or '0')
+                    line.save(update_fields=['counted_quantity'])
+                except (ValueError, InvalidOperation):
+                    pass
+        messages.success(request, 'مقادیر شمرده شده ذخیره شد.')
+        return redirect('inventory:stock_count_detail', count_id=stock_count.pk)
+    
+    context = {
+        **_inventory_context('stock_count'),
+        'stock_count': stock_count,
+        'lines': lines,
+        'page_version': _page_version(),
+    }
+    return render(request, 'inventory/stock_count_detail.html', context)
+
+
+@login_required
+@warehouse_or_manager_required
+@require_POST
+def stock_count_approve(request, count_id):
+    """تأیید سند شمارش و ایجاد حرکات اصلاح برای خطوط با اختلاف."""
+    stock_count = get_object_or_404(StockCount, pk=count_id)
+    
+    if not stock_count.can_edit():
+        messages.error(request, 'این سند شمارش قبلاً تأیید شده است.')
+        return redirect('inventory:stock_count_detail', count_id=count_id)
+    
+    try:
+        stock_count.approve(request.user)
+        messages.success(request, 'سند شمارش تأیید شد و حرکات اصلاح ثبت گردید.')
+    except ValueError as e:
+        messages.error(request, str(e))
+    
+    return redirect('inventory:stock_count_detail', count_id=count_id)
+
+
+@login_required
+@warehouse_or_manager_required
+@require_POST
+def stock_count_reverse_purchase(request):
+    """ابطال یک حرکت خرید/ورود."""
+    if not _is_xhr(request):
+        return HttpResponseForbidden()
+    
+    movement_id = request.POST.get('movement_id')
+    note = request.POST.get('note', '').strip()
+    
+    if not movement_id:
+        return JsonResponse({'success': False, 'error': 'شناسه حرکت مشخص نشده.'}, status=400)
+    
+    try:
+        movement_id = int(movement_id)
+    except ValueError:
+        return JsonResponse({'success': False, 'error': 'شناسه حرکت معتبر نیست.'}, status=400)
+    
+    try:
+        reversal = services.reverse_purchase(
+            movement_id=movement_id,
+            reversed_by=request.user,
+            note=note,
+        )
+        return JsonResponse({
+            'success': True,
+            'message': f'دریافت ابطال شد. موجودی جدید: {reversal.raw_material.current_stock}',
+            'new_stock': str(reversal.raw_material.current_stock),
+        })
+    except services.HandoverError as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+    except Exception:
+        logger.exception('stock_count_reverse_purchase failed')
+        return JsonResponse({'success': False, 'error': 'ابطال دریافت انجام نشد.'}, status=500)
+
+
+@login_required
+@warehouse_or_manager_required
+def material_ledger_export(request):
+    """خروجی CSV/Excel دفتر گردش مواد."""
+    import csv
+    from django.http import HttpResponse
+    
+    filters = _report_filters(request)
+    export_format = request.GET.get('format', 'csv').lower()
+    
+    ledger = reports.material_ledger(**filters, export=True)
+    
+    if export_format == 'xlsx':
+        try:
+            from openpyxl import Workbook
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "دفتر گردش مواد"
+            
+            # Headers
+            headers = ['تاریخ', 'ماده', 'نوع', 'مقدار', 'واحد', 'موجودی', 'یادداشت', 'مرجع']
+            ws.append(headers)
+            
+            for line in ledger['rows']:
+                mv = line['movement']
+                ws.append([
+                    mv.created_at.strftime('%Y-%m-%d %H:%M'),
+                    mv.raw_material.name,
+                    mv.get_movement_type_display(),
+                    line['signed'],
+                    mv.raw_material.get_unit_display(),
+                    line['balance'],
+                    mv.note or '',
+                    line['reference'] or '',
+                ])
+            
+            response = HttpResponse(
+                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+            response['Content-Disposition'] = 'attachment; filename="material_ledger.xlsx"'
+            wb.save(response)
+            return response
+        except ImportError:
+            # Fallback to CSV if openpyxl not available
+            export_format = 'csv'
+    
+    # CSV export
+    response = HttpResponse(content_type='text/csv; charset=utf-8')
+    response['Content-Disposition'] = 'attachment; filename="material_ledger.csv"'
+    response.write('\ufeff')  # BOM for Excel UTF-8
+    
+    writer = csv.writer(response)
+    writer.writerow(['تاریخ', 'ماده', 'نوع', 'مقدار', 'واحد', 'موجودی', 'یادداشت', 'مرجع'])
+    
+    for line in ledger['rows']:
+        mv = line['movement']
+        writer.writerow([
+            mv.created_at.strftime('%Y-%m-%d %H:%M'),
+            mv.raw_material.name,
+            mv.get_movement_type_display(),
+            line['signed'],
+            mv.raw_material.get_unit_display(),
+            line['balance'],
+            mv.note or '',
+            line['reference'] or '',
+        ])
+    
+    return response
 
 
 @login_required
@@ -753,23 +1078,53 @@ def material_create(request):
     if form.is_valid():
         material = form.save()
         messages.success(request, f'ماده «{material.name}» ثبت شد.')
+        if _is_xhr(request):
+            return JsonResponse({'success': True, 'redirect': 'inventory:material_list'})
         return redirect('inventory:material_list')
-    return JsonResponse(
-        {'success': False, 'errors': form.errors}, status=400)
+    if _is_xhr(request):
+        return JsonResponse({'success': False, 'errors': form.errors}, status=400)
+    # For non-AJAX, re-render with errors
+    qs = RawMaterial.objects.select_related('category').all()
+    paginator = Paginator(qs, 25)
+    context = {
+        **_inventory_context('materials'),
+        'materials': paginator.get_page(request.GET.get('page')),
+        'total_count': paginator.count,
+        'categories': RawMaterialCategory.objects.all(),
+        'form': form,
+        'page_version': _page_version(),
+    }
+    return render(request, 'inventory/materials.html', context)
 
 
 @login_required
 @warehouse_or_manager_required
-@require_http_methods(['POST'])
 def material_edit(request, material_id):
     material = get_object_or_404(RawMaterial, pk=material_id)
-    form = RawMaterialForm(request.POST, instance=material)
-    if form.is_valid():
-        form.save()
-        messages.success(request, f'ماده «{material.name}» ویرایش شد.')
-        return redirect('inventory:material_list')
-    return JsonResponse(
-        {'success': False, 'errors': form.errors}, status=400)
+    if request.method == 'POST':
+        form = RawMaterialForm(request.POST, instance=material)
+        if form.is_valid():
+            material = form.save()
+            messages.success(request, f'ماده «{material.name}» ویرایش شد.')
+            if _is_xhr(request):
+                return JsonResponse({'success': True, 'redirect': 'inventory:material_list'})
+            return redirect('inventory:material_list')
+        if _is_xhr(request):
+            return JsonResponse({'success': False, 'errors': form.errors}, status=400)
+    else:
+        form = RawMaterialForm(instance=material)
+    
+    qs = RawMaterial.objects.select_related('category').all()
+    paginator = Paginator(qs, 25)
+    context = {
+        **_inventory_context('materials'),
+        'materials': paginator.get_page(request.GET.get('page')),
+        'total_count': paginator.count,
+        'categories': RawMaterialCategory.objects.all(),
+        'form': form,
+        'page_version': _page_version(),
+    }
+    return render(request, 'inventory/materials.html', context)
 
 
 @login_required
@@ -778,16 +1133,10 @@ def material_edit(request, material_id):
 def material_delete(request, material_id):
     material = get_object_or_404(RawMaterial, pk=material_id)
     name = material.name
-    try:
-        material.delete()
-    except Exception:
-        messages.error(
-            request,
-            f'«{name}» حذف نشد چون در سوابق انبار یا برنامه استفاده شده است. '
-            'به‌جای حذف، آن را غیرفعال کنید.',
-        )
-        return redirect('inventory:material_list')
+    material.delete()
     messages.success(request, f'ماده «{name}» حذف شد.')
+    if _is_xhr(request):
+        return JsonResponse({'success': True})
     return redirect('inventory:material_list')
 
 
@@ -828,9 +1177,19 @@ def category_create(request):
     if form.is_valid():
         category = form.save()
         messages.success(request, f'دسته «{category.name}» ثبت شد.')
+        if _is_xhr(request):
+            return JsonResponse({'success': True, 'redirect': 'inventory:category_list'})
         return redirect('inventory:category_list')
-    return JsonResponse(
-        {'success': False, 'errors': form.errors}, status=400)
+    if _is_xhr(request):
+        return JsonResponse({'success': False, 'errors': form.errors}, status=400)
+    qs = RawMaterialCategory.objects.annotate(material_count=Count('materials')).order_by('name')
+    context = {
+        **_inventory_context('categories'),
+        'categories': qs,
+        'form': form,
+        'page_version': _page_version(),
+    }
+    return render(request, 'inventory/categories.html', context)
 
 
 @login_required
@@ -842,9 +1201,19 @@ def category_edit(request, category_id):
     if form.is_valid():
         form.save()
         messages.success(request, f'دسته «{category.name}» ویرایش شد.')
+        if _is_xhr(request):
+            return JsonResponse({'success': True, 'redirect': 'inventory:category_list'})
         return redirect('inventory:category_list')
-    return JsonResponse(
-        {'success': False, 'errors': form.errors}, status=400)
+    if _is_xhr(request):
+        return JsonResponse({'success': False, 'errors': form.errors}, status=400)
+    qs = RawMaterialCategory.objects.annotate(material_count=Count('materials')).order_by('name')
+    context = {
+        **_inventory_context('categories'),
+        'categories': qs,
+        'form': form,
+        'page_version': _page_version(),
+    }
+    return render(request, 'inventory/categories.html', context)
 
 
 @login_required
@@ -858,8 +1227,81 @@ def category_delete(request, category_id):
             f'دسته «{category.name}» خالی نیست؛ ابتدا موادش را به دستهٔ دیگری '
             'منتقل کنید.',
         )
+        if _is_xhr(request):
+            return JsonResponse({'success': False, 'error': 'دسته خالی نیست.'}, status=400)
         return redirect('inventory:category_list')
     name = category.name
     category.delete()
     messages.success(request, f'دسته «{name}» حذف شد.')
+    if _is_xhr(request):
+        return JsonResponse({'success': True})
     return redirect('inventory:category_list')
+
+
+@login_required
+@warehouse_or_manager_required
+@require_POST
+def daily_queue_refresh(request):
+    """بازسازی دستی صف برای یک تاریخ (دکمهٔ Refresh در UI)."""
+    if not _is_xhr(request):
+        return HttpResponseForbidden()
+
+    date_str = request.POST.get('date', '').strip()
+    parsed = _parse_date_param(date_str)
+    if parsed is None:
+        return JsonResponse({'success': False, 'error': 'تاریخ معتبر نیست.'}, status=400)
+
+    try:
+        queue_count, diagnostics = services.sync_queue_for_date(parsed.togregorian())
+    except Exception:
+        logger.exception('daily_queue_refresh: failed for date %s', date_str)
+        return JsonResponse(
+            {'success': False, 'error': 'بازسازی صف انجام نشد.'},
+            status=500,
+        )
+
+    return JsonResponse({
+        'success': True,
+        'queue_count': queue_count,
+        'unresolved_materials': diagnostics.get('unresolved_materials', []),
+        'skipped_tasks': diagnostics.get('skipped', []),
+        'message': f'{queue_count} ردیف صف ساخته/به‌روزرسانی شد.',
+    })
+
+
+@login_required
+@warehouse_or_manager_required
+@require_POST
+def daily_queue_repair(request):
+    """تعمیر اجباری صف: حذف کامل و بازسازی برای یک تاریخ."""
+    if not _is_xhr(request):
+        return HttpResponseForbidden()
+
+    date_str = request.POST.get('date', '').strip()
+    parsed = _parse_date_param(date_str)
+    if parsed is None:
+        return JsonResponse({'success': False, 'error': 'تاریخ معتبر نیست.'}, status=400)
+
+    try:
+        with transaction.atomic():
+            # Delete all queues for this date
+            deleted_count, _ = DailyMaterialQueue.objects.filter(
+                work_date=parsed.togregorian()
+            ).delete()
+            # Force rebuild
+            queue_count, diagnostics = services.sync_queue_for_date(parsed.togregorian())
+    except Exception:
+        logger.exception('daily_queue_repair: failed for date %s', date_str)
+        return JsonResponse(
+            {'success': False, 'error': 'تعمیر صف انجام نشد.'},
+            status=500,
+        )
+
+    return JsonResponse({
+        'success': True,
+        'deleted_count': deleted_count,
+        'queue_count': queue_count,
+        'unresolved_materials': diagnostics.get('unresolved_materials', []),
+        'skipped_tasks': diagnostics.get('skipped', []),
+        'message': f'{deleted_count} ردیف حذف و {queue_count} ردیف مجدداً ساخته شد.',
+    })

@@ -1,0 +1,43 @@
+{% extends 'inventory/base.html' %}
+{% load i18n humanize %}
+
+{% block title %}ایجاد سند شمارش انبار{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="h5 mb-0">ایجاد سند شمارش انبار</h2>
+  <a href="{% url 'inventory:stock_count_list' %}" class="btn btn-outline-secondary btn-sm">
+    <i class="bi bi-arrow-right"></i> بازگشت
+  </a>
+</div>
+
+<div class="card-modern">
+  <div class="card-body">
+    <form method="post" class="row g-3">
+      {% csrf_token %}
+      <div class="col-md-4">
+        <label class="form-label">تاریخ شمارش <span class="text-danger">*</span></label>
+        <input type="text" name="date" class="form-control" value="{{ today_jalali }}" required
+               placeholder="مثال: 1403/07/15">
+        <div class="form-text">تاریخ شمسی</div>
+      </div>
+      <div class="col-md-8">
+        <label class="form-label">یادداشت</label>
+        <input type="text" name="note" class="form-control" maxlength="255"
+               placeholder="مثلاً: شمارش آخر ماه، شمارش قبل از تحویل سال">
+      </div>
+      <div class="col-12">
+        <div class="alert alert-info">
+          <i class="bi bi-info-circle"></i>
+          <strong>نکته:</strong> پس از ایجاد سند، برای هر ماده فعال یک خط با موجودی فعلی سیستم پر می‌شود.
+          می‌توانید در صفحه بعد مقادیر فیزیکی شمرده شده را وارد و سند را تأیید کنید.
+        </div>
+      </div>
+      <div class="col-12">
+        <button type="submit" class="btn btn-primary"><i class="bi bi-plus-circle"></i> ایجاد سند شمارش</button>
+        <a href="{% url 'inventory:stock_count_list' %}" class="btn btn-outline-secondary ms-2">انصراف</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

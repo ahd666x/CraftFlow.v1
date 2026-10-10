@@ -33,6 +33,14 @@
     <div class="h5 mb-0">{{ trace.totals.actual|floatformat:2 }}</div>
     <div class="small text-muted">{{ trace.totals.movement_count }} حرکت انبار</div>
   </div></div></div>
+  <div class="col-6 col-lg-3"><div class="card-modern h-100"><div class="card-body py-3">
+    <div class="text-muted small">جبران خرابی‌ها</div>
+    <div class="h5 mb-0 text-warning">{{ trace.totals.defect_total|floatformat:2 }}</div>
+  </div></div></div>
+  <div class="col-6 col-lg-3"><div class="card-modern h-100"><div class="card-body py-3">
+    <div class="text-muted small">کسری منتقل‌شده</div>
+    <div class="h5 mb-0 text-info">{{ trace.totals.carryover_total|floatformat:2 }}</div>
+  </div></div></div>
 </div>
 
 <div class="card-modern mb-3">
@@ -69,6 +77,63 @@
     </div>
   </div>
 </div>
+
+{% if trace.defect_rows %}
+<div class="card-modern mb-3">
+  <div class="card-header bg-warning text-dark">
+    <i class="bi bi-tools"></i> جبران خرابی‌ها (مصرف اضافه برای اصلاح)
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table align-middle mb-0">
+        <thead class="table-light"><tr><th>خرابی</th><th>بخش رنگ</th><th>مقدار</th><th>ماده</th><th>واحد</th><th>مرحله</th><th>وضعیت</th></tr></thead>
+        <tbody>
+          {% for row in trace.defect_rows %}
+            <tr>
+              <td>#{{ row.defect_id }}</td>
+              <td>{{ row.color_part }}</td>
+              <td class="fw-bold text-warning">{{ row.quantity|floatformat:2 }}</td>
+              <td>{{ row.raw_material }}</td>
+              <td>{{ row.unit }}</td>
+              <td>{{ row.stage }}</td>
+              <td><span class="badge bg-{% if row.status == 'delivered' %}success{% else %}warning{% endif %}">{{ row.status }}</span></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if trace.carryover_rows %}
+<div class="card-modern mb-3">
+  <div class="card-header bg-info text-dark">
+    <i class="bi bi-arrow-left-right"></i> کسری منتقل‌شده از روزهای قبل
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table align-middle mb-0">
+        <thead class="table-light"><tr><th>ردیف مبدأ</th><th>تاریخ مبدأ</th><th>مقدار منتقل</th><th>ماده</th><th>واحد</th><th>مرحله</th><th>برنامه مبدأ</th><th>تحویل مبدأ</th></tr></thead>
+        <tbody>
+          {% for row in trace.carryover_rows %}
+            <tr>
+              <td>#{{ row.source_queue_id }}</td>
+              <td>{{ row.source_date|persian_date }}</td>
+              <td class="fw-bold text-info">{{ row.quantity|floatformat:2 }}</td>
+              <td>{{ row.raw_material }}</td>
+              <td>{{ row.unit }}</td>
+              <td>{{ row.stage }}</td>
+              <td>{{ row.original_planned|floatformat:2 }}</td>
+              <td>{{ row.original_delivered|floatformat:2 }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
 
 <div class="card-modern">
   <div class="card-body">

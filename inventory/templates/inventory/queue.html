@@ -156,7 +156,7 @@
                        </button>
                      {% endif %}
                    {% endif %}
-                    {% if queue.status == 'delivered' or queue.status == 'partial' %}
+{% if queue.status == 'delivered' or queue.status == 'partial' %}
                       <button type="button" class="btn btn-outline-warning btn-return" data-queue="{{ queue.id }}" title="ثبت بازگشت">
                         <i class="bi bi-box-arrow-up"></i> بازگشت
                       </button>
@@ -166,9 +166,14 @@
                         </button>
                       {% endif %}
                     {% endif %}
-                   <button type="button" class="btn btn-outline-info btn-sources" data-queue="{{ queue.id }}" title="این نیاز از کجا آمده">
-                     <i class="bi bi-diagram-3"></i>
-                   </button>
+                    {% if queue.status == 'pending' %}
+                      <button type="button" class="btn btn-outline-danger btn-cancel" data-queue="{{ queue.id }}" title="لغو ردیف (کارگر غایب/نیاز نیست)">
+                        <i class="bi bi-x-circle"></i>
+                      </button>
+                    {% endif %}
+                    <button type="button" class="btn btn-outline-info btn-sources" data-queue="{{ queue.id }}" title="این نیاز از کجا آمده">
+                      <i class="bi bi-diagram-3"></i>
+                    </button>
                  </div>
                </td>
             </tr>
@@ -208,6 +213,59 @@
     {% endif %}
   </ul>
 </nav>
+{% endif %}
+
+{% if unresolved_materials %}
+<div class="card-modern border-warning mb-3">
+  <div class="card-header bg-warning text-dark">
+    <i class="bi bi-exclamation-triangle-fill"></i> مواد بدون نگاشت رنگ (Unresolved Materials)
+    <span class="badge bg-dark ms-2">{{ unresolved_materials|length }}</span>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead class="table-light"><tr><th>نیاز نقاشی #</th><th>روند</th><th>ماده قطعه</th><th>کد رنگ</th><th>مقدار</th><th>دلیل</th></tr></thead>
+        <tbody>
+          {% for item in unresolved_materials %}
+            <tr>
+              <td>#{{ item.requirement_id }}</td>
+              <td>{{ item.process_id }}</td>
+              <td>{{ item.slot_raw_material_id }}</td>
+              <td>{{ item.color_code }}</td>
+              <td>{{ item.quantity|floatformat:2 }}</td>
+              <td class="text-muted small">{{ item.label }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if skipped_tasks %}
+<div class="card-modern border-danger mb-3">
+  <div class="card-header bg-danger text-white">
+    <i class="bi bi-slash-circle-fill"></i> تسک‌های ردشده (Skipped)
+    <span class="badge bg-light text-dark ms-2">{{ skipped_tasks|length }}</span>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead class="table-light"><tr><th>تسک #</th><th>دلیل</th><th>توضیح</th></tr></thead>
+        <tbody>
+          {% for item in skipped_tasks %}
+            <tr>
+              <td>#{{ item.task_id }}</td>
+              <td><span class="badge bg-light text-dark">{{ item.reason }}</span></td>
+              <td class="text-muted small">{{ item.label }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
 {% endif %}
 
 <!-- پیش‌نمایش و ثبت تحویل -->
@@ -327,6 +385,7 @@
     delivery: "{% url 'inventory:daily_queue_delivery' 0 %}".replace('/0/', '/{id}/'),
     returns: "{% url 'inventory:daily_queue_return' 0 %}".replace('/0/', '/{id}/'),
     autoReturn: "{% url 'inventory:daily_queue_auto_return' 0 %}".replace('/0/', '/{id}/'),
+    cancel: "{% url 'inventory:daily_queue_cancel' 0 %}".replace('/0/', '/{id}/'),
     preview: "{% url 'inventory:daily_queue_preview_delivery' 0 %}".replace('/0/', '/{id}/'),
     sources: "{% url 'inventory:daily_queue_sources' 0 %}".replace('/0/', '/{id}/')
   };
@@ -576,6 +635,17 @@
     } else if (event.target.closest('.btn-auto-return')) {
       try {
         await postForm(urls.autoReturn.replace('{id}', queueId), {});
+        window.location.reload();
+      } catch (err) {
+        const alertBox = document.createElement('div');
+        alertBox.className = 'alert alert-danger';
+        alertBox.textContent = err.message;
+        document.querySelector('tbody tr[data-queue="' + queueId + '"]').closest('.card').prepend(alertBox);
+      }
+    } else if (event.target.closest('.btn-cancel')) {
+      if (!confirm('این ردیف لغو شود؟ برنامه‌ریزی حفظ می‌شود اما در صف روزانه حذف می‌شود.')) return;
+      try {
+        await postForm(urls.cancel.replace('{id}', queueId), {});
         window.location.reload();
       } catch (err) {
         const alertBox = document.createElement('div');

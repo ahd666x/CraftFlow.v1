@@ -75,8 +75,12 @@ def _closing_url(date):
 #  Phase 10 — دفتر گردش مواد (Material Ledger)
 # ===================================================================
 
+LEDGER_ROW_LIMIT = None  # None = no limit; use export for full dataset
+
+
 def material_ledger(*, date_from=None, date_to=None, material_id=None,
-                    worker_id=None, movement_type=None, order_id=None):
+                    worker_id=None, movement_type=None, order_id=None,
+                    export=False, limit=None):
     """
     دفتر گردش هر ماده بر اساس ``StockMovement`` — فقط خواندنی.
 
@@ -86,6 +90,9 @@ def material_ledger(*, date_from=None, date_to=None, material_id=None,
     فیلترها: تاریخ (از/تا)، ماده، کارگر، نوع حرکت و سفارش.
     کارگر از رابطهٔ ``daily_queue__worker`` فیلتر می‌شود، چون هر حرکتِ تحویل و
     بازگشت به ردیف صف روزانه‌اش وصل است.
+
+    اگر export=True باشد، تمام ردیف‌ها بدون محدودیت برمی‌گردند (برای CSV/Excel).
+    limit برای کنترل تعداد در UI استفاده می‌شود (پیش‌فرض 500 در ویو).
     """
     qs = StockMovement.objects.select_related(
         'raw_material', 'daily_queue', 'daily_queue__worker',
@@ -106,9 +113,14 @@ def material_ledger(*, date_from=None, date_to=None, material_id=None,
         qs = qs.filter(reference_order_item__order_id=order_id)
 
     total_count = qs.count()
-    rows = list(
-        qs.order_by('raw_material__name', 'created_at', 'id')[:LEDGER_ROW_LIMIT]
-    )
+
+    # Apply limit only for UI display, not for export
+    if not export and limit:
+        qs = qs.order_by('raw_material__name', 'created_at', 'id')[:limit]
+    else:
+        qs = qs.order_by('raw_material__name', 'created_at', 'id')
+
+    rows = list(qs)
 
     # موجودی اولیهٔ هر ماده = مجموع حرکات قبل از اولین ردیفِ نمایش‌داده‌شده
     first_by_material = {}
@@ -142,8 +154,8 @@ def material_ledger(*, date_from=None, date_to=None, material_id=None,
     return {
         'rows': lines,
         'total_count': total_count,
-        'truncated': total_count > len(rows),
-        'limit': LEDGER_ROW_LIMIT,
+        'truncated': total_count > len(rows) and not export,
+        'limit': limit,
         'materials': RawMaterial.objects.filter(is_active=True).order_by('name'),
     }
 
@@ -245,12 +257,21 @@ def order_material_traceability(order):
 
     ``DailyMaterialQueue`` برای هر تسک از راه ``sources`` پیدا می‌شود، پس
     هیچ مدل و فیلد جدیدی لازم نیست.
+
+    برمی‌گرداند:
+      - rows: خلاصه به تفکیک ماده/مرحله
+      - defect_rows: جبران خرابی‌ها (rework sources)
+      - carryover_rows: کسری منتقل‌شده از روز قبل (carryover sources)
+      - totals: جمع‌ها
+      - movements: حرکات انبار مرتبط (از reference_order_item)
     """
+    from product.models import OrderItem, ProductionTask
+    
     task_ids = list(
         order.items.values_list('id', flat=True)
     )
     if not task_ids:
-        return {'rows': [], 'totals': None, 'movements': []}
+        return {'rows': [], 'defect_rows': [], 'carryover_rows': [], 'totals': None, 'movements': []}
 
     task_id_set = set(task_ids)
     queues = list(
@@ -259,11 +280,18 @@ def order_material_traceability(order):
         .select_related('worker', 'raw_material', 'painting_stage')
         .prefetch_related(
             'sources__production_task',
+            'sources__painting_stage',
+            'sources__painting_stage__process',
+            'sources__defect',
+            'sources__carryover_from',
         )
         .distinct()
     )
 
     per_material_stage = {}
+    defect_rows = []
+    carryover_rows = []
+
     for queue in queues:
         planned = _q(queue.planned_quantity)
         key = (queue.raw_material_id, queue.painting_stage_id)
@@ -310,6 +338,37 @@ def order_material_traceability(order):
         if queue.worker_id:
             entry['workers'].add(queue.worker_id)
 
+        # جبران خرابی‌ها (rework sources) — جداگانه گزارش می‌شوند
+        rework_sources = queue.sources.filter(kind='rework', defect__isnull=False)
+        for src in rework_sources:
+            defect = src.defect
+            if defect and defect.order_item_id in task_id_set:
+                defect_rows.append({
+                    'defect_id': defect.pk,
+                    'color_part': defect.get_color_part_display(),
+                    'quantity': _q(src.quantity),
+                    'raw_material': queue.raw_material.name,
+                    'unit': queue.raw_material.get_unit_display(),
+                    'stage': queue.painting_stage.name if queue.painting_stage else '—',
+                    'status': 'delivered' if src.quantity > 0 else 'pending',
+                })
+
+        # کسری منتقل‌شده از روز قبل (carryover sources)
+        carryover_sources = queue.sources.filter(kind='carryover')
+        for src in carryover_sources:
+            origin = src.carryover_from
+            if origin:
+                carryover_rows.append({
+                    'source_queue_id': origin.pk,
+                    'source_date': origin.work_date,
+                    'quantity': _q(src.quantity),
+                    'raw_material': queue.raw_material.name,
+                    'unit': queue.raw_material.get_unit_display(),
+                    'stage': queue.painting_stage.name if queue.painting_stage else '—',
+                    'original_planned': _q(origin.planned_quantity),
+                    'original_delivered': _q(origin.delivered_quantity),
+                })
+
     rows = []
     for entry in sorted(per_material_stage.values(), key=lambda e: (e['raw_material'], e['stage_name'])):
         rows.append({
@@ -327,11 +386,15 @@ def order_material_traceability(order):
         'delivered': sum((r['delivered'] for r in rows), Decimal('0.00')),
         'returned': sum((r['returned'] for r in rows), Decimal('0.00')),
         'actual': sum((r['actual'] for r in rows), Decimal('0.00')),
+        'defect_total': sum((r['quantity'] for r in defect_rows), Decimal('0.00')),
+        'carryover_total': sum((r['quantity'] for r in carryover_rows), Decimal('0.00')),
         'movement_count': movements.count(),
     }
 
     return {
         'rows': rows,
+        'defect_rows': defect_rows,
+        'carryover_rows': carryover_rows,
         'totals': totals,
         'movements': movements.order_by('-created_at')[:200],
     }

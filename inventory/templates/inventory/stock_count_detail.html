@@ -1,0 +1,134 @@
+{% extends 'inventory/base.html' %}
+{% load i18n humanize %}
+
+{% block title %}سند شمارش {{ stock_count.date|persian_date }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <div>
+    <h2 class="h5 mb-0">سند شمارش انبار</h2>
+    <div class="small text-muted">
+      {{ stock_count.date|persian_date }} —
+      <span class="badge {% if stock_count.status == 'approved' %}bg-success{% else %}bg-warning text-dark{% endif %} ms-1">
+        {{ stock_count.get_status_display }}
+      </span>
+    </div>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="{% url 'inventory:stock_count_list' %}" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-arrow-right"></i> لیست
+    </a>
+    {% if stock_count.can_edit %}
+    <form method="post" action="{% url 'inventory:stock_count_approve' stock_count.pk %}" class="d-inline">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-success btn-sm" onclick="return confirm('آیا از تأیید این سند شمارش اطمینان دارید؟ در صورت تأیید، حرکات اصلاح برای مواد با اختلاف ایجاد می‌شود و غیرقابل بازگشت است.');">
+        <i class="bi bi-check-circle"></i> تأیید و ثبت اصلاحیات
+      </button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card-modern mb-3">
+  <div class="card-header bg-light">
+    <div class="row align-items-center">
+      <div class="col-md-6">
+        <strong>اطلاعات سند</strong>
+      </div>
+      <div class="col-md-6 text-md-end small text-muted">
+        <div>شمارش‌کننده: {{ stock_count.created_by.get_full_name|default:stock_count.created_by.username }}</div>
+        {% if stock_count.approved_by %}
+        <div>تأییدکننده: {{ stock_count.approved_by.get_full_name|default:stock_count.approved_by.username }} در {{ stock_count.approved_at|persian_datetime }}</div>
+        {% endif %}
+        {% if stock_count.note %}
+        <div>یادداشت: {{ stock_count.note }}</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <form method="post" id="stockCountForm">
+        {% csrf_token %}
+        <table class="table table-sm align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>ماده</th>
+              <th>دسته</th>
+              <th class="text-end">موجودی سیستم</th>
+              <th class="text-end">تعداد شمرده شده <span class="text-danger">*</span></th>
+              <th class="text-end">اختلاف</th>
+              <th>یادداشت خط</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for line in lines %}
+            <tr class="{% if line.difference != 0 %}table-warning{% endif %}">
+              <td>{{ line.raw_material.name }}</td>
+              <td>{{ line.raw_material.category }}</td>
+              <td class="text-end fw-bold">{{ line.system_quantity|floatformat:2 }} {{ line.raw_material.get_unit_display }}</td>
+              <td class="text-end">
+                {% if stock_count.can_edit %}
+                <input type="number" name="counted_{{ line.pk }}" class="form-control form-control-sm text-end counted-input"
+                       value="{{ line.counted_quantity|floatformat:2 }}" step="0.01" min="0"
+                       data-system="{{ line.system_quantity }}"
+                       data-line-id="{{ line.pk }}">
+                {% else %}
+                <span class="fw-bold {% if line.difference > 0 %}text-success{% elif line.difference < 0 %}text-danger{% endif %}">
+                  {{ line.counted_quantity|floatformat:2 }}
+                </span>
+                {% endif %}
+              </td>
+              <td class="text-end fw-bold {% if line.difference > 0 %}text-success{% elif line.difference < 0 %}text-danger{% endif %}"
+                  id="diff_{{ line.pk }}">
+                {{ line.difference|floatformat:2 }} {{ line.raw_material.get_unit_display }}
+              </td>
+              <td>
+                {% if stock_count.can_edit %}
+                <input type="text" name="note_{{ line.pk }}" class="form-control form-control-sm" maxlength="255"
+                       value="{{ line.note|default:'' }}" placeholder="یادداشت خط">
+                {% else %}
+                {{ line.note|default:"—" }}
+                {% endif %}
+              </td>
+            </tr>
+            {% empty %}
+            <tr>
+              <td colspan="6" class="text-center text-muted py-4">خطی در این سند شمارش وجود ندارد.</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% if stock_count.can_edit %}
+        <div class="card-footer bg-light border-top d-flex justify-content-end p-2">
+          <button type="submit" class="btn btn-primary btn-sm">
+            <i class="bi bi-save"></i> ذخیره مقادیر شمرده شده
+          </button>
+        </div>
+        {% endif %}
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('.counted-input').forEach(function(input) {
+    input.addEventListener('input', function() {
+      var lineId = this.dataset.lineId;
+      var system = parseFloat(this.dataset.system) || 0;
+      var counted = parseFloat(this.value) || 0;
+      var diff = counted - system;
+      var diffEl = document.getElementById('diff_' + lineId);
+      if (diffEl) {
+        var unit = '{{ lines.first.raw_material.get_unit_display }}'; // approximate
+        diffEl.textContent = diff.toFixed(2) + ' ' + unit;
+        diffEl.className = 'fw-bold text-end';
+        if (diff > 0) diffEl.classList.add('text-success');
+        else if (diff < 0) diffEl.classList.add('text-danger');
+      }
+    });
+  });
+});
+</script>
+{% endblock %}

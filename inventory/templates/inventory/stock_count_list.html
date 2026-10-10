@@ -1,0 +1,78 @@
+{% extends 'inventory/base.html' %}
+{% load i18n humanize %}
+
+{% block title %}سندهای شمارش انبار{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="h5 mb-0">سندهای شمارش انبار</h2>
+  <a href="{% url 'inventory:stock_count_create' %}" class="btn btn-primary btn-sm">
+    <i class="bi bi-plus-circle"></i> شمارش جدید
+  </a>
+</div>
+
+<div class="card-modern">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>تاریخ</th>
+            <th>وضعیت</th>
+            <th>شمارش‌کننده</th>
+            <th>تأییدکننده</th>
+            <th>زمان تأیید</th>
+            <th>یادداشت</th>
+            <th class="text-end">عملیات</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for count in counts %}
+          <tr class="{% if count.status == 'draft' %}table-warning{% endif %}">
+            <td>{{ count.date|persian_date }}</td>
+            <td>
+              <span class="badge {% if count.status == 'approved' %}bg-success{% else %}bg-warning text-dark{% endif %}">
+                {{ count.get_status_display }}
+              </span>
+            </td>
+            <td>{{ count.created_by.get_full_name|default:count.created_by.username }}</td>
+            <td>
+              {% if count.approved_by %}
+                {{ count.approved_by.get_full_name|default:count.approved_by.username }}
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if count.approved_at %}
+                {{ count.approved_at|persian_datetime }}
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+            <td class="small">{{ count.note|default:"—" }}</td>
+            <td class="text-end">
+              <a href="{% url 'inventory:stock_count_detail' count.pk %}" class="btn btn-sm btn-outline-primary">
+                <i class="bi bi-eye"></i> مشاهده
+              </a>
+              {% if count.can_edit %}
+              <form method="post" action="{% url 'inventory:stock_count_approve' count.pk %}" class="d-inline ms-1">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-success" onclick="return confirm('آیا از تأیید این سند شمارش اطمینان دارید؟');">
+                  <i class="bi bi-check-circle"></i> تأیید
+                </button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="7" class="text-center text-muted py-4">سند شمارشی ثبت نشده است.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

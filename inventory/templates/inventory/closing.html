@@ -67,12 +67,18 @@
 </div>
 
 {% if closing %}
-  <div class="alert alert-success d-flex align-items-start gap-2">
-    <i class="bi bi-patch-check-fill"></i>
+  <div class="alert alert-{% if closing.status == 'locked' %}dark{% else %}success{% endif %} d-flex align-items-start gap-2">
+    <i class="bi bi-{% if closing.status == 'locked' %}lock-fill{% else %}patch-check-fill{% endif %}"></i>
     <div>
-      <strong>این روز بسته شده است.</strong>
+      <strong>{% if closing.status == 'locked' %}این روز قفل شده است{% else %}این روز بسته شده است{% endif %}.</strong>
       {{ closing.closed_by.get_full_name|default:closing.closed_by.username }}
       در {{ closing.closed_at|persian_datetime }} روز را بررسی و تأیید کرد.
+      {% if closing.locked_by %}
+        <div class="small mt-1 text-muted">
+          قفل شده توسط {{ closing.locked_by.get_full_name|default:closing.locked_by.username }}
+          در {{ closing.locked_at|persian_datetime }}
+        </div>
+      {% endif %}
       {% if closing.note %}<div class="small mt-1">{{ closing.note }}</div>{% endif %}
     </div>
   </div>
@@ -113,6 +119,8 @@
       <span class="badge bg-warning text-dark ms-1">{{ control.incomplete_count }} ناقص</span>
       <span class="badge bg-warning text-dark ms-1">{{ control.conflict_count }} مغایرت برنامه</span>
       <span class="badge bg-warning text-dark ms-1">{{ control.inconsistent_count }} ناسازگار</span>
+      <span class="badge bg-info text-dark ms-1">{{ control.excess_delivered_count }} مازاد تحویل</span>
+      <span class="badge bg-warning text-dark ms-1">{{ control.overdue_partial_count }} کسری معوق</span>
     </div>
   </div>
 
@@ -133,7 +141,9 @@
                   {% for reason in problem.reasons %}
                     {% if reason == 'conflict' %}<span class="badge bg-warning text-dark">مغایرت برنامه</span>
                     {% elif reason == 'incomplete' %}<span class="badge bg-primary">تحویل‌نشده</span>
-                    {% elif reason == 'inconsistent' %}<span class="badge bg-danger">ناسازگار</span>{% endif %}
+                    {% elif reason == 'inconsistent' %}<span class="badge bg-danger">ناسازگار</span>
+                    {% elif reason == 'excess_delivered' %}<span class="badge bg-info text-dark">مازاد تحویل</span>
+                    {% elif reason == 'overdue_partial' %}<span class="badge bg-warning text-dark">کسری معوق</span>{% endif %}
                   {% endfor %}
                 </td>
                 <td>
@@ -147,5 +157,69 @@
       </div>
     </div>
   </div>
+
+  {% if control.overdue_partial_count > 0 or control.excess_delivered_count > 0 %}
+  <div class="alert alert-info d-flex align-items-start gap-2 mt-3">
+    <i class="bi bi-info-circle-fill"></i>
+    <div>
+      <strong>اقدامات پیشنهادی:</strong>
+      {% if control.excess_delivered_count > 0 %}
+        <span class="badge bg-info text-dark ms-1">{{ control.excess_delivered_count }} ردیف با مازاد تحویل</span>
+      {% endif %}
+      {% if control.overdue_partial_count > 0 %}
+        <span class="badge bg-warning text-dark ms-1">{{ control.overdue_partial_count }} ردیف partial معوق</span>
+      {% endif %}
+    </div>
+  </div>
+  <div class="card-modern">
+    <div class="card-body">
+      <form method="post" action="{% url 'inventory:daily_queue_batch_auto_return' %}" class="d-flex gap-2 flex-wrap align-items-end" id="batchAutoReturnForm">
+        {% csrf_token %}
+        <input type="hidden" name="date" value="{{ date_str }}">
+        <div class="flex-grow-1">
+          <label class="form-label" for="batchAutoReturnNote">یادداشت برگشت انبوه (اختیاری)</label>
+          <input type="text" name="note" id="batchAutoReturnNote" class="form-control form-control-sm" maxlength="255"
+                 placeholder="برگشت خودکار تمام مازادهای تحویل">
+        </div>
+        <button type="submit" class="btn btn-warning" onclick="return confirm('مطمئن هستید؟ این کار تمام ردیف‌های دارای مازاد را به‌صورت انبوه برمی‌گرداند.')">
+          <i class="bi bi-arrow-left-right"></i> برگشت خودکار انبوه مازادها
+        </button>
+      </form>
+      <div class="form-text mt-2">
+        این دکمه تمام ردیف‌های «تحویل شده» یا «کمی تحویل شده» که مازاد دارند (تحویل > برنامه) و هنوز برگشتی ندارند، را یک‌جا برمی‌گرداند.
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if user.is_superuser and control.conflict_count > 0 and control.incomplete_count == 0 and control.inconsistent_count == 0 %}
+  <div class="alert alert-warning d-flex align-items-start gap-2 mt-3">
+    <i class="bi bi-exclamation-triangle-fill"></i>
+    <div>
+      <strong>فقط مغایرت برنامه (conflict) وجود دارد.</strong>
+      به‌عنوان ادمین می‌توانید روز را با تأیید صریح ببندید. این کار تعارض‌ها را نادیده می‌گیرد.
+    </div>
+  </div>
+  <div class="card-modern">
+    <div class="card-body">
+      <form method="post" action="{% url 'inventory:daily_closing_confirm' %}" class="d-flex gap-2 flex-wrap align-items-end">
+        {% csrf_token %}
+        <input type="hidden" name="date" value="{{ date_str }}">
+        <input type="hidden" name="force" value="true">
+        <div class="flex-grow-1">
+          <label class="form-label" for="closingNoteForce">یادداشت (الزامی برای بستن با força)</label>
+          <input type="text" name="note" id="closingNoteForce" class="form-control form-control-sm" maxlength="255" required
+                 placeholder="مثال: مغایرت برنامه با تسک X بررسی و تأیید شد">
+        </div>
+        <button type="submit" class="btn btn-danger" onclick="return confirm('مطمئن هستید؟ فقط ادمین می‌تواند با force روز را ببندد.')">
+          <i class="bi bi-shield-exclamation"></i> بستن روز با تأیید ادمین (force)
+        </button>
+      </form>
+      <div class="form-text mt-2">
+        این کار فقط مغایرت برنامه (conflict) را نادیده می‌گیرد. ردیف‌های ناقص (incomplete) و تراکنش‌های ناسازگار (inconsistent) همچنان مانع بستن هستند.
+      </div>
+    </div>
+  </div>
+  {% endif %}
 {% endif %}
 {% endblock %}

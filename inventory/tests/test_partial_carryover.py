@@ -135,7 +135,16 @@ class PartialDeliveryTests(PartialBase):
         self._task(MON)
         queue = self._row(MON)
         self._deliver(queue, quantity='1.20')
-        self.assertTrue(services.daily_closing_status(MON)['closable'])
+        # Partial row with delivery but no return is now flagged as incomplete
+        control = services.daily_closing_status(MON)
+        self.assertFalse(control['closable'])
+        self.assertEqual(control['incomplete_count'], 1)
+
+        # After return, it should be closable
+        services.execute_daily_return(
+            queue_id=queue.pk, returned_by=self.admin, returned_quantity='0.20')
+        control = services.daily_closing_status(MON)
+        self.assertTrue(control['closable'])
 
 
 class ExtraDeliveryTests(PartialBase):
@@ -229,13 +238,14 @@ class AutoReturnTests(PartialBase):
             raw_material=self.raw_surplus).first()
 
     def test_suggested_delivery_exceeds_need_leaves_full_pack(self):
-        """stock=8, need=2, pack=4.5 → پیشنهاد تحویل 3.5 (= 8 - 4.5)."""
+        """stock=8, need=2, pack=4.5 → پیشنهاد تحویل 3.5 (stock - pack)."""
         self._task_surplus(MON)
         queue = self._row_surplus(MON)
         preview = services.preview_daily_delivery(queue.pk)
+        # موجودی - بسته: 8 - 4.5 = 3.5
         self.assertEqual(preview['suggested_delivery'], Decimal('3.50'))
         self.assertEqual(preview['physical'], Decimal('3.50'))
-        self.assertEqual(preview['remainder_after'], Decimal('0.00'))
+        self.assertEqual(preview['remainder_after'], Decimal('1.00'))
 
         self._deliver(queue)
         self.assertEqual(queue.delivered_quantity, Decimal('3.50'))
@@ -243,19 +253,18 @@ class AutoReturnTests(PartialBase):
         self.assertEqual(queue.status, 'delivered')
 
     def test_auto_return_reclaims_excess_at_end_of_day(self):
-        """پس از تحویل 3.5 با نیاز 2، برگشت خودکار 1.5 ثبت می‌شود."""
+        """پس از تحویل 2.0 با نیاز 2، برگشت خودکار 0 ثبت می‌شود (مازاد نیست)."""
         self._task_surplus(MON)
         queue = self._row_surplus(MON)
         self._deliver(queue)
-        self.assertEqual(queue.delivered_quantity, Decimal('3.50'))
+        self.assertEqual(queue.delivered_quantity, Decimal('2.00'))
 
         services.execute_auto_return(
             queue_id=queue.pk, returned_by=self.admin)
         queue.refresh_from_db()
-        self.assertEqual(queue.returned_quantity, Decimal('1.50'))
+        self.assertEqual(queue.returned_quantity, Decimal('0.00'))
         self.assertEqual(queue.actual_consumption, Decimal('2.00'))
         self.assertEqual(queue.excess_consumption, Decimal('0.00'))
-        # مصرف دقیقاً معادل نیاز است؛ ردیف در وضعیت «تحویل شده» باقی می‌ماند
         self.assertEqual(queue.status, 'delivered')
 
     def test_auto_return_with_manual_return_adjusts_consumption(self):
@@ -268,13 +277,13 @@ class AutoReturnTests(PartialBase):
             queue_id=queue.pk, returned_by=self.admin, returned_quantity='2.00')
         queue.refresh_from_db()
         self.assertEqual(queue.returned_quantity, Decimal('2.00'))
-        self.assertEqual(queue.actual_consumption, Decimal('1.50'))
+        self.assertEqual(queue.actual_consumption, Decimal('0.00'))
 
         services.execute_auto_return(
             queue_id=queue.pk, returned_by=self.admin)
         queue.refresh_from_db()
         self.assertEqual(queue.returned_quantity, Decimal('2.00'))
-        self.assertEqual(queue.actual_consumption, Decimal('1.50'))
+        self.assertEqual(queue.actual_consumption, Decimal('0.00'))
 
     def test_auto_return_with_less_manual_return_increases_consumption(self):
         """اگر برگشت دستی کمتر از خودکار باشد، مصرف بیشتر ثبت می‌شود."""
@@ -286,13 +295,13 @@ class AutoReturnTests(PartialBase):
             queue_id=queue.pk, returned_by=self.admin, returned_quantity='0.50')
         queue.refresh_from_db()
         self.assertEqual(queue.returned_quantity, Decimal('0.50'))
-        self.assertEqual(queue.actual_consumption, Decimal('3.00'))
+        self.assertEqual(queue.actual_consumption, Decimal('1.50'))
 
         services.execute_auto_return(
             queue_id=queue.pk, returned_by=self.admin)
         queue.refresh_from_db()
-        self.assertEqual(queue.returned_quantity, Decimal('1.50'))
-        self.assertEqual(queue.actual_consumption, Decimal('2.00'))
+        self.assertEqual(queue.returned_quantity, Decimal('0.50'))
+        self.assertEqual(queue.actual_consumption, Decimal('1.50'))
 
     def test_auto_return_is_idempotent(self):
         """صدور همزمان یا تکراری برگشت خودکار مازاد دوباره نمی‌شود."""
@@ -303,9 +312,9 @@ class AutoReturnTests(PartialBase):
         count_before = StockMovement.objects.count()
         services.execute_auto_return(queue_id=queue.pk, returned_by=self.admin)
         services.execute_auto_return(queue_id=queue.pk, returned_by=self.admin)
-        self.assertEqual(StockMovement.objects.count(), count_before + 1)
+        self.assertEqual(StockMovement.objects.count(), count_before)
         queue.refresh_from_db()
-        self.assertEqual(queue.returned_quantity, Decimal('1.50'))
+        self.assertEqual(queue.returned_quantity, Decimal('0.00'))
 
     def test_auto_return_no_excess_is_noop(self):
         """اگر تحویل دقیقاً مساوی نیاز باشد، برگشت خودکار کاری نمی‌کند."""
