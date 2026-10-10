@@ -123,14 +123,12 @@ def _packs_for(need, pack_size):
 
 def _suggested_delivery(need, pack_size, stock):
     """
-    مقدار پیشنهادی تحویل: موجودی انبار منهای یک بستهٔ کامل.
+    مقدار پیشنهادی تحویل: اول باقی‌ماندهٔ بستهٔ باز تمام شود.
 
-    هدف این است که همواره یک بستهٔ کامل در انبار باقی بماند.
-    اگر موجودی بیش از یک بسته باشد، مقدار ``stock - pack_size`` پیشنهاد می‌شود.
-    اگر موجودی کمتر از یا مساوی یک بسته باشد، تمام موجودی تحویل می‌شود.
-
-    بدون اندازه بستهٔ ثابت (``pack_size <= 0``) مقدار نیاز به‌صورت دقیق
-    برمی‌گردد.
+    open_remainder = stock mod pack_size
+      * اگر بستهٔ باز داریم (remainder > 0): همان باقی‌مانده پیشنهاد می‌شود.
+      * اگر بستهٔ باز نداریم: دقیقاً مقدار نیاز.
+    بدون اندازهٔ بستهٔ ثابت: مقدار نیاز.
     """
     need = _q2(need)
     pack = _q2(pack_size or 0)
@@ -139,8 +137,9 @@ def _suggested_delivery(need, pack_size, stock):
     if pack <= 0:
         return need
 
-    if stock_val > pack:
-        return stock_val - pack
+    open_remainder = _q2(stock_val % pack)
+    if open_remainder > 0:
+        return open_remainder
 
     return need
 
@@ -1935,15 +1934,16 @@ def preview_daily_delivery(queue_id):
     delivered = _q2(queue.delivered_quantity)
     remaining = _q2(max(planned - delivered, Decimal('0')))
     if delivered > 0:
-        packs, physical = 0, remaining
+        physical = remaining
     else:
         physical = _suggested_delivery(remaining, pack, stock)
-        packs = _packs_for(remaining, pack)[0] if pack > 0 else 0
 
     open_remainder = _q2(stock % pack) if pack > 0 else ZERO
     from_open = _q2(min(physical, open_remainder))
     from_new_pack = _q2(physical - from_open)
     remainder_after = _q2((stock - physical) % pack) if pack > 0 else ZERO
+    # تعداد بستهٔ جدیدی که باید باز شود (نه بستهٔ باز موجود)
+    packs = _packs_counted(from_new_pack, pack) if pack > 0 else 0
 
     suggested_delivery = _suggested_delivery(
         _q2(max(planned - delivered, Decimal('0'))), pack, stock,
