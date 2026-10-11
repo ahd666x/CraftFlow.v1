@@ -1,15 +1,28 @@
 from django.contrib.auth import views as auth_views
 from django.contrib.auth.forms import AuthenticationForm
-from django.urls import reverse_lazy
+from django.urls import reverse, reverse_lazy
 from django.views.generic import CreateView, TemplateView, UpdateView
 
 from .forms import UserRegistrationForm, ProfileUpdateForm
 from .models import UserProfile
 
+REPRESENTATIVE_GROUP = 'نماینده'
+
 
 class CustomLoginView(auth_views.LoginView):
     template_name = 'accounts/login.html'
     authentication_form = AuthenticationForm
+
+    def get_success_url(self):
+        next_url = self.get_redirect_url()
+        if next_url:
+            return next_url
+        user = self.request.user
+        if (not user.is_superuser
+                and user.groups.filter(name=REPRESENTATIVE_GROUP).exists()
+                and not user.groups.filter(name__in=['1', '2', '3', 'انبار']).exists()):
+            return reverse('customer_order_list')  # /customer/orders/
+        return super().get_success_url()
 
 
 class CustomLogoutView(auth_views.LogoutView):

@@ -51,10 +51,17 @@ class RawMaterialAdmin(admin.ModelAdmin):
 @admin.register(StockMovement)
 class StockMovementAdmin(admin.ModelAdmin):
     """
-    دفتر گردش فقط خواندنی است.
+    دفتر گردش — فقط خواندنی از نظر فیلدها، اما قابل حذف.
 
-    اگر حرکتی از این پنل ساخته یا حذف شود، موجودی از گردش واقعی جدا می‌شود و
-    هیچ حسابرسی این را نمی‌بیند؛ برای همین همهٔ فیلدها فقط‌خواندنی‌اند.
+    هر نوشتنی باید از ``inventory.services`` بیاید تا قاعدهٔ بسته‌بندی و
+    کسر مصرف در یک نقطه بماند. اما گاهی یک رکورد اشتباه (مثلاً اسکن اشتباه
+    دریافت یا اصلاحیهٔ تکراری) ثبت می‌شود و نیاز به حذف دارد؛ در این حالت
+    حذف از پنل ادمین مجاز است چون ``RawMaterial.current_stock`` یک
+    property است و بعد از حذف خودکار دوباره محاسبه می‌شود و موجودی به
+    گردش واقعی باز می‌گردد.
+
+    **هشدار:** حذف یک ``StockMovement`` موجودی آن ماده را تغییر می‌دهد.
+    فقط رکورد هایی را حذف کنید که واقعاً اشتباه ثبت شده‌اند.
     """
 
     list_display = [
@@ -65,6 +72,10 @@ class StockMovementAdmin(admin.ModelAdmin):
     search_fields = ['raw_material__name', 'raw_material__code', 'note']
     date_hierarchy = 'created_at'
     readonly_fields = [f.name for f in StockMovement._meta.fields]
+    # سفارشی‌سازی صفحه تأیید حذف: هشدار را به کاربر نشان می‌دهد.
+    delete_confirmation_template = (
+        'inventory/admin/stockmovement_delete_confirmation.html'
+    )
 
     def has_add_permission(self, request):
         return False
@@ -72,8 +83,9 @@ class StockMovementAdmin(admin.ModelAdmin):
     def has_change_permission(self, request, obj=None):
         return False
 
-    def has_delete_permission(self, request, obj=None):
-        return False
+    def has_delete_permission(self, request):
+        # حذف فقط برای کاربران دارای دسترسی ادمین مجاز است.
+        return request.user.is_staff or request.user.is_superuser
 
 
 @admin.register(DailyMaterialQueue)

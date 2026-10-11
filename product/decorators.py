@@ -35,7 +35,7 @@ def staff_or_representative_required(view_func=None, redirect_url='/customer/ord
         if user.is_superuser:
             return True
         # چک کردن عضویت در گروه‌های مجاز
-        return user.groups.filter(name__in=['1']).exists()
+        return user.groups.filter(name__in=['1', 'نماینده']).exists()
 
     def decorator(view_func):
         @wraps(view_func)
@@ -114,6 +114,14 @@ def is_warehouse_user(user):
         user.groups.filter(name__in=['2', '3']).exists()
         or user.groups.filter(name='انبار').exists()
     )
+
+
+def is_representative_user(user):
+    """نماینده: عضو گروه «نماینده» و بدون هیچ گروه کارمندی."""
+    if not user.is_authenticated or user.is_superuser:
+        return False
+    names = set(user.groups.values_list('name', flat=True))
+    return 'نماینده' in names and not names & {'1', '2', '3', 'انبار'}
 
 
 def warehouse_receive_required(view_func=None, redirect_url='/customer/orders/'):

@@ -1682,13 +1682,17 @@ def daily_material_report(date, *, worker_id=None, material_id=None, status=None
     }
 
 
-def daily_queue_action_state(queue, *, with_suggestion=True):
+def daily_queue_action_state(queue, *, with_suggestion=True, locked=None):
     """
     وضعیت اقدام‌های ممکن روی یک ردیف صف، برای نمایش در UI.
 
     فقط می‌خواند و هیچ قاعدهٔ جدیدی نمی‌سازد: شرط‌ها دقیقاً همان‌هایی هستند که
     ``execute_daily_delivery`` و ``execute_daily_return`` اعمال می‌کنند. UI نباید
     این قاعده را از روی متن Badge یا با محاسبهٔ دستی تکرار کند.
+
+    ``locked=None`` یعنی با ``DailyMaterialClosing.is_locked(queue.work_date)``
+    حساب کن؛ در ویوی لیست یک‌بار برای تاریخ حساب و به همهٔ ردیف‌ها پاس بده
+    (بدون N+1).
     """
     planned = _q2(queue.planned_quantity)
     delivered = _q2(queue.delivered_quantity)
@@ -1697,21 +1701,32 @@ def daily_queue_action_state(queue, *, with_suggestion=True):
     remaining = _q2(max(planned - delivered, Decimal('0')))
     no_returns = already_returned <= 0
 
+    if locked is None:
+        from .models import DailyMaterialClosing
+        locked = DailyMaterialClosing.is_locked(queue.work_date)
+
     can_deliver = (
-        queue.status in ('pending', 'partial')
+        not locked
+        and queue.status in ('pending', 'partial')
         and no_returns
         and planned > 0
         and remaining > 0
     )
     can_add_extra = (
-        queue.status in ('partial', 'delivered')
+        not locked
+        and queue.status in ('partial', 'delivered')
         and no_returns
         and delivered > 0
     )
+    # Each row may be returned at most once.  ``no_returns`` is the authoritative
+    # record: ``returned_quantity`` is only ever set by execute_daily_return,
+    # and execute_daily_return itself now refuses a second call.
     can_return = (
-        queue.status not in ('cancelled', 'returned')
+        not locked
+        and queue.status not in ('cancelled', 'returned')
         and delivered > 0
         and max_returnable > 0
+        and no_returns
     )
 
     if with_suggestion:
@@ -1723,7 +1738,8 @@ def daily_queue_action_state(queue, *, with_suggestion=True):
 
     auto_returnable = _q2(max(delivered - planned, Decimal('0')))
     can_auto_return = (
-        queue.status in ('delivered', 'partial')
+        not locked
+        and queue.status in ('delivered', 'partial')
         and no_returns
         and auto_returnable > 0
         and max_returnable > 0
@@ -1731,7 +1747,8 @@ def daily_queue_action_state(queue, *, with_suggestion=True):
 
     # Can cancel: pending status, no transactions, planned > 0
     can_cancel = (
-        queue.status == 'pending'
+        not locked
+        and queue.status == 'pending'
         and not queue.has_transaction
         and planned > 0
     )
@@ -1748,6 +1765,8 @@ def daily_queue_action_state(queue, *, with_suggestion=True):
         'auto_returnable': str(auto_returnable),
         'can_auto_return': can_auto_return,
         'can_cancel': can_cancel,
+        'return_recorded': not no_returns,
+        'locked': locked,
     }
 
 
@@ -1759,21 +1778,33 @@ def daily_closing_problems(qs):
     """
     ردیف‌هایی که بستن روز را ناامن می‌کنند — کاملاً فقط‌خواندنی.
 
-    هیچ قاعدهٔ کسب‌وکار جدیدی اختراع نمی‌شود؛ هر سه دسته مستقیماً از وضعیت و
+    هیچ قاعدهٔ کسب‌وکار جدیدی اختراع نمی‌شود؛ هر دسته مستقیماً از وضعیت و
     فیلدهای موجود ``DailyMaterialQueue`` مشتق می‌شود:
 
     * ``conflict``           → ``has_plan_conflict``
-    * ``incomplete``         → نیاز برنامه‌ریزی‌شده با تحویل/برگشت برآورده نشده:
-                               - pending با planned > 0
-                               - delivered > 0 و returned == 0 (تحویل شده اما برگشت نداشته)
+    * ``incomplete``         →::
+        - pending با planned > 0
+        - partial (به‌هر دلیل، از جمله carryover)
+      یادداشت: ``delivered`` بدون برگشت مشکل نیست؛ تحویل در پایان روز
+      وضعیت عادی است (مثلاً ماده را کارگر بُرده یا کار را تمام کرده).
     * ``inconsistent``       → وضعیت ذخیره‌شده با مقدارهای تحویل/برگشت نمی‌خواند
-    * ``excess_delivered``   → تحویل > برنامه (مازاد دارد، باید برگشت خودکار شود)
+    * ``excess_delivered``   → فقط وقتی ``returned == 0`` و ``delivered > planned``
+      باشد (مازادی که هنوز برگشت نشده). بعد از ثبت بازگشت، مشکل رفع می‌شود.
     * ``overdue_partial``    → ردیف partial که از روز قبل carryover شده (کسری معوق)
 
     خروجی: لیستی از ``{'queue': row, 'reasons': [...]}``.
     """
     problems = []
-    for queue in qs:
+    from .models import DailyMaterialQueueSource
+    # Prefetch sources once per problem row so we can answer
+    # ``has_carryover_source`` without an N+1 query per row.
+    problem_qs = qs.prefetch_related('sources')
+    carryover_source_ids = set(
+        DailyMaterialQueueSource.objects.filter(
+            queue__in=problem_qs, kind='carryover',
+        ).values_list('queue_id', flat=True)
+    )
+    for queue in problem_qs:
         planned = _q2(queue.planned_quantity)
         delivered = _q2(queue.delivered_quantity)
         returned = _q2(queue.returned_quantity)
@@ -1782,23 +1813,25 @@ def daily_closing_problems(qs):
         if queue.has_plan_conflict:
             reasons.add('conflict')
 
-        # incomplete: planned not fully delivered/returned
-        # - pending with planned > 0
-        # - delivered > 0 but returned == 0 (delivered without return)
+        # incomplete: only rows that are still open or partially delivered.
+        # A ``delivered`` row without a return is the normal end-of-day state
+        # (the worker took the material home / finished the job) and is NOT a
+        # problem — the closing control is about *open* work, not about
+        # unreturned material.
         if queue.status == 'pending' and planned > 0:
             reasons.add('incomplete')
-        elif delivered > 0 and returned == 0 and queue.status in ('delivered', 'partial'):
+        elif queue.status == 'partial':
             reasons.add('incomplete')
 
-        # excess_delivered: delivered > planned (surplus to auto-return)
-        if delivered > planned:
+        # excess_delivered: only when nothing has been returned yet.  Once a
+        # return is recorded the surplus is resolved and the row is no longer
+        # flagged.
+        if returned <= 0 and delivered > planned:
             reasons.add('excess_delivered')
 
         # overdue_partial: partial from carryover (source kind == 'carryover')
-        if queue.status == 'partial':
-            has_carryover_source = queue.sources.filter(kind='carryover').exists()
-            if has_carryover_source:
-                reasons.add('overdue_partial')
+        if queue.status == 'partial' and queue.id in carryover_source_ids:
+            reasons.add('overdue_partial')
 
         if returned > delivered:
             reasons.add('inconsistent')

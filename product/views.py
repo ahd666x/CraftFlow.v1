@@ -1106,12 +1106,17 @@ def root_view(request):
     """
     Root view: redirect to dashboard for admin/manager, shop for others.
     """
+    from .decorators import is_representative_user
+    from django.shortcuts import redirect
+
+    if is_representative_user(request.user):
+        return redirect('customer_order_list')  # /customer/orders/
+
     if request.user.is_authenticated:
         if request.user.is_superuser:
             return dashboard(request)
         if request.user.groups.filter(name__in=['2', '3']).exists():
             return dashboard(request)
-    from django.shortcuts import redirect
     return redirect('storefront:home')
 
 
