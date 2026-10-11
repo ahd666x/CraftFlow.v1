@@ -27,7 +27,7 @@
             {% if user.is_authenticated %}
                 <span class="hidden text-sm text-stone-500 sm:inline">{{ user.username }}</span>
             {% else %}
-                <a href="{% url 'login' %}" class="btn-outline py-1.5">ورود</a>
+                <a href="{% url 'accounts:login' %}" class="btn-outline py-1.5">ورود</a>
             {% endif %}
 
             <a href="{% url 'cart:cart_detail' %}"

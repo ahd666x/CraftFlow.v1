@@ -1102,6 +1102,17 @@ def order_generate_tasks(request, order_id):
     return JsonResponse({'success': False, 'error': result.get('error', 'تسک‌ها قبلاً ایجاد شده‌اند.')})
 
 
+def root_view(request):
+    """
+    Root view: redirect to dashboard for admin/manager, shop for others.
+    """
+    if request.user.is_authenticated:
+        if request.user.is_superuser:
+            return dashboard(request)
+        if request.user.groups.filter(name__in=['2', '3']).exists():
+            return dashboard(request)
+    from django.shortcuts import redirect
+    return redirect('storefront:home')
 
 
 @login_required

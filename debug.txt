@@ -1,0 +1,10 @@
+return JsonResponse({'success': False, 'error': result.get('error', 'تسک‌ها قبلاً ایجاد شده‌اند.')})
+
+
+
+
+@login_required
+@admin_or_manager_required
+def dashboard(request):
+    # آمار کلی سفارشات
+    t
