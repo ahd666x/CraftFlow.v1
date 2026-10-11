@@ -242,6 +242,11 @@ def daily_material_queue(request):
     paginator = Paginator(report['rows'], 25)
     queues = paginator.get_page(request.GET.get('page'))
 
+    # Attach action state to each queue row for template buttons
+    queues.object_list = list(queues.object_list)
+    for q in queues.object_list:
+        q.action = services.daily_queue_action_state(q, with_suggestion=False)
+
     diagnostics = report.get('diagnostics', {})
     unresolved_materials = diagnostics.get('unresolved_materials', [])
     skipped = diagnostics.get('skipped', [])

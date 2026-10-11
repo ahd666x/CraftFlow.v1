@@ -8,7 +8,7 @@
   <div>
     <h1 class="h3 mb-1">کار روزانهٔ انبار</h1>
     <div class="small text-muted">
-      صف مواد روزانه — نسخهٔ صفحه: <code>{{ page_version|default:"—" }}</code>
+      صف مواد روزانه
     </div>
   </div>
   <div class="d-flex gap-2">
@@ -35,61 +35,26 @@
       <option value="{{ w.id }}" {% if worker_filter == w.id|stringformat:"s" %}selected{% endif %}>{{ w.get_full_name|default:w.username }}</option>
     {% endfor %}
   </select>
-  <select name="material" class="form-select form-select-sm" style="max-width:200px">
-    <option value="">همهٔ مواد</option>
-    {% for m in materials %}
-      <option value="{{ m.id }}" {% if material_filter == m.id|stringformat:"s" %}selected{% endif %}>{{ m.name }} ({{ m.get_unit_display }})</option>
-    {% endfor %}
-  </select>
-  <select name="status" class="form-select form-select-sm" style="max-width:160px">
-    <option value="">همه وضعیت‌ها</option>
-    {% for value, label in status_choices %}
-      <option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }}</option>
-    {% endfor %}
-  </select>
+  <details class="d-inline">
+    <summary class="btn btn-sm btn-outline-secondary">فیلتر بیشتر</summary>
+    <div class="card card-body card-modern mt-2" style="max-width:400px; position:absolute; z-index:100; background:var(--bs-body-bg);">
+      <select name="material" class="form-select form-select-sm mb-2" style="max-width:200px">
+        <option value="">همهٔ مواد</option>
+        {% for m in materials %}
+          <option value="{{ m.id }}" {% if material_filter == m.id|stringformat:"s" %}selected{% endif %}>{{ m.name }} ({{ m.get_unit_display }})</option>
+        {% endfor %}
+      </select>
+      <select name="status" class="form-select form-select-sm" style="max-width:160px">
+        <option value="">همه وضعیت‌ها</option>
+        {% for value, label in status_choices %}
+          <option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </details>
   <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-funnel"></i> فیلتر</button>
   <a href="{% url 'inventory:daily_material_queue' %}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-x-circle"></i> پاک</a>
 </form>
-
-<div class="row g-3 mb-3">
-  <div class="col-6 col-lg-2">
-    <div class="card-modern h-100"><div class="card-body py-3">
-      <div class="text-muted small">اقلام این صف</div>
-      <div class="h4 mb-0">{{ total_count }}</div>
-    </div></div>
-  </div>
-  <div class="col-6 col-lg-2">
-    <div class="card-modern h-100"><div class="card-body py-3">
-      <div class="text-muted small"><i class="bi bi-hourglass"></i> آمادهٔ تحویل</div>
-      <div class="h4 mb-0 {% if summary.pending_count %}text-primary{% endif %}">{{ summary.pending_count }}</div>
-    </div></div>
-  </div>
-  <div class="col-6 col-lg-2">
-    <div class="card-modern h-100"><div class="card-body py-3">
-      <div class="text-muted small">برنامه‌ریزی‌شده</div>
-      <div class="h4 mb-0">{{ summary.total_planned|floatformat:2 }}</div>
-    </div></div>
-  </div>
-  <div class="col-6 col-lg-2">
-    <div class="card-modern h-100"><div class="card-body py-3">
-      <div class="text-muted small">تحویل‌شده</div>
-      <div class="h4 mb-0">{{ summary.total_delivered|floatformat:2 }}</div>
-    </div></div>
-  </div>
-  <div class="col-6 col-lg-2">
-    <div class="card-modern h-100"><div class="card-body py-3">
-      <div class="text-muted small">برگشتی</div>
-      <div class="h4 mb-0">{{ summary.total_returned|floatformat:2 }}</div>
-    </div></div>
-  </div>
-  <div class="col-6 col-lg-2">
-    <div class="card-modern h-100"><div class="card-body py-3">
-      <div class="text-muted small">مصرف واقعی</div>
-      <div class="h4 mb-0">{{ summary.total_actual|floatformat:2 }}</div>
-      <div class="small text-muted">اضافه: {{ summary.total_excess|floatformat:2 }}</div>
-    </div></div>
-  </div>
-</div>
 
 {% if summary.conflict_count %}
 <div class="alert alert-warning d-flex align-items-start gap-2">
@@ -102,6 +67,17 @@
 </div>
 {% endif %}
 
+<div class="d-flex flex-wrap gap-2 text-muted small mb-3 no-print">
+  <span class="badge bg-primary bg-opacity-10 text-primary px-2 py-1">در انتظار تحویل: {{ summary.pending_count }}</span>
+  <span class="badge bg-success bg-opacity-10 text-success px-2 py-1">تحویل‌شده: {{ summary.delivered_count }}</span>
+  {% if summary.conflict_count %}
+  <span class="badge bg-warning bg-opacity-10 text-warning px-2 py-1">مغایرت: {{ summary.conflict_count }}</span>
+  {% endif %}
+</div>
+<div class="text-muted small mb-3 no-print">
+  مجموع نیاز {{ summary.total_planned|floatformat:2 }} · تحویل {{ summary.total_delivered|floatformat:2 }} · برگشتی {{ summary.total_returned|floatformat:2 }}
+</div>
+
 <div class="card-modern">
   <div class="card-body p-0">
     <div class="table-responsive">
@@ -110,19 +86,15 @@
           <tr>
             <th>کارگر</th>
             <th>ماده اولیه</th>
-            <th>واحد</th>
-            <th>برنامه</th>
+            <th>نیاز</th>
             <th>تحویل</th>
             <th>برگشتی</th>
-            <th>مصرف واقعی</th>
-            <th>اضافه</th>
             <th>وضعیت</th>
             <th></th>
           </tr>
         </thead>
         <tbody>
           {% for queue in queues %}
-            {% with excess=queue.excess_consumption|floatformat:"-2" %}
             <tr data-queue="{{ queue.id }}"
                 class="{% if queue.has_plan_conflict %}table-warning{% endif %} {% if queue.status == 'delivered' %}table-success{% elif queue.status == 'returned' %}table-info{% elif queue.status == 'closed' %}table-secondary{% endif %}">
               <td>
@@ -135,39 +107,39 @@
                 <strong>{{ queue.raw_material.name }}</strong>
                 {% if queue.raw_material.code %}<div class="small text-muted">{{ queue.raw_material.code }}</div>{% endif %}
               </td>
-              <td>{{ queue.raw_material.get_unit_display }}</td>
-              <td class="fw-bold">{{ queue.planned_quantity|floatformat:2 }}</td>
-              <td>{{ queue.delivered_quantity|floatformat:2 }}</td>
+              <td class="fw-bold">{{ queue.planned_quantity|floatformat:2 }} <span class="small text-muted">{{ queue.raw_material.get_unit_display }}</span></td>
+              <td>{{ queue.delivered_quantity|floatformat:2 }}
+                {% if queue.excess_consumption > 0 %}
+                  <div class="small text-danger">+{{ queue.excess_consumption|floatformat:2 }} اضافه</div>
+                {% endif %}
+              </td>
               <td>{{ queue.returned_quantity|floatformat:2 }}</td>
-              <td class="fw-bold">{{ queue.actual_consumption|floatformat:2 }}</td>
-              <td class="{% if queue.excess_consumption > 0 %}text-danger fw-bold{% else %}text-muted{% endif %}">{{ excess }}</td>
               <td>
-                <span class="badge {% if queue.status == 'pending' %}bg-primary{% elif queue.status == 'delivered' %}bg-success{% elif queue.status == 'returned' %}bg-info text-dark{% else %}bg-secondary{% endif %}">
+                <span class="badge {% if queue.status == 'pending' %}bg-primary{% elif queue.status == 'delivered' %}bg-success{% elif queue.status == 'returned' %}bg-info text-dark{% elif queue.status == 'partial' %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
                   {{ queue.get_status_display }}
                 </span>
               </td>
               <td>
                 <div class="btn-group btn-group-sm" role="group">
-                  {% if queue.status == 'pending' %}
+                  {% if queue.action.can_deliver %}
                     <button type="button" class="btn btn-outline-primary btn-preview-delivery" data-queue="{{ queue.id }}" title="تحویل این ردیف">
                       <i class="bi bi-box-arrow-in-down"></i> تحویل
                     </button>
                   {% endif %}
-                  {% if queue.status == 'delivered' or queue.status == 'returned' %}
+                  {% if queue.action.can_return %}
                     <button type="button" class="btn btn-outline-warning btn-return" data-queue="{{ queue.id }}" title="ثبت بازگشت">
                       <i class="bi bi-box-arrow-up"></i> بازگشت
                     </button>
                   {% endif %}
                   <button type="button" class="btn btn-outline-info btn-sources" data-queue="{{ queue.id }}" title="این نیاز از کجا آمده">
-                    <i class="bi bi-diagram-3"></i>
+                    <i class="bi bi-diagram-3"></i> منشأ
                   </button>
                 </div>
               </td>
             </tr>
-            {% endwith %}
           {% empty %}
             <tr>
-              <td colspan="10" class="text-center text-muted py-5">
+              <td colspan="7" class="text-center text-muted py-5">
                 <i class="bi bi-inbox"></i> برای این تاریخ و فیلترها ردیفی یافت نشد.
               </td>
             </tr>
@@ -212,34 +184,31 @@
       </div>
       <div class="modal-body">
         <div id="deliveryAlert" class="alert alert-danger d-none" role="alert"></div>
-        <div class="row g-2 mb-3">
-          <div class="col-6"><label class="form-label fw-bold">ماده اولیه</label><div class="form-control-plaintext" id="deliveryMaterialName">—</div></div>
-          <div class="col-6"><label class="form-label fw-bold">کارگر</label><div class="form-control-plaintext" id="deliveryWorkerName">—</div></div>
-          <div class="col-4"><label class="form-label">برنامه‌ریزی‌شده</label><div class="form-control-plaintext fw-bold" id="deliveryPlanned">—</div></div>
-          <div class="col-4"><label class="form-label">اندازهٔ بسته</label><div class="form-control-plaintext" id="deliveryPackSize">—</div></div>
-          <div class="col-4"><label class="form-label">تعداد بسته</label><div class="form-control-plaintext" id="deliveryPacks">—</div></div>
-          <div class="col-4"><label class="form-label">خروج فیزیکی</label><div class="form-control-plaintext fw-bold text-primary" id="deliveryPhysical">—</div></div>
-          <div class="col-4"><label class="form-label">موجودی انبار</label><div class="form-control-plaintext" id="deliveryStock">—</div></div>
-          <div class="col-4"><label class="form-label">کافی است؟</label><div class="form-control-plaintext" id="deliveryEnough">—</div></div>
+        <div class="d-flex justify-content-between align-items-start mb-3">
+          <div>
+            <div class="fw-bold" id="deliveryMaterialName">—</div>
+            <div class="small text-muted" id="deliveryWorkerName">—</div>
+          </div>
+          <div class="text-end">
+            <div class="small text-muted">نیاز باقی‌مانده</div>
+            <div class="fw-bold" id="deliveryPlanned">—</div>
+          </div>
         </div>
         <div id="deliveryFormArea">
           <label class="form-label fw-bold" for="deliveryQuantityInput">مقدار تحویل</label>
-          <input type="text" class="form-control form-control-sm" id="deliveryQuantityInput" readonly>
-          <div class="form-text">نیاز به تعداد بستهٔ کامل گرد می‌شود؛ همین عدد از انبار کم می‌شود.</div>
-          <div class="form-check form-switch mt-2">
-            <input class="form-check-input" type="checkbox" id="useOpenPackInput" {% if pack_size and pack_size > 0 and stock and stock > 0 %}checked{% endif %}>
-            <label class="form-check-label small" for="useOpenPackInput">
-              <i class="bi bi-box-seam"></i> تحویل از بسته باز موجود در انبار (اگر موجودی ناقص بسته داشته باشد، مقدار دقیق نیاز تحویل داده می‌شود)
-            </label>
+          <div class="input-group">
+            <input type="number" class="form-control" id="deliveryQuantityInput" step="0.01" min="0.01" inputmode="decimal">
+            <span class="input-group-text" id="deliveryUnit"></span>
           </div>
-          <label class="form-label mt-2" for="deliveryNoteInput">یادداشت</label>
-          <input type="text" class="form-control form-control-sm" id="deliveryNoteInput" maxlength="255">
+          <div class="form-text" id="deliveryHint"></div>
+          <div class="small text-muted mt-1" id="deliveryDetails"></div>
+          <input type="text" class="form-control form-control-sm mt-3" id="deliveryNoteInput" maxlength="255" placeholder="یادداشت (اختیاری)">
         </div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
         <button type="button" class="btn btn-primary" id="confirmDeliveryBtn" disabled>
-          <i class="bi bi-check-lg"></i> تأیید و ثبت تحویل
+          <i class="bi bi-check-lg"></i> ثبت تحویل
         </button>
       </div>
     </div>
@@ -373,6 +342,25 @@
   const deliveryAlert = el('deliveryAlert');
   const confirmDeliveryBtn = el('confirmDeliveryBtn');
   let activeDeliveryId = null;
+  let previewData = null;
+
+  function refreshDeliveryHint() {
+    const hint = el('deliveryHint');
+    const qty = parseFloat(el('deliveryQuantityInput').value);
+    const remaining = parseFloat(previewData?.remaining);
+    const stock = parseFloat(previewData?.stock);
+    hint.className = 'form-text';
+    if (!qty || qty <= 0) { hint.textContent = ''; busy(confirmDeliveryBtn, true); return; }
+    if (qty > stock + 0.001) {
+      hint.textContent = 'موجودی انبار کافی نیست.';
+      hint.classList.add('text-danger');
+      busy(confirmDeliveryBtn, true); return;
+    }
+    if (qty < remaining - 0.001) hint.textContent = 'تحویل ناقص؛ کسری به روز کاری بعد منتقل می‌شود.';
+    else if (qty > remaining + 0.001) hint.textContent = 'مازاد بر نیاز؛ در پایان روز قابل برگشت است.';
+    else hint.textContent = '';
+    busy(confirmDeliveryBtn, false, '<i class="bi bi-check-lg"></i> ثبت تحویل');
+  }
 
   async function loadDeliveryPreview(queueId) {
     clearAlert(deliveryAlert);
@@ -380,19 +368,17 @@
     try {
       const data = await getJSON(urls.preview.replace('{id}', queueId));
       activeDeliveryId = queueId;
+      previewData = data;
       const row = document.querySelector('tr[data-queue="' + queueId + '"]');
       el('deliveryWorkerName').textContent = row?.querySelector('td strong')?.textContent?.trim() || '—';
       el('deliveryMaterialName').textContent = data.name;
-      el('deliveryPlanned').textContent = data.planned + ' ' + data.unit;
-      el('deliveryPackSize').textContent = data.pack_size && parseFloat(data.pack_size) > 0
-        ? data.pack_size + ' ' + data.unit : 'بسته‌بندی ندارد';
-      el('deliveryPacks').textContent = data.packs || '—';
-      el('deliveryPhysical').textContent = data.physical + ' ' + data.unit;
-      el('deliveryStock').textContent = data.stock + ' ' + data.unit;
-      el('deliveryEnough').textContent = data.enough ? 'بله' : 'خیر';
-      el('deliveryEnough').className = 'form-control-plaintext ' + (data.enough ? 'text-success' : 'text-danger fw-bold');
+      el('deliveryPlanned').textContent = data.remaining + ' ' + data.unit;
+      el('deliveryUnit').textContent = data.unit;
       el('deliveryQuantityInput').value = data.physical;
       el('deliveryNoteInput').value = '';
+      el('deliveryDetails').textContent = 'موجودی انبار: ' + data.stock + ' ' + data.unit +
+        (parseFloat(data.pack_size) > 0 ? ' · اندازهٔ بسته: ' + data.pack_size : '') +
+        (parseFloat(data.from_open) > 0 ? ' · از بستهٔ باز: ' + data.from_open : '');
 
       // وضعیت قابل‌تحویل بودن از سرویس می‌آید، نه از متن Badge.
       if (!data.can_deliver) {
@@ -401,29 +387,30 @@
           'این ردیف در وضعیت فعلی قابل تحویل نیست: ' + (data.status_display || data.status || ''));
       } else {
         el('deliveryFormArea').style.display = '';
-        if (!data.enough) {
-          setAlert(deliveryAlert,
-            'موجودی انبار کمتر از مقدار لازم است؛ ثبت تحویل خطا می‌دهد. ابتدا کالا دریافت کنید.');
-        }
-        busy(confirmDeliveryBtn, false, '<i class="bi bi-check-lg"></i> تأیید و ثبت تحویل');
+        busy(confirmDeliveryBtn, false, '<i class="bi bi-check-lg"></i> ثبت تحویل');
       }
+      // Initialize hint after setting default value
+      refreshDeliveryHint();
     } catch (err) {
       setAlert(deliveryAlert, err.message);
       busy(confirmDeliveryBtn, true);
     }
   }
 
+  el('deliveryQuantityInput')?.addEventListener('input', refreshDeliveryHint);
+
   confirmDeliveryBtn?.addEventListener('click', async () => {
     if (!activeDeliveryId) return;
     busy(confirmDeliveryBtn, true);
     try {
       await postForm(urls.delivery.replace('{id}', activeDeliveryId), {
+        quantity: el('deliveryQuantityInput').value || '',
         note: el('deliveryNoteInput').value || ''
       });
       window.location.reload();
     } catch (err) {
       setAlert(deliveryAlert, err.message);
-      busy(confirmDeliveryBtn, false, '<i class="bi bi-check-lg"></i> تأیید و ثبت تحویل');
+      busy(confirmDeliveryBtn, false, '<i class="bi bi-check-lg"></i> ثبت تحویل');
     }
   });
 
@@ -539,6 +526,7 @@
 
   deliveryModalEl?.addEventListener('hidden.bs.modal', () => {
     activeDeliveryId = null;
+    previewData = null;
     clearAlert(deliveryAlert);
   });
   returnModalEl?.addEventListener('hidden.bs.modal', () => {

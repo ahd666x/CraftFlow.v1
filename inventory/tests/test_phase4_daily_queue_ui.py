@@ -520,3 +520,80 @@ class DailyQueuePermissionTests(DailyQueueUIBase):
         response = self.client.get(reverse('inventory:daily_material_queue'))
         self.assertEqual(response.status_code, 302)
         self.assertIn('/login', response.url)
+
+
+class DailyQueueActionButtonTests(DailyQueueUIBase):
+    """تست‌های دکمه‌های اقدام بر اساس action state از سرویس."""
+
+    def test_partial_row_shows_delivery_button(self):
+        """ردیف partial باید دکمهٔ تحویل داشته باشد (و اگر تحویل قبلی دارد، دکمهٔ بازگشت هم)."""
+        self._make_task(worker=self.worker_a, start=self.day_start, quantity=2)
+        queue = self._queue()
+        # تحویل ناقص → partial
+        services.execute_daily_delivery(queue_id=queue.pk, delivered_by=self.superuser, quantity='0.50')
+        queue.refresh_from_db()
+        self.assertEqual(queue.status, 'partial')
+
+        self.client.force_login(self.warehouse_user)
+        response = self.client.get(reverse('inventory:daily_material_queue'))
+
+        # باید دکمهٔ تحویل (btn-preview-delivery) در ردیف جدول باشد
+        content = response.content.decode('utf-8')
+        tbody_start = content.index('<tbody>')
+        tbody_end = content.index('</tbody>')
+        tbody = content[tbody_start:tbody_end]
+        self.assertIn('btn-preview-delivery', tbody)
+        # چون تحویل قبلی 0.50 دارد، دکمهٔ بازگشت هم باید باشد (can_return=True)
+        self.assertIn('btn-return', tbody)
+
+    def test_pending_row_shows_delivery_not_return(self):
+        """ردیف pending فقط دکمهٔ تحویل داشته باشد."""
+        self._make_task(worker=self.worker_a, start=self.day_start, quantity=2)
+
+        self.client.force_login(self.warehouse_user)
+        response = self.client.get(reverse('inventory:daily_material_queue'))
+
+        self.assertContains(response, 'btn-preview-delivery')
+        # چک در tbody - نباید btn-return در ردیف‌های جدول باشد
+        content = response.content.decode('utf-8')
+        tbody_start = content.index('<tbody>')
+        tbody_end = content.index('</tbody>')
+        tbody = content[tbody_start:tbody_end]
+        self.assertIn('btn-preview-delivery', tbody)
+        self.assertNotIn('btn-return', tbody)
+
+    def test_delivered_row_with_returnable_shows_return_button(self):
+        """ردیف delivered با برگشت‌پذیر باید دکمهٔ بازگشت داشته باشد."""
+        self._make_task(worker=self.worker_a, start=self.day_start, quantity=2)
+        queue = self._queue()
+        services.execute_daily_delivery(queue_id=queue.pk, delivered_by=self.superuser)
+        queue.refresh_from_db()
+        self.assertEqual(queue.status, 'delivered')
+
+        self.client.force_login(self.warehouse_user)
+        response = self.client.get(reverse('inventory:daily_material_queue'))
+
+        # در tbody باید btn-return باشد
+        content = response.content.decode('utf-8')
+        tbody_start = content.index('<tbody>')
+        tbody_end = content.index('</tbody>')
+        tbody = content[tbody_start:tbody_end]
+        self.assertIn('btn-return', tbody)
+        self.assertNotIn('btn-preview-delivery', tbody)
+
+    def test_template_no_useOpenPackInput(self):
+        """قالب نباید شامل useOpenPackInput باشد."""
+        from pathlib import Path
+        template = Path(__file__).resolve().parents[2] / 'inventory' / 'templates' / 'inventory' / 'queue.html'
+        content = template.read_text(encoding='utf-8')
+        self.assertNotIn('useOpenPackInput', content)
+
+    def test_template_has_deliveryQuantityInput_editable(self):
+        """قالب باید deliveryQuantityInput داشته باشد و readonly نباشد."""
+        from pathlib import Path
+        template = Path(__file__).resolve().parents[2] / 'inventory' / 'templates' / 'inventory' / 'queue.html'
+        content = template.read_text(encoding='utf-8')
+        self.assertIn('deliveryQuantityInput', content)
+        # چک کن که readonly روی آن نیست
+        # در مودال جدید input type="number" است و readonly ندارد
+        self.assertNotIn('readonly', content)

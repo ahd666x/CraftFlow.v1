@@ -1682,7 +1682,7 @@ def daily_material_report(date, *, worker_id=None, material_id=None, status=None
     }
 
 
-def daily_queue_action_state(queue):
+def daily_queue_action_state(queue, *, with_suggestion=True):
     """
     وضعیت اقدام‌های ممکن روی یک ردیف صف، برای نمایش در UI.
 
@@ -1714,9 +1714,13 @@ def daily_queue_action_state(queue):
         and max_returnable > 0
     )
 
-    pack = _q2(queue.raw_material.pack_size or 0)
-    stock = _q2(queue.raw_material.current_stock)
-    suggested = _suggested_delivery(remaining, pack, stock)
+    if with_suggestion:
+        pack = _q2(queue.raw_material.pack_size or 0)
+        stock = _q2(queue.raw_material.current_stock)
+        suggested = _suggested_delivery(remaining, pack, stock)
+    else:
+        suggested = remaining
+
     auto_returnable = _q2(max(delivered - planned, Decimal('0')))
     can_auto_return = (
         queue.status in ('delivered', 'partial')
