@@ -5,6 +5,23 @@ from cart.models import Cart, CartItem
 from product.models import Product
 
 
+def _normalize_dim(value):
+    """Return an int for truthy dimension inputs, or None for empty/blank.
+
+    The storefront form submits an empty string '' when the customer leaves a
+    dimension blank; ``None`` is what the model field stores. Both must be
+    treated as "use the product default".
+    """
+    if value is None:
+        return None
+    if isinstance(value, str) and value.strip() == '':
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def get_or_create_cart(request):
     """
     سبد کاربر را برمی‌گرداند و در نبودِ آن می‌سازد.
@@ -32,13 +49,15 @@ class CartService:
     def add_item(cart, product_id, quantity=1, length=None, width=None, height=None):
         """
         آیتم را به سبد اضافه می‌کند. اگر ابعاد سفارشی داده نشود، ابعاد
-        پیش‌فرض محصول جایگزین می‌شود (یعنی اختلاف قیمت صفر و قیمت = قیمت پایه).
+        پیش‌فرم محصول جایگزین می‌شود (یعنی اختلاف قیمت صفر و قیمت = قیمت پایه).
         """
         product = get_object_or_404(Product, id=product_id, is_active=True)
 
-        length = length if length is not None else product.length
-        width = width if width is not None else product.width
-        height = height if height is not None else product.height
+        # فرم صفحه جزئیات محصول رشته خالی '' را ارسال می‌کند اگر کاربر چیزی وارد
+        # نکرده باشد؛ هر دو حالت '' و None باید به پیش‌فرم محصول برگردند.
+        length = _normalize_dim(length) or product.length
+        width = _normalize_dim(width) or product.width
+        height = _normalize_dim(height) or product.height
 
         cart_item = CartItem.objects.filter(
             cart=cart, product=product,

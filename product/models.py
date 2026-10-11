@@ -207,15 +207,27 @@ class Order(models.Model):
                 item_colors = {c.part: c.code for c in item.ordercolor.all()}
                 order_item_id = item.id
 
-                product_default_size = parse_size_string(item.product.default_size or "")
+                # The default dimensions come from the product's typed fields,
+                # not from parsing `default_size` (which only carries the legacy
+                # single-axis length value). Reading them directly keeps the
+                # width/height diffs correct even though `default_size` is now
+                # just the length.
+                product_default = {
+                    'length': item.product.length,
+                    'width': item.product.width,
+                    'height': item.product.height,
+                }
                 ordered_size = parse_size_string(item.size or "")
                 size_diff = {}
-                if product_default_size.get('length') and ordered_size.get('length'):
-                    diff_cm = ordered_size['length'] - product_default_size['length']
+                if product_default['length'] and ordered_size.get('length'):
+                    diff_cm = ordered_size['length'] - product_default['length']
                     size_diff['length_diff'] = diff_cm * 10
-                if product_default_size.get('width') and ordered_size.get('width'):
-                    diff_cm = ordered_size['width'] - product_default_size['width']
+                if product_default['width'] and ordered_size.get('width'):
+                    diff_cm = ordered_size['width'] - product_default['width']
                     size_diff['width_diff'] = diff_cm * 10
+                if product_default['height'] and ordered_size.get('height'):
+                    diff_cm = ordered_size['height'] - product_default['height']
+                    size_diff['height_diff'] = diff_cm * 10
 
                 for bom_entry in item.product.bom.all():
                     has_bom = True
@@ -232,14 +244,16 @@ class Order(models.Model):
 
                     length = part.length
                     width = part.width
+                    height = part.height
                     if bom_entry.size_affected and bom_entry.size_adjustment_rule and size_diff:
-                        length, width = apply_size_adjustment(
-                            part.length, part.width, size_diff, bom_entry.size_adjustment_rule
+                        length, width, height = apply_size_adjustment(
+                            part.length, part.width, part.height, size_diff, bom_entry.size_adjustment_rule
                         )
 
                     # Quantize to the DB precision so float lookups match stored values
                     length = Decimal(str(length)).quantize(Decimal('0.1'), rounding=ROUND_HALF_UP)
                     width = Decimal(str(width)).quantize(Decimal('0.1'), rounding=ROUND_HALF_UP)
+                    height = Decimal(str(height)).quantize(Decimal('0.1'), rounding=ROUND_HALF_UP)
 
                     new_f3 = update_barcode_size(part.f3, length, width, order_item_id)
 
@@ -375,6 +389,13 @@ class Product(models.Model):
     def save(self, *args, **kwargs):
         if not self.slug:
             self.slug = unique_unicode_slug(self.name, type(self), self.pk)
+
+        # `default_size` is the legacy single-axis reference the BOM
+        # size-adjustment parser reads. It is derived from `length` (the
+        # primary default dimension) so the two can never drift apart.
+        if self.length:
+            self.default_size = str(self.length)
+
         super().save(*args, **kwargs)
 
     @property
@@ -399,6 +420,26 @@ class Product(models.Model):
         verbose_name_plural = "محصولات"
 
 
+
+
+
+class ProductGalleryImage(models.Model):
+    product = models.ForeignKey(
+        Product, on_delete=models.CASCADE, related_name='gallery_images',
+        verbose_name="محصول"
+    )
+    image = models.ImageField(upload_to='product_gallery/', verbose_name="تصویر")
+    alt_text = models.CharField(max_length=200, blank=True, verbose_name="متن جایگزین")
+    is_active = models.BooleanField(default=True, verbose_name="فعال")
+    sort_order = models.PositiveIntegerField(default=0, verbose_name="ترتیب نمایش")
+
+    class Meta:
+        verbose_name = "تصویر گالری محصول"
+        verbose_name_plural = "تصاویر گالری محصول"
+        ordering = ['sort_order', 'id']
+
+    def __str__(self):
+        return f"{self.product.name} - #{self.pk}"
 
 class OrderItem(models.Model):
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='items', verbose_name="سفارش")

@@ -22,11 +22,34 @@
                 <span>جمع اقلام ({{ cart.total_items }})</span>
                 <span>{{ cart.total_price|fa_price }}</span>
             </div>
+
+            {% if cart.discount %}
+            <div class="mt-2 flex items-center justify-between text-emerald-700 text-sm">
+                <span>تخفیف ({{ cart.discount.code }})</span>
+                <span>-{{ cart.discount_amount|fa_price }}</span>
+            </div>
+            <form method="post" action="{% url 'discounts:remove_discount' %}" class="mt-2">
+                {% csrf_token %}
+                <button type="submit" class="text-xs text-red-600 hover:underline">حذف تخفیف</button>
+            </form>
+            {% endif %}
+
             <div class="mt-3 flex items-center justify-between border-t border-stone-200 pt-3">
-                <span class="font-semibold">مبلغ نهایی</span>
-                <span class="text-lg font-bold text-primary-800">{{ cart.total_price|fa_price }}</span>
+                <span class="font-semibold">مبلغ قابل پرداخت</span>
+                <span class="text-lg font-bold text-primary-800">{{ cart.final_price|fa_price }}</span>
             </div>
             <p class="mt-1 text-xs text-stone-400">تومان</p>
+
+            {% if not cart.discount %}
+            <form method="post" action="{% url 'discounts:apply_discount' %}" class="mt-4 space-y-2">
+                {% csrf_token %}
+                <label class="label" for="code">کد تخفیف</label>
+                <div class="flex gap-2">
+                    <input id="code" name="code" type="text" class="input" placeholder="کد تخفیف" required>
+                    <button type="submit" class="btn-primary whitespace-nowrap">اعمال</button>
+                </div>
+            </form>
+            {% endif %}
 
             <a href="{% url 'storefront:checkout' %}" class="btn-primary mt-5 w-full">
                 ادامه‌ی فرایند خرید

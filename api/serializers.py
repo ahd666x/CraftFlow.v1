@@ -3,8 +3,8 @@ from django.contrib.auth import get_user_model
 
 from product.models import (
     Product, ProductCategory, Order, OrderItem, ProductionTask,
+    ProductGalleryImage,
 )
-from storefront.models import ProductImage, ProductReview
 from cart.models import Cart, CartItem
 from discounts.models import Discount
 from accounts.models import UserProfile
@@ -20,7 +20,7 @@ class ProductCategorySerializer(serializers.ModelSerializer):
 
 class ProductImageSerializer(serializers.ModelSerializer):
     class Meta:
-        model = ProductImage
+        model = ProductGalleryImage
         fields = ['id', 'image', 'alt_text']
 
 

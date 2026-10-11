@@ -3182,8 +3182,34 @@ def ajax_load_products(request):
         products = Product.objects.filter(category_id=category_id, is_active=True).order_by('name')
     else:
         products = Product.objects.none()
-    data = [{'id': p.id, 'name': str(p)} for p in products]
+    data = []
+    for p in products:
+        dims = 'x'.join(
+            str(v) for v in (p.length, p.width, p.height) if v
+        )
+        data.append({
+            'id': p.id,
+            'name': str(p),
+            'default_size': dims,
+        })
     return JsonResponse(data, safe=False)
+
+
+@login_required
+def ajax_load_product_dimensions(request):
+    """Return the default dimensions of a single product as a string.
+
+    The storefront uses this to pre-fill the `size` field when the user
+    picks a product, so the default size is always shown and never lost.
+    """
+    product_id = request.GET.get('product_id')
+    if not product_id:
+        return JsonResponse({'default_size': ''})
+    product = get_object_or_404(Product, pk=product_id, is_active=True)
+    dims = 'x'.join(
+        str(v) for v in (product.length, product.width, product.height) if v
+    )
+    return JsonResponse({'default_size': dims})
 
 
 @login_required

@@ -89,6 +89,7 @@ urlpatterns = [
     path('orders/create/', views.create_order, name='create_order'),
     path('orders/create/step2/<int:order_id>/', views.create_order_step2, name='create_order_step2'),
     path('ajax/load-products/', views.ajax_load_products, name='ajax_load_products'),
+    path('ajax/load-product-dimensions/', views.ajax_load_product_dimensions, name='ajax_load_product_dimensions'),
     path('ajax/load-customers/', views.ajax_load_customers, name='ajax_load_customers'),
 
     path('orders/<int:order_id>/', views.order_detail, name='order_detail'),

@@ -5,21 +5,7 @@
 """
 from django.contrib import admin
 
-from .models import ColorOption, ProductImage, ProductReview, ComparisonList, Address, ReturnRequest
-
-
-@admin.register(ColorOption)
-class ColorOptionAdmin(admin.ModelAdmin):
-    list_display = ['name', 'code', 'is_active']
-    list_filter = ['is_active']
-    search_fields = ['name', 'code']
-
-
-@admin.register(ProductImage)
-class ProductImageAdmin(admin.ModelAdmin):
-    list_display = ['product', 'color', 'is_active']
-    list_filter = ['is_active', 'color']
-    search_fields = ['product__name']
+from .models import ProductReview, ComparisonList, Address, ReturnRequest
 
 
 @admin.register(ProductReview)

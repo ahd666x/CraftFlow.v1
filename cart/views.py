@@ -7,7 +7,7 @@ from cart.services import CartService, get_or_create_cart
 
 def cart_detail(request):
     cart = get_or_create_cart(request)
-    return render(request, 'cart/detail.html', {
+    return render(request, 'storefront/cart/detail.html', {
         'cart': cart,
         'items': cart.items.select_related('product', 'product__category'),
     })

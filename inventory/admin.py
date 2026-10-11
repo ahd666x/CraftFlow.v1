@@ -72,9 +72,9 @@ class StockMovementAdmin(admin.ModelAdmin):
     search_fields = ['raw_material__name', 'raw_material__code', 'note']
     date_hierarchy = 'created_at'
     readonly_fields = [f.name for f in StockMovement._meta.fields]
-    # سفارشی‌سازی صفحه تأیید حذف: هشدار را به کاربر نشان می‌دهد.
+    # صفحه تأیید حذف سفارشی — هشدار را به کاربر یادآوری می‌کند.
     delete_confirmation_template = (
-        'inventory/admin/stockmovement_delete_confirmation.html'
+        'admin/inventory/stockmovement/delete_confirmation.html'
     )
 
     def has_add_permission(self, request):
@@ -83,7 +83,7 @@ class StockMovementAdmin(admin.ModelAdmin):
     def has_change_permission(self, request, obj=None):
         return False
 
-    def has_delete_permission(self, request):
+    def has_delete_permission(self, request, obj=None):
         # حذف فقط برای کاربران دارای دسترسی ادمین مجاز است.
         return request.user.is_staff or request.user.is_superuser
 

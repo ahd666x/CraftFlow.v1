@@ -667,33 +667,57 @@ def get_material_for_color(color_code, mapping=None):
 
 
 def parse_size_string(size_str):
+    """Parse a size string like '50', '50x30' or '50x30x40' into a dict.
+
+    Returns {'length', 'width'} for 1-2 numbers (2D legacy format) and adds
+    'height' when a third number is present (3D format). Backward compatible:
+    existing 2D size strings keep producing only length/width.
+    """
     if not size_str:
         return {}
     nums = re.findall(r'\d+', size_str)
     if len(nums) == 1:
         return {'length': int(nums[0]), 'width': int(nums[0])}
     if len(nums) >= 2:
-        return {'length': int(nums[0]), 'width': int(nums[1])}
+        result = {'length': int(nums[0]), 'width': int(nums[1])}
+        if len(nums) >= 3:
+            result['height'] = int(nums[2])
+        return result
     return {}
 
 
-def apply_size_adjustment(original_length, original_width, diff_dict, rule):
+def apply_size_adjustment(original_length, original_width, original_height, diff_dict, rule):
+    """Apply a size-adjustment rule to a part's dimensions.
+
+    The rule is a simple arithmetic expression evaluated with `simpleeval`
+    (or a safe AST fallback). Allowed names:
+        length, width, height, length_diff, width_diff, height_diff
+
+    Only the first value returned by the expression is used as the new length;
+    width and height are returned unchanged. This mirrors the historical
+    behaviour where the rule targeted the primary dimension (length), but the
+    full dimension context is now available so rules like
+    ``length + length_diff + height_diff`` are possible.
+    """
     if not rule or not diff_dict:
-        return float(original_length), float(original_width)
+        return float(original_length), float(original_width), float(original_height)
     rule = rule.replace('length_diff', str(diff_dict.get('length_diff', 0)))
     rule = rule.replace('width_diff', str(diff_dict.get('width_diff', 0)))
+    rule = rule.replace('height_diff', str(diff_dict.get('height_diff', 0)))
     allowed = {
         "length": float(original_length),
         "width": float(original_width),
+        "height": float(original_height),
         "length_diff": float(diff_dict.get('length_diff', 0)),
         "width_diff": float(diff_dict.get('width_diff', 0)),
+        "height_diff": float(diff_dict.get('height_diff', 0)),
     }
     try:
         new_length = _safe_eval(rule, allowed)
-        return float(new_length), float(original_width)
+        return float(new_length), float(original_width), float(original_height)
     except Exception as e:
         logger.error(f"خطا در اعمال قانون اندازه '{rule}': {e}")
-        return float(original_length), float(original_width)
+        return float(original_length), float(original_width), float(original_height)
 
 
 def update_barcode_size(original_barcode, new_length, new_width, order_item_id=None):

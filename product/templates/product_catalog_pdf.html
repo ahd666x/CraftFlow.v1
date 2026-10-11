@@ -222,7 +222,17 @@
 
                 <!-- Specs as inline blocks (avoid table nesting issues in xhtml2pdf) -->
                 <div style="font-size:7px;">
-                    {% if product.default_size %}
+                    {% if product.length or product.width or product.height %}
+                    <div style="margin-bottom:4px;">
+                        <span style="font-size:6px;color:#8a8378;letter-spacing:1px;">ابعاد: </span>
+                        <span style="color:#1f1c17;font-weight:600;">
+                            {% if product.length %}{{ product.length }}{% endif %}
+                            {% if product.width %}x{{ product.width }}{% endif %}
+                            {% if product.height %}x{{ product.height }}{% endif %}
+                            سانتی‌متر
+                        </span>
+                    </div>
+                    {% elif product.default_size %}
                     <div style="margin-bottom:4px;">
                         <span style="font-size:6px;color:#8a8378;letter-spacing:1px;">ابعاد: </span>
                         <span style="color:#1f1c17;font-weight:600;">{{ product.default_size }}</span>

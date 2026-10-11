@@ -6,7 +6,6 @@ from django.shortcuts import get_object_or_404, redirect, render
 
 from cart.services import get_or_create_cart
 from product.models import Color, Customer, Order, OrderItem, Product, ProductCategory
-from storefront.models import Address, ColorOption
 
 
 def _with_rating(queryset):
@@ -66,12 +65,11 @@ def product_detail(request, slug):
         _with_rating(Product.active_objects.select_related('category')),
         slug=slug,
     )
-    gallery = product.images.filter(is_active=True).select_related('color')
+    gallery = product.gallery_images.filter(is_active=True)
 
     context = {
         'product': product,
         'gallery': gallery,
-        'colors': ColorOption.objects.filter(is_active=True),
         'default_colors': product.default_colors or {},
     }
     return render(request, 'storefront/product_detail.html', context)
@@ -166,7 +164,7 @@ def _create_order(request, cart, items):
         # اعمال اختلاف ابعاد سفارشی به قطعات BOM استفاده می‌کند؛ بدون آن
         # تسک‌ها با ابعاد پیش‌فرض ساخته می‌شدند نه ابعاد مشتری.
         size_parts = [
-            str(v) for v in (item.custom_length, item.custom_width) if v
+            str(v) for v in (item.custom_length, item.custom_width, item.custom_height) if v
         ]
         order_item = OrderItem(
             order=order,

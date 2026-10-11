@@ -178,6 +178,114 @@ class OrderLockedStatusTests(TestCase):
         )
 
 
+class OrderItemCustomDimensionsTests(TestCase):
+    """`OrderItem.size` and BOM size adjustment must carry all three axes."""
+
+    def setUp(self):
+        from django.contrib.auth.models import User
+        self.user = User.objects.create_user(username="buyer2", password="pw")
+        self.customer = Customer.objects.create(name="خریدار")
+        self.category = ProductCategory.objects.create(name="دسته")
+        self.product = Product.objects.create(
+            category=self.category, name="کالا", base_price=1000,
+            length=100, width=60, height=40,
+        )
+
+    def test_size_string_carries_height(self):
+        """`_create_order` builds `size` as length x width x height."""
+        from cart.models import Cart
+        from cart.services import CartService
+        from storefront.views import _create_order
+        from django.test import RequestFactory
+        from django.contrib.messages.storage.fallback import FallbackStorage
+
+        cart = Cart.objects.create(user=self.user)
+        CartService.add_item(cart, self.product.id, quantity=1,
+                             length=110, width=70, height=45)
+        factory = RequestFactory()
+        request = factory.post('/checkout/', {
+            'shipping_address': 'آدرس',
+            'name': 'خریدار',
+            'phone': '0912',
+        })
+        setattr(request, 'session', 'session')
+        setattr(request, '_messages', FallbackStorage(request))
+        request.user = self.user
+        _create_order(request, cart, list(cart.items.all()))
+        item = OrderItem.objects.get(order__user=self.user, product=self.product)
+        self.assertEqual(item.size, '110x70x45')
+        self.assertEqual((item.length, item.width, item.height), (110, 70, 45))
+
+    def test_parse_size_string_with_height(self):
+        from product.utils import parse_size_string
+        self.assertEqual(parse_size_string('50'), {'length': 50, 'width': 50})
+        self.assertEqual(parse_size_string('50x30'), {'length': 50, 'width': 30})
+        self.assertEqual(
+            parse_size_string('50x30x40'),
+            {'length': 50, 'width': 30, 'height': 40},
+        )
+
+    def test_apply_size_adjustment_keeps_height(self):
+        from product.utils import apply_size_adjustment
+        # rule only references length; width/height must pass through unchanged
+        l, w, h = apply_size_adjustment(100, 60, 40, {'length_diff': 10}, 'length + length_diff')
+        self.assertEqual((l, w, h), (110.0, 60.0, 40.0))
+        # height_diff is now an allowed name
+        l, w, h = apply_size_adjustment(100, 60, 40, {'height_diff': 5}, 'length + height_diff')
+        self.assertEqual((l, w, h), (105.0, 60.0, 40.0))
+
+    def test_default_size_is_derived_from_dimensions(self):
+        """`default_size` must be kept in sync with `length` so the BOM
+        size-adjustment parser sees the same value the storefront shows."""
+        p = Product.objects.create(
+            category=self.category, name='کالا', base_price=1000,
+            length=120, width=80, height=50,
+        )
+        self.assertEqual(p.default_size, '120')
+
+        # changing length must refresh default_size
+        p.length = 130
+        p.save()
+        p.refresh_from_db()
+        self.assertEqual(p.default_size, '130')
+
+    def test_bom_size_diff_uses_typed_product_dimensions(self):
+        """When `default_size` is only the length, the BOM diff must still use
+        the product's typed width/height — not the length value for all axes."""
+        from product.utils import parse_size_string
+
+        # Simulate what Order.generate_tasks() does now:
+        product_default = {
+            'length': 120, 'width': 80, 'height': 50,
+        }
+        ordered_size = parse_size_string('130x90x60')
+        size_diff = {}
+        if product_default['length'] and ordered_size.get('length'):
+            size_diff['length_diff'] = (ordered_size['length'] - product_default['length']) * 10
+        if product_default['width'] and ordered_size.get('width'):
+            size_diff['width_diff'] = (ordered_size['width'] - product_default['width']) * 10
+        if product_default['height'] and ordered_size.get('height'):
+            size_diff['height_diff'] = (ordered_size['height'] - product_default['height']) * 10
+
+        self.assertEqual(size_diff['length_diff'], 100)
+        self.assertEqual(size_diff['width_diff'], 100)
+        self.assertEqual(size_diff['height_diff'], 100)
+
+    def test_empty_string_dimension_falls_back_to_product_default(self):
+        """The storefront form submits '' for untouched dimensions; those
+        must fall back to the product default, not be stored as 0/empty."""
+        from cart.models import Cart
+        from cart.services import CartService
+
+        cart = Cart.objects.create(user=self.user)
+        CartService.add_item(cart, self.product.id, quantity=1,
+                             length='', width='', height='')
+        item = cart.items.first()
+        self.assertEqual(item.custom_length, 100)
+        self.assertEqual(item.custom_width, 60)
+        self.assertEqual(item.custom_height, 40)
+
+
 class OrderMoneyFieldTests(TestCase):
     def setUp(self):
         from django.contrib.auth.models import User

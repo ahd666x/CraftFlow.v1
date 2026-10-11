@@ -453,18 +453,39 @@ from .models import Product, Part, Color
 class ProductCreateForm(forms.ModelForm):
     class Meta:
         model = Product
-        fields = ['category', 'name', 'base_price', 'default_size']
+        fields = [
+            'category', 'name', 'base_price',
+            'length', 'width', 'height',
+            'length_editable', 'width_editable', 'height_editable',
+            'length_price_percent', 'width_price_percent', 'height_price_percent',
+        ]
         widgets = {
             'category': forms.Select(attrs={'class': 'form-select', 'id': 'id_category'}),
             'name': forms.TextInput(attrs={'class': 'form-control', 'id': 'id_name'}),
             'base_price': forms.NumberInput(attrs={'class': 'form-control'}),
-            'default_size': forms.TextInput(attrs={'class': 'form-control'}),
+            'length': forms.NumberInput(attrs={'class': 'form-control', 'min': 1}),
+            'width': forms.NumberInput(attrs={'class': 'form-control', 'min': 1}),
+            'height': forms.NumberInput(attrs={'class': 'form-control', 'min': 1}),
+            'length_editable': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'width_editable': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'height_editable': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'length_price_percent': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': 0}),
+            'width_price_percent': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': 0}),
+            'height_price_percent': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': 0}),
         }
         labels = {
             'category': 'دسته‌بندی',
             'name': 'نام محصول',
             'base_price': 'قیمت پایه (ریال)',
-            'default_size': 'سایز پیش‌فرض',
+            'length': 'طول پیش‌فرم (سانتی‌متر)',
+            'width': 'عرض پیش‌فرم (سانتی‌متر)',
+            'height': 'ارتفاع پیش‌فرم (سانتی‌متر)',
+            'length_editable': 'مشتری می‌تواند طول را تغییر دهد',
+            'width_editable': 'مشتری می‌تواند عرض را تغییر دهد',
+            'height_editable': 'مشتری می‌تواند ارتفاع را تغییر دهد',
+            'length_price_percent': 'درصد افزایش قیمت به ازای هر سانتی‌متر طول',
+            'width_price_percent': 'درصد افزایش قیمت به ازای هر سانتی‌متر عرض',
+            'height_price_percent': 'درصد افزایش قیمت به ازای هر سانتی‌متر ارتفاع',
         }
 
     def __init__(self, *args, **kwargs):

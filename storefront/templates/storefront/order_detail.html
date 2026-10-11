@@ -30,7 +30,14 @@
                                class="font-medium hover:text-primary-700">{{ item.product.name }}</a>
                             <div class="mt-1 text-sm text-stone-500">
                                 تعداد: {{ item.quantity }}
-                                {% if item.size %}
+                                {% if item.length or item.width or item.height %}
+                                    <span class="mr-2">ابعاد:
+                                        {% if item.length %}طول {{ item.length }}{% endif %}
+                                        {% if item.width %}، عرض {{ item.width }}{% endif %}
+                                        {% if item.height %}، ارتفاع {{ item.height }}{% endif %}
+                                        سانتی‌متر
+                                    </span>
+                                {% elif item.size %}
                                     <span class="mr-2">اندازه: {{ item.size }}</span>
                                 {% endif %}
                             </div>

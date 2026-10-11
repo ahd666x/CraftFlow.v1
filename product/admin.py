@@ -5,7 +5,7 @@ from django.utils.html import format_html
 from .models import (
     Color, ColorCode, ProductCategory, WorkerProfile, Customer, ProductBOM, Product,
     Order, ProductionTask, Part, OrderItem, ProductionLog , PackagingUnit ,
-    ProductionEvent, ProductionDefect,
+    ProductionEvent, ProductionDefect, ProductGalleryImage,
 )
 from .forms import OrderItemForm
 from .models import ShipmentLog
@@ -203,7 +203,7 @@ class ProductBOMInline(admin.TabularInline):
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
     list_display = [
-        'name', 'category', 'color', 'default_size',
+        'name', 'category', 'color', 'dimensions_display',
         'base_price', 'price_increment_per_cm', 'parts_list_key', 'is_active'
     ]
     list_filter = ['category', 'color', 'is_active']
@@ -217,13 +217,27 @@ class ProductAdmin(admin.ModelAdmin):
         }),
         ('اندازه و قیمت', {
             'fields': (
-                'default_size',
+                'length', 'width', 'height',
+                'length_editable', 'width_editable', 'height_editable',
+                'length_price_percent', 'width_price_percent', 'height_price_percent',
                 'base_price',
                 'price_increment_per_cm'
             ),
-
         }),
     )
+
+    @admin.display(description="ابعاد پیش‌فرم")
+    def dimensions_display(self, obj):
+        parts = []
+        if obj.length:
+            parts.append(f"طول {obj.length}")
+        if obj.width:
+            parts.append(f"عرض {obj.width}")
+        if obj.height:
+            parts.append(f"ارتفاع {obj.height}")
+        if parts:
+            return " × ".join(parts) + " سانتی‌متر"
+        return obj.default_size or "-"
 
 
 
@@ -525,3 +539,11 @@ class ProductionDefectAdmin(admin.ModelAdmin):
     autocomplete_fields = ['order_item', 'packaging_unit', 'task', 'part', 'reported_by']
     readonly_fields = ['created_at']
     date_hierarchy = 'created_at'
+
+
+@admin.register(ProductGalleryImage)
+class ProductGalleryImageAdmin(admin.ModelAdmin):
+    list_display = ['product', 'image', 'is_active', 'sort_order']
+    list_filter = ['is_active']
+    search_fields = ['product__name']
+    list_editable = ['is_active', 'sort_order']
