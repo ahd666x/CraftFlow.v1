@@ -1,11 +1,10 @@
 from django.contrib.auth import views as auth_views
-from django.contrib.auth.forms import AuthenticationForm
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.urls import reverse, reverse_lazy
 from django.views.generic import CreateView, TemplateView, UpdateView
 from django.shortcuts import get_object_or_404
 
-from .forms import UserRegistrationForm, ProfileUpdateForm
+from .forms import LoginForm, UserRegistrationForm, ProfileUpdateForm
 from .models import UserProfile
 
 REPRESENTATIVE_GROUP = 'نماینده'
@@ -13,7 +12,7 @@ REPRESENTATIVE_GROUP = 'نماینده'
 
 class CustomLoginView(auth_views.LoginView):
     template_name = 'accounts/login.html'
-    authentication_form = AuthenticationForm
+    authentication_form = LoginForm
 
     def get_success_url(self):
         next_url = self.get_redirect_url()

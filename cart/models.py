@@ -53,7 +53,7 @@ class Cart(TimeStampedModel):
 class CartItem(TimeStampedModel):
     cart = models.ForeignKey(Cart, on_delete=models.CASCADE, related_name='items', verbose_name="سبد خرید")
     product = models.ForeignKey('product.Product', on_delete=models.CASCADE, verbose_name="محصول")
-    quantity = models.PositiveIntegerField(default=1, verbose_name="ت数量")
+    quantity = models.PositiveIntegerField(default=1, verbose_name="تعداد")
 
     # ابعاد سفارشی انتخاب‌شده توسط مشتری در صفحه جزئیات محصول.
     # اگر خالی باشند یعنی مشتری ابعاد پیش‌فرض محصول را پذیرفته است.

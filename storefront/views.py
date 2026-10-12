@@ -243,10 +243,23 @@ def order_list(request):
 @login_required
 def order_detail(request, order_id):
     order = get_object_or_404(
-        Order.objects.select_related('customer').prefetch_related(
+        Order.objects.select_related('customer', 'payment').prefetch_related(
             'items__product__category', 'items__ordercolor', 'items__packaging_units',
         ),
         pk=order_id,
         user=request.user,
     )
-    return render(request, 'storefront/order_detail.html', {'order': order})
+    # وضعیت‌های قفل‌شده و نمایش دکمه‌ی پرداخت را اینجا محاسبه می‌کنیم
+    # چون قالب جنگو از `in` روی لیست و پرانتز در `if` پشتیبانی نمی‌کند.
+    is_locked = order.status in Order.LOCKED_STATUSES
+    cod_pending = bool(
+        getattr(order, 'payment', None)
+        and order.payment.gateway == 'cash_on_delivery'
+        and order.payment.status == 'pending'
+    )
+    show_pay_button = not is_locked and not cod_pending
+    return render(request, 'storefront/order_detail.html', {
+        'order': order,
+        'is_locked': is_locked,
+        'show_pay_button': show_pay_button,
+    })

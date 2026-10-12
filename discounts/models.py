@@ -24,7 +24,7 @@ class Discount(TimeStampedModel):
     used_count = models.PositiveIntegerField(default=0, verbose_name="تعداد استفاده")
     valid_from = models.DateTimeField(verbose_name="اعتبار از")
     valid_until = models.DateTimeField(verbose_name="اعتبار تا")
-    is_active = models.BooleanField(default=True, verbose_name="عالی")
+    is_active = models.BooleanField(default=True, verbose_name="فعال")
 
     class Meta:
         verbose_name = "تخفیف"

@@ -343,3 +343,49 @@ class CheckoutTests(TestCase):
         })
         self.assertEqual(response.status_code, 302)
         self.assertTrue(Order.objects.filter(user=self.user).exists())
+
+
+class OrderDetailViewTests(TestCase):
+    """صفحه‌ی سفارش: `is_locked` و `show_pay_button` باید در view
+    محاسبه شوند (قالب جنگو `in` روی لیست و پرانتز در `if` ندارد)."""
+
+    def setUp(self):
+        from django.test import Client
+        self.user = User.objects.create_user(username="buyer", password="pw")
+        self.customer = Customer.objects.create(name="خریدار")
+        self.client = Client()
+        self.client.login(username="buyer", password="pw")
+
+    def _order(self, status='draft'):
+        return Order.objects.create(
+            user=self.user, customer=self.customer, status=status,
+            total_amount=1000, final_amount=1000,
+        )
+
+    def test_draft_without_payment_shows_pay_button(self):
+        order = self._order()
+        response = self.client.get(f'/shop/orders/{order.id}/')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'پرداخت مبلغ سفارش')
+
+    def test_cod_pending_shows_notice_without_pay_button(self):
+        from payments.models import Payment
+        order = self._order()
+        Payment.objects.create(
+            order=order, amount=1000, gateway='cash_on_delivery',
+        )
+        response = self.client.get(f'/shop/orders/{order.id}/')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'پرداخت هنگام تحویل است.')
+        self.assertNotContains(response, 'پرداخت مبلغ سفارش')
+
+    def test_paid_order_is_locked(self):
+        from payments.models import Payment
+        order = self._order(status='paid')
+        Payment.objects.create(
+            order=order, amount=1000, gateway='zarinpal', status='success',
+        )
+        response = self.client.get(f'/shop/orders/{order.id}/')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'این سفارش پرداخت شده است.')
+        self.assertNotContains(response, 'پرداخت مبلغ سفارش')

@@ -20,7 +20,7 @@
 
         {# ---------- گالری ---------- #}
         <div>
-            <div class="card aspect-square overflow-hidden bg-stone-100">
+            <div class="aspect-square overflow-hidden rounded-xl bg-stone-100">
                 {% if gallery %}
                     <img id="gallery-main" src="{{ gallery.0.image.url }}" alt="{{ product.name }}"
                          class="h-full w-full object-cover">
@@ -50,7 +50,7 @@
 
         {# ---------- اطلاعات و افزودن به سبد ---------- #}
         <div>
-            <h1 class="text-2xl font-bold text-stone-900">{{ product.name }}</h1>
+            <h1 class="text-3xl font-bold text-stone-900">{{ product.name }}</h1>
             <p class="mt-1 text-sm text-stone-500">دسته: {{ product.category.name }}</p>
 
             {% if product.description %}
@@ -69,8 +69,8 @@
             {% endif %}
 
             {# Alpine اینجا فقط برای محاسبه‌ی زنده‌ی قیمت است. #}
-<div class="card mt-6 p-5"
-                 x-data="dimensionPrice({
+<div class="mt-6 border-t border-stone-100 pt-6"
+             x-data="dimensionPrice({
                      basePrice: {{ product.base_price|js_number }},
                      dims: {
                          length: {def: {{ product.length|js_number }}, editable: {{ product.length_editable|yesno:'true,false' }}, percent: {{ product.length_price_percent|js_number }} },
@@ -130,18 +130,17 @@
 
                 </div>
 
-                <div class="mt-5 flex items-center gap-3">
-                    <div>
-                        <label class="label" for="qty">تعداد</label>
-                        <input id="qty" name="quantity" type="number" min="1" value="1"
-                               x-model.number="quantity" class="input w-24">
-                    </div>
-                    <div class="mt-6">
-                        <span class="block text-xs text-stone-500">قیمت کل</span>
-                        <span class="text-xl font-bold text-primary-800"
-                              x-text="total().toLocaleString('fa-IR')"></span>
-                        <span class="text-xs text-stone-500"> تومان</span>
-                    </div>
+                <div class="mt-6">
+                    <label class="label" for="qty">تعداد</label>
+                    <input id="qty" name="quantity" type="number" min="1" value="1"
+                           x-model.number="quantity" class="input w-24">
+                </div>
+
+                <div class="mt-5">
+                    <span class="block text-xs text-stone-500">قیمت کل</span>
+                    <span class="text-2xl font-bold text-stone-900"
+                          x-text="total().toLocaleString('fa-IR')"></span>
+                    <span class="text-sm text-stone-500"> تومان</span>
                 </div>
 
                 <form method="post" action="{% url 'cart:cart_add' product.id %}"
@@ -153,7 +152,7 @@
                     <input type="hidden" name="width"   :value="dims.width.value ?? ''">
                     <input type="hidden" name="height"  :value="dims.height.value ?? ''">
                     <input type="hidden" name="quantity" :value="quantity">
-                    <button type="submit" class="btn-primary w-full">افزودن به سبد خرید</button>
+                    <button type="submit" class="btn-primary w-full py-3">افزودن به سبد خرید</button>
                 </form>
             </div>
         </div>

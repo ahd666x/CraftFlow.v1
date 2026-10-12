@@ -79,7 +79,6 @@
                     <p class="text-xs text-stone-400">تومان</p>
                 </div>
 
-                {% with is_locked=order.status in 'paid shipped delivered cancelled'.split %}
                 {% if not is_locked %}
                 <div class="mt-4">
                     {% if order.payment and order.payment.gateway == 'cash_on_delivery' and order.payment.status == 'pending' %}
@@ -89,18 +88,17 @@
                     {% else %}
                         <p class="mb-2 text-xs text-stone-500">مبلغ سفارش را پرداخت کنید تا تولید آزاد شود.</p>
                     {% endif %}
-                    {% if not (order.payment and order.payment.gateway == 'cash_on_delivery' and order.payment.status == 'pending') %}
+                    {% if show_pay_button %}
                     <a href="{% url 'payments:payment_create' order.id %}" class="btn-primary w-full py-3 text-center">
                         پرداخت مبلغ سفارش
                     </a>
                     {% endif %}
                 </div>
                 {% else %}
-                <div class="mt-4 rounded-default bg-emerald-50 p-3 text-center text-sm text-emerald-800">
+                <div class="mt-4 rounded-lg bg-emerald-50 p-3 text-center text-sm text-emerald-800">
                     این سفارش پرداخت شده است.
                 </div>
                 {% endif %}
-            {% endwith %}
             </section>
 
             <section class="card p-5">

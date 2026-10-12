@@ -47,8 +47,8 @@ class Transaction(TimeStampedModel):
     card_pan = models.CharField(max_length=20, blank=True, verbose_name="شماره کارت")
 
     class Meta:
-        verbose_name = "traکنش"
-        verbose_name_plural = "traکنش‌ها"
+        verbose_name = "تراکنش"
+        verbose_name_plural = "تراکنش‌ها"
 
     def __str__(self):
-        return f"traکنش {self.ref_id or self.id}"
+        return f"تراکنش {self.ref_id or self.id}"

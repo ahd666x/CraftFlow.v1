@@ -29,8 +29,7 @@ module.exports = {
         'elevation-3': '0 10px 15px -3px rgb(0 0 0 / 0.08), 0 4px 6px -4px rgb(0 0 0 / 0.08)',
       },
       borderRadius: {
-        'xs': '2px', 'sm': '4px', 'default': '8px', 'md': '10px',
-        'lg': '14px', 'xl': '18px', '2xl': '24px', 'full': '9999px',
+        'default': '10px', 'lg': '12px', 'xl': '16px', '2xl': '20px', 'full': '9999px',
       },
       fontSize: {
         'xs': ['0.75rem', { lineHeight: '1.5' }],

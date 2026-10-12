@@ -77,26 +77,3 @@ document.addEventListener('cartUpdated', function () {
         toast.remove();
     }, 2000);
 });
-
-/* منوی موبایل — دکمه در هدر، پنل زیر آن با Alpine.
-   این جا فقط رفتار دکمه را به رویداد سفارشی وصل می‌کند تا
-   در صورت عدم وجود Alpine، منو باز/بسته نشود. */
-(function () {
-    var toggle = document.getElementById('mobile-menu-toggle');
-    if (!toggle) {
-        return;
-    }
-    toggle.addEventListener('click', function () {
-        document.dispatchEvent(new CustomEvent('mobile-menu-toggle'));
-        var icon = document.getElementById('menu-icon');
-        if (icon) {
-            var open = toggle.getAttribute('aria-expanded') === 'true';
-            toggle.setAttribute('aria-expanded', !open);
-            if (open) {
-                icon.setAttribute('d', 'M6 6l12 12M6 18L18 6');
-            } else {
-                icon.setAttribute('d', 'M4 6h16M4 12h16M4 18h16');
-            }
-        }
-    });
-})();

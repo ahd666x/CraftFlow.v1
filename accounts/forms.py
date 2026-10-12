@@ -1,17 +1,42 @@
 from django import forms
 from django.contrib.auth import get_user_model
+from django.contrib.auth.forms import AuthenticationForm
 
 from .models import UserProfile
 
 User = get_user_model()
 
 
+class LoginForm(AuthenticationForm):
+    """فرم لاگین پیش‌فرض جنگو را با ویجت‌های استایل‌دار فروشگاه می‌پیچانیم."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field in self.fields.values():
+            field.widget.attrs.update({'class': 'input'})
+
+
 class UserRegistrationForm(forms.Form):
-    username = forms.CharField(max_length=150, label="نام کاربری")
-    email = forms.EmailField(label="ایمیل")
-    phone = forms.CharField(max_length=15, label="شماره موبایل")
-    password1 = forms.CharField(label="کلمه عبور", widget=forms.PasswordInput)
-    password2 = forms.CharField(label="تکرار کلمه عبور", widget=forms.PasswordInput)
+    username = forms.CharField(
+        max_length=150, label="نام کاربری",
+        widget=forms.TextInput(attrs={'class': 'input'}),
+    )
+    email = forms.EmailField(
+        label="ایمیل",
+        widget=forms.EmailInput(attrs={'class': 'input'}),
+    )
+    phone = forms.CharField(
+        max_length=15, label="شماره موبایل",
+        widget=forms.TextInput(attrs={'class': 'input'}),
+    )
+    password1 = forms.CharField(
+        label="کلمه عبور",
+        widget=forms.PasswordInput(attrs={'class': 'input'}),
+    )
+    password2 = forms.CharField(
+        label="تکرار کلمه عبور",
+        widget=forms.PasswordInput(attrs={'class': 'input'}),
+    )
 
     def clean_username(self):
         username = self.cleaned_data['username']
@@ -57,4 +82,8 @@ class ProfileUpdateForm(forms.ModelForm):
         labels = {
             'phone': 'شماره موبایل',
             'bio': 'درباره',
+        }
+        widgets = {
+            'phone': forms.TextInput(attrs={'class': 'input'}),
+            'bio': forms.Textarea(attrs={'class': 'input', 'rows': 4}),
         }
