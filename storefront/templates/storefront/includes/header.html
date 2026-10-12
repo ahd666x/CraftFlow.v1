@@ -1,6 +1,7 @@
 {% load static %}
 <header class="sticky top-0 z-sticky border-b border-stone-100 bg-white/80 backdrop-blur"
-        x-data="{ open: false }">
+        x-data="{ open: false, cartOpen: false }"
+        x-init="cartOpen = false">
     <div class="mx-auto flex h-16 max-w-6xl items-center gap-6 px-4">
 
         <a href="{% url 'storefront:home' %}" class="flex items-center gap-2">
@@ -29,15 +30,69 @@
                 <a href="{% url 'accounts:login' %}" class="btn-sm text-stone-600 hover:bg-stone-100">ورود</a>
             {% endif %}
 
-            <a href="{% url 'cart:cart_detail' %}" class="relative btn-sm text-stone-900 hover:bg-stone-100"
-               aria-label="سبد خرید">
-                <svg class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round"
-                          d="M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.356-1.993l1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 01-1.12-1.243l1.264-12A1.125 1.125 0 015.513 7.5h12.974c.576 0 1.059.435 1.119 1.007z"/>
-                </svg>
-                <span id="cart-count"
-                      class="absolute -top-1 -left-1 grid h-4 min-w-[1rem] place-items-center rounded-full bg-stone-900 px-1 text-[10px] text-white">{{ cart_total_items|default:0 }}</span>
-            </a>
+            <div x-data="miniCart()">
+                <button type="button"
+                        @click="cartOpen = true; loadContent()"
+                        class="relative btn-sm text-stone-900 hover:bg-stone-100"
+                        aria-label="سبد خرید"
+                        aria-expanded="false"
+                        aria-controls="mini-cart-drawer">
+                    <svg class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                              d="M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.356-1.993l1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 01-1.12-1.243l1.264-12A1.125 1.125 0 015.513 7.5h12.974c.576 0 1.059.435 1.119 1.007z"/>
+                    </svg>
+                    <span id="cart-count"
+                          class="absolute -top-1 -left-1 grid h-4 min-w-[1rem] place-items-center rounded-full bg-stone-900 px-1 text-[10px] text-white">{{ cart_total_items|default:0 }}</span>
+                </button>
+
+                {# Mini Cart Drawer #}
+                <div x-show="cartOpen"
+                     x-cloak
+                     x-transition:enter="transition-opacity ease-linear duration-300"
+                     x-transition:enter-start="opacity-0"
+                     x-transition:enter-end="opacity-100"
+                     x-transition:leave="transition-opacity ease-linear duration-300"
+                     x-transition:leave-start="opacity-100"
+                     x-transition:leave-end="opacity-0"
+                     class="fixed inset-0 z-overlay bg-black/50 md:hidden"
+                     @click.outside="cartOpen = false"
+                     @keydown.escape.window="cartOpen = false"
+                     aria-hidden="true"></div>
+
+                <div x-show="cartOpen"
+                     x-cloak
+                     x-transition:enter="transition transform ease-out duration-300"
+                     x-transition:enter-start="opacity-0 translate-x-full"
+                     x-transition:enter-end="opacity-100 translate-x-0"
+                     x-transition:leave="transition transform ease-in duration-200"
+                     x-transition:leave-start="opacity-100 translate-x-0"
+                     x-transition:leave-end="opacity-0 translate-x-full"
+                     class="fixed inset-y-0 right-0 z-popover w-full max-w-sm bg-white shadow-elevation-3 md:hidden flex flex-col"
+                     id="mini-cart-drawer"
+                     role="dialog"
+                     aria-label="سبد خرید"
+                     aria-modal="true">
+                    <div class="flex items-center justify-between p-4 border-b border-stone-100">
+                        <h2 class="text-lg font-semibold">سبد خرید</h2>
+                        <button type="button"
+                                @click="cartOpen = false"
+                                class="text-stone-400 hover:text-stone-600"
+                                aria-label="بستن سبد">
+                            <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="flex-1 overflow-y-auto p-4" id="mini-cart-content">
+                        <div class="flex items-center justify-center h-32">
+                            <svg class="animate-spin h-8 w-8 text-primary-600" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
             <button type="button" @click="open = !open" class="btn-sm md:hidden" aria-label="منو">
                 <svg class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">

@@ -2,6 +2,7 @@ from django.conf import settings
 from django.db import models
 
 from storefront.base import TimeStampedModel
+from storefront.models import SiteSettings
 
 
 class Cart(TimeStampedModel):
@@ -46,8 +47,32 @@ class Cart(TimeStampedModel):
         return sum(item.total_price for item in self.items.all())
 
     @property
+    def shipping_cost(self):
+        """هزینه ارسال - رایگان اگر بیش از آستانه باشد."""
+        settings = SiteSettings.get_settings()
+        if self.total_price >= settings.free_shipping_threshold:
+            return 0
+        return settings.shipping_cost
+
+    @property
+    def tax_amount(self):
+        """مبلغ مالیات بر اساس نرخ تنظیمات."""
+        settings = SiteSettings.get_settings()
+        return int(self.total_price * settings.tax_rate)
+
+    @property
     def final_price(self):
-        return max(self.total_price - self.discount_amount, 0)
+        return max(self.total_price - self.discount_amount + self.shipping_cost + self.tax_amount, 0)
+
+    @property
+    def estimated_delivery_min(self):
+        settings = SiteSettings.get_settings()
+        return settings.estimated_delivery_min
+
+    @property
+    def estimated_delivery_max(self):
+        settings = SiteSettings.get_settings()
+        return settings.estimated_delivery_max
 
 
 class CartItem(TimeStampedModel):

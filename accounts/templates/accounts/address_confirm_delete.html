@@ -1,0 +1,22 @@
+{% extends 'storefront/layouts/store.html' %}
+
+{% block title %}حذف آدرس — حساب کاربری{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-md px-4 py-8">
+    <div class="card p-6 text-center">
+        <svg class="mx-auto h-16 w-16 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+        </svg>
+        <h2 class="mt-4 text-xl font-bold">حذف آدرس</h2>
+        <p class="mt-2 text-stone-600">آیا از حذف آدرس «{{ object.title }}» اطمینان دارید؟ این کار غیرقابل بازگشت است.</p>
+
+        <form method="post" class="mt-6 flex gap-3 justify-center">
+            {% csrf_token %}
+            <button type="submit" class="btn-danger px-6 py-2">بله، حذف شود</button>
+            <a href="{% url 'accounts:address_list' %}" class="btn-outline px-6 py-2">انصراف</a>
+        </form>
+    </div>
+</div>
+{% endblock %}

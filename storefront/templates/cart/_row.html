@@ -7,12 +7,14 @@
     <a href="{% url 'storefront:product_detail' item.product.slug %}"
        class="h-20 w-20 shrink-0 overflow-hidden rounded-default bg-stone-100">
         <img src="{{ item.product.image.url }}" alt="{{ item.product.name }}"
+             width="80" height="80"
              class="h-full w-full object-cover" loading="lazy">
     </a>
     {% elif item.product.gallery_images.first %}
     <a href="{% url 'storefront:product_detail' item.product.slug %}"
        class="h-20 w-20 shrink-0 overflow-hidden rounded-default bg-stone-100">
         <img src="{{ item.product.gallery_images.first.image.url }}" alt="{{ item.product.name }}"
+             width="80" height="80"
              class="h-full w-full object-cover" loading="lazy">
     </a>
     {% endif %}
@@ -44,7 +46,7 @@
             <button type="button" data-cart-step="-1" aria-label="کاهش تعداد"
                     class="flex h-8 w-8 items-center justify-center rounded-default border border-stone-200 text-stone-500 hover:bg-stone-100">−</button>
             <input type="number" name="quantity" value="{{ item.quantity }}" min="1"
-                   class="input w-20 py-1.5 text-center" onchange="this.form.submit()">
+                   class="input w-20 py-1.5 text-center cart-qty-input">
             <button type="button" data-cart-step="1" aria-label="افزایش تعداد"
                     class="flex h-8 w-8 items-center justify-center rounded-default border border-stone-200 text-stone-500 hover:bg-stone-100">+</button>
         </form>

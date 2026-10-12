@@ -5,6 +5,10 @@ from django.contrib.auth import views as auth_views
 from django.urls import path, include, re_path
 from django.views.static import serve
 
+# Error handlers
+handler404 = 'storefront.views.custom_404'
+handler500 = 'storefront.views.custom_500'
+
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('accounts/', include('accounts.urls')),

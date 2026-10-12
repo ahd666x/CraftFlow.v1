@@ -99,6 +99,74 @@ document.addEventListener('click', function (e) {
     form.submit();
 });
 
+/* تغییر تعداد با Eingabe در input تعداد سبد */
+document.addEventListener('change', function (e) {
+    var input = e.target.closest ? e.target.closest('.cart-qty-input') : null;
+    if (!input) {
+        return;
+    }
+    var form = input.closest('form');
+    if (form) {
+        form.submit();
+    }
+});
+
+/* گالری تصاویر محصول — کلیک روی تومبنیل */
+document.addEventListener('click', function (e) {
+    var thumb = e.target.closest ? e.target.closest('.gallery-thumb') : null;
+    if (!thumb) {
+        return;
+    }
+    var mainImg = document.getElementById('gallery-main');
+    if (mainImg) {
+        mainImg.src = thumb.getAttribute('data-img-src');
+    }
+});
+
+/* مینی‌سبد (Mini Cart Drawer) */
+document.addEventListener('alpine:init', function () {
+    Alpine.data('miniCart', function () {
+        return {
+            loaded: false,
+            loadContent: function () {
+                if (this.loaded) return;
+                var drawerContent = document.getElementById('mini-cart-content');
+                if (!drawerContent) return;
+
+                fetch('{% url "cart:mini_cart" %}', {
+                    headers: { 'HX-Request': 'true' }
+                })
+                .then(function (response) { return response.text(); })
+                .then(function (html) {
+                    drawerContent.innerHTML = html;
+                    this.loaded = true;
+                    if (window.Alpine) {
+                        window.Alpine.discoverComponents(drawerContent);
+                    }
+                }.bind(this))
+                .catch(function (err) {
+                    console.error('Mini cart load failed:', err);
+                    drawerContent.innerHTML = '<p class="text-center text-red-600 p-4">خطا در بارگذاری سبد</p>';
+                });
+            },
+            close: function () {
+                this.$dispatch('close-mini-cart');
+            }
+        };
+    });
+});
+
+/* بستن مینی‌سبد از خارج (مثلاً بعد از رفتن به تسویه) */
+document.addEventListener('close-mini-cart', function () {
+    var header = document.querySelector('header');
+    if (header && header.__x) {
+        var data = header.__x.getUnobservedData();
+        if (data) {
+            data.cartOpen = false;
+        }
+    }
+});
+
 /* تسویه: انتخاب آدرس ذخیره‌شده، آدرس کامل را در textarea پر می‌کند.
    داده‌ها در تگ `<script type="application/json" id="saved-addresses">`
    توسط view گذاشته می‌شوند. */

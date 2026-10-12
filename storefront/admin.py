@@ -5,7 +5,7 @@
 """
 from django.contrib import admin
 
-from .models import ProductReview, ComparisonList, Address, ReturnRequest
+from .models import ProductReview, ComparisonList, Address, ReturnRequest, SiteSettings
 
 
 @admin.register(ProductReview)
@@ -44,3 +44,25 @@ class ReturnRequestAdmin(admin.ModelAdmin):
         for obj in queryset:
             obj.reject()
     reject_requests.short_description = 'رد درخواست‌های انتخاب‌شده'
+
+
+@admin.register(SiteSettings)
+class SiteSettingsAdmin(admin.ModelAdmin):
+    list_display = ['site_name', 'is_maintenance', 'shipping_cost', 'free_shipping_threshold']
+    list_filter = ['is_maintenance']
+    fieldsets = [
+        ('عمومی', {'fields': ['site_name', 'logo', 'cover_image', 'is_maintenance']}),
+        ('بخش هیرو', {'fields': ['hero_title', 'hero_subtitle']}),
+        ('فوتر', {'fields': ['footer_text']}),
+        ('ارسال و تحویل', {'fields': [
+            'shipping_cost', 'free_shipping_threshold', 'tax_rate',
+            'production_days_min', 'production_days_max',
+            'shipping_days_min', 'shipping_days_max',
+        ]}),
+    ]
+
+    def has_add_permission(self, request):
+        return not SiteSettings.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False

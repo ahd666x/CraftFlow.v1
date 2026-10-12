@@ -146,6 +146,15 @@ class SiteSettings(TimeStampedModel):
     footer_text = models.TextField(blank=True, verbose_name='متن فوتر')
     is_maintenance = models.BooleanField(default=False, verbose_name='در حالت تعمیرات')
 
+    # ارسال و تحویل
+    shipping_cost = models.DecimalField(max_digits=10, decimal_places=0, default=0, verbose_name='هزینه ارسال (تومان)')
+    free_shipping_threshold = models.DecimalField(max_digits=10, decimal_places=0, default=0, verbose_name='آستانه ارسال رایگان (تومان)')
+    tax_rate = models.DecimalField(max_digits=4, decimal_places=2, default=0, verbose_name='نرخ مالیات (مثلاً ۰.۰۹ برای ۹٪)')
+    production_days_min = models.PositiveIntegerField(default=3, verbose_name='حداقل روز تولید')
+    production_days_max = models.PositiveIntegerField(default=7, verbose_name='حداکثر روز تولید')
+    shipping_days_min = models.PositiveIntegerField(default=2, verbose_name='حداقل روز ارسال')
+    shipping_days_max = models.PositiveIntegerField(default=5, verbose_name='حداکثر روز ارسال')
+
     class Meta:
         verbose_name = 'تنظیمات سایت'
         verbose_name_plural = 'تنظیمات سایت'
@@ -164,3 +173,11 @@ class SiteSettings(TimeStampedModel):
         if not obj:
             obj = cls.objects.create()
         return obj
+
+    @property
+    def estimated_delivery_min(self):
+        return self.production_days_min + self.shipping_days_min
+
+    @property
+    def estimated_delivery_max(self):
+        return self.production_days_max + self.shipping_days_max

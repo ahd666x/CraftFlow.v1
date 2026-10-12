@@ -23,9 +23,11 @@
             <div class="aspect-square overflow-hidden rounded-xl bg-stone-100">
                 {% if gallery %}
                     <img id="gallery-main" src="{{ gallery.0.image.url }}" alt="{{ product.name }}"
+                         width="800" height="800"
                          class="h-full w-full object-cover">
                 {% elif product.image %}
                     <img id="gallery-main" src="{{ product.image.url }}" alt="{{ product.name }}"
+                         width="800" height="800"
                          class="h-full w-full object-cover">
                 {% else %}
                     <div class="grid h-full w-full place-items-center text-stone-400">
@@ -38,9 +40,10 @@
             <div class="mt-3 flex gap-2 overflow-x-auto">
                 {% for img in gallery %}
                 <button type="button"
-                        class="h-20 w-20 shrink-0 overflow-hidden rounded-default border border-stone-200 hover:border-primary-500"
-                        onclick="document.getElementById('gallery-main').src='{{ img.image.url }}'">
+                        class="h-20 w-20 shrink-0 overflow-hidden rounded-default border border-stone-200 hover:border-primary-500 gallery-thumb"
+                        data-img-src="{{ img.image.url }}">
                     <img src="{{ img.image.url }}" alt="{{ img.alt_text|default:product.name }}"
+                         width="160" height="160"
                          class="h-full w-full object-cover" loading="lazy">
                 </button>
                 {% endfor %}
@@ -146,22 +149,36 @@
 
                 <div class="mt-5">
                     <span class="block text-xs text-stone-500">قیمت کل</span>
-                    <span class="text-2xl font-bold text-stone-900"
-                          x-text="total().toLocaleString('fa-IR')"></span>
-                    <span class="text-sm text-stone-500"> تومان</span>
+                    <div class="flex items-baseline gap-2">
+                        <span class="text-2xl font-bold text-stone-900"
+                              x-text="total().toLocaleString('fa-IR')"></span>
+                        <span class="text-sm text-stone-500"> تومان</span>
+                        <template x-if="unitPrice() !== basePrice">
+                            <span class="text-xs text-primary-600 font-medium"
+                                  x-text="Math.round(((unitPrice() - basePrice) / basePrice) * 100) + '% نسبت به پیش‌فرض'"></span>
+                        </template>
+                    </div>
                 </div>
 
                 <form method="post" action="{% url 'cart:cart_add' product.id %}"
                       hx-post="{% url 'cart:cart_add' product.id %}"
                       hx-target="#cart-count" hx-swap="innerHTML"
                       x-ref="addForm"
+                      @submit="adding = true"
+                      @htmx:after-request="adding = false"
                       class="mt-5">
                     {% csrf_token %}
                     <input type="hidden" name="length"  :value="dims.length.value ?? ''">
                     <input type="hidden" name="width"   :value="dims.width.value ?? ''">
                     <input type="hidden" name="height"  :value="dims.height.value ?? ''">
                     <input type="hidden" name="quantity" :value="quantity">
-                    <button type="submit" class="btn-primary w-full py-3">افزودن به سبد خرید</button>
+                    <button type="submit" class="btn-primary w-full py-3" :disabled="adding" :class="{'opacity-50 cursor-wait': adding}">
+                        <span x-show="!adding">افزودن به سبد خرید</span>
+                        <span x-show="adding" class="flex items-center justify-center gap-2">
+                            <svg class="animate-spin h-5 w-5" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/></svg>
+                            در حال افزودن...
+                        </span>
+                    </button>
                 </form>
             </div>
 
@@ -170,12 +187,24 @@
                 <div class="mx-auto flex max-w-6xl items-center gap-3">
                     <div class="min-w-0">
                         <span class="block text-xs text-stone-500">قیمت کل</span>
-                        <span class="text-lg font-bold" x-text="total().toLocaleString('fa-IR')"></span>
+                        <div class="flex items-baseline gap-2">
+                            <span class="text-lg font-bold" x-text="total().toLocaleString('fa-IR')"></span>
+                            <template x-if="unitPrice() !== basePrice">
+                                <span class="text-xs text-primary-600 font-medium"
+                                      x-text="Math.round(((unitPrice() - basePrice) / basePrice) * 100) + '% نسبت به پیش‌فرض'"></span>
+                            </template>
+                        </div>
                     </div>
                     <button type="button"
-                            @click="$refs.addForm.requestSubmit(); this.disabled = true; setTimeout(() => { this.disabled = false; }, 1500)"
+                            @click="$refs.addForm.requestSubmit()"
+                            :disabled="adding"
+                            :class="{'opacity-50 cursor-wait': adding}"
                             class="btn-primary flex-1 py-3">
-                        افزودن به سبد
+                        <span x-show="!adding">افزودن به سبد</span>
+                        <span x-show="adding" class="flex items-center justify-center gap-2">
+                            <svg class="animate-spin h-5 w-5" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/></svg>
+                            در حال افزودن...
+                        </span>
                     </button>
                 </div>
             </div>

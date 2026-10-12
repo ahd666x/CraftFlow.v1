@@ -1,11 +1,13 @@
+from django.contrib import messages
 from django.contrib.auth import views as auth_views
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.urls import reverse, reverse_lazy
-from django.views.generic import CreateView, TemplateView, UpdateView
-from django.shortcuts import get_object_or_404
+from django.views.generic import CreateView, TemplateView, UpdateView, DeleteView, ListView
+from django.shortcuts import get_object_or_404, redirect
 
 from .forms import LoginForm, UserRegistrationForm, ProfileUpdateForm
 from .models import UserProfile
+from storefront.models import Address
 
 REPRESENTATIVE_GROUP = 'نماینده'
 
@@ -55,6 +57,58 @@ class ProfileUpdateView(UpdateView):
     def get_object(self):
         profile, _ = UserProfile.objects.get_or_create(user=self.request.user)
         return profile
+
+
+class AddressListView(LoginRequiredMixin, ListView):
+    model = Address
+    template_name = 'accounts/address_list.html'
+    context_object_name = 'addresses'
+
+    def get_queryset(self):
+        return Address.objects.filter(user=self.request.user, is_active=True)
+
+
+class AddressCreateView(LoginRequiredMixin, CreateView):
+    model = Address
+    template_name = 'accounts/address_form.html'
+    fields = ['title', 'recipient', 'province', 'city', 'postal_code', 'address', 'is_default']
+    success_url = reverse_lazy('accounts:address_list')
+
+    def form_valid(self, form):
+        form.instance.user = self.request.user
+        if form.instance.is_default:
+            Address.objects.filter(user=self.request.user, is_default=True).update(is_default=False)
+        messages.success(self.request, 'آدرس با موفقیت اضافه شد.')
+        return super().form_valid(form)
+
+
+class AddressUpdateView(LoginRequiredMixin, UpdateView):
+    model = Address
+    template_name = 'accounts/address_form.html'
+    fields = ['title', 'recipient', 'province', 'city', 'postal_code', 'address', 'is_default']
+    success_url = reverse_lazy('accounts:address_list')
+
+    def get_queryset(self):
+        return Address.objects.filter(user=self.request.user, is_active=True)
+
+    def form_valid(self, form):
+        if form.instance.is_default:
+            Address.objects.filter(user=self.request.user, is_default=True).exclude(pk=form.instance.pk).update(is_default=False)
+        messages.success(self.request, 'آدرس با موفقیت به‌روزرسانی شد.')
+        return super().form_valid(form)
+
+
+class AddressDeleteView(LoginRequiredMixin, DeleteView):
+    model = Address
+    template_name = 'accounts/address_confirm_delete.html'
+    success_url = reverse_lazy('accounts:address_list')
+
+    def get_queryset(self):
+        return Address.objects.filter(user=self.request.user, is_active=True)
+
+    def form_valid(self, form):
+        messages.success(self.request, 'آدرس حذف شد.')
+        return super().form_valid(form)
 
 
 class CustomPasswordResetView(auth_views.PasswordResetView):

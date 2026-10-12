@@ -168,9 +168,36 @@ class Order(models.Model):
     class Meta:
         verbose_name = "سفارش"
         verbose_name_plural = "سفارش‌ها"
+    
     @property
     def total_price(self):
         return sum(item.line_total for item in self.items.all())
+
+    @property
+    def shipping_cost(self):
+        """هزینه ارسال - رایگان اگر بیش از آستانه باشد."""
+        from storefront.models import SiteSettings
+        settings = SiteSettings.get_settings()
+        if self.total_price >= settings.free_shipping_threshold:
+            return 0
+        return settings.shipping_cost
+
+    @property
+    def tax_amount(self):
+        """مبلغ مالیات بر اساس نرخ تنظیمات."""
+        from storefront.models import SiteSettings
+        settings = SiteSettings.get_settings()
+        return int(self.total_price * settings.tax_rate)
+
+    @property
+    def estimated_delivery_min(self):
+        from storefront.models import SiteSettings
+        return SiteSettings.get_settings().estimated_delivery_min
+
+    @property
+    def estimated_delivery_max(self):
+        from storefront.models import SiteSettings
+        return SiteSettings.get_settings().estimated_delivery_max
 
 
     @property

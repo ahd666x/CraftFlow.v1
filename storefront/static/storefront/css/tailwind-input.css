@@ -42,7 +42,7 @@
   .badge-danger  { @apply badge bg-red-50 text-red-700; }
 
   .section-title { @apply text-xl font-semibold text-stone-900; }
-  .link-muted    { @apply text-sm text-stone-500 transition-colors hover:text-stone-900; }
+  .link-muted    { @apply text-sm text-stone-500 transition-colors hover:text-stone-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 focus-visible:ring-offset-2; }
 
   .table-modern    { @apply w-full border-collapse text-sm; }
   .table-modern th { @apply px-4 py-3 text-right text-xs font-medium text-stone-500; }

@@ -15,6 +15,18 @@ def cart_detail(request):
     })
 
 
+def mini_cart(request):
+    """Partial view for mini-cart drawer (HTMX)."""
+    cart = get_or_create_cart(request)
+    items = cart.items.select_related(
+        'product', 'product__category',
+    ).prefetch_related('product__gallery_images')
+    return render(request, 'cart/_mini_cart.html', {
+        'cart': cart,
+        'items': items,
+    })
+
+
 @require_POST
 def cart_add(request, product_id):
     """

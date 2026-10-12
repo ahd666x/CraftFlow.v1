@@ -1,0 +1,123 @@
+{% load storefront_filters %}
+<div class="space-y-4">
+    {% if items %}
+        {% for item in items %}
+        <div class="flex gap-3">
+            {% if item.product.image %}
+            <a href="{% url 'storefront:product_detail' item.product.slug %}"
+               class="h-20 w-20 shrink-0 overflow-hidden rounded-default bg-stone-100">
+                <img src="{{ item.product.image.url }}" alt="{{ item.product.name }}"
+                     width="80" height="80"
+                     class="h-full w-full object-cover" loading="lazy">
+            </a>
+            {% elif item.product.gallery_images.first %}
+            <a href="{% url 'storefront:product_detail' item.product.slug %}"
+               class="h-20 w-20 shrink-0 overflow-hidden rounded-default bg-stone-100">
+                <img src="{{ item.product.gallery_images.first.image.url }}" alt="{{ item.product.name }}"
+                     width="80" height="80"
+                     class="h-full w-full object-cover" loading="lazy">
+            </a>
+            {% endif %}
+
+            <div class="min-w-0 flex-1">
+                <a href="{% url 'storefront:product_detail' item.product.slug %}"
+                   class="font-medium text-stone-900 hover:text-primary-700 line-clamp-1 block">
+                    {{ item.product.name }}
+                </a>
+                <div class="mt-0.5 text-sm text-stone-500">
+                    {% if item.has_custom_dimensions %}
+                        {% if item.custom_length %}طول {{ item.custom_length }}{% endif %}
+                        {% if item.custom_width %} / عرض {{ item.custom_width }}{% endif %}
+                        {% if item.custom_height %} / ارتفاع {{ item.custom_height }}{% endif %}
+                        سانتی‌متر
+                    {% else %}
+                        ابعاد پیش‌فرض
+                    {% endif %}
+                </div>
+                <div class="mt-0.5 text-sm text-stone-500">
+                    قیمت واحد: {{ item.unit_price|fa_price }} تومان
+                </div>
+            </div>
+
+            <div class="flex items-center gap-2">
+                <form method="post" action="{% url 'cart:cart_update' item.id %}"
+                      class="flex items-center gap-2">
+                    {% csrf_token %}
+                    <button type="button" data-cart-step="-1" aria-label="کاهش تعداد"
+                            class="flex h-8 w-8 items-center justify-center rounded-default border border-stone-200 text-stone-500 hover:bg-stone-100">−</button>
+                    <input type="number" name="quantity" value="{{ item.quantity }}" min="1"
+                           class="input w-20 py-1.5 text-center cart-qty-input">
+                    <button type="button" data-cart-step="1" aria-label="افزایش تعداد"
+                            class="flex h-8 w-8 items-center justify-center rounded-default border border-stone-200 text-stone-500 hover:bg-stone-100">+</button>
+                </form>
+            </div>
+
+            <div class="text-left">
+                <span class="block text-sm font-bold">{{ item.total_price|fa_price }}</span>
+                <span class="text-xs text-stone-500">تومان</span>
+            </div>
+
+            <form method="post" action="{% url 'cart:cart_remove' item.id %}">
+                {% csrf_token %}
+                <button type="submit" class="btn-outline px-3 py-1.5 text-xs"
+                        aria-label="حذف {{ item.product.name }}">حذف</button>
+            </form>
+        </div>
+        {% endfor %}
+
+        <div class="border-t border-stone-200 pt-4 space-y-3">
+            <div class="flex items-center justify-between text-sm text-stone-600">
+                <span>جمع اقلام ({{ cart.total_items }})</span>
+                <span>{{ cart.total_price|fa_price }}</span>
+            </div>
+
+            {% if cart.discount %}
+            <div class="flex items-center justify-between text-emerald-700 text-sm">
+                <span>تخفیف ({{ cart.discount.code }})</span>
+                <span>-{{ cart.discount_amount|fa_price }}</span>
+            </div>
+            <form method="post" action="{% url 'discounts:remove_discount' %}" class="mt-1">
+                {% csrf_token %}
+                <button type="submit" class="text-xs text-red-600 hover:underline">حذف تخفیف</button>
+            </form>
+            {% endif %}
+
+            <div class="flex items-center justify-between border-t border-stone-200 pt-3">
+                <span class="font-semibold">مبلغ قابل پرداخت</span>
+                <span class="text-lg font-bold text-primary-800">{{ cart.final_price|fa_price }}</span>
+            </div>
+            <p class="text-xs text-stone-400">تومان</p>
+
+            {% if not cart.discount %}
+            <form method="post" action="{% url 'discounts:apply_discount' %}" class="space-y-2">
+                {% csrf_token %}
+                <label class="label" for="code">کد تخفیف</label>
+                <div class="flex gap-2">
+                    <input id="code" name="code" type="text" class="input" placeholder="کد تخفیف" required>
+                    <button type="submit" class="btn-primary whitespace-nowrap">اعمال</button>
+                </div>
+            </form>
+            {% endif %}
+
+            <a href="{% url 'storefront:checkout' %}"
+               class="btn-primary w-full py-3 text-center block"
+               @click="$dispatch('close-mini-cart')">
+                ادامه‌ی فرایند خرید
+            </a>
+
+            <form method="post" action="{% url 'cart:cart_clear' %}">
+                {% csrf_token %}
+                <button type="submit" class="btn-outline w-full">خالی کردن سبد</button>
+            </form>
+        </div>
+    {% else %}
+        <div class="text-center py-8">
+            <svg class="mx-auto h-16 w-16 text-stone-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                      d="M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.356-1.993l1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 01-1.12-1.243l1.264-12A1.125 1.125 0 015.513 7.5h12.974c.576 0 1.059.435 1.119 1.007z"/>
+            </svg>
+            <p class="mt-4 text-stone-500">سبد خرید شما خالی است.</p>
+            <a href="{% url 'storefront:product_list' %}" class="btn-primary mt-4 inline-block">مشاهده‌ی محصولات</a>
+        </div>
+    {% endif %}
+</div>

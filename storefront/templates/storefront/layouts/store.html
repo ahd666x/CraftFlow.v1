@@ -7,6 +7,25 @@
     <title>{% block title %}فروشگاه{% endblock %}</title>
     <meta name="description" content="{% block meta_description %}فروشگاه آنلاین{% endblock %}">
 
+    {# Open Graph / Social Sharing #}
+    <meta property="og:title" content="{% block og_title %}{% endblock %}">
+    <meta property="og:description" content="{% block og_description %}{% endblock %}">
+    <meta property="og:type" content="{% block og_type %}website{% endblock %}">
+    <meta property="og:url" content="{% block og_url %}{{ request.build_absolute_uri }}{% endblock %}">
+    <meta property="og:image" content="{% block og_image %}{% if site_settings and site_settings.cover_image %}{{ site_settings.cover_image.url }}{% endif %}{% endblock %}">
+    <meta property="og:site_name" content="{{ site_settings.site_name|default:'فروشگاه' }}">
+
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="{% block twitter_title %}{% endblock %}">
+    <meta name="twitter:description" content="{% block twitter_description %}{% endblock %}">
+    <meta name="twitter:image" content="{% block twitter_image %}{% if site_settings and site_settings.cover_image %}{{ site_settings.cover_image.url }}{% endif %}{% endblock %}">
+
+    {# Favicon #}
+    <link rel="icon" href="{% static 'storefront/img/favicon.ico' %}" sizes="any">
+    <link rel="icon" href="{% static 'storefront/img/favicon.svg' %}" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="{% static 'storefront/img/apple-touch-icon.png' %}">
+    <link rel="manifest" href="{% static 'storefront/manifest.json' %}">
+
     {# فقط Tailwind. Bootstrap عمداً اینجا load نمی‌شود چون پنل تولید آن را
        دارد و بارگذاری هر دو در یک صفحه، استایل‌ها را قاطی می‌کند. #}
     <link rel="stylesheet" href="{% static 'storefront/css/vazirmatn-fonts.css' %}">

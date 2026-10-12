@@ -7,13 +7,20 @@ from .models import UserProfile
 User = get_user_model()
 
 
+def _widget_class(field):
+    """Return appropriate CSS class for widget type."""
+    if isinstance(field.widget, forms.Select):
+        return 'select'
+    return 'input'
+
+
 class LoginForm(AuthenticationForm):
     """فرم لاگین پیش‌فرض جنگو را با ویجت‌های استایل‌دار فروشگاه می‌پیچانیم."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         for field in self.fields.values():
-            field.widget.attrs.update({'class': 'input'})
+            field.widget.attrs.update({'class': _widget_class(field)})
 
 
 class UserRegistrationForm(forms.Form):

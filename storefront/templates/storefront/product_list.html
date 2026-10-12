@@ -12,6 +12,12 @@
         <h1 class="text-2xl font-bold">
             {% if current_category %}{{ current_category.name }}{% else %}همه محصولات{% endif %}
         </h1>
+        
+        {% if page_obj %}
+        <p class="text-sm text-stone-500">
+            {{ page_obj.paginator.count }} محصول یافت شد
+        </p>
+        {% endif %}
 
         <form method="get" class="flex items-center gap-2">
             {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
@@ -28,14 +34,14 @@
 
     <div class="grid gap-8 lg:grid-cols-[16rem_1fr]">
 
-        <aside class="lg:sticky lg:top-20 lg:self-start">
+<aside class="lg:sticky lg:top-20 lg:self-start">
             <div class="card p-4">
                 <h2 class="mb-3 font-semibold">دسته‌بندی</h2>
                 <ul class="space-y-1 text-sm">
                     <li>
                         <a href="{% url 'storefront:product_list' %}"
                            class="block rounded px-2 py-1.5 hover:bg-stone-100
-                                  {% if not selected_category %}bg-stone-100 font-medium{% endif %}">
+                                 {% if not selected_category %}bg-stone-100 font-medium{% endif %}">
                             همه
                         </a>
                     </li>
@@ -43,26 +49,78 @@
                     <li>
                         <a href="{% url 'storefront:category_detail' category.slug %}"
                            class="block rounded px-2 py-1.5 hover:bg-stone-100
-                                  {% if selected_category == category.slug %}bg-stone-100 font-medium{% endif %}">
+                                 {% if selected_category == category.slug %}bg-stone-100 font-medium{% endif %}">
                             {{ category.name }}
                         </a>
                     </li>
                     {% endfor %}
                 </ul>
             </div>
+
+            <div class="mt-4 card p-4">
+                <h2 class="mb-3 font-semibold">محدوده قیمت</h2>
+                <form method="get" class="space-y-3">
+                    {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
+                    {% if selected_category %}<input type="hidden" name="category" value="{{ selected_category }}">{% endif %}
+                    {% if sort %}<input type="hidden" name="sort" value="{{ sort }}">{% endif %}
+                    <div class="grid gap-2 grid-cols-2">
+                        <div>
+                            <label for="min_price" class="label">حداقل</label>
+                            <input type="number" name="min_price" id="min_price" value="{{ min_price|default:'' }}"
+                                   placeholder="۰" class="input" min="0" step="100000">
+                        </div>
+                        <div>
+                            <label for="max_price" class="label">حداکثر</label>
+                            <input type="number" name="max_price" id="max_price" value="{{ max_price|default:'' }}"
+                                   placeholder="۰" class="input" min="0" step="100000">
+                        </div>
+                    </div>
+                    <button type="submit" class="btn-primary w-full py-2 text-sm">اعمال</button>
+                    {% if min_price or max_price %}
+                    <a href="{% url 'storefront:product_list' %}{% if q %}?q={{ q }}{% endif %}{% if selected_category and not q %}?category={{ selected_category }}{% elif selected_category and q %}&category={{ selected_category }}{% endif %}"
+                       class="btn-outline w-full py-2 text-sm text-center">پاک کردن</a>
+                    {% endif %}
+                </form>
+            </div>
         </aside>
 
         <div>
-            {% if products %}
+            {% if page_obj %}
             <div class="grid grid-cols-2 gap-4 md:grid-cols-3">
-                {% for product in products %}
+                {% for product in page_obj %}
                     {% include 'storefront/components/product_card.html' with product=product %}
                 {% endfor %}
             </div>
+
+            {% if page_obj.paginator.num_pages > 1 %}
+            <nav class="mt-8 flex items-center justify-center gap-2" aria-label="صفحه‌بندی">
+                {% if page_obj.has_previous %}
+                <a href="?{% if q %}q={{ q }}&{% endif %}{% if selected_category %}category={{ selected_category }}&{% endif %}{% if sort %}sort={{ sort }}&{% endif %}{% if min_price %}min_price={{ min_price }}&{% endif %}{% if max_price %}max_price={{ max_price }}&{% endif %}page={{ page_obj.previous_page_number }}"
+                   class="btn-outline px-4 py-2">قبلی</a>
+                {% endif %}
+
+                {% for num in page_obj.paginator.page_range %}
+                    {% if page_obj.number == num %}
+                    <span class="btn-primary px-4 py-2" aria-current="page">{{ num }}</span>
+                    {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+                    <a href="?{% if q %}q={{ q }}&{% endif %}{% if selected_category %}category={{ selected_category }}&{% endif %}{% if sort %}sort={{ sort }}&{% endif %}{% if min_price %}min_price={{ min_price }}&{% endif %}{% if max_price %}max_price={{ max_price }}&{% endif %}page={{ num }}"
+                       class="btn-outline px-4 py-2">{{ num }}</a>
+                    {% endif %}
+                {% endfor %}
+
+                {% if page_obj.has_next %}
+                <a href="?{% if q %}q={{ q }}&{% endif %}{% if selected_category %}category={{ selected_category }}&{% endif %}{% if sort %}sort={{ sort }}&{% endif %}{% if min_price %}min_price={{ min_price }}&{% endif %}{% if max_price %}max_price={{ max_price }}&{% endif %}page={{ page_obj.next_page_number }}"
+                   class="btn-outline px-4 py-2">بعدی</a>
+                {% endif %}
+            </nav>
+            {% endif %}
             {% else %}
-            <p class="rounded-default border border-dashed border-stone-300 p-10 text-center text-stone-500">
-                محصولی با این فیلتر پیدا نشد.
-            </p>
+            <div class="rounded-default border border-dashed border-stone-300 p-10 text-center">
+                <p class="text-stone-500">محصولی با این فیلتر پیدا نشد.</p>
+                {% if q or selected_category %}
+                <a href="{% url 'storefront:product_list' %}" class="btn-primary mt-4 inline-block">پاک کردن فیلترها</a>
+                {% endif %}
+            </div>
             {% endif %}
         </div>
     </div>

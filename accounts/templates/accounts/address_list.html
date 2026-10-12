@@ -1,0 +1,54 @@
+{% extends 'storefront/layouts/store.html' %}
+
+{% block title %}آدرس‌های من — حساب کاربری{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-3xl px-4 py-8">
+    <div class="mb-6 flex items-center justify-between">
+        <h1 class="text-2xl font-bold">آدرس‌های ذخیره‌شده</h1>
+        <a href="{% url 'accounts:address_add' %}" class="btn-primary">افزودن آدرس جدید</a>
+    </div>
+
+    {% if addresses %}
+    <div class="space-y-4">
+        {% for address in addresses %}
+        <div class="card p-5">
+            <div class="flex flex-wrap items-start justify-between gap-4">
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-3">
+                        <h3 class="font-semibold text-stone-900">{{ address.title }}</h3>
+                        {% if address.is_default %}
+                        <span class="badge badge-success">پیش‌فرض</span>
+                        {% endif %}
+                    </div>
+                    <p class="mt-1 text-sm text-stone-600">{{ address.recipient }}</p>
+                    <p class="mt-1 text-sm text-stone-500 whitespace-pre-line">{{ address.address }}</p>
+                    <p class="mt-1 text-xs text-stone-400">
+                        {{ address.city }}{% if address.province %}, {{ address.province }}{% endif %}
+                        {% if address.postal_code %}، {{ address.postal_code }}{% endif %}
+                    </p>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                    <a href="{% url 'accounts:address_edit' address.pk %}" class="btn-outline px-3 py-1.5 text-sm">ویرایش</a>
+                    <form method="post" action="{% url 'accounts:address_delete' address.pk %}" class="inline">
+                        {% csrf_token %}
+                        <button type="submit" class="btn-outline px-3 py-1.5 text-sm text-red-600 border-red-300 hover:bg-red-50" onclick="return confirm('آیا مطمئن هستید که می‌خواهید این آدرس را حذف کنید؟')">حذف</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="rounded-default border border-dashed border-stone-300 p-10 text-center">
+        <svg class="mx-auto h-16 w-16 text-stone-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                  d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+        </svg>
+        <p class="mt-4 text-stone-500">هنوز آدرسی ذخیره نشده است.</p>
+        <a href="{% url 'accounts:address_add' %}" class="btn-primary mt-4 inline-block">افزودن اولین آدرس</a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -97,11 +97,36 @@
                         <span>-{{ order.discount_amount|fa_price }}</span>
                     </div>
                     {% endif %}
+                    
+                    {# Shipping #}
+                    <div class="flex justify-between text-stone-600">
+                        <span>هزینه ارسال</span>
+                        <span>{{ order.shipping_cost|fa_price }} تومان</span>
+                    </div>
+
+                    {# Tax #}
+                    {% if order.tax_amount > 0 %}
+                    <div class="flex justify-between text-stone-600">
+                        <span>مالیات (۹٪)</span>
+                        <span>{{ order.tax_amount|fa_price }} تومان</span>
+                    </div>
+                    {% endif %}
+
                     <div class="flex justify-between border-t border-stone-200 pt-2">
                         <span class="font-semibold">مبلغ نهایی</span>
                         <span class="font-bold text-primary-800">{{ order.final_amount|fa_price }}</span>
                     </div>
                     <p class="text-xs text-stone-400">تومان</p>
+                </div>
+
+                {# Estimated delivery #}
+                <div class="mt-4 p-3 rounded-lg bg-primary-50 border border-primary-100">
+                    <div class="flex items-center gap-2 text-sm text-primary-800">
+                        <svg class="h-5 w-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                        <span>زمان تحویل تقریبی: {{ site_settings.estimated_delivery_min }} تا {{ site_settings.estimated_delivery_max }} روز کاری</span>
+                    </div>
                 </div>
 
                 {% if not is_locked %}

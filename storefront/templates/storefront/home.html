@@ -4,6 +4,10 @@
 
 {% block title %}فروشگاه — خانه{% endblock %}
 
+{% block og_title %}فروشگاه آنلاین مبلمان و چوب با ابعاد دلخواه{% endblock %}
+{% block og_description %}فضای هر خانه متفاوت است؛ ابعاد قطعه را خودتان تعیین کنید و قیمت نهایی را همان لحظه ببینید.{% endblock %}
+{% block og_image %}{% if site_settings and site_settings.cover_image %}{{ site_settings.cover_image.url }}{% endif %}{% endblock %}
+
 {% block content %}
 <section class="border-b border-stone-100">
     {% if site_settings and site_settings.cover_image %}
@@ -31,6 +35,55 @@
             <a href="{% url 'storefront:product_list' %}" class="btn-primary mt-8 px-8">مشاهده محصولات</a>
         </div>
     {% endif %}
+</section>
+
+{# چرا ما؟ #}
+<section class="mx-auto max-w-6xl px-4 py-16">
+    <div class="mb-10 text-center">
+        <h2 class="section-title">چرا کرافت‌فلو؟</h2>
+        <p class="mt-2 max-w-2xl mx-auto text-stone-500">ما فقط مبلمان نمی‌سازیم، تجربه‌ای متفاوت برای خانه‌تان می‌سازیم.</p>
+    </div>
+    <div class="grid grid-cols-2 gap-6 md:grid-cols-4">
+        {% for icon, title, desc in features %}
+        <div class="card p-6 text-center hover:border-primary-300 transition-colors">
+            <div class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-primary-100 text-primary-700">
+                {% if icon == 'custom' %}
+                <svg class="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>
+                {% elif icon == 'quality' %}
+                <svg class="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+                {% elif icon == 'warranty' %}
+                <svg class="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                {% elif icon == 'shipping' %}
+                <svg class="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.356-1.993l1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 01-1.12-1.243l1.264-12A1.125 1.125 0 015.513 7.5h12.974c.576 0 1.059.435 1.119 1.007z"/></svg>
+                {% endif %}
+            </div>
+            <h3 class="font-semibold text-stone-900">{{ title }}</h3>
+            <p class="mt-1 text-sm text-stone-500">{{ desc }}</p>
+        </div>
+        {% endfor %}
+    </div>
+</section>
+
+{# نظرات مشتریان / نمونه‌کار #}
+<section class="mx-auto max-w-6xl px-4 py-16 bg-stone-50">
+    <div class="mb-10 text-center">
+        <h2 class="section-title">چه می‌گویند؟</h2>
+        <p class="mt-2 max-w-2xl mx-auto text-stone-500">نظرات کسانی که تجربه خرید از ما را داشته‌اند.</p>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {% for name, product_name, comment in testimonials %}
+        <div class="card p-6">
+            <div class="flex items-center gap-1 text-primary-600 mb-3">
+                <span aria-hidden="true">★</span><span aria-hidden="true">★</span><span aria-hidden="true">★</span><span aria-hidden="true">★</span><span aria-hidden="true">★</span>
+            </div>
+            <p class="text-stone-600 leading-relaxed mb-4">«{{ comment }}»</p>
+            <div class="border-t border-stone-100 pt-3">
+                <p class="font-medium text-stone-900">{{ name }}</p>
+                <p class="text-sm text-stone-400">{{ product_name }}</p>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
 </section>
 
 <section id="custom-dimensions" class="mx-auto max-w-3xl scroll-mt-24 px-4 py-16 text-center">

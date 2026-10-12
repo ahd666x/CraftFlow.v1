@@ -1,5 +1,6 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Avg, Count, Q
 from django.shortcuts import get_object_or_404, redirect, render
@@ -37,9 +38,26 @@ def home(request):
     categories = ProductCategory.objects.filter(is_active=True).annotate(
         product_count=Count('products', filter=Q(products__is_active=True)),
     )
+    
+    # Static content for home page sections
+    features = [
+        ('custom', 'سفارشی‌سازی کامل', 'طول، عرض، ارتفاع — ابعاد دقیقاً متناسب با فضای شما'),
+        ('quality', 'چوب درجه یک', 'استفاده از چوب‌های بی‌ک-sdk، ضد رطوبت و دوام‌دار'),
+        ('warranty', 'گارانتی ۵ سال', 'اطمینان از کیفیت ساخت و مواد اولیه با ضمانت‌نامه'),
+        ('shipping', 'ارسال سراسری', 'بسته‌بندی ایمن و ارسال به سراسر ایران با رهگیری'),
+    ]
+    
+    testimonials = [
+        ('مهران رضایی', 'کمد اتاق خواب سفارشی', 'دقت در ابعاد و کیفیت چوب فوق‌العاده بود. تیم مشاوره خیلی صبوری پاسخگو بود و نتیجه دقیقاً همون چیزی بود که در ذهنم بود.'),
+        ('سارا محمدی', 'میز ناهارخوری ۶ نفره', 'ارسال سریع، بسته‌بندی عالی و هیچ خطری در جابجایی نبود. رنگ و بافت چوب خیلی طبیعی و زیباست.'),
+        ('احمد کریمی', 'کنسول تلویزیون مخصوص', 'امکان تغییر ارتفاع و عمق باعث شد دقیقاً زیر تلویزیونم جا بشه. قیمت هم نسبت به بازار خیلی مناسب‌تر بود.'),
+    ]
+    
     return render(request, 'storefront/home.html', {
         'products': products,
         'categories': categories,
+        'features': features,
+        'testimonials': testimonials,
     })
 
 
@@ -56,15 +74,36 @@ def product_list(request):
     if category_slug:
         queryset = queryset.filter(category__slug=category_slug)
 
+    # Price range filter
+    min_price = request.GET.get('min_price')
+    max_price = request.GET.get('max_price')
+    if min_price:
+        try:
+            queryset = queryset.filter(base_price__gte=int(min_price))
+        except ValueError:
+            pass
+    if max_price:
+        try:
+            queryset = queryset.filter(base_price__lte=int(max_price))
+        except ValueError:
+            pass
+
     sort = request.GET.get('sort', '')
     queryset = _sort_queryset(queryset, sort)
 
+    # Pagination: 12 products per page
+    paginator = Paginator(_with_rating(queryset), 12)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+
     return render(request, 'storefront/product_list.html', {
-        'products': _with_rating(queryset),
+        'page_obj': page_obj,
         'categories': ProductCategory.objects.filter(is_active=True),
         'q': q,
         'selected_category': category_slug,
         'sort': sort,
+        'min_price': min_price,
+        'max_price': max_price,
     })
 
 
@@ -107,15 +146,38 @@ def category_detail(request, slug):
     q = request.GET.get('q', '').strip()
     if q:
         queryset = queryset.filter(Q(name__icontains=q) | Q(description__icontains=q))
+    
+    # Price range filter
+    min_price = request.GET.get('min_price')
+    max_price = request.GET.get('max_price')
+    if min_price:
+        try:
+            queryset = queryset.filter(base_price__gte=int(min_price))
+        except ValueError:
+            pass
+    if max_price:
+        try:
+            queryset = queryset.filter(base_price__lte=int(max_price))
+        except ValueError:
+            pass
+
     sort = request.GET.get('sort', '')
     queryset = _sort_queryset(queryset, sort)
+
+    # Pagination: 12 products per page
+    paginator = Paginator(_with_rating(queryset), 12)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+
     return render(request, 'storefront/product_list.html', {
-        'products': _with_rating(queryset),
+        'page_obj': page_obj,
         'categories': ProductCategory.objects.filter(is_active=True),
         'selected_category': slug,
         'current_category': category,
         'q': q,
         'sort': sort,
+        'min_price': min_price,
+        'max_price': max_price,
     })
 
 
@@ -303,3 +365,13 @@ def order_detail(request, order_id):
         'is_cancelled': order.status == 'cancelled',
         'timeline': _status_timeline(order),
     })
+
+
+def custom_404(request, exception):
+    """Custom 404 error handler."""
+    return render(request, 'storefront/404.html', status=404)
+
+
+def custom_500(request):
+    """Custom 500 error handler."""
+    return render(request, 'storefront/500.html', status=500)
