@@ -6,16 +6,16 @@
 جزئیات محاسبه می‌شود، چون برای آن باید ابعاد را مشتری انتخاب کند.
 {% endcomment %}
 <a href="{% url 'storefront:product_detail' product.slug %}"
-   class="card group flex flex-col overflow-hidden rounded-2xl border-0 shadow-md transition hover:-translate-y-1 hover:shadow-lg">
+   class="group flex h-full flex-col rounded-xl bg-white ring-1 ring-stone-200/80 transition hover:ring-2 hover:ring-primary-300">
 
-    <div class="aspect-square overflow-hidden bg-stone-100">
+    <div class="relative aspect-[4/5] overflow-hidden bg-primary-100/70">
         {% if product.image %}
             <img src="{{ product.image.url }}" alt="{{ product.name }}"
                  loading="lazy"
-                 class="h-full w-full object-cover transition duration-300 group-hover:scale-105">
+                 class="h-full w-full object-cover transition duration-500 group-hover:scale-105">
         {% else %}
-            <div class="grid h-full w-full place-items-center text-stone-400">
-                <svg class="h-12 w-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div class="grid h-full w-full place-items-center text-primary-300">
+                <svg class="h-14 w-14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
                           d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5A1.5 1.5 0 0021 19.5V6a1.5 1.5 0 00-1.5-1.5H4.5A1.5 1.5 0 003 6v13.5A1.5 1.5 0 004.5 21z"/>
                 </svg>
@@ -24,13 +24,13 @@
     </div>
 
     <div class="flex flex-1 flex-col p-4">
-        <span class="self-start rounded-full bg-stone-100 px-2 py-0.5 text-xs text-stone-500">{{ product.category.name }}</span>
-        <h3 class="mt-2 line-clamp-2 font-medium text-stone-900 group-hover:text-primary-700">
+        <span class="text-xs font-medium text-secondary-600">{{ product.category.name }}</span>
+        <h3 class="mt-1 line-clamp-2 font-medium leading-snug text-stone-900 group-hover:text-primary-800">
             {{ product.name }}
         </h3>
 
         {% if product.review_count %}
-        <div class="mt-1.5 flex items-center gap-1 text-xs text-amber-600">
+        <div class="mt-1.5 flex items-center gap-1 text-xs text-secondary-600">
             <span aria-hidden="true">★</span>
             <span>{{ product.average_rating }}</span>
             <span class="text-stone-400">({{ product.review_count }})</span>
@@ -38,8 +38,11 @@
         {% endif %}
 
         <div class="mt-auto flex items-baseline gap-1 pt-3">
-            <span class="text-lg font-bold text-primary-800">{{ product.base_price|fa_price }}</span>
+            <span class="text-lg font-bold text-primary-900">{{ product.base_price|fa_price }}</span>
             <span class="text-xs text-stone-500">تومان</span>
         </div>
+        <span class="mt-1 text-[11px] leading-relaxed text-stone-400">
+            قیمت پایه — با ابعاد شما تغییر می‌کند
+        </span>
     </div>
 </a>

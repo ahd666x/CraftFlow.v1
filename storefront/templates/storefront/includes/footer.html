@@ -1,10 +1,14 @@
-<footer class="mt-12 border-t border-stone-200 bg-white">
-    <div class="mx-auto max-w-6xl px-4 py-8 text-center text-sm text-stone-500">
-        <p>تمامی حقوق محفوظ است.</p>
-        <p class="mt-2 text-xs text-stone-400">
+<footer class="mt-12 bg-primary-900 text-primary-100">
+    <div class="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-4 py-10 text-sm sm:flex-row sm:items-start">
+        <div class="text-center sm:text-right">
+            <p class="font-bold text-white">کرافت‌فلو</p>
+            <p class="mt-1 text-xs text-primary-200">تمامی حقوق محفوظ است.</p>
+        </div>
+        <p class="text-xs text-primary-300">
             برای مدیریت تولید و انبار
             {% if user.is_staff %}
-                <a href="{% url 'dashboard' %}" class="underline hover:text-stone-700">به پنل مدیریت بروید</a>
+                <a href="{% url 'dashboard' %}"
+                   class="font-medium text-secondary-400 underline underline-offset-4 transition hover:text-secondary-300">به پنل مدیریت بروید</a>
             {% endif %}
         </p>
     </div>

@@ -33,7 +33,9 @@ def home(request):
         Product.active_objects.select_related('category')
         .order_by('-id')[:12]
     )
-    categories = ProductCategory.objects.filter(is_active=True)
+    categories = ProductCategory.objects.filter(is_active=True).annotate(
+        product_count=Count('products', filter=Q(products__is_active=True)),
+    )
     return render(request, 'storefront/home.html', {
         'products': products,
         'categories': categories,

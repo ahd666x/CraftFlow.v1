@@ -2,41 +2,45 @@
 <header class="sticky top-0 z-sticky border-b border-stone-200 bg-white/90 backdrop-blur">
     <div class="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3">
 
-        <a href="{% url 'storefront:home' %}" class="flex items-center gap-2 text-lg font-bold text-primary-800">
+        <a href="{% url 'storefront:home' %}" class="flex items-center gap-2">
             <img src="{% static 'storefront/img/logo.png' %}" alt="لوگو"
-                 class="h-10 w-auto max-w-full rounded-md object-contain">
-            <span class="hidden sm:inline">فروشگاه</span>
+                 class="h-9 w-auto max-w-full rounded-md object-contain">
+            <span class="text-lg font-bold text-primary-900">کرافت‌فلو</span>
         </a>
 
-        <nav class="hidden items-center gap-1 md:flex">
+        <nav class="hidden items-center gap-1 md:flex" aria-label="منوی اصلی">
             <a href="{% url 'storefront:product_list' %}"
-               class="rounded-default px-3 py-2 text-sm hover:bg-stone-100">محصولات</a>
+               class="rounded-default px-3 py-2 text-sm text-stone-700 hover:bg-stone-100">محصولات</a>
             <a href="{% url 'storefront:category_list' %}"
-               class="rounded-default px-3 py-2 text-sm hover:bg-stone-100">دسته‌بندی‌ها</a>
+               class="rounded-default px-3 py-2 text-sm text-stone-700 hover:bg-stone-100">دسته‌بندی‌ها</a>
             {% if user.is_authenticated %}
             <a href="{% url 'storefront:order_list' %}"
-               class="rounded-default px-3 py-2 text-sm hover:bg-stone-100">سفارش‌های من</a>
+               class="rounded-default px-3 py-2 text-sm text-stone-700 hover:bg-stone-100">سفارش‌های من</a>
             {% endif %}
         </nav>
 
         <form action="{% url 'storefront:product_list' %}" method="get"
-              class="mr-auto hidden max-w-xs flex-1 sm:block">
-            <input type="search" name="q" value="{{ q }}" placeholder="جستجوی محصول…"
-                   class="input py-1.5">
+              role="search" class="mr-auto hidden w-full max-w-xs sm:block">
+            <label for="site-search" class="sr-only">جستجوی محصول</label>
+            <input id="site-search" type="search" name="q" value="{{ q }}"
+                   placeholder="جستجوی محصول…" class="input py-1.5">
         </form>
 
         <div class="flex items-center gap-2">
-            {% if user.is_authenticated %}
-                <span class="hidden text-sm text-stone-500 sm:inline">{{ user.username }}</span>
-            {% else %}
-                <a href="{% url 'accounts:login' %}" class="btn-outline py-1.5 hidden sm:inline-flex">ورود</a>
+            {% if not user.is_authenticated %}
+                <a href="{% url 'accounts:login' %}"
+                   class="btn-outline hidden !px-3 !py-1.5 sm:inline-flex">ورود</a>
             {% endif %}
 
             <a href="{% url 'cart:cart_detail' %}"
-               class="relative inline-flex items-center gap-2 rounded-default border border-stone-300 px-3 py-1.5 text-sm hover:bg-stone-50">
-                <span>سبد خرید</span>
+               class="relative inline-flex h-9 w-9 items-center justify-center rounded-default border border-stone-300 text-stone-600 transition hover:bg-stone-50"
+               aria-label="سبد خرید">
+                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                          d="M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.356-1.993l1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 01-1.12-1.243l1.264-12A1.125 1.125 0 015.513 7.5h12.974c.576 0 1.059.435 1.119 1.007z"/>
+                </svg>
                 <span id="cart-count"
-                      class="grid h-5 min-w-[1.25rem] place-items-center rounded-full bg-primary-700 px-1 text-xs text-white">
+                      class="absolute -left-1.5 -top-1.5 grid h-5 min-w-[1.25rem] place-items-center rounded-full bg-secondary-500 px-1 text-xs font-bold text-primary-950">
                     {{ cart_total_items|default:0 }}
                 </span>
             </a>
@@ -58,18 +62,24 @@
          x-transition:leave="transition ease-in duration-150" x-transition:leave-start="opacity-100 translate-y-0"
          x-transition:leave-end="opacity-0 -translate-y-2">
         <div class="space-y-1 px-3 py-3">
+            <form action="{% url 'storefront:product_list' %}" method="get"
+                  role="search" class="mb-3 sm:hidden">
+                <label for="mobile-search" class="sr-only">جستجوی محصول</label>
+                <input id="mobile-search" type="search" name="q" value="{{ q }}"
+                       placeholder="جستجوی محصول…" class="input py-2">
+            </form>
             <a href="{% url 'storefront:product_list' %}"
-               class="block rounded-default px-3 py-2.5 text-sm hover:bg-stone-100">محصولات</a>
+               class="block rounded-default px-3 py-2.5 text-sm text-stone-700 hover:bg-stone-100">محصولات</a>
             <a href="{% url 'storefront:category_list' %}"
-               class="block rounded-default px-3 py-2.5 text-sm hover:bg-stone-100">دسته‌بندی‌ها</a>
+               class="block rounded-default px-3 py-2.5 text-sm text-stone-700 hover:bg-stone-100">دسته‌بندی‌ها</a>
             {% if user.is_authenticated %}
                 <a href="{% url 'storefront:order_list' %}"
-                   class="block rounded-default px-3 py-2.5 text-sm hover:bg-stone-100">سفارش‌های من</a>
+                   class="block rounded-default px-3 py-2.5 text-sm text-stone-700 hover:bg-stone-100">سفارش‌های من</a>
                 <a href="{% url 'accounts:profile' %}"
-                   class="block rounded-default px-3 py-2.5 text-sm hover:bg-stone-100">پروفایل</a>
+                   class="block rounded-default px-3 py-2.5 text-sm text-stone-700 hover:bg-stone-100">پروفایل</a>
             {% else %}
                 <a href="{% url 'accounts:login' %}"
-                   class="block rounded-default px-3 py-2.5 text-sm hover:bg-stone-100">ورود</a>
+                   class="block rounded-default px-3 py-2.5 text-sm text-stone-700 hover:bg-stone-100">ورود</a>
             {% endif %}
         </div>
     </div>
