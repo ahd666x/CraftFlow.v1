@@ -6,7 +6,7 @@
 جزئیات محاسبه می‌شود، چون برای آن باید ابعاد را مشتری انتخاب کند.
 {% endcomment %}
 <a href="{% url 'storefront:product_detail' product.slug %}"
-   class="card group flex flex-col overflow-hidden transition hover:shadow-elevation-2">
+   class="card group flex flex-col overflow-hidden rounded-2xl border-0 shadow-md transition hover:-translate-y-1 hover:shadow-lg">
 
     <div class="aspect-square overflow-hidden bg-stone-100">
         {% if product.image %}
@@ -24,8 +24,8 @@
     </div>
 
     <div class="flex flex-1 flex-col p-4">
-        <span class="text-xs text-stone-400">{{ product.category.name }}</span>
-        <h3 class="mt-1 line-clamp-2 font-medium text-stone-900 group-hover:text-primary-700">
+        <span class="self-start rounded-full bg-stone-100 px-2 py-0.5 text-xs text-stone-500">{{ product.category.name }}</span>
+        <h3 class="mt-2 line-clamp-2 font-medium text-stone-900 group-hover:text-primary-700">
             {{ product.name }}
         </h3>
 
