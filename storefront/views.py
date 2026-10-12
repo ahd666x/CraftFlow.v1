@@ -6,6 +6,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 
 from cart.services import get_or_create_cart
 from product.models import Color, Customer, Order, OrderItem, Product, ProductCategory
+from storefront.models import Address
 
 
 def _with_rating(queryset):

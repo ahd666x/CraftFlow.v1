@@ -10,6 +10,7 @@
 """
 from decimal import Decimal
 from django.test import TestCase
+from django.contrib.auth.models import User
 
 from product.models import (
     Customer, Order, OrderItem, Part, Product, ProductBOM, ProductCategory,
@@ -307,3 +308,38 @@ class OrderMoneyFieldTests(TestCase):
         )
         item.refresh_from_db()
         self.assertEqual((item.length, item.width, item.height), (120, 70, 45))
+
+
+class CheckoutTests(TestCase):
+    """پچ ۱: import Address + پوشش چک‌اوت."""
+
+    def setUp(self):
+        from django.test import Client
+        self.user = User.objects.create_user(username="buyer", password="pw")
+        self.category = ProductCategory.objects.create(name="دسته")
+        self.product = Product.objects.create(
+            category=self.category, name="کالا", base_price=1000,
+        )
+        self.client = Client()
+        self.client.login(username="buyer", password="pw")
+
+    def _add_to_cart(self):
+        from cart.models import Cart
+        from cart.services import CartService
+        cart, _ = Cart.objects.get_or_create(user=self.user)
+        return CartService.add_item(cart, self.product.id, quantity=1)
+
+    def test_checkout_get_returns_200(self):
+        self._add_to_cart()
+        response = self.client.get('/shop/checkout/')
+        self.assertEqual(response.status_code, 200)
+
+    def test_checkout_post_creates_order(self):
+        self._add_to_cart()
+        response = self.client.post('/shop/checkout/', {
+            'shipping_address': 'آدرس تست',
+            'name': 'خریدار',
+            'phone': '0912',
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(Order.objects.filter(user=self.user).exists())
