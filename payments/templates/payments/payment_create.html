@@ -17,21 +17,29 @@
             {% csrf_token %}
 
             <div class="space-y-3">
-                <label class="flex items-center gap-3 p-4 rounded-xl border-2 border-stone-200 cursor-pointer has-[:checked]:border-primary-600 has-[:checked]:bg-primary-50">
-                    <input type="radio" name="gateway" value="zarinpal" checked class="w-4 h-4 text-primary-600">
-                    <div>
-                        <p class="font-semibold">درگاه زرین‌پال</p>
-                        <p class="text-sm text-stone-500">پرداخت آنلاین با کارت بانکی</p>
-                    </div>
-                </label>
+                <div class="relative">
+                    <input type="radio" id="gateway-zarinpal" name="gateway" value="zarinpal" checked
+                           class="peer sr-only">
+                    <label for="gateway-zarinpal"
+                           class="flex cursor-pointer items-center gap-3 rounded-xl border-2 border-stone-200 p-4 transition-colors peer-checked:border-primary-600 peer-checked:bg-primary-50">
+                        <div>
+                            <p class="font-semibold">درگاه زرین‌پال</p>
+                            <p class="text-sm text-stone-500">پرداخت آنلاین با کارت بانکی</p>
+                        </div>
+                    </label>
+                </div>
 
-                <label class="flex items-center gap-3 p-4 rounded-xl border-2 border-stone-200 cursor-pointer has-[:checked]:border-primary-600 has-[:checked]:bg-primary-50">
-                    <input type="radio" name="gateway" value="cash_on_delivery" class="w-4 h-4 text-primary-600">
-                    <div>
-                        <p class="font-semibold">پرداخت درب منزل</p>
-                        <p class="text-sm text-stone-500">پرداخت نقدی هنگام تحویل</p>
-                    </div>
-                </label>
+                <div class="relative">
+                    <input type="radio" id="gateway-cod" name="gateway" value="cash_on_delivery"
+                           class="peer sr-only">
+                    <label for="gateway-cod"
+                           class="flex cursor-pointer items-center gap-3 rounded-xl border-2 border-stone-200 p-4 transition-colors peer-checked:border-primary-600 peer-checked:bg-primary-50">
+                        <div>
+                            <p class="font-semibold">پرداخت درب منزل</p>
+                            <p class="text-sm text-stone-500">پرداخت نقدی هنگام تحویل</p>
+                        </div>
+                    </label>
+                </div>
             </div>
 
             <button type="submit" class="btn-primary w-full py-3 text-base">

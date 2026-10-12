@@ -77,3 +77,48 @@ document.addEventListener('cartUpdated', function () {
         toast.remove();
     }, 2000);
 });
+
+/* کاهش/افزایش تعداد در سطرهای سبد — رویداد تفویضی روی دکمه‌های
+   `data-cart-step` به‌جای اسکریپت تکراری در هر سطر. */
+document.addEventListener('click', function (e) {
+    var btn = e.target.closest ? e.target.closest('[data-cart-step]') : null;
+    if (!btn) {
+        return;
+    }
+    var form = btn.closest('form');
+    if (!form) {
+        return;
+    }
+    var input = form.querySelector('input[name="quantity"]');
+    if (!input) {
+        return;
+    }
+    var delta = parseInt(btn.getAttribute('data-cart-step'), 10) || 0;
+    var val = parseInt(input.value, 10) || 1;
+    input.value = Math.max(1, val + delta);
+    form.submit();
+});
+
+/* تسویه: انتخاب آدرس ذخیره‌شده، آدرس کامل را در textarea پر می‌کند.
+   داده‌ها در تگ `<script type="application/json" id="saved-addresses">`
+   توسط view گذاشته می‌شوند. */
+(function () {
+    var select = document.getElementById('address_id');
+    var textarea = document.getElementById('shipping_address');
+    var host = document.getElementById('saved-addresses');
+    if (!select || !textarea || !host) {
+        return;
+    }
+    var saved = {};
+    try {
+        saved = JSON.parse(host.textContent);
+    } catch (err) {
+        return;
+    }
+    select.addEventListener('change', function () {
+        var value = this.value;
+        if (value && saved[value]) {
+            textarea.value = saved[value];
+        }
+    });
+})();

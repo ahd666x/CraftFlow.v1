@@ -9,7 +9,9 @@ def cart_detail(request):
     cart = get_or_create_cart(request)
     return render(request, 'cart/detail.html', {
         'cart': cart,
-        'items': cart.items.select_related('product', 'product__category'),
+        'items': cart.items.select_related(
+            'product', 'product__category',
+        ).prefetch_related('product__gallery_images'),
     })
 
 

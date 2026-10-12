@@ -389,3 +389,63 @@ class OrderDetailViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'این سفارش پرداخت شده است.')
         self.assertNotContains(response, 'پرداخت مبلغ سفارش')
+
+    def test_cancelled_order_shows_timeline_replacement(self):
+        order = self._order(status='cancelled')
+        response = self.client.get(f'/shop/orders/{order.id}/')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'این سفارش لغو شده است.')
+        self.assertNotContains(response, 'وضعیت سفارش')
+
+
+class PersianDateFilterTests(TestCase):
+    """فیلتر `persian_date` باید هم شمسی و هم میلادی قبول کند."""
+
+    def test_jalali_date_unchanged(self):
+        import jdatetime
+        from storefront.templatetags.storefront_filters import persian_date
+        self.assertEqual(persian_date(jdatetime.date(1404, 1, 1)), '1404/01/01')
+
+    def test_gregorian_date_converted(self):
+        from datetime import date as greg_date
+        from storefront.templatetags.storefront_filters import persian_date
+        # ۱ فروردین ۱۴۰۴ = ۲۱ مارس ۲۰۲۵
+        self.assertEqual(persian_date(greg_date(2025, 3, 21)), '1404/01/01')
+
+    def test_invalid_value_falls_back(self):
+        from storefront.templatetags.storefront_filters import persian_date
+        self.assertEqual(persian_date(None), '')
+        self.assertEqual(persian_date('نامعتبر'), 'نامعتبر')
+
+
+class CheckoutViewTests(TestCase):
+    """تسویه: آدرس‌های ذخیره‌شده باید برای پر کردن خودکار textarea
+    به قالب برونده شوند."""
+
+    def setUp(self):
+        from django.test import Client
+        self.user = User.objects.create_user(username="buyer", password="pw")
+        self.client = Client()
+        self.client.login(username="buyer", password="pw")
+        from cart.models import Cart
+        from cart.services import CartService
+        from product.models import Product, ProductCategory
+        category = ProductCategory.objects.create(name="دسته")
+        product = Product.objects.create(
+            category=category, name="کالا", base_price=1000,
+        )
+        cart, _ = Cart.objects.get_or_create(user=self.user)
+        CartService.add_item(cart, product.id, quantity=1)
+
+    def test_checkout_passes_saved_addresses_data(self):
+        from storefront.models import Address
+        Address.objects.create(
+            user=self.user, title="خانه", recipient="خریدار",
+            city="تهران", address="خیابان نمونه، پلاک ۱",
+        )
+        response = self.client.get('/shop/checkout/')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('addresses_data', response.context)
+        data = response.context['addresses_data']
+        self.assertTrue(any('خیابان نمونه' in v for v in data.values()))
+        self.assertContains(response, 'id="saved-addresses"')

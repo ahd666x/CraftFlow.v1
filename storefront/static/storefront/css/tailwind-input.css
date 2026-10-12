@@ -30,6 +30,11 @@
            text-stone-900 placeholder-stone-400 transition-colors
            focus:border-stone-900 focus:outline-none focus:ring-0;
   }
+  .select {
+    @apply w-full rounded-lg border border-stone-300 bg-white px-3.5 py-2.5 text-sm
+           text-stone-900 transition-colors
+           focus:border-stone-900 focus:outline-none focus:ring-0;
+  }
   .label { @apply mb-1.5 block text-xs font-medium text-stone-500; }
 
   .badge         { @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium; }

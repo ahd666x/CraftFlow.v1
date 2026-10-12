@@ -4,6 +4,7 @@
 {% block title %}تسویه‌ی سفارش — فروشگاه{% endblock %}
 
 {% block content %}
+{% if addresses %}{{ addresses_data|json_script:"saved-addresses" }}{% endif %}
 <div class="mx-auto max-w-6xl px-4 py-8">
     <h1 class="mb-6 text-2xl font-bold">تسویه‌ی سفارش</h1>
 
@@ -34,7 +35,7 @@
                 {% if addresses %}
                 <div class="mb-4">
                     <label class="label" for="address_id">آدرس‌های ذخیره‌شده</label>
-                    <select id="address_id" name="address_id" class="input">
+                    <select id="address_id" name="address_id" class="select">
                         <option value="">— انتخاب کنید —</option>
                         {% for address in addresses %}
                         <option value="{{ address.pk }}">{{ address }}</option>

@@ -11,15 +11,15 @@
     <div class="space-y-4">
         {% for order in orders %}
         <a href="{% url 'storefront:order_detail' order.id %}"
-           class="card block p-5 transition hover:shadow-elevation-2">
+           class="card block p-5">
             <div class="flex flex-wrap items-center justify-between gap-3">
                 <div>
                     <span class="font-semibold">سفارش {{ order.id }}</span>
-                    <span class="mr-3 text-sm text-stone-500">{{ order.created_at }}</span>
+                    <span class="mr-3 text-sm text-stone-500">{{ order.created_at|persian_date:'%d %B %Y'|fa_number }}</span>
                     <span class="badge bg-stone-100 text-stone-700">{{ order.get_status_display }}</span>
                 </div>
                 <div class="text-left">
-                    <span class="block text-xs text-stone-500">{{ order.items.count }} آیتم</span>
+                    <span class="block text-xs text-stone-500">{{ order.items.all|length }} آیتم</span>
                     <span class="font-bold text-primary-800">{{ order.final_amount|fa_price }}</span>
                     <span class="text-xs text-stone-500"> تومان</span>
                 </div>

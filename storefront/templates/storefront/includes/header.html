@@ -16,8 +16,9 @@
         </nav>
 
         <form action="{% url 'storefront:product_list' %}" method="get"
-              class="mr-auto hidden w-64 sm:block">
-            <input type="search" name="q" value="{{ q }}" placeholder="جستجو…"
+              role="search" class="mr-auto hidden w-64 sm:block">
+            <label for="site-search" class="sr-only">جستجوی محصول</label>
+            <input id="site-search" type="search" name="q" value="{{ q }}" placeholder="جستجو…"
                    class="input border-transparent bg-stone-100 py-2 focus:bg-white">
         </form>
 
@@ -48,6 +49,12 @@
 
     <div x-show="open" x-cloak x-transition.opacity class="border-t border-stone-100 bg-white md:hidden">
         <div class="space-y-1 px-4 py-3 text-sm">
+            <form action="{% url 'storefront:product_list' %}" method="get"
+                  role="search" class="mb-3 sm:hidden">
+                <label for="mobile-search" class="sr-only">جستجوی محصول</label>
+                <input id="mobile-search" type="search" name="q" value="{{ q }}"
+                       placeholder="جستجو…" class="input border-transparent bg-stone-100 py-2 focus:bg-white">
+            </form>
             <a href="{% url 'storefront:product_list' %}" class="block py-2 text-stone-700">محصولات</a>
             <a href="{% url 'storefront:category_list' %}" class="block py-2 text-stone-700">دسته‌بندی‌ها</a>
             {% if user.is_authenticated %}

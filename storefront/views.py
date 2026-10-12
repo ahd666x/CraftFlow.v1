@@ -31,6 +31,7 @@ def _sort_queryset(queryset, sort):
 def home(request):
     products = _with_rating(
         Product.active_objects.select_related('category')
+        .prefetch_related('gallery_images')
         .order_by('-id')[:12]
     )
     categories = ProductCategory.objects.filter(is_active=True).annotate(
@@ -43,7 +44,7 @@ def home(request):
 
 
 def product_list(request):
-    queryset = Product.active_objects.select_related('category')
+    queryset = Product.active_objects.select_related('category').prefetch_related('gallery_images')
 
     q = request.GET.get('q', '').strip()
     if q:
@@ -73,11 +74,22 @@ def product_detail(request, slug):
         slug=slug,
     )
     gallery = product.gallery_images.filter(is_active=True)
+    related_products = _with_rating(
+        Product.active_objects
+        .filter(category=product.category)
+        .exclude(pk=product.pk)
+        .select_related('category')
+        .prefetch_related('gallery_images')
+        .order_by('-id')[:6]
+    )
+    reviews = product.reviews.filter(is_active=True).select_related('user')
 
     context = {
         'product': product,
         'gallery': gallery,
         'default_colors': product.default_colors or {},
+        'related_products': related_products,
+        'reviews': reviews,
     }
     return render(request, 'storefront/product_detail.html', context)
 
@@ -91,7 +103,7 @@ def category_list(request):
 
 def category_detail(request, slug):
     category = get_object_or_404(ProductCategory, slug=slug, is_active=True)
-    queryset = Product.active_objects.filter(category=category).select_related('category')
+    queryset = Product.active_objects.filter(category=category).select_related('category').prefetch_related('gallery_images')
     q = request.GET.get('q', '').strip()
     if q:
         queryset = queryset.filter(Q(name__icontains=q) | Q(description__icontains=q))
@@ -121,11 +133,15 @@ def checkout(request):
         return _place_order(request, cart, items)
 
     customer = Customer.objects.filter(user=request.user).first()
+    addresses = Address.objects.filter(user=request.user, is_active=True)
     return render(request, 'storefront/checkout.html', {
         'cart': cart,
         'items': items,
         'customer': customer,
-        'addresses': Address.objects.filter(user=request.user, is_active=True),
+        'addresses': addresses,
+        # متن آدرس‌ها برای پر کردن خودکار textarea در تسویه
+        # (json_script در قالب آن را به‌صورت امن تولید می‌کند)
+        'addresses_data': {str(address.pk): address.address for address in addresses},
     })
 
 
@@ -240,6 +256,28 @@ def order_list(request):
     return render(request, 'storefront/order_list.html', {'orders': orders})
 
 
+def _status_timeline(order):
+    """مراحل نمایشی سفارش برای timeline صفحه‌ی جزئیات.
+
+    وضعیت‌های مالی/تولیدی سفارش را به پنج مرحه‌ی
+    «ثبت ← پرداخت ← تولید ← ارسال ← تحویل» نگاشت می‌کنیم."""
+    paid = order.status in ('paid', 'shipped', 'delivered') or order.paid_at is not None
+    producing = order.status in ('producing', 'completed', 'shipped', 'delivered')
+    shipped = order.status in ('shipped', 'delivered')
+    delivered = order.status == 'delivered'
+    steps = [
+        {'label': 'ثبت سفارش', 'done': True},
+        {'label': 'پرداخت', 'done': paid},
+        {'label': 'تولید', 'done': producing},
+        {'label': 'ارسال', 'done': shipped},
+        {'label': 'تحویل', 'done': delivered},
+    ]
+    for i, step in enumerate(steps):
+        # خطِ بعد از هر مرحله، وقتی مرحله‌ی بعدی انجام شده رنگ می‌شود.
+        step['line_done'] = i + 1 < len(steps) and steps[i + 1]['done']
+    return steps
+
+
 @login_required
 def order_detail(request, order_id):
     order = get_object_or_404(
@@ -262,4 +300,6 @@ def order_detail(request, order_id):
         'order': order,
         'is_locked': is_locked,
         'show_pay_button': show_pay_button,
+        'is_cancelled': order.status == 'cancelled',
+        'timeline': _status_timeline(order),
     })

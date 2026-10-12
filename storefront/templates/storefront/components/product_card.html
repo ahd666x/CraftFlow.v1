@@ -4,6 +4,9 @@
         {% if product.image %}
             <img src="{{ product.image.url }}" alt="{{ product.name }}" loading="lazy"
                  class="h-full w-full object-cover transition-opacity duration-300 group-hover:opacity-90">
+        {% elif product.gallery_images.first %}
+            <img src="{{ product.gallery_images.first.image.url }}" alt="{{ product.name }}" loading="lazy"
+                 class="h-full w-full object-cover transition-opacity duration-300 group-hover:opacity-90">
         {% else %}
             <div class="grid h-full w-full place-items-center text-xs text-stone-400">بدون تصویر</div>
         {% endif %}
@@ -11,6 +14,14 @@
     <div class="mt-3 space-y-0.5">
         <p class="text-xs text-stone-400">{{ product.category.name }}</p>
         <h3 class="line-clamp-1 text-sm font-medium text-stone-900">{{ product.name }}</h3>
+        {% if product.review_count %}
+        <p class="mt-1 flex items-center gap-1 text-xs text-primary-600"
+           aria-label="امتیاز {{ product.average_rating }} از ۵">
+            <span aria-hidden="true">★</span>
+            <span>{{ product.average_rating }}</span>
+            <span class="text-stone-400">({{ product.review_count }})</span>
+        </p>
+        {% endif %}
         <p class="text-sm text-stone-600">
             <span class="font-semibold text-stone-900">{{ product.base_price|fa_price }}</span> تومان
         </p>

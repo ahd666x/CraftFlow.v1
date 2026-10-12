@@ -5,7 +5,7 @@
 {% block meta_description %}{{ product.description|truncatewords:25 }}{% endblock %}
 
 {% block content %}
-<div class="mx-auto max-w-6xl px-4 py-8">
+<div class="mx-auto max-w-6xl px-4 py-8 pb-24 md:pb-8">
 
     <nav class="mb-6 text-sm text-stone-500">
         <a href="{% url 'storefront:home' %}" class="hover:text-stone-800">خانه</a>
@@ -49,9 +49,25 @@
         </div>
 
         {# ---------- اطلاعات و افزودن به سبد ---------- #}
-        <div>
+        <div x-data="dimensionPrice({
+            basePrice: {{ product.base_price|js_number }},
+            dims: {
+                length: {def: {{ product.length|js_number }}, editable: {{ product.length_editable|yesno:'true,false' }}, percent: {{ product.length_price_percent|js_number }} },
+                width:  {def: {{ product.width|js_number }},  editable: {{ product.width_editable|yesno:'true,false' }},  percent: {{ product.width_price_percent|js_number }} },
+                height: {def: {{ product.height|js_number }}, editable: {{ product.height_editable|yesno:'true,false' }}, percent: {{ product.height_price_percent|js_number }} }
+            }
+        })">
             <h1 class="text-3xl font-bold text-stone-900">{{ product.name }}</h1>
             <p class="mt-1 text-sm text-stone-500">دسته: {{ product.category.name }}</p>
+
+            {% if product.review_count %}
+            <div class="mt-1.5 flex items-center gap-1 text-sm text-primary-600"
+                 aria-label="امتیاز {{ product.average_rating }} از ۵">
+                <span aria-hidden="true">★</span>
+                <span class="font-medium">{{ product.average_rating }}</span>
+                <span class="text-stone-400">({{ product.review_count }} نظر)</span>
+            </div>
+            {% endif %}
 
             {% if product.description %}
             <p class="mt-4 whitespace-pre-line text-sm leading-7 text-stone-600">{{ product.description }}</p>
@@ -68,16 +84,8 @@
             </div>
             {% endif %}
 
-            {# Alpine اینجا فقط برای محاسبه‌ی زنده‌ی قیمت است. #}
-<div class="mt-6 border-t border-stone-100 pt-6"
-             x-data="dimensionPrice({
-                     basePrice: {{ product.base_price|js_number }},
-                     dims: {
-                         length: {def: {{ product.length|js_number }}, editable: {{ product.length_editable|yesno:'true,false' }}, percent: {{ product.length_price_percent|js_number }} },
-                         width:  {def: {{ product.width|js_number }},  editable: {{ product.width_editable|yesno:'true,false' }},  percent: {{ product.width_price_percent|js_number }} },
-                         height: {def: {{ product.height|js_number }},  editable: {{ product.height_editable|yesno:'true,false' }}, percent: {{ product.height_price_percent|js_number }} }
-                     }
-                 })">
+            {# محاسبه‌ی زنده‌ی قیمت از همان Alpine component ستون است. #}
+            <div class="mt-6 border-t border-stone-100 pt-6">
 
                 <h2 class="mb-4 font-semibold">ابعاد (سانتی‌متر)</h2>
 
@@ -146,6 +154,7 @@
                 <form method="post" action="{% url 'cart:cart_add' product.id %}"
                       hx-post="{% url 'cart:cart_add' product.id %}"
                       hx-target="#cart-count" hx-swap="innerHTML"
+                      x-ref="addForm"
                       class="mt-5">
                     {% csrf_token %}
                     <input type="hidden" name="length"  :value="dims.length.value ?? ''">
@@ -155,7 +164,57 @@
                     <button type="submit" class="btn-primary w-full py-3">افزودن به سبد خرید</button>
                 </form>
             </div>
+
+            {# پایین چسبنده‌ی موبایل: قیمت کل + افزودن به سبد #}
+            <div class="fixed inset-x-0 bottom-0 z-sticky border-t border-stone-100 bg-white/90 p-3 backdrop-blur md:hidden">
+                <div class="mx-auto flex max-w-6xl items-center gap-3">
+                    <div class="min-w-0">
+                        <span class="block text-xs text-stone-500">قیمت کل</span>
+                        <span class="text-lg font-bold" x-text="total().toLocaleString('fa-IR')"></span>
+                    </div>
+                    <button type="button"
+                            @click="$refs.addForm.requestSubmit(); this.disabled = true; setTimeout(() => { this.disabled = false; }, 1500)"
+                            class="btn-primary flex-1 py-3">
+                        افزودن به سبد
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
 </div>
+
+{% if reviews %}
+<section class="mx-auto max-w-6xl px-4 py-12">
+    <h2 class="section-title mb-6">نظرات مشتریان</h2>
+    <div class="grid gap-4 md:grid-cols-2">
+        {% for review in reviews %}
+        <div class="card p-4">
+            <div class="flex items-center justify-between gap-3">
+                <span class="text-sm font-medium">{{ review.user.username }}</span>
+                <span class="text-xs text-primary-600" aria-label="امتیاز {{ review.rating }} از ۵">
+                    <span aria-hidden="true">★</span> {{ review.rating }}
+                </span>
+            </div>
+            {% if review.comment %}
+            <p class="mt-2 text-sm leading-relaxed text-stone-600">{{ review.comment }}</p>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
+
+{% if related_products %}
+<section class="mx-auto max-w-6xl px-4 py-12">
+    <div class="mb-6 flex items-end justify-between gap-4">
+        <h2 class="section-title">محصولات مرتبط</h2>
+        <a href="{% url 'storefront:category_detail' product.category.slug %}" class="link-muted">مشاهده‌ی همه ←</a>
+    </div>
+    <div class="grid grid-cols-2 gap-x-4 gap-y-8 md:grid-cols-3">
+        {% for related in related_products %}
+            {% include 'storefront/components/product_card.html' with product=related %}
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
 {% endblock %}

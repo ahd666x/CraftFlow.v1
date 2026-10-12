@@ -38,5 +38,16 @@
             <a href="{% url 'accounts:profile_edit' %}" class="btn-primary">ویرایش پروفایل</a>
         </div>
     </div>
+
+    <div class="mt-6 grid gap-3 sm:grid-cols-2">
+        <a href="{% url 'storefront:order_list' %}"
+           class="card flex items-center justify-between p-4 text-sm font-medium text-stone-900 transition hover:bg-stone-50">
+            سفارش‌های من <span aria-hidden="true">←</span>
+        </a>
+        <a href="{% url 'storefront:return_list' %}"
+           class="card flex items-center justify-between p-4 text-sm font-medium text-stone-900 transition hover:bg-stone-50">
+            مرجوعی‌ها <span aria-hidden="true">←</span>
+        </a>
+    </div>
 </div>
 {% endblock %}

@@ -6,13 +6,31 @@
 
 {% block content %}
 <section class="border-b border-stone-100">
-    <div class="mx-auto max-w-3xl px-4 py-20 text-center sm:py-28">
-        <h1 class="text-3xl font-bold leading-tight sm:text-5xl">مبلمان و چوب، با ابعاد دلخواه شما</h1>
-        <p class="mx-auto mt-4 max-w-xl text-stone-500">
-            ابعاد را انتخاب کنید و قیمت نهایی را همان لحظه ببینید.
-        </p>
-        <a href="{% url 'storefront:product_list' %}" class="btn-primary mt-8 px-8">مشاهده محصولات</a>
-    </div>
+    {% if site_settings and site_settings.cover_image %}
+        <div class="relative">
+            <img src="{{ site_settings.cover_image.url }}"
+                 alt="{{ site_settings.site_name|default:'فروشگاه' }}"
+                 class="h-72 w-full object-cover sm:h-96">
+            <div class="absolute inset-0 bg-white/60" aria-hidden="true"></div>
+            <div class="relative mx-auto max-w-3xl px-4 py-16 text-center sm:py-24">
+                <h1 class="text-3xl font-bold leading-tight sm:text-5xl">
+                    {{ site_settings.hero_title|default:'مبلمان و چوب، با ابعاد دلخواه شما' }}
+                </h1>
+                <p class="mx-auto mt-4 max-w-xl text-stone-600">
+                    {{ site_settings.hero_subtitle|default:'ابعاد را انتخاب کنید و قیمت نهایی را همان لحظه ببینید.' }}
+                </p>
+                <a href="{% url 'storefront:product_list' %}" class="btn-primary mt-8 px-8">مشاهده محصولات</a>
+            </div>
+        </div>
+    {% else %}
+        <div class="mx-auto max-w-3xl px-4 py-20 text-center sm:py-28">
+            <h1 class="text-3xl font-bold leading-tight sm:text-5xl">مبلمان و چوب، با ابعاد دلخواه شما</h1>
+            <p class="mx-auto mt-4 max-w-xl text-stone-500">
+                ابعاد را انتخاب کنید و قیمت نهایی را همان لحظه ببینید.
+            </p>
+            <a href="{% url 'storefront:product_list' %}" class="btn-primary mt-8 px-8">مشاهده محصولات</a>
+        </div>
+    {% endif %}
 </section>
 
 <section id="custom-dimensions" class="mx-auto max-w-3xl scroll-mt-24 px-4 py-16 text-center">

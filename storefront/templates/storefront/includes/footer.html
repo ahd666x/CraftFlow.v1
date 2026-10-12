@@ -1,8 +1,8 @@
 <footer class="mt-12 bg-primary-900 text-primary-100">
     <div class="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-4 py-10 text-sm sm:flex-row sm:items-start">
         <div class="text-center sm:text-right">
-            <p class="font-bold text-white">کرافت‌فلو</p>
-            <p class="mt-1 text-xs text-primary-200">تمامی حقوق محفوظ است.</p>
+            <p class="font-bold text-white">{{ site_settings.site_name|default:'کرافت‌فلو' }}</p>
+            <p class="mt-1 max-w-xs text-xs leading-relaxed text-primary-200">{{ site_settings.footer_text|default:'تمامی حقوق محفوظ است.' }}</p>
         </div>
         <p class="text-xs text-primary-300">
             برای مدیریت تولید و انبار

@@ -17,6 +17,31 @@
         <span class="badge bg-stone-100 text-stone-700">{{ order.get_status_display }}</span>
     </div>
 
+    {% if is_cancelled %}
+    <div class="mb-6 rounded-xl bg-red-50 p-4 text-center text-sm text-red-700">
+        این سفارش لغو شده است.
+    </div>
+    {% else %}
+    <section class="card mb-6 p-5">
+        <h2 class="mb-4 font-semibold">وضعیت سفارش</h2>
+        <ol class="flex min-w-[34rem] items-center overflow-x-auto">
+            {% for step in timeline %}
+            <li class="flex flex-1 items-center">
+                <span class="flex flex-col items-center gap-1.5">
+                    <span class="grid h-7 w-7 place-items-center rounded-full border-2 text-xs font-bold {% if step.done %}border-primary-600 bg-primary-600 text-white{% else %}border-stone-200 bg-white text-stone-400{% endif %}">
+                        {% if step.done %}✓{% else %}{{ forloop.counter }}{% endif %}
+                    </span>
+                    <span class="whitespace-nowrap text-xs {% if step.done %}font-medium text-stone-900{% else %}text-stone-400{% endif %}">{{ step.label }}</span>
+                </span>
+                {% if not forloop.last %}
+                <span class="mx-2 h-0.5 flex-1 {% if step.line_done %}bg-primary-600{% else %}bg-stone-200{% endif %}" aria-hidden="true"></span>
+                {% endif %}
+            </li>
+            {% endfor %}
+        </ol>
+    </section>
+    {% endif %}
+
     <div class="grid gap-8 lg:grid-cols-[1fr_22rem]">
 
         <section class="card p-5">
