@@ -48,8 +48,50 @@ class ColorSelectionForm(forms.Form):
 
 from django import forms
 from .models import OrderItem, Product, ProductCategory
+from .utils import parse_size_string
 
-class OrderItemForm(forms.ModelForm):
+
+class ProductDimensionsMixin:
+    """Mixin for order-item forms that exposes length/width/height fields.
+
+    Old items that only carry the legacy ``size`` string get their structured
+    fields populated from that string on form init, so editing them works
+    without losing data.
+    """
+
+    AXES = ('length', 'width', 'height')
+
+    def _init_dimensions(self):
+        inst = self.instance
+        if inst and inst.pk:
+            for axis in self.AXES:
+                if not getattr(inst, axis):
+                    legacy = parse_size_string(inst.size or '')
+                    if legacy.get(axis):
+                        self.initial[axis] = legacy[axis]
+
+    def _apply_dimension_defaults(self, cleaned, product):
+        """Fill empty dimension fields from the product default and enforce
+        the ``*_editable`` flags. Returns the cleaned dict (mutated)."""
+        if not product:
+            return cleaned
+        for axis in self.AXES:
+            default = getattr(product, axis)
+            value = cleaned.get(axis)
+            if default is None:
+                cleaned[axis] = None
+            elif value in (None, ''):
+                cleaned[axis] = default
+            elif not getattr(product, f'{axis}_editable') and value != default:
+                self.add_error(axis, 'این بعد برای این محصول قابل تغییر نیست.')
+        # Keep the legacy `size` string in sync for templates / display.
+        cleaned['size'] = 'x'.join(
+            str(cleaned[a]) for a in self.AXES if cleaned.get(a)
+        )
+        return cleaned
+
+
+class OrderItemForm(ProductDimensionsMixin, forms.ModelForm):
 
     category = forms.ModelChoiceField(
         queryset=ProductCategory.objects.filter(is_active=True),
@@ -63,20 +105,25 @@ class OrderItemForm(forms.ModelForm):
 
     class Meta:
         model = OrderItem
-        fields = ['quantity', 'size', 'notes']
+        fields = ['quantity', 'length', 'width', 'height', 'notes']
         widgets = {
             'quantity': forms.NumberInput(attrs={'class': 'form-control', 'min': 1}),
-            'size': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'سانتی متر'}),
+            'length': forms.NumberInput(attrs={'class': 'form-control', 'min': 1}),
+            'width':  forms.NumberInput(attrs={'class': 'form-control', 'min': 1}),
+            'height': forms.NumberInput(attrs={'class': 'form-control', 'min': 1}),
             'notes': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
         }
         labels = {
             'quantity': 'تعداد',
-            'size': 'اندازه',
+            'length': 'طول (cm)',
+            'width': 'عرض (cm)',
+            'height': 'ارتفاع (cm)',
             'notes': 'توضیحات',
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self._init_dimensions()
         # اگر نمونه موجود باشد
         if self.instance and self.instance.pk:
             current_category = self.instance.product.category
@@ -109,6 +156,12 @@ class OrderItemForm(forms.ModelForm):
         except Product.DoesNotExist:
             raise forms.ValidationError("محصول انتخاب‌شده معتبر نیست.")
         return product
+
+    def clean(self):
+        cleaned = super().clean()
+        product = cleaned.get('product')
+        cleaned = self._apply_dimension_defaults(cleaned, product)
+        return cleaned
 
 
 
@@ -341,7 +394,7 @@ class CustomerInfoForm(forms.Form):
 #             'notes': 'توضیحات',
 #         }
 
-class EditOrderItemForm(forms.ModelForm):
+class EditOrderItemForm(ProductDimensionsMixin, forms.ModelForm):
     category = forms.ModelChoiceField(
         queryset=ProductCategory.objects.all(),
         label="دسته بندی",
@@ -354,20 +407,25 @@ class EditOrderItemForm(forms.ModelForm):
 
     class Meta:
         model = OrderItem
-        fields = ['quantity', 'size', 'notes']
+        fields = ['quantity', 'length', 'width', 'height', 'notes']
         widgets = {
             'quantity': forms.NumberInput(attrs={'class': 'form-control', 'min': 1}),
-            'size': forms.TextInput(attrs={'class': 'form-control'}),
+            'length': forms.NumberInput(attrs={'class': 'form-control', 'min': 1}),
+            'width':  forms.NumberInput(attrs={'class': 'form-control', 'min': 1}),
+            'height': forms.NumberInput(attrs={'class': 'form-control', 'min': 1}),
             'notes': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
         }
         labels = {
             'quantity': 'تعداد',
-            'size': 'اندازه',
+            'length': 'طول (cm)',
+            'width': 'عرض (cm)',
+            'height': 'ارتفاع (cm)',
             'notes': 'توضیحات',
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self._init_dimensions()
         if self.instance and self.instance.pk:
             # دسته و محصول فعلی
             current_category = self.instance.product.category
@@ -408,6 +466,12 @@ class EditOrderItemForm(forms.ModelForm):
         except Product.DoesNotExist:
             raise forms.ValidationError("محصول انتخاب‌شده معتبر نیست.")
         return product
+
+    def clean(self):
+        cleaned = super().clean()
+        product = cleaned.get('product')
+        cleaned = self._apply_dimension_defaults(cleaned, product)
+        return cleaned
 
 
 class AdminEditOrderItemForm(EditOrderItemForm):
@@ -477,9 +541,9 @@ class ProductCreateForm(forms.ModelForm):
             'category': 'دسته‌بندی',
             'name': 'نام محصول',
             'base_price': 'قیمت پایه (ریال)',
-            'length': 'طول پیش‌فرم (سانتی‌متر)',
-            'width': 'عرض پیش‌فرم (سانتی‌متر)',
-            'height': 'ارتفاع پیش‌فرم (سانتی‌متر)',
+            'length': 'طول پیش‌default (سانتی‌متر)',
+            'width': 'عرض پیش‌default (سانتی‌متر)',
+            'height': 'ارتفاع پیش‌default (سانتی‌متر)',
             'length_editable': 'مشتری می‌تواند طول را تغییر دهد',
             'width_editable': 'مشتری می‌تواند عرض را تغییر دهد',
             'height_editable': 'مشتری می‌تواند ارتفاع را تغییر دهد',

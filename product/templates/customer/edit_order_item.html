@@ -38,14 +38,22 @@
                     {{ item_form.product }}
                 </div>
 
-                <!-- تعداد، اندازه، توضیحات -->
+                <!-- تعداد، ابعاد، توضیحات -->
                 <div class="col-md-2">
                     {{ item_form.quantity.label_tag }}
                     {{ item_form.quantity }}
                 </div>
-                <div class="col-md-2">
-                    {{ item_form.size.label_tag }}
-                    {{ item_form.size }}
+                <div class="col-md-2 dim-field">
+                    {{ item_form.length.label_tag }}
+                    {{ item_form.length }}
+                </div>
+                <div class="col-md-2 dim-field">
+                    {{ item_form.width.label_tag }}
+                    {{ item_form.width }}
+                </div>
+                <div class="col-md-2 dim-field">
+                    {{ item_form.height.label_tag }}
+                    {{ item_form.height }}
                 </div>
                 <div class="col-md-12">
                     {{ item_form.notes.label_tag }}

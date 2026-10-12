@@ -29,18 +29,23 @@
                                 {{ item_form.product }}
                             </div>
                         </div>
-                        <!-- ردیف تعداد و اندازه -->
+                        <!-- ردیف تعداد و ابعاد -->
                         <div class="row mb-3">
-                            <div class="col-md-4">
+                            <div class="col-md-3">
                                 <label class="form-label">{{ item_form.quantity.label }}</label>
                                 {{ item_form.quantity }}
                             </div>
-                            <div class="col-md-4">
-                                <label class="form-label">{{ item_form.size.label }}</label>
-                                {{ item_form.size }}
+                            <div class="col-md-3 dim-field">
+                                <label class="form-label">{{ item_form.length.label }}</label>
+                                {{ item_form.length }}
                             </div>
-                            <div class="col-md-4">
-                                <!-- خالی برای تراز -->
+                            <div class="col-md-3 dim-field">
+                                <label class="form-label">{{ item_form.width.label }}</label>
+                                {{ item_form.width }}
+                            </div>
+                            <div class="col-md-3 dim-field">
+                                <label class="form-label">{{ item_form.height.label }}</label>
+                                {{ item_form.height }}
                             </div>
                         </div>
                         <!-- توضیحات -->

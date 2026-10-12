@@ -669,21 +669,26 @@ def get_material_for_color(color_code, mapping=None):
 def parse_size_string(size_str):
     """Parse a size string like '50', '50x30' or '50x30x40' into a dict.
 
-    Returns {'length', 'width'} for 1-2 numbers (2D legacy format) and adds
-    'height' when a third number is present (3D format). Backward compatible:
-    existing 2D size strings keep producing only length/width.
+    A single number is treated as length only (legacy 1D format).
+    Two numbers → {'length', 'width'} (2D legacy format).
+    Three numbers → {'length', 'width', 'height'} (3D format).
     """
     if not size_str:
         return {}
     nums = re.findall(r'\d+', size_str)
     if len(nums) == 1:
-        return {'length': int(nums[0]), 'width': int(nums[0])}
+        return {'length': int(nums[0])}
     if len(nums) >= 2:
         result = {'length': int(nums[0]), 'width': int(nums[1])}
         if len(nums) >= 3:
             result['height'] = int(nums[2])
         return result
     return {}
+
+
+_RULE_TARGET_RE = re.compile(r'^\s*(length|width|height)\s*:\s*(.+)$')
+# Match the first standalone axis name (not part of a *_diff variable).
+_STANDALONE_AXIS_RE = re.compile(r'\b(length|width|height)(?![a-zA-Z_])')
 
 
 def apply_size_adjustment(original_length, original_width, original_height, diff_dict, rule):
@@ -693,31 +698,51 @@ def apply_size_adjustment(original_length, original_width, original_height, diff
     (or a safe AST fallback). Allowed names:
         length, width, height, length_diff, width_diff, height_diff
 
-    Only the first value returned by the expression is used as the new length;
-    width and height are returned unchanged. This mirrors the historical
-    behaviour where the rule targeted the primary dimension (length), but the
-    full dimension context is now available so rules like
-    ``length + length_diff + height_diff`` are possible.
+    Multi-axis rules are supported. A rule chunk prefixed with
+    ``length:``, ``width:`` or ``height:`` explicitly targets that axis.
+    Without a prefix the target is inferred from the first standalone axis
+    name appearing in the expression (e.g. ``width + width_diff`` targets
+    ``width``), defaulting to ``length`` when no axis name is found.
+
+    Multiple chunks may be separated by ``;`` or newlines, e.g.::
+
+        length + length_diff ; width + width_diff
+
+    Each chunk is evaluated against the *original* dimensions and the
+    provided diff dict; later chunks see the results of earlier ones.
     """
-    if not rule or not diff_dict:
-        return float(original_length), float(original_width), float(original_height)
-    rule = rule.replace('length_diff', str(diff_dict.get('length_diff', 0)))
-    rule = rule.replace('width_diff', str(diff_dict.get('width_diff', 0)))
-    rule = rule.replace('height_diff', str(diff_dict.get('height_diff', 0)))
-    allowed = {
-        "length": float(original_length),
-        "width": float(original_width),
-        "height": float(original_height),
-        "length_diff": float(diff_dict.get('length_diff', 0)),
-        "width_diff": float(diff_dict.get('width_diff', 0)),
-        "height_diff": float(diff_dict.get('height_diff', 0)),
+    dims = {
+        'length': float(original_length or 0),
+        'width': float(original_width or 0),
+        'height': float(original_height or 0),
     }
-    try:
-        new_length = _safe_eval(rule, allowed)
-        return float(new_length), float(original_width), float(original_height)
-    except Exception as e:
-        logger.error(f"خطا در اعمال قانون اندازه '{rule}': {e}")
-        return float(original_length), float(original_width), float(original_height)
+    if not rule or not diff_dict:
+        return dims['length'], dims['width'], dims['height']
+
+    names = dict(dims)
+    for axis in ('length', 'width', 'height'):
+        names[f'{axis}_diff'] = float(diff_dict.get(f'{axis}_diff', 0))
+
+    for chunk in re.split(r'[;\n]', rule):
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+        m = _RULE_TARGET_RE.match(chunk)
+        if m:
+            target, expr = m.group(1), m.group(2)
+        else:
+            expr = chunk
+            # Infer the target axis from the first standalone axis name in
+            # the expression so ``width + width_diff`` targets width, not
+            # length. ``length_diff`` is skipped because it is followed by
+            # ``_`` which fails the negative lookahead.
+            axis_match = _STANDALONE_AXIS_RE.search(expr)
+            target = axis_match.group(1) if axis_match else 'length'
+        try:
+            dims[target] = float(_safe_eval(expr, names))
+        except Exception as e:
+            logger.error(f"خطا در قانون اندازه '{chunk}': {e}")
+    return dims['length'], dims['width'], dims['height']
 
 
 def update_barcode_size(original_barcode, new_length, new_width, order_item_id=None):

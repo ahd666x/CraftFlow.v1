@@ -33,19 +33,28 @@
         });
     }
 
-    function fillSizeField(sizeInput, defaultSize) {
-        if (!sizeInput) return;
-        // Only pre-fill when the field is empty so the user's manual edits
-        // are not wiped when they switch products.
-        if (sizeInput.value.trim() === '' && defaultSize) {
-            sizeInput.value = defaultSize;
-        }
-    }
+    var AXES = ['length', 'width', 'height'];
 
-    function readSelectedDefaultSize($product) {
-        var selected = $product.find('option[value="' + $product.val() + '"]');
-        if (!selected.length) return '';
-        return selected.data('default-size') || '';
+    function applyDimensions($product, opts) {
+        var $o = $product.find('option:selected');
+        var hasSelection = !!$o.val();
+
+        AXES.forEach(function (axis) {
+            var $f = $('#id_' + axis);
+            if (!$f.length) return;
+            var def = hasSelection ? ($o.data(axis) || '') : '';
+            var prevAuto = $f.data('auto');                 // previous default we set
+            var cur = $f.val();
+            // Only overwrite when the field is empty or still holds the
+            // previous auto-filled default — manual edits are preserved.
+            if (cur === '' || String(cur) === String(prevAuto || '')) {
+                $f.val(def);
+            }
+            $f.data('auto', def);
+            var editable = $o.data(axis + 'Editable') !== false;
+            $f.prop('readonly', !!def && !editable);
+            $f.closest('.dim-field').toggle(!!def || hasSelection);
+        });
     }
 
     window.initCategoryProductColorFilter = function (opts) {
@@ -55,13 +64,19 @@
         var loadProductsUrl = opts.loadProductsUrl;
         var loadColorsUrlBase = opts.loadColorsUrlBase;
         var overwriteOnInitialLoad = opts.overwriteOnInitialLoad === true;
-        var $sizeField = $(opts.sizeFieldSelector || '#id_size');
 
         function loadProducts(categoryId, selectedId) {
             if (!categoryId) {
                 $product.html('<option value="">---------</option>');
                 resetColorFields(sel);
-                fillSizeField($sizeField.get(0), '');
+                AXES.forEach(function (axis) {
+                    var $f = $('#id_' + axis);
+                    if ($f.length) {
+                        $f.val('');
+                        $f.data('auto', '');
+                        $f.closest('.dim-field').show();
+                    }
+                });
                 return;
             }
             $.ajax({
@@ -71,16 +86,21 @@
                     var html = '<option value="">---------</option>';
                     (data || []).forEach(function (p) {
                         var opt = '<option value="' + escapeHtml(p.id) + '"';
-                        if (p.default_size) {
-                            opt += ' data-default-size="' + escapeHtml(p.default_size) + '"';
-                        }
+                        AXES.forEach(function (axis) {
+                            if (p[axis] !== null && p[axis] !== undefined) {
+                                opt += ' data-' + axis + '="' + escapeHtml(p[axis]) + '"';
+                            }
+                        });
+                        opt += ' data-' + 'length' + '-editable="' + escapeHtml(p.length_editable) + '"';
+                        opt += ' data-' + 'width' + '-editable="' + escapeHtml(p.width_editable) + '"';
+                        opt += ' data-' + 'height' + '-editable="' + escapeHtml(p.height_editable) + '"';
                         opt += '>' + escapeHtml(p.name) + '</option>';
                         html += opt;
                     });
                     $product.html(html);
                     if (selectedId) {
                         $product.val(selectedId);
-                        $product.trigger('change');
+                        $product.trigger('change', [{ initial: true }]);
                     }
                 }
             });
@@ -90,47 +110,26 @@
             loadProducts($(this).val());
         });
 
-        $product.on('change', function () {
+        $product.on('change', function (e, extra) {
+            var isInitial = extra && extra.initial;
+            var overwriteColors = isInitial ? overwriteOnInitialLoad : true;
+            applyDimensions($product, opts);
             var pid = $(this).val();
             if (!pid) {
                 resetColorFields(sel);
-                fillSizeField($sizeField.get(0), '');
                 return;
             }
-            // Prefer the default_size embedded in the product option (no extra
-            // request needed). Fall back to the dedicated dimensions endpoint
-            // if it was provided.
-            var defaultSize = readSelectedDefaultSize($product);
-            var colorPromise = fetch(loadColorsUrlBase + pid + '/')
+            fetch(loadColorsUrlBase + pid + '/')
                 .then(function (r) {
                     if (!r.ok) throw new Error('HTTP ' + r.status);
                     return r.json();
-                });
-
-            var dimPromise;
-            if (defaultSize) {
-                dimPromise = Promise.resolve({ default_size: defaultSize });
-            } else if (opts.loadProductDimensionsUrl) {
-                dimPromise = fetch(opts.loadProductDimensionsUrl + '?product_id=' + encodeURIComponent(pid))
-                    .then(function (r) {
-                        if (!r.ok) throw new Error('HTTP ' + r.status);
-                        return r.json();
-                    });
-            } else {
-                dimPromise = Promise.resolve({});
-            }
-
-            Promise.all([colorPromise, dimPromise])
-                .then(function (results) {
-                    var colorData = results[0] || {};
-                    var dimData = results[1] || {};
-                    applyColorFields(sel, colorData.defaults || {}, true);
-                    fillSizeField($sizeField.get(0), dimData.default_size || '');
+                })
+                .then(function (d) {
+                    applyColorFields(sel, d.defaults || {}, overwriteColors);
                 })
                 .catch(function (err) {
-                    console.error('Error loading product data:', err);
+                    console.error(err);
                     resetColorFields(sel);
-                    fillSizeField($sizeField.get(0), '');
                 });
         });
 
@@ -146,36 +145,6 @@
             if (initialCategory) {
                 loadProducts(initialCategory, initialSelectedId);
             }
-            var colorPromise = fetch(loadColorsUrlBase + initialProduct + '/')
-                .then(function (r) {
-                    if (!r.ok) throw new Error('HTTP ' + r.status);
-                    return r.json();
-                });
-
-            var defaultSize = readSelectedDefaultSize($product);
-            var dimPromise;
-            if (defaultSize) {
-                dimPromise = Promise.resolve({ default_size: defaultSize });
-            } else if (opts.loadProductDimensionsUrl) {
-                dimPromise = fetch(opts.loadProductDimensionsUrl + '?product_id=' + encodeURIComponent(initialProduct))
-                    .then(function (r) {
-                        if (!r.ok) throw new Error('HTTP ' + r.status);
-                        return r.json();
-                    });
-            } else {
-                dimPromise = Promise.resolve({});
-            }
-
-            Promise.all([colorPromise, dimPromise])
-                .then(function (results) {
-                    var colorData = results[0] || {};
-                    var dimData = results[1] || {};
-                    applyColorFields(sel, colorData.defaults || {}, overwriteOnInitialLoad);
-                    fillSizeField($sizeField.get(0), dimData.default_size || '');
-                })
-                .catch(function (err) {
-                    console.error('Error loading initial product colors:', err);
-                });
         }
     };
 })(jQuery);

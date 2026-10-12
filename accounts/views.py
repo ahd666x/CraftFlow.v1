@@ -2,6 +2,7 @@ from django.contrib.auth import views as auth_views
 from django.contrib.auth.forms import AuthenticationForm
 from django.urls import reverse, reverse_lazy
 from django.views.generic import CreateView, TemplateView, UpdateView
+from django.shortcuts import get_object_or_404
 
 from .forms import UserRegistrationForm, ProfileUpdateForm
 from .models import UserProfile
@@ -38,12 +39,22 @@ class RegisterView(CreateView):
 class ProfileView(TemplateView):
     template_name = 'accounts/profile.html'
 
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        profile, _ = UserProfile.objects.get_or_create(user=self.request.user)
+        context['profile_user'] = profile
+        return context
+
 
 class ProfileUpdateView(UpdateView):
     model = UserProfile
     form_class = ProfileUpdateForm
     template_name = 'accounts/profile_edit.html'
     success_url = reverse_lazy('accounts:profile')
+
+    def get_object(self):
+        profile, _ = UserProfile.objects.get_or_create(user=self.request.user)
+        return profile
 
 
 class CustomPasswordResetView(auth_views.PasswordResetView):

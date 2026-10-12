@@ -69,13 +69,13 @@
             {% endif %}
 
             {# Alpine اینجا فقط برای محاسبه‌ی زنده‌ی قیمت است. #}
-            <div class="card mt-6 p-5"
+<div class="card mt-6 p-5"
                  x-data="dimensionPrice({
-                     basePrice: {{ product.base_price|default:0 }},
+                     basePrice: {{ product.base_price|js_number }},
                      dims: {
-                         length: {def: {{ product.length|default_if_none:'null' }}, editable: {{ product.length_editable|yesno:'true,false' }}, percent: {{ product.length_price_percent|default:0 }} },
-                         width:  {def: {{ product.width|default_if_none:'null' }},  editable: {{ product.width_editable|yesno:'true,false' }},  percent: {{ product.width_price_percent|default:0 }} },
-                         height: {def: {{ product.height|default_if_none:'null' }}, editable: {{ product.height_editable|yesno:'true,false' }}, percent: {{ product.height_price_percent|default:0 }} }
+                         length: {def: {{ product.length|js_number }}, editable: {{ product.length_editable|yesno:'true,false' }}, percent: {{ product.length_price_percent|js_number }} },
+                         width:  {def: {{ product.width|js_number }},  editable: {{ product.width_editable|yesno:'true,false' }},  percent: {{ product.width_price_percent|js_number }} },
+                         height: {def: {{ product.height|js_number }},  editable: {{ product.height_editable|yesno:'true,false' }}, percent: {{ product.height_price_percent|js_number }} }
                      }
                  })">
 

@@ -217,17 +217,23 @@ class Order(models.Model):
                     'width': item.product.width,
                     'height': item.product.height,
                 }
-                ordered_size = parse_size_string(item.size or "")
+                # Prefer the structured fields; fall back to the legacy `size`
+                # string for old items that were created before migration 0020.
+                ordered = {
+                    'length': item.length,
+                    'width': item.width,
+                    'height': item.height,
+                }
+                if not any(ordered.values()):
+                    legacy = parse_size_string(item.size or "")
+                    ordered = {a: legacy.get(a) for a in ('length', 'width', 'height')}
+
                 size_diff = {}
-                if product_default['length'] and ordered_size.get('length'):
-                    diff_cm = ordered_size['length'] - product_default['length']
-                    size_diff['length_diff'] = diff_cm * 10
-                if product_default['width'] and ordered_size.get('width'):
-                    diff_cm = ordered_size['width'] - product_default['width']
-                    size_diff['width_diff'] = diff_cm * 10
-                if product_default['height'] and ordered_size.get('height'):
-                    diff_cm = ordered_size['height'] - product_default['height']
-                    size_diff['height_diff'] = diff_cm * 10
+                for a in ('length', 'width', 'height'):
+                    default = product_default.get(a)
+                    if default and ordered.get(a):
+                        diff_cm = ordered[a] - default
+                        size_diff[f'{a}_diff'] = diff_cm * 10   # سانتی‌متر ← میلی‌متر
 
                 for bom_entry in item.product.bom.all():
                     has_bom = True
@@ -242,18 +248,18 @@ class Order(models.Model):
                             if new_material:
                                 material = new_material
 
-                    length = part.length
-                    width = part.width
-                    height = part.height
+                    # Part has no height field; pass 0 for the height axis so
+                    # rules like ``height: height + height_diff`` can still
+                    # reference height_diff without raising AttributeError.
+                    length, width = part.length, part.width
                     if bom_entry.size_affected and bom_entry.size_adjustment_rule and size_diff:
-                        length, width, height = apply_size_adjustment(
-                            part.length, part.width, part.height, size_diff, bom_entry.size_adjustment_rule
+                        length, width, _ = apply_size_adjustment(
+                            part.length, part.width, 0, size_diff, bom_entry.size_adjustment_rule
                         )
 
                     # Quantize to the DB precision so float lookups match stored values
                     length = Decimal(str(length)).quantize(Decimal('0.1'), rounding=ROUND_HALF_UP)
                     width = Decimal(str(width)).quantize(Decimal('0.1'), rounding=ROUND_HALF_UP)
-                    height = Decimal(str(height)).quantize(Decimal('0.1'), rounding=ROUND_HALF_UP)
 
                     new_f3 = update_barcode_size(part.f3, length, width, order_item_id)
 
@@ -395,8 +401,21 @@ class Product(models.Model):
         # primary default dimension) so the two can never drift apart.
         if self.length:
             self.default_size = str(self.length)
+        else:
+            self.default_size = ''
 
         super().save(*args, **kwargs)
+
+    @property
+    def default_size_display(self):
+        """Return a human-readable size string built from the structured
+        length/width/height fields. Falls back to the legacy ``default_size``
+        for old products that only have that field populated.
+        """
+        dims = [v for v in (self.length, self.width, self.height) if v]
+        if dims:
+            return 'x'.join(str(v) for v in dims)
+        return self.default_size or ''
 
     @property
     def average_rating(self):
@@ -742,10 +761,10 @@ class ProductBOM(models.Model):
     # تغییر اندازه
     size_affected = models.BooleanField(default=False, verbose_name="تحت تأثیر اندازه")
     size_adjustment_rule = models.CharField(
-        max_length=100,
+        max_length=200,
         blank=True,
         verbose_name="قانون تغییر اندازه",
-        help_text="مثال: length+length_diff, width/3"
+        help_text="مثال: length+length_diff, length+width_diff ; width+width_diff"
     )
 
     def __str__(self):

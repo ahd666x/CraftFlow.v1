@@ -217,9 +217,14 @@
                             '<option value="length + length_diff">طول + تغییر طول</option>' +
                             '<option value="length + length_diff/3">(طول + تغییر طول) ÷ ۳</option>' +
                             '<option value="length + length_diff/4">(طول + تغییر طول) ÷ ۴</option>' +
+                            '<option value="length + width_diff">طول + تغییر عرض</option>' +
+                            '<option value="length + height_diff">طول + تغییر ارتفاع</option>' +
+                            '<option value="width + width_diff">عرض + تغییر عرض</option>' +
+                            '<option value="height + height_diff">ارتفاع + تغییر ارتفاع</option>' +
+                            '<option value="length + length_diff ; width + width_diff">طول + تغییر طول و عرض + تغییر عرض</option>' +
                             '<option value="custom">✏️ سفارشی</option>' +
                         '</select>' +
-                        '<input type="text" class="form-control form-control-sm size-rule-custom" style="display:none;" placeholder="فرمول دلخواه">' +
+                        '<input type="text" class="form-control form-control-sm size-rule-custom" style="display:none;" placeholder="مثال: length + length_diff ; width + width_diff">' +
                     '</td>' +
                     '<td class="text-center"></td>' +
                     '<input type="hidden" name="bom-' + index + '-color_material_map" id="id_bom-' + index + '-color_material_map">' +

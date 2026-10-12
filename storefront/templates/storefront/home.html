@@ -4,13 +4,18 @@
 {% block title %}فروشگاه — خانه{% endblock %}
 
 {% block content %}
-<section class="border-b border-stone-200 bg-white">
-    <div class="mx-auto max-w-6xl px-4 py-12 text-center">
-        <h1 class="text-3xl font-bold text-stone-900">محصولات را ببینید و سفارش دهید</h1>
+{% load static %}
+<section class="relative border-b border-stone-200 bg-stone-50">
+    <div class="absolute inset-0 opacity-5 pointer-events-none" aria-hidden="true">
+        <img src="{% static 'storefront/img/logo.png' %}" alt=""
+             class="h-full w-full object-cover">
+    </div>
+    <div class="relative mx-auto max-w-6xl px-4 py-16 text-center">
+        <h1 class="text-4xl font-bold text-stone-900">محصولات را ببینید و سفارش دهید</h1>
         <p class="mx-auto mt-3 max-w-2xl text-stone-600">
             ابعاد دلخواهتان را انتخاب کنید؛ قیمت نهایی بر اساس همان ابعاد محاسبه می‌شود.
         </p>
-        <a href="{% url 'storefront:product_list' %}" class="btn-primary mt-6">مشاهده همه محصولات</a>
+        <a href="{% url 'storefront:product_list' %}" class="btn-primary mt-6">rijal hame mahvoolat</a>
     </div>
 </section>
 

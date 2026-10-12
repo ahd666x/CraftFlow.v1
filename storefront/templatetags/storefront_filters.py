@@ -29,3 +29,18 @@ def fa_price(value):
     except (TypeError, ValueError):
         return str(value).translate(PERSIAN_DIGITS)
     return f'{amount:,}'.translate(PERSIAN_DIGITS)
+
+
+@register.filter
+def js_number(value):
+    """یک مقدار را به صورت رشته‌ی عددی ساده (بدون جداکننده) برمی‌گرداند
+    تا بتوان آن را مستقیماً در JavaScript embed کرد."""
+    if value is None or value == '':
+        return 'null'
+    try:
+        return str(int(value))
+    except (TypeError, ValueError):
+        try:
+            return str(float(value))
+        except (TypeError, ValueError):
+            return 'null'

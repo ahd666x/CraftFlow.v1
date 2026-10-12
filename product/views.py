@@ -528,7 +528,7 @@ def admin_edit_order_item(request, item_id):
                 if 'unit_price' in item_form.changed_data and manual_price not in (None, ''):
                     updated_item.unit_price = manual_price
                     updated_item._skip_price_calc = True
-                elif product_changed or 'size' in item_form.changed_data:
+                elif product_changed or {'length', 'width', 'height'} & set(item_form.changed_data):
                     pass
                 else:
                     updated_item._skip_price_calc = True
@@ -3184,32 +3184,40 @@ def ajax_load_products(request):
         products = Product.objects.none()
     data = []
     for p in products:
-        dims = 'x'.join(
-            str(v) for v in (p.length, p.width, p.height) if v
-        )
         data.append({
             'id': p.id,
             'name': str(p),
-            'default_size': dims,
+            'length': p.length,
+            'width': p.width,
+            'height': p.height,
+            'length_editable': p.length_editable,
+            'width_editable': p.width_editable,
+            'height_editable': p.height_editable,
+            'default_size': p.default_size_display,
         })
     return JsonResponse(data, safe=False)
 
 
 @login_required
 def ajax_load_product_dimensions(request):
-    """Return the default dimensions of a single product as a string.
+    """Return the default dimensions of a single product.
 
-    The storefront uses this to pre-fill the `size` field when the user
+    The storefront uses this to pre-fill the dimension fields when the user
     picks a product, so the default size is always shown and never lost.
     """
     product_id = request.GET.get('product_id')
     if not product_id:
         return JsonResponse({'default_size': ''})
     product = get_object_or_404(Product, pk=product_id, is_active=True)
-    dims = 'x'.join(
-        str(v) for v in (product.length, product.width, product.height) if v
-    )
-    return JsonResponse({'default_size': dims})
+    return JsonResponse({
+        'default_size': product.default_size_display,
+        'length': product.length,
+        'width': product.width,
+        'height': product.height,
+        'length_editable': product.length_editable,
+        'width_editable': product.width_editable,
+        'height_editable': product.height_editable,
+    })
 
 
 @login_required

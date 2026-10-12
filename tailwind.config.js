@@ -4,6 +4,10 @@ module.exports = {
     // فقط قالب‌های فروشگاه. عمداً پنل تولید/اینونتوری اینجا نیست، چون آن
     // صفحات Bootstrap هستند و نباید کلاس Tailwind بگیرند.
     './storefront/templates/**/*.html',
+    './cart/templates/**/*.html',
+    './accounts/templates/**/*.html',
+    './payments/templates/**/*.html',
+    './discounts/templates/**/*.html',
     './storefront/static/storefront/css/**/*.css',
     './storefront/static/storefront/js/**/*.js',
   ],
