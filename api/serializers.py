@@ -8,6 +8,7 @@ from product.models import (
 from cart.models import Cart, CartItem
 from discounts.models import Discount
 from accounts.models import UserProfile
+from storefront.models import ProductReview
 
 User = get_user_model()
 

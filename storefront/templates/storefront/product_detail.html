@@ -85,7 +85,8 @@
 
                     <div>
                         <label class="label" for="dim-length">طول</label>
-                        <input id="dim-length" type="number" min="1"
+                        <input id="dim-length" type="number" min="1" max="1000"
+                               {% if not product.length_editable %}disabled{% endif %}
                                x-model.number="dims.length.value" @input="recalc()"
                                class="input" x-bind:placeholder="'پیش‌فرض: ' + (dims.length.def ?? '—')">
                         <p class="mt-1 text-xs text-stone-500"
@@ -99,7 +100,8 @@
 
                     <div>
                         <label class="label" for="dim-width">عرض</label>
-                        <input id="dim-width" type="number" min="1"
+                        <input id="dim-width" type="number" min="1" max="1000"
+                               {% if not product.width_editable %}disabled{% endif %}
                                x-model.number="dims.width.value" @input="recalc()"
                                class="input" x-bind:placeholder="'پیش‌فرض: ' + (dims.width.def ?? '—')">
                         <p class="mt-1 text-xs text-stone-500"
@@ -113,7 +115,8 @@
 
                     <div>
                         <label class="label" for="dim-height">ارتفاع</label>
-                        <input id="dim-height" type="number" min="1"
+                        <input id="dim-height" type="number" min="1" max="1000"
+                               {% if not product.height_editable %}disabled{% endif %}
                                x-model.number="dims.height.value" @input="recalc()"
                                class="input" x-bind:placeholder="'پیش‌فرض: ' + (dims.height.def ?? '—')">
                         <p class="mt-1 text-xs text-stone-500"

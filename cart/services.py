@@ -22,6 +22,32 @@ def _normalize_dim(value):
         return None
 
 
+
+
+MAX_CUSTOM_DIMENSION_CM = 1000
+
+
+def _resolve_dim(raw, default, editable, label):
+    """Return the dimension to store for a cart item.
+
+    When the axis is not editable the product default always wins, even if the
+    client sent a different value. When it is editable the submitted value is
+    validated against the 1..MAX_CUSTOM_DIMENSION_CM range; out-of-range values
+    raise ``ValueError`` so the caller can surface a friendly message.
+    """
+    if not editable:
+        return default
+    # An explicit 0 is treated as an out-of-range value, not as "use the
+    # default" — only an empty/blank input falls back to the default.
+    if raw is not None and str(raw).strip() == '0':
+        raise ValueError(f'{label} باید بین ۱ تا {MAX_CUSTOM_DIMENSION_CM} سانتیمتر باشد.')
+    value = _normalize_dim(raw)
+    if value is None:
+        return default
+    if value < 1 or value > MAX_CUSTOM_DIMENSION_CM:
+        raise ValueError(f'{label} باید بین ۱ تا {MAX_CUSTOM_DIMENSION_CM} سانتیمتر باشد.')
+    return value
+
 def get_or_create_cart(request):
     """
     سبد کاربر را برمی‌گرداند و در نبودِ آن می‌سازد.
@@ -55,9 +81,9 @@ class CartService:
 
         # فرم صفحه جزئیات محصول رشته خالی '' را ارسال می‌کند اگر کاربر چیزی وارد
         # نکرده باشد؛ هر دو حالت '' و None باید به پیش‌فرم محصول برگردند.
-        length = _normalize_dim(length) or product.length
-        width = _normalize_dim(width) or product.width
-        height = _normalize_dim(height) or product.height
+        length = _resolve_dim(length, product.length, product.length_editable, 'length')
+        width = _resolve_dim(width, product.width, product.width_editable, 'width')
+        height = _resolve_dim(height, product.height, product.height_editable, 'height')
 
         cart_item = CartItem.objects.filter(
             cart=cart, product=product,
@@ -78,24 +104,23 @@ class CartService:
 
     @staticmethod
     @transaction.atomic
-    def remove_item(cart, product_id):
-        """همه‌ی ردیف‌های آن محصول را حذف می‌کند (چون ابعاد می‌تواند متفاوت باشد)."""
-        deleted, _ = CartItem.objects.filter(cart=cart, product_id=product_id).delete()
+    def remove_item(cart, item_id):
+        deleted, _ = CartItem.objects.filter(cart=cart, pk=item_id).delete()
         return deleted
 
     @staticmethod
     @transaction.atomic
-    def update_quantity(cart, product_id, quantity):
-        """تعداد یک محصول را به‌روز می‌کند. تعداد صفر یعنی حذف."""
+    def update_quantity(cart, item_id, quantity):
+        item = CartItem.objects.filter(cart=cart, pk=item_id).first()
+        if item is None:
+            return 0
         if quantity <= 0:
-            return CartService.remove_item(cart, product_id)
-        updated = 0
-        for item in CartItem.objects.filter(cart=cart, product_id=product_id):
-            item.quantity = quantity
-            item.recalculate_price()
-            item.save(update_fields=['quantity', 'unit_price', 'updated_at'])
-            updated += 1
-        return updated
+            item.delete()
+            return 1
+        item.quantity = quantity
+        item.recalculate_price()
+        item.save(update_fields=['quantity', 'unit_price', 'updated_at'])
+        return 1
 
     @staticmethod
     @transaction.atomic

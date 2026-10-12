@@ -17,6 +17,17 @@ def _with_rating(queryset):
     )
 
 
+def _sort_queryset(queryset, sort):
+    """مرتب‌سازی یک‌دست برای همه صفحات محصولات."""
+    if sort == 'price_asc':
+        return queryset.order_by('base_price')
+    if sort == 'price_desc':
+        return queryset.order_by('-base_price')
+    if sort == 'name':
+        return queryset.order_by('name')
+    return queryset.order_by('-id')
+
+
 def home(request):
     products = _with_rating(
         Product.active_objects.select_related('category')
@@ -43,14 +54,7 @@ def product_list(request):
         queryset = queryset.filter(category__slug=category_slug)
 
     sort = request.GET.get('sort', '')
-    if sort == 'price_asc':
-        queryset = queryset.order_by('base_price')
-    elif sort == 'price_desc':
-        queryset = queryset.order_by('-base_price')
-    elif sort == 'name':
-        queryset = queryset.order_by('name')
-    else:
-        queryset = queryset.order_by('-id')
+    queryset = _sort_queryset(queryset, sort)
 
     return render(request, 'storefront/product_list.html', {
         'products': _with_rating(queryset),
@@ -85,14 +89,19 @@ def category_list(request):
 
 def category_detail(request, slug):
     category = get_object_or_404(ProductCategory, slug=slug, is_active=True)
-    products = _with_rating(
-        Product.active_objects.filter(category=category).select_related('category')
-    )
+    queryset = Product.active_objects.filter(category=category).select_related('category')
+    q = request.GET.get('q', '').strip()
+    if q:
+        queryset = queryset.filter(Q(name__icontains=q) | Q(description__icontains=q))
+    sort = request.GET.get('sort', '')
+    queryset = _sort_queryset(queryset, sort)
     return render(request, 'storefront/product_list.html', {
-        'products': products,
+        'products': _with_rating(queryset),
         'categories': ProductCategory.objects.filter(is_active=True),
         'selected_category': slug,
         'current_category': category,
+        'q': q,
+        'sort': sort,
     })
 
 

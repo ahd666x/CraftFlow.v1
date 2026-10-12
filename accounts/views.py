@@ -1,5 +1,6 @@
 from django.contrib.auth import views as auth_views
 from django.contrib.auth.forms import AuthenticationForm
+from django.contrib.auth.mixins import LoginRequiredMixin
 from django.urls import reverse, reverse_lazy
 from django.views.generic import CreateView, TemplateView, UpdateView
 from django.shortcuts import get_object_or_404

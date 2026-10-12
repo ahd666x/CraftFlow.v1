@@ -1,15 +1,10 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   content: [
-    // فقط قالب‌های فروشگاه. عمداً پنل تولید/اینونتوری اینجا نیست، چون آن
-    // صفحات Bootstrap هستند و نباید کلاس Tailwind بگیرند.
-    './storefront/templates/**/*.html',
-    './cart/templates/**/*.html',
-    './accounts/templates/**/*.html',
-    './payments/templates/**/*.html',
-    './discounts/templates/**/*.html',
-    './storefront/static/storefront/css/**/*.css',
-    './storefront/static/storefront/js/**/*.js',
+    // تمام قالب‌های پروژه (به‌جای مسیرهای محدود شده‌ی قبلی)
+    './**/templates/**/*.html',
+    // جاوااسکریپت‌های فروشگاه
+    './storefront/static/storefront/js/*.js',
   ],
   theme: {
     extend: {

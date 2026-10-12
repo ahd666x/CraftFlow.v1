@@ -5,8 +5,8 @@
 
 {% block content %}
 {% load static %}
-<section class="relative border-b border-stone-200 bg-stone-50">
-    <div class="absolute inset-0 opacity-5 pointer-events-none" aria-hidden="true">
+<section class="relative overflow-hidden border-b border-stone-200">
+    <div class="absolute inset-0 opacity-10 pointer-events-none" aria-hidden="true">
         <img src="{% static 'storefront/img/cover.jpg' %}" alt=""
              class="h-full w-full object-cover">
     </div>
@@ -15,7 +15,31 @@
         <p class="mx-auto mt-3 max-w-2xl text-stone-600">
             ابعاد دلخواهتان را انتخاب کنید؛ قیمت نهایی بر اساس همان ابعاد محاسبه می‌شود.
         </p>
-        <a href="{% url 'storefront:product_list' %}" class="btn-primary mt-6">rijal hame mahvoolat</a>
+        <a href="{% url 'storefront:product_list' %}" class="btn-primary mt-6">Observer محصولات</a>
+    </div>
+</section>
+
+<section class="mx-auto max-w-6xl px-4 py-8">
+    <div class="relative overflow-hidden rounded-2xl border-0 bg-gradient-to-l from-primary-800 via-primary-700 to-primary-600 shadow-elevation-2">
+        <div class="absolute inset-0 opacity-20" aria-hidden="true">
+            <img src="{% static 'storefront/img/cover.jpg' %}" alt=""
+                 class="h-full w-full object-cover">
+        </div>
+        <div class="relative flex flex-col items-center gap-4 px-6 py-10 text-center text-white sm:flex-row sm:justify-between sm:px-10">
+            <div>
+                <h2 class="text-2xl font-bold">تحویل سریع، قیمت شفاف</h2>
+                <p class="mt-1 text-sm text-white/80">
+                    هر محصول را با ابعاد دلخواهتان بسازید و هزینه را در لحظه ببینید.
+                </p>
+            </div>
+            <a href="{% url 'storefront:product_list' %}"
+               class="inline-flex items-center justify-center gap-2 rounded-default bg-white px-5 py-2.5 text-sm font-medium text-primary-800 transition hover:bg-stone-100">
+                مرور محصولات
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+                </svg>
+            </a>
+        </div>
     </div>
 </section>
 

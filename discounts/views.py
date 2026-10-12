@@ -1,28 +1,41 @@
-from django.contrib.auth.mixins import LoginRequiredMixin
+from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
+from django.core.exceptions import PermissionDenied
 from django.views.generic import ListView, CreateView, UpdateView, View
 from django.urls import reverse_lazy
 from django.contrib import messages
-from django.shortcuts import redirect
 
 from .models import Discount
 from .forms import DiscountForm, ApplyDiscountForm
 from cart.services import get_or_create_cart
 
 
-class DiscountListView(LoginRequiredMixin, ListView):
+class StaffRequiredMixin(LoginRequiredMixin, UserPassesTestMixin):
+    raise_exception = True
+
+    def test_func(self):
+        return self.request.user.is_staff
+
+    def handle_no_permission(self):
+        if not self.request.user.is_authenticated:
+            from django.contrib.auth.views import redirect_to_login
+            return redirect_to_login(self.request.get_full_path())
+        raise PermissionDenied
+
+
+class DiscountListView(StaffRequiredMixin, ListView):
     model = Discount
     template_name = 'discounts/discount_list.html'
     context_object_name = 'discounts'
 
 
-class DiscountCreateView(LoginRequiredMixin, CreateView):
+class DiscountCreateView(StaffRequiredMixin, CreateView):
     model = Discount
     form_class = DiscountForm
     template_name = 'discounts/discount_form.html'
     success_url = reverse_lazy('discounts:discount_list')
 
 
-class DiscountUpdateView(LoginRequiredMixin, UpdateView):
+class DiscountUpdateView(StaffRequiredMixin, UpdateView):
     model = Discount
     form_class = DiscountForm
     template_name = 'discounts/discount_form.html'

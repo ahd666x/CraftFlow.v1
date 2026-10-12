@@ -45,4 +45,26 @@
   .badge {
     @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
   }
+  .badge-success {
+    @apply badge bg-emerald-100 text-emerald-700;
+  }
+  .badge-danger {
+    @apply badge bg-red-100 text-red-700;
+  }
+
+  /* دکمه‌های کوچک و جدول‌های مدرن برای پنل تخفیف */
+  .btn-sm {
+    @apply inline-flex items-center justify-center rounded-default px-3 py-1.5 text-xs font-medium transition
+           focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .table-modern {
+    @apply w-full border-collapse text-sm;
+  }
+  .table-modern th {
+    @apply bg-stone-50 px-4 py-3 text-right font-medium text-stone-600;
+  }
+  .table-modern td {
+    @apply border-t border-stone-200 px-4 py-3 text-stone-700;
+  }
 }

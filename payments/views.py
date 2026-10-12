@@ -98,6 +98,15 @@ def payment_verify(request):
             'error': f'مبلغ پرداخت ({payment.amount}) با مبلغ سفارش ({expected_amount}) مطابقت ندارد.'
         })
 
+    # پرداخت درب_home: بدون پرداخت واقعی، سفارش paid نمی‌شود.
+    # Payment در حالت `pending` می‌ماند تا مدیر هنگام تحویل دستی تغییر دهد.
+    if payment.gateway == 'cash_on_delivery':
+        messages.success(
+            request,
+            'سفارش شما ثبت شد. مبلغ آن هنگام تحویل پرداخت خواهد شد.',
+        )
+        return redirect('storefront:order_detail', order_id=order.id)
+
     gateway = PaymentGatewayFactory.get(payment.gateway)
     result = gateway.verify(request, payment)
     if result.get('success'):

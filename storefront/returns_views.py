@@ -7,6 +7,7 @@ from django.views.generic import DetailView, ListView, CreateView
 from django.urls import reverse_lazy
 from django.contrib import messages
 
+from product.models import OrderItem
 from storefront.models import ReturnRequest
 
 
@@ -27,6 +28,9 @@ class ReturnRequestCreateView(LoginRequiredMixin, CreateView):
 
     def form_valid(self, form):
         form.instance.user = self.request.user
+        form.instance.order_item = get_object_or_404(
+            OrderItem, pk=self.kwargs['order_item_id'], order__user=self.request.user,
+        )
         messages.success(self.request, 'درخواست مرجوعی ثبت شد.')
         return super().form_valid(form)
 

@@ -32,22 +32,16 @@
     </div>
 
     <div class="flex items-center gap-2">
-        <button type="button"
-                onclick="cartStepQuantity(this, -1)"
-                class="flex h-8 w-8 items-center justify-center rounded-default border border-stone-200 text-stone-500 hover:bg-stone-100"
-                aria-label="کاهش تعداد">−</button>
-        <form method="post" action="{% url 'cart:cart_update' item.product.id %}"
-              id="qty-form-{{ item.id }}" class="inline">
+        <form method="post" action="{% url 'cart:cart_update' item.id %}"
+              class="flex items-center gap-2">
             {% csrf_token %}
-            <input type="number" name="quantity" id="qty-{{ item.id }}"
-                   value="{{ item.quantity }}" min="1"
-                   class="input w-20 py-1.5 text-center"
-                   onchange="this.form.submit()">
+            <button type="button" onclick="cartStepQuantity(this, -1)" aria-label="کاهش تعداد"
+                    class="flex h-8 w-8 items-center justify-center rounded-default border border-stone-200 text-stone-500 hover:bg-stone-100">−</button>
+            <input type="number" name="quantity" value="{{ item.quantity }}" min="1"
+                   class="input w-20 py-1.5 text-center" onchange="this.form.submit()">
+            <button type="button" onclick="cartStepQuantity(this, 1)" aria-label="افزایش تعداد"
+                    class="flex h-8 w-8 items-center justify-center rounded-default border border-stone-200 text-stone-500 hover:bg-stone-100">+</button>
         </form>
-        <button type="button"
-                onclick="cartStepQuantity(this, 1)"
-                class="flex h-8 w-8 items-center justify-center rounded-default border border-stone-200 text-stone-500 hover:bg-stone-100"
-                aria-label="افزایش تعداد">+</button>
     </div>
 
     <div class="text-left">
@@ -55,7 +49,7 @@
         <span class="text-xs text-stone-500">تومان</span>
     </div>
 
-    <form method="post" action="{% url 'cart:cart_remove' item.product.id %}">
+    <form method="post" action="{% url 'cart:cart_remove' item.id %}">
         {% csrf_token %}
         <button type="submit" class="btn-outline px-3 py-1.5 text-xs"
                 aria-label="حذف {{ item.product.name }}">حذف</button>
