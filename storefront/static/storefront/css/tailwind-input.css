@@ -7,8 +7,18 @@
     display: none !important;
   }
   html { @apply antialiased; }
-  body { @apply bg-white text-stone-900; }
+  body { @apply bg-cream text-stone-900; }
   h1, h2, h3 { @apply tracking-tight; }
+}
+
+@layer utilities {
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 @layer components {
@@ -24,7 +34,7 @@
   .btn-danger    { @apply btn bg-red-600 text-white hover:bg-red-700; }
   .btn-sm        { @apply inline-flex items-center justify-center rounded-lg px-3 py-1.5 text-xs font-medium transition-colors; }
 
-  .card  { @apply rounded-xl border border-stone-200 bg-white; }
+  .card  { @apply rounded-3xl border border-stone-200/70 bg-white; }
   .input {
     @apply w-full rounded-lg border border-stone-300 bg-white px-3.5 py-2.5 text-sm
            text-stone-900 placeholder-stone-400 transition-colors
@@ -47,4 +57,27 @@
   .table-modern    { @apply w-full border-collapse text-sm; }
   .table-modern th { @apply px-4 py-3 text-right text-xs font-medium text-stone-500; }
   .table-modern td { @apply border-t border-stone-100 px-4 py-3 text-stone-700; }
+
+  .reveal {
+    opacity: 0;
+    transform: translateY(24px);
+    transition: opacity .7s ease, transform .7s ease;
+  }
+  .reveal.is-visible {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  .animate-float,
+  .animate-kenburns,
+  .animate-ken-burns {
+    animation: none !important;
+  }
 }

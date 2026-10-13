@@ -2,7 +2,7 @@
     <div class="mx-auto max-w-6xl px-4 py-10">
         <div class="grid gap-8 md:grid-cols-4">
             <div class="md:col-span-2">
-                <p class="font-bold text-white text-lg">{{ site_settings.site_name|default:'کرافت‌فلو' }}</p>
+                <p class="font-bold text-white text-lg">{{ site_settings.site_name }}</p>
                 <p class="mt-2 max-w-xs text-sm leading-relaxed text-primary-200">{{ site_settings.footer_text|default:'تمامی حقوق محفوظ است.' }}</p>
             </div>
 
@@ -12,6 +12,9 @@
                     <li><a href="{% url 'storefront:home' %}" class="hover:text-white transition">خانه</a></li>
                     <li><a href="{% url 'storefront:product_list' %}" class="hover:text-white transition">محصولات</a></li>
                     <li><a href="{% url 'storefront:category_list' %}" class="hover:text-white transition">دسته‌بندی‌ها</a></li>
+                    <li><a href="{% url 'storefront:about' %}" class="hover:text-white transition">درباره ما</a></li>
+                    <li><a href="{% url 'storefront:return_policy' %}" class="hover:text-white transition">قوانین مرجوعی</a></li>
+                    <li><a href="{% url 'storefront:terms_of_service' %}" class="hover:text-white transition">شرایط استفاده</a></li>
                     {% if user.is_authenticated %}
                     <li><a href="{% url 'storefront:order_list' %}" class="hover:text-white transition">سفارش‌های من</a></li>
                     <li><a href="{% url 'accounts:address_list' %}" class="hover:text-white transition">آدرس‌های من</a></li>
@@ -54,15 +57,23 @@
                     </a>
                 </div>
                 <p class="mt-4 text-xs text-primary-300">نماد اعتماد:</p>
-                <div class="flex gap-2 mt-2">
-                    <span class="px-2 py-1 text-xs bg-primary-800 rounded text-white">اینماد</span>
-                    <span class="px-2 py-1 text-xs bg-primary-800 rounded text-white">زرین‌پال</span>
+                <div class="flex flex-wrap gap-2 mt-2">
+                    {% if site_settings.enamad_logo %}
+                    <a href="{{ site_settings.enamad_url }}" target="_blank" rel="noopener" class="inline-block" aria-label="نماد اعتماد اینماد">
+                        <img src="{{ site_settings.enamad_logo.url }}" alt="اینماد" class="h-8 w-auto" loading="lazy">
+                    </a>
+                    {% endif %}
+                    {% if site_settings.zarinpal_logo %}
+                    <a href="{{ site_settings.zarinpal_url }}" target="_blank" rel="noopener" class="inline-block" aria-label="نماد اعتماد زرین‌پال">
+                        <img src="{{ site_settings.zarinpal_logo.url }}" alt="زرین‌پال" class="h-8 w-auto" loading="lazy">
+                    </a>
+                    {% endif %}
                 </div>
             </div>
         </div>
 
         <div class="mt-8 pt-6 border-t border-primary-800 flex flex-col items-center justify-between gap-2 sm:flex-row text-xs text-primary-300">
-            <p>© {{ site_settings.site_name|default:'کرافت‌فلو' }} - تمام حقوق محفوظ است.</p>
+            <p>© {{ site_settings.site_name }} - تمام حقوق محفوظ است.</p>
             {% if user.is_staff %}
             <a href="{% url 'dashboard' %}" class="font-medium text-secondary-400 underline underline-offset-4 transition hover:text-secondary-300">به پنل مدیریت بروید</a>
             {% endif %}

@@ -13,3 +13,11 @@ def site_settings(request):
     except Exception:
         # جدول هنوز مایگریت نشده (مثلاً هنگام migrate)
         return {'site_settings': None}
+
+
+def is_home(request):
+    """چک می‌کند که آیا صفحه جاری home است یا خیر."""
+    try:
+        return {'is_home': request.resolver_match and request.resolver_match.url_name == 'home'}
+    except Exception:
+        return {'is_home': False}

@@ -1,8 +1,17 @@
 from django import forms
 from django.contrib.auth import get_user_model
 from django.contrib.auth.forms import AuthenticationForm
+from django.contrib.auth import password_validation
 
 from .models import UserProfile
+
+
+def to_en_digits(value):
+    """Convert Persian/Arabic digits to Latin digits."""
+    if not value:
+        return value
+    trans = str.maketrans('۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩', '01234567890123456789')
+    return str(value).translate(trans)
 
 User = get_user_model()
 
@@ -59,6 +68,8 @@ class UserRegistrationForm(forms.Form):
 
     def clean_phone(self):
         phone = self.cleaned_data['phone']
+        # Convert Persian/Arabic digits to Latin
+        phone = to_en_digits(phone)
         if not phone.startswith('09') or len(phone) != 11:
             raise forms.ValidationError("شماره موبایل باید با ۰۹ شروع شود و ۱۱ رقم باشد.")
         return phone
@@ -68,7 +79,12 @@ class UserRegistrationForm(forms.Form):
         p1 = cleaned.get('password1')
         p2 = cleaned.get('password2')
         if p1 and p2 and p1 != p2:
-            raise forms.ValidationError("کلمات عبور مطابقت ندارند.")
+            self.add_error('password2', "کلمات عبور مطابقت ندارند.")
+        elif p1:
+            try:
+                password_validation.validate_password(p1)
+            except forms.ValidationError as e:
+                self.add_error('password1', e)
         return cleaned
 
     def save(self, commit=True):

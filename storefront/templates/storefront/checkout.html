@@ -1,37 +1,23 @@
 {% extends 'storefront/layouts/store.html' %}
 {% load storefront_filters %}
 
-{% block title %}تسویه‌ی سفارش — فروشگاه{% endblock %}
+{% block title %}تسویه‌ی سفارش — {{ site_settings.site_name }}{% endblock %}
+{% block meta_description %}تسویه سفارش در {{ site_settings.site_name }}{% endblock %}
+{% block og_title %}تسویه سفارش{% endblock %}
+{% block og_description %}تکمیل خرید در {{ site_settings.site_name }}{% endblock %}
 
 {% block content %}
 {% if addresses %}{{ addresses_data|json_script:"saved-addresses" }}{% endif %}
 <div class="mx-auto max-w-6xl px-4 py-8">
 
     {# Stepper #}
-    <nav class="mb-8" aria-label="مراحل تسویه">
-        <ol class="flex items-center" role="list">
-            <li class="flex items-center">
-                <span class="flex items-center justify-center w-10 h-10 rounded-full bg-primary-600 text-white text-sm font-medium" aria-current="step">۱</span>
-                <span class="ml-2 hidden sm:inline font-medium text-stone-900">اطلاعات</span>
-            </li>
-            <li class="relative flex-1 flex items-center">
-                <span class="absolute inset-y-0 left-1/2 w-full h-0.5 bg-stone-200" aria-hidden="true"></span>
-                <span class="relative flex items-center justify-center w-10 h-10 rounded-full border-2 border-stone-200 bg-white text-stone-400 text-sm font-medium">۲</span>
-                <span class="ml-2 hidden sm:inline text-stone-500">پرداخت</span>
-            </li>
-            <li class="relative flex-1 flex items-center">
-                <span class="absolute inset-y-0 left-1/2 w-full h-0.5 bg-stone-200" aria-hidden="true"></span>
-                <span class="relative flex items-center justify-center w-10 h-10 rounded-full border-2 border-stone-200 bg-white text-stone-400 text-sm font-medium">۳</span>
-                <span class="ml-2 hidden sm:inline text-stone-500">تایید</span>
-            </li>
-        </ol>
-    </nav>
+    {% include 'storefront/partials/stepper.html' with step=1 %}
 
     <h1 class="mb-6 text-2xl font-bold">تسویه‌ی سفارش</h1>
 
     <div class="grid gap-8 lg:grid-cols-[1fr_22rem]">
 
-        <form method="post" action="{% url 'storefront:checkout' %}" class="space-y-6" x-data="{ submitting: false }">
+        <form method="post" action="{% url 'storefront:checkout' %}" class="space-y-6" x-data="{ submitting: false, valid: true }" @submit="submitting = true">
             {% csrf_token %}
 
             <section class="card p-5">
@@ -42,15 +28,21 @@
                         <input id="name" name="name" type="text" class="input"
                                value="{% if customer.name %}{{ customer.name }}{% elif user.is_authenticated %}{{ user.get_full_name }}{% endif %}" required>
                     </div>
-                    <div>
+<div x-data="{ valid: true }">
                         <label class="label" for="phone">شماره موبایل</label>
                         <input id="phone" name="phone" type="tel" class="input"
                                value="{{ customer.phone }}" required
                                pattern="^09\d{9}$"
                                title="شماره موبایل باید با ۰۹ شروع شود و ۱۱ رقم باشد"
-                               x-data="{ valid: true }"
-                               @input="valid = /^09\d{9}$/.test($event.target.value); $event.target.setCustomValidity(valid ? '' : 'شماره موبایل باید با ۰۹ شروع شود و ۱۱ رقم باشد')">
-                        <p class="mt-1 text-xs text-stone-500 hidden" x-show="!valid" x-text="'شماره موبایل باید با ۰۹ شروع شود و ۱۱ رقم باشد'"></p>
+                               @input="
+                                   // Convert Persian/Arabic digits to Latin
+                                   var value = $event.target.value.replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d))
+                                                           .replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d));
+                                   $event.target.value = value;
+                                   valid = /^09\d{9}$/.test(value);
+                                   $event.target.setCustomValidity(valid ? '' : 'شماره موبایل باید با ۰۹ شروع شود و ۱۱ رقم باشد');
+                               ">
+                        <p class="mt-1 text-xs text-red-600" x-show="!valid" x-cloak>شماره موبایل باید با ۰۹ شروع شود و ۱۱ رقم باشد</p>
                     </div>
                 </div>
             </section>
@@ -90,7 +82,7 @@
                 </div>
             </section>
 
-            <button type="submit" class="btn-primary w-full py-3 text-base" :disabled="submitting" :class="{'opacity-50 cursor-wait': submitting}" @submit="submitting = true">
+            <button type="submit" class="btn-primary w-full py-3 text-base" :disabled="submitting" :class="{'opacity-50 cursor-wait': submitting}">
                 <span x-show="!submitting">ثبت نهایی سفارش</span>
                 <span x-show="submitting" class="flex items-center justify-center gap-2">
                     <svg class="animate-spin h-5 w-5" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/></svg>
@@ -145,7 +137,7 @@
                 {# Tax #}
                 {% if cart.tax_amount > 0 %}
                 <div class="flex items-center justify-between text-sm text-stone-600">
-                    <span>مالیات (۹٪)</span>
+                    <span>مالیات ({{ site_settings.tax_rate|floatformat:0|add:"%" }})</span>
                     <span>{{ cart.tax_amount|fa_price }} تومان</span>
                 </div>
                 {% endif %}
@@ -154,7 +146,7 @@
                     <span class="font-semibold">مبلغ نهایی</span>
                     <span class="text-lg font-bold text-primary-800">{{ cart.final_price|fa_price }}</span>
                 </div>
-                <p class="text-xs text-stone-400">تومان</p>
+                <p class="text-xs text-stone-500">تومان</p>
             </div>
 
             {# Estimated delivery #}

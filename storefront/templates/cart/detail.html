@@ -43,7 +43,7 @@
             {# Tax #}
             {% if cart.tax_amount > 0 %}
             <div class="mt-1 flex items-center justify-between text-sm text-stone-600">
-                <span>مالیات (۹٪)</span>
+                <span>مالیات ({{ site_settings.tax_rate|floatformat:0|add:"%" }})</span>
                 <span>{{ cart.tax_amount|fa_price }} تومان</span>
             </div>
             {% endif %}
@@ -52,7 +52,7 @@
                 <span class="font-semibold">مبلغ قابل پرداخت</span>
                 <span class="text-lg font-bold text-primary-800">{{ cart.final_price|fa_price }}</span>
             </div>
-            <p class="mt-1 text-xs text-stone-400">تومان</p>
+            <p class="mt-1 text-xs text-stone-500">تومان</p>
 
             {# Estimated delivery #}
             <div class="mt-4 p-3 rounded-lg bg-primary-50 border border-primary-100">

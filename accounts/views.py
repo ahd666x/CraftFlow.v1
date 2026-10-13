@@ -1,13 +1,16 @@
 from django.contrib import messages
 from django.contrib.auth import views as auth_views
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.contrib.auth import login
+from django.db.models import Sum
 from django.urls import reverse, reverse_lazy
-from django.views.generic import CreateView, TemplateView, UpdateView, DeleteView, ListView
+from django.views.generic import FormView, TemplateView, UpdateView, DeleteView, ListView, CreateView
 from django.shortcuts import get_object_or_404, redirect
 
 from .forms import LoginForm, UserRegistrationForm, ProfileUpdateForm
 from .models import UserProfile
 from storefront.models import Address
+from product.models import Order
 
 REPRESENTATIVE_GROUP = 'نماینده'
 
@@ -32,23 +35,53 @@ class CustomLogoutView(auth_views.LogoutView):
     next_page = reverse_lazy('accounts:login')
 
 
-class RegisterView(CreateView):
+class RegisterView(FormView):
     form_class = UserRegistrationForm
     template_name = 'accounts/register.html'
-    success_url = reverse_lazy('accounts:login')
+    success_url = reverse_lazy('storefront:home')
+
+    def dispatch(self, request, *args, **kwargs):
+        if request.user.is_authenticated:
+            return redirect(self.success_url)
+        return super().dispatch(request, *args, **kwargs)
+
+    def form_valid(self, form):
+        user = form.save()
+        UserProfile.objects.update_or_create(
+            user=user, defaults={'phone': form.cleaned_data['phone']},
+        )
+        login(self.request, user)
+        messages.success(self.request, 'حساب شما ساخته شد.')
+        return super().form_valid(form)
 
 
-class ProfileView(TemplateView):
+class ProfileView(LoginRequiredMixin, TemplateView):
     template_name = 'accounts/profile.html'
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         profile, _ = UserProfile.objects.get_or_create(user=self.request.user)
         context['profile_user'] = profile
+
+        # Recent order
+        recent_order = Order.objects.filter(user=self.request.user).select_related('customer').order_by('-id').first()
+        context['recent_order'] = recent_order
+
+        # Default address
+        default_address = Address.objects.filter(user=self.request.user, is_default=True, is_active=True).first()
+        context['default_address'] = default_address
+
+        # Stats
+        context['order_count'] = Order.objects.filter(user=self.request.user).count()
+        context['address_count'] = Address.objects.filter(user=self.request.user, is_active=True).count()
+        total_spent = Order.objects.filter(user=self.request.user).aggregate(total=Sum('final_amount'))['total']
+        context['total_spent'] = total_spent or 0
+        context['address_count'] = Address.objects.filter(user=self.request.user, is_active=True).count()
+
         return context
 
 
-class ProfileUpdateView(UpdateView):
+class ProfileUpdateView(LoginRequiredMixin, UpdateView):
     model = UserProfile
     form_class = ProfileUpdateForm
     template_name = 'accounts/profile_edit.html'

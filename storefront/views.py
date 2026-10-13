@@ -7,7 +7,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 
 from cart.services import get_or_create_cart
 from product.models import Color, Customer, Order, OrderItem, Product, ProductCategory
-from storefront.models import Address
+from storefront.models import Address, HeroSlide, ProductReview, SiteSettings
 
 
 def _with_rating(queryset):
@@ -30,30 +30,45 @@ def _sort_queryset(queryset, sort):
 
 
 def home(request):
+    # Hero slides (admin-managed)
+    hero_slides = HeroSlide.objects.filter(is_active=True).order_by('order')
+    
+    # Products for carousel (latest 8)
     products = _with_rating(
         Product.active_objects.select_related('category')
         .prefetch_related('gallery_images')
-        .order_by('-id')[:12]
+        .order_by('-id')[:8]
     )
+    
+    # Categories for bento grid (top 6 with product count)
     categories = ProductCategory.objects.filter(is_active=True).annotate(
         product_count=Count('products', filter=Q(products__is_active=True)),
-    )
+    ).order_by('-product_count')[:6]
     
-    # Static content for home page sections
+    # Features for trust bar - short descriptions (max 6 words)
+    site_settings = SiteSettings.get_settings()
     features = [
-        ('custom', 'سفارشی‌سازی کامل', 'طول، عرض، ارتفاع — ابعاد دقیقاً متناسب با فضای شما'),
-        ('quality', 'چوب درجه یک', 'استفاده از چوب‌های بی‌ک-sdk، ضد رطوبت و دوام‌دار'),
-        ('warranty', 'گارانتی ۵ سال', 'اطمینان از کیفیت ساخت و مواد اولیه با ضمانت‌نامه'),
-        ('shipping', 'ارسال سراسری', 'بسته‌بندی ایمن و ارسال به سراسر ایران با رهگیری'),
+        ('custom', 'ابعاد دلخواه', 'طول عرض ارتفاع دقیقاً متناسب'),
+        ('quality', 'چوب درجه یک، ضد رطوبت و بادوام', 'چوب درجه یک ضد رطوبت دوام‌دار'),
+        ('shipping', 'ارسال سراسری', 'بسته‌بندی ایمن سراسر ایران'),
     ]
+    if site_settings.warranty_years:
+        features.insert(2, ('warranty', f'گارانتی {site_settings.warranty_years} سال', 'اطمینان کیفیت ساخت مواد'))
     
-    testimonials = [
-        ('مهران رضایی', 'کمد اتاق خواب سفارشی', 'دقت در ابعاد و کیفیت چوب فوق‌العاده بود. تیم مشاوره خیلی صبوری پاسخگو بود و نتیجه دقیقاً همون چیزی بود که در ذهنم بود.'),
-        ('سارا محمدی', 'میز ناهارخوری ۶ نفره', 'ارسال سریع، بسته‌بندی عالی و هیچ خطری در جابجایی نبود. رنگ و بافت چوب خیلی طبیعی و زیباست.'),
-        ('احمد کریمی', 'کنسول تلویزیون مخصوص', 'امکان تغییر ارتفاع و عمق باعث شد دقیقاً زیر تلویزیونم جا بشه. قیمت هم نسبت به بازار خیلی مناسب‌تر بود.'),
-    ]
+    # Testimonials: real reviews with rating >= 4
+    testimonials = []
+    recent_reviews = ProductReview.objects.filter(
+        is_active=True, rating__gte=4
+    ).select_related('user', 'product').order_by('-created_at')[:6]
+    for review in recent_reviews:
+        testimonials.append({
+            'name': review.user.get_full_name() or review.user.username,
+            'product': review.product.name,
+            'comment': review.comment or f'امتیاز {review.rating} از ۵',
+        })
     
     return render(request, 'storefront/home.html', {
+        'hero_slides': hero_slides,
         'products': products,
         'categories': categories,
         'features': features,
@@ -96,6 +111,15 @@ def product_list(request):
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
 
+    # Popular products for empty state (most reviewed)
+    popular_products = _with_rating(
+        Product.active_objects
+        .filter(reviews__is_active=True)
+        .select_related('category')
+        .prefetch_related('gallery_images')
+        .order_by('-rev_count')[:6]
+    ).distinct()
+
     return render(request, 'storefront/product_list.html', {
         'page_obj': page_obj,
         'categories': ProductCategory.objects.filter(is_active=True),
@@ -104,6 +128,7 @@ def product_list(request):
         'sort': sort,
         'min_price': min_price,
         'max_price': max_price,
+        'popular_products': popular_products,
     })
 
 
@@ -131,6 +156,50 @@ def product_detail(request, slug):
         'reviews': reviews,
     }
     return render(request, 'storefront/product_detail.html', context)
+
+
+@login_required
+def review_create(request, slug):
+    """Create a review for a product."""
+    if request.method != 'POST':
+        return redirect('storefront:product_detail', slug=slug)
+
+    product = get_object_or_404(Product.active_objects, slug=slug)
+    
+    # Check if user already reviewed this product
+    existing = ProductReview.objects.filter(product=product, user=request.user).first()
+    if existing:
+        messages.error(request, 'شما قبلاً برای این محصول نظر داده‌اید.')
+        return redirect('storefront:product_detail', slug=slug)
+
+    try:
+        rating = int(request.POST.get('rating', 0))
+    except (TypeError, ValueError):
+        rating = 0
+    
+    if rating < 1 or rating > 5:
+        messages.error(request, 'امتیاز باید بین ۱ تا ۵ باشد.')
+        return redirect('storefront:product_detail', slug=slug)
+
+    comment = request.POST.get('comment', '').strip()
+    image = request.FILES.get('image')
+
+    review = ProductReview.objects.create(
+        product=product,
+        user=request.user,
+        rating=rating,
+        comment=comment,
+        image=image,
+    )
+
+    messages.success(request, 'نظر شما با موفقیت ثبت شد و پس از تایید نمایش داده می‌شود.')
+    
+    if request.headers.get('HX-Request'):
+        # Return updated reviews list for HTMX
+        reviews = product.reviews.filter(is_active=True).select_related('user')
+        return render(request, 'storefront/partials/reviews_list.html', {'reviews': reviews})
+    
+    return redirect('storefront:product_detail', slug=slug)
 
 
 def category_list(request):
@@ -375,3 +444,24 @@ def custom_404(request, exception):
 def custom_500(request):
     """Custom 500 error handler."""
     return render(request, 'storefront/500.html', status=500)
+
+
+def about(request):
+    """About Us page."""
+    return render(request, 'storefront/about.html', {
+        'site_settings': SiteSettings.get_settings(),
+    })
+
+
+def return_policy(request):
+    """Return Policy page."""
+    return render(request, 'storefront/return_policy.html', {
+        'site_settings': SiteSettings.get_settings(),
+    })
+
+
+def terms_of_service(request):
+    """Terms of Service page."""
+    return render(request, 'storefront/terms_of_service.html', {
+        'site_settings': SiteSettings.get_settings(),
+    })

@@ -13,7 +13,7 @@
     <meta property="og:type" content="{% block og_type %}website{% endblock %}">
     <meta property="og:url" content="{% block og_url %}{{ request.build_absolute_uri }}{% endblock %}">
     <meta property="og:image" content="{% block og_image %}{% if site_settings and site_settings.cover_image %}{{ site_settings.cover_image.url }}{% endif %}{% endblock %}">
-    <meta property="og:site_name" content="{{ site_settings.site_name|default:'فروشگاه' }}">
+    <meta property="og:site_name" content="{{ site_settings.site_name|default:'کرافت‌فلو' }}">
 
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="{% block twitter_title %}{% endblock %}">
@@ -21,10 +21,15 @@
     <meta name="twitter:image" content="{% block twitter_image %}{% if site_settings and site_settings.cover_image %}{{ site_settings.cover_image.url }}{% endif %}{% endblock %}">
 
     {# Favicon #}
-    <link rel="icon" href="{% static 'storefront/img/favicon.ico' %}" sizes="any">
-    <link rel="icon" href="{% static 'storefront/img/favicon.svg' %}" type="image/svg+xml">
-    <link rel="apple-touch-icon" href="{% static 'storefront/img/apple-touch-icon.png' %}">
+    <link rel="icon" href="{% static 'storefront/img/favicon.svg' %}" type="image/svg+xml" sizes="any">
+    <link rel="apple-touch-icon" href="{% static 'storefront/img/favicon.svg' %}">
     <link rel="manifest" href="{% static 'storefront/manifest.json' %}">
+
+    {# Font Preloads #}
+    <link rel="preload" as="font" type="font/woff2" crossorigin="anonymous" href="{% static 'storefront/fonts/Vazirmatn-Regular.woff2' %}">
+    <link rel="preload" as="font" type="font/woff2" crossorigin="anonymous" href="{% static 'storefront/fonts/Vazirmatn-Medium.woff2' %}">
+    <link rel="preload" as="font" type="font/woff2" crossorigin="anonymous" href="{% static 'storefront/fonts/Vazirmatn-SemiBold.woff2' %}">
+    <link rel="preload" as="font" type="font/woff2" crossorigin="anonymous" href="{% static 'storefront/fonts/Vazirmatn-Bold.woff2' %}">
 
     {# فقط Tailwind. Bootstrap عمداً اینجا load نمی‌شود چون پنل تولید آن را
        دارد و بارگذاری هر دو در یک صفحه، استایل‌ها را قاطی می‌کند. #}
@@ -32,11 +37,12 @@
     <link rel="stylesheet" href="{% static 'storefront/css/style.css' %}">
 
     <script defer src="{% static 'storefront/js/alpine.min.js' %}"></script>
-    <script src="{% static 'storefront/js/htmx.min.js' %}"></script>
-    <script src="{% static 'storefront/js/storefront.js' %}"></script>
+    <script defer src="{% static 'storefront/js/htmx.min.js' %}"></script>
+    <script defer src="{% static 'storefront/js/storefront.js' %}"></script>
     {% block extra_head %}{% endblock %}
 </head>
 <body class="min-h-screen bg-white font-sans text-stone-900 flex flex-col">
+{% include 'storefront/partials/icon_sprite.html' %}
 
 {% include 'storefront/includes/header.html' %}
 
@@ -52,13 +58,55 @@
 </div>
 {% endif %}
 
-<main class="flex-grow">
+<main class="flex-grow pb-16 md:pb-0">
     {% block content %}{% endblock %}
 </main>
 
 {% include 'storefront/includes/footer.html' %}
 
-<div id="toast-host" class="fixed bottom-4 left-4 z-toast flex flex-col gap-2"></div>
+<div id="toast-host" class="fixed bottom-16 md:bottom-4 left-4 z-toast flex flex-col gap-2"></div>
+
+{# Mobile Bottom Navigation #}
+<div class="fixed bottom-0 left-0 right-0 z-sticky bg-white/95 backdrop-blur border-t border-stone-100 md:hidden pb-safe">
+    <nav class="flex items-center justify-around h-14 px-2" aria-label="ناوبری موبایل">
+        <a href="{% url 'storefront:home' %}" 
+           class="flex flex-col items-center gap-1 text-sm {% if request.resolver_match.url_name == 'home' %}text-primary-700{% else %}text-stone-500{% endif %}"
+           aria-label="خانه">
+            <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+            <span>خانه</span>
+        </a>
+        <a href="{% url 'storefront:category_list' %}" 
+           class="flex flex-col items-center gap-1 text-sm {% if request.resolver_match.url_name == 'category_list' or request.resolver_match.url_name == 'category_detail' %}text-primary-700{% else %}text-stone-500{% endif %}"
+           aria-label="دسته‌بندی‌ها">
+            <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/></svg>
+            <span>دسته‌ها</span>
+        </a>
+        <a href="{% url 'cart:cart_detail' %}" 
+           class="flex flex-col items-center gap-1 text-sm relative {% if request.resolver_match.namespace == 'cart' %}text-primary-700{% else %}text-stone-500{% endif %}"
+           aria-label="سبد خرید">
+            <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
+            <span>سبد</span>
+            {% if cart_total_items|default:0 > 0 %}
+            <span class="absolute -top-1 -right-1 h-4 min-w-[1rem] grid place-items-center rounded-full bg-primary-600 px-1 text-[10px] text-white">{{ cart_total_items }}</span>
+            {% endif %}
+        </a>
+        {% if user.is_authenticated %}
+        <a href="{% url 'accounts:profile' %}" 
+           class="flex flex-col items-center gap-1 text-sm {% if request.resolver_match.url_name == 'profile' or request.resolver_match.url_name == 'order_list' or request.resolver_match.url_name == 'order_detail' or request.resolver_match.url_name == 'address_list' %}text-primary-700{% else %}text-stone-500{% endif %}"
+           aria-label="حساب کاربری">
+            <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+            <span>حساب</span>
+        </a>
+        {% else %}
+        <a href="{% url 'accounts:login' %}" 
+           class="flex flex-col items-center gap-1 text-sm text-stone-500"
+           aria-label="ورود">
+            <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"/></svg>
+            <span>ورود</span>
+        </a>
+        {% endif %}
+    </nav>
+</div>
 
 {% block extra_js %}{% endblock %}
 </body>

@@ -13,6 +13,29 @@ from django.db import models
 from storefront.base import TimeStampedModel
 
 
+class HeroSlide(TimeStampedModel):
+    """
+    اسلاید هیرو برای اسلایدر تمام‌عرض صفحه‌ی خانه.
+    قابل مدیریت از ادمین برای کنترل اسلایدها بدون تغییر کد.
+    """
+    title = models.CharField(max_length=120, verbose_name='تیتر')
+    subtitle = models.CharField(max_length=200, blank=True, verbose_name='زیرتیتر')
+    image = models.ImageField(upload_to='hero/', verbose_name='تصویر اسلاید')
+    accent_image = models.ImageField(upload_to='hero/', blank=True, null=True, verbose_name='تصویر تأکید (PNG بدون پس‌زمینه)')
+    button_text = models.CharField(max_length=40, default='مشاهده محصولات', verbose_name='متن دکمه')
+    link_url = models.CharField(max_length=200, blank=True, verbose_name='لینک دکمه (خالی = صفحه محصولات)')
+    order = models.PositiveIntegerField(default=0, verbose_name='ترتیب نمایش')
+    is_active = models.BooleanField(default=True, verbose_name='فعال')
+
+    class Meta:
+        verbose_name = 'اسلاید هیرو'
+        verbose_name_plural = 'اسلایدهای هیرو'
+        ordering = ['order', 'id']
+
+    def __str__(self):
+        return self.title
+
+
 class ProductReview(TimeStampedModel):
     product = models.ForeignKey(
         'product.Product', on_delete=models.CASCADE, related_name='reviews',
@@ -155,6 +178,13 @@ class SiteSettings(TimeStampedModel):
     shipping_days_min = models.PositiveIntegerField(default=2, verbose_name='حداقل روز ارسال')
     shipping_days_max = models.PositiveIntegerField(default=5, verbose_name='حداکثر روز ارسال')
 
+    # نشان‌های اعتماد
+    enamad_logo = models.ImageField(upload_to='site/', blank=True, null=True, verbose_name='لوگو اینماد')
+    enamad_url = models.URLField(blank=True, verbose_name='لینک اینماد')
+    zarinpal_logo = models.ImageField(upload_to='site/', blank=True, null=True, verbose_name='لوگو زرین‌پال')
+    zarinpal_url = models.URLField(blank=True, verbose_name='لینک زرین‌پال')
+    warranty_years = models.PositiveIntegerField(default=0, verbose_name='سال‌های گارانتی (۰ = نمایش داده نشود)')
+
     class Meta:
         verbose_name = 'تنظیمات سایت'
         verbose_name_plural = 'تنظیمات سایت'
@@ -181,3 +211,8 @@ class SiteSettings(TimeStampedModel):
     @property
     def estimated_delivery_max(self):
         return self.production_days_max + self.shipping_days_max
+
+    @property
+    def tax_percent(self):
+        pct = self.tax_rate * 100
+        return int(pct) if pct == int(pct) else float(pct)

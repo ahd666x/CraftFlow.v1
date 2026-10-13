@@ -1,0 +1,27 @@
+{# Shared Stepper Component #}
+{# Usage: include this partial with step variable (1, 2, or 3) #}
+<nav class="mb-8" aria-label="مراحل تسویه">
+    <ol class="flex items-center" role="list">
+        <li class="flex items-center">
+            <span class="flex items-center justify-center w-10 h-10 rounded-full {% if step >= 1 %}bg-primary-600 text-white{% else %}border-2 border-stone-200 bg-white text-stone-400{% endif %} text-sm font-medium"
+                  aria-current="{% if step == 1 %}step{% endif %}">
+                ۱
+            </span>
+            <span class="ml-2 hidden sm:inline font-medium {% if step >= 1 %}text-stone-900{% else %}text-stone-500{% endif %}">اطلاعات</span>
+        </li>
+        <li class="relative flex-1 flex items-center">
+            <span class="absolute inset-y-0 left-1/2 w-full h-0.5 {% if step >= 2 %}bg-primary-600{% else %}bg-stone-200{% endif %}" aria-hidden="true"></span>
+            <span class="relative flex items-center justify-center w-10 h-10 rounded-full border-2 {% if step >= 2 %}border-primary-600 bg-primary-600 text-white{% else %}border-stone-200 bg-white text-stone-400{% endif %} text-sm font-medium">
+                ۲
+            </span>
+            <span class="ml-2 hidden sm:inline {% if step >= 2 %}text-stone-900{% else %}text-stone-500{% endif %}">پرداخت</span>
+        </li>
+        <li class="relative flex-1 flex items-center">
+            <span class="absolute inset-y-0 left-1/2 w-full h-0.5 {% if step >= 3 %}bg-primary-600{% else %}bg-stone-200{% endif %}" aria-hidden="true"></span>
+            <span class="relative flex items-center justify-center w-10 h-10 rounded-full border-2 {% if step >= 3 %}border-primary-600 bg-primary-600 text-white{% else %}border-stone-200 bg-white text-stone-400{% endif %} text-sm font-medium">
+                ۳
+            </span>
+            <span class="ml-2 hidden sm:inline {% if step >= 3 %}text-stone-900{% else %}text-stone-500{% endif %}">تایید</span>
+        </li>
+    </ol>
+</nav>

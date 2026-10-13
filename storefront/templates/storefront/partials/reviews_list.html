@@ -1,0 +1,65 @@
+{% if reviews %}
+<div class="space-y-4">
+    {% for review in reviews %}
+    <div class="card p-4">
+        <div class="flex items-center justify-between gap-3 mb-2">
+            <span class="text-sm font-medium">{{ review.user.get_full_name|default:review.user.username }}</span>
+            <span class="text-xs text-primary-600" aria-label="امتیاز {{ review.rating }} از ۵">
+                <span aria-hidden="true">★</span> {{ review.rating }}
+            </span>
+        </div>
+        {% if review.comment %}
+        <p class="text-sm leading-relaxed text-stone-600">{{ review.comment }}</p>
+        {% endif %}
+        {% if review.image %}
+        <div class="mt-2">
+            <img src="{{ review.image.url }}" alt="تصویر نظر" class="h-24 w-24 object-cover rounded">
+        </div>
+        {% endif %}
+        <p class="mt-2 text-xs text-stone-400">{{ review.created_at|date:"j F Y" }}</p>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<p class="text-stone-500 text-center py-8">هنوز نظراتی برای این محصول ثبت نشده است.</p>
+{% endif %}
+
+{# Review Submission Form #}
+{% if user.is_authenticated %}
+<div class="mt-8 pt-6 border-t border-stone-100">
+    <h3 class="font-semibold mb-4">ثبت نظر شما</h3>
+    <form method="post" action="{% url 'storefront:review_create' product.slug %}"
+          hx-post="{% url 'storefront:review_create' product.slug %}"
+          hx-target="#reviews-list"
+          hx-swap="outerHTML"
+          class="space-y-4"
+          @htmx:after-request="if (event.detail.successful) this.reset()">
+        {% csrf_token %}
+        <input type="hidden" name="product_slug" value="{{ product.slug }}">
+        <div>
+            <label class="label">امتیاز</label>
+            <div class="flex gap-2" role="radiogroup" aria-label="انتخاب امتیاز">
+                {% for i in "54321"|make_list %}
+                <label class="cursor-pointer">
+                    <input type="radio" name="rating" value="{{ i }}" required class="sr-only peer">
+                    <span class="text-2xl text-stone-300 peer-checked:text-amber-500 transition-colors">★</span>
+                </label>
+                {% endfor %}
+            </div>
+        </div>
+        <div>
+            <label for="review_comment" class="label">متن نظر (اختیاری)</label>
+            <textarea id="review_comment" name="comment" rows="3" class="input" placeholder="تجربتان را با دیگران به اشتراک بگذارید..."></textarea>
+        </div>
+        <div>
+            <label for="review_image" class="label">تصویر (اختیاری)</label>
+            <input type="file" id="review_image" name="image" accept="image/*" class="input">
+        </div>
+        <button type="submit" class="btn-primary w-full py-2">ارسال نظر</button>
+    </form>
+</div>
+{% else %}
+<div class="mt-8 pt-6 border-t border-stone-100 text-center">
+    <p class="text-stone-600">برای ثبت نظر باید <a href="{% url 'accounts:login' %}?next={{ request.path }}" class="text-primary-600 hover:underline font-medium">وارد شوید</a>.</p>
+</div>
+{% endif %}

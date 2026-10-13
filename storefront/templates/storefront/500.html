@@ -1,24 +1,84 @@
-{% extends 'storefront/layouts/store.html' %}
-
-{% block title %}خطای سرور — فروشگاه{% endblock %}
-
-{% block content %}
-<div class="min-h-[60vh] flex items-center justify-center px-4">
-    <div class="text-center max-w-md">
-        <div class="mx-auto mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-red-100">
-            <svg class="h-12 w-12 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
-            </svg>
-        </div>
-        <h1 class="text-2xl font-bold text-stone-900">خطای سرور</h1>
-        <p class="mt-3 text-stone-600 leading-relaxed">
-            متأسفیم، خطایی در سرور رخ داده است. تیم فنی ما در حال بررسی است.
-            لطفاً چند دقیقه دیگر دوباره تلاش کنید.
+<!DOCTYPE html>
+<html dir="rtl" lang="fa">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>خطای سرور — فروشگاه</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Vazirmatn', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #fafafa;
+            color: #1c1917;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+            direction: rtl;
+        }
+        .error-container {
+            max-width: 400px;
+            width: 100%;
+            text-align: center;
+            padding: 3rem 2rem;
+            background: white;
+            border-radius: 1rem;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1);
+        }
+        .error-code {
+            font-size: 6rem;
+            font-weight: 800;
+            color: #78350f;
+            line-height: 1;
+            margin-bottom: 1rem;
+        }
+        .error-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #1c1917;
+            margin-bottom: 0.5rem;
+        }
+        .error-message {
+            color: #78716c;
+            margin-bottom: 2rem;
+            line-height: 1.6;
+        }
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            padding: 0.75rem 1.5rem;
+            background: #78350f;
+            color: white;
+            border: none;
+            border-radius: 0.5rem;
+            font-size: 1rem;
+            font-weight: 600;
+            text-decoration: none;
+            transition: background 0.2s;
+        }
+        .btn:hover {
+            background: #5c2d0c;
+        }
+        .btn svg {
+            width: 1.25rem;
+            height: 1.25rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="error-container">
+        <div class="error-code">500</div>
+        <h1 class="error-title">خطای سرور</h1>
+        <p class="error-message">
+            متاسفانه خطایی در سرور رخ داده است. تیم فنی ما از این موضوع مطلع شده و در حال بررسی است.
         </p>
-        <div class="mt-8 flex items-center justify-center gap-3">
-            <a href="{% url 'storefront:home' %}" class="btn-primary">بازگشت به خانه</a>
-            <button onclick="location.reload()" class="btn-outline">تلاش مجدد</button>
-        </div>
+        <a href="/" class="btn">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
+            بازگشت به صفحه اصلی
+        </a>
     </div>
-</div>
-{% endblock %}
+</body>
+</html>

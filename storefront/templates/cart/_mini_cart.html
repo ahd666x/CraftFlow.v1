@@ -1,5 +1,5 @@
 {% load storefront_filters %}
-<div class="space-y-4">
+<div class="space-y-4" id="mini-cart-content">
     {% if items %}
         {% for item in items %}
         <div class="flex gap-3">
@@ -41,6 +41,8 @@
 
             <div class="flex items-center gap-2">
                 <form method="post" action="{% url 'cart:cart_update' item.id %}"
+                      hx-post="{% url 'cart:cart_update' item.id %}"
+                      hx-target="#mini-cart-content" hx-swap="outerHTML"
                       class="flex items-center gap-2">
                     {% csrf_token %}
                     <button type="button" data-cart-step="-1" aria-label="کاهش تعداد"
@@ -57,13 +59,29 @@
                 <span class="text-xs text-stone-500">تومان</span>
             </div>
 
-            <form method="post" action="{% url 'cart:cart_remove' item.id %}">
+            <form method="post" action="{% url 'cart:cart_remove' item.id %}"
+                  hx-post="{% url 'cart:cart_remove' item.id %}"
+                  hx-target="#mini-cart-content" hx-swap="outerHTML">
                 {% csrf_token %}
                 <button type="submit" class="btn-outline px-3 py-1.5 text-xs"
-                        aria-label="حذف {{ item.product.name }}">حذف</button>
+                        aria-label="حذف {{ item.product.name }}">✕</button>
             </form>
         </div>
         {% endfor %}
+
+        {# Free Shipping Progress Bar #}
+        {% if cart.shipping_cost > 0 %}
+        <div class="border-t border-stone-200 pt-4 space-y-2">
+            <div class="flex justify-between text-xs text-stone-600 mb-1">
+                <span>برای ارسال رایگان</span>
+                <span>{{ site_settings.free_shipping_threshold|subtract:cart.total_price|fa_price }} تومان باقی مانده</span>
+            </div>
+            <div class="h-2 bg-stone-200 rounded-full overflow-hidden">
+                <div class="h-full bg-primary-600 rounded-full transition-all duration-300"
+                     style="width: {{ cart.total_price|free_shipping_progress:site_settings.free_shipping_threshold }}%;"></div>
+            </div>
+        </div>
+        {% endif %}
 
         <div class="border-t border-stone-200 pt-4 space-y-3">
             <div class="flex items-center justify-between text-sm text-stone-600">
@@ -86,7 +104,7 @@
                 <span class="font-semibold">مبلغ قابل پرداخت</span>
                 <span class="text-lg font-bold text-primary-800">{{ cart.final_price|fa_price }}</span>
             </div>
-            <p class="text-xs text-stone-400">تومان</p>
+            <p class="text-xs text-stone-500">تومان</p>
 
             {% if not cart.discount %}
             <form method="post" action="{% url 'discounts:apply_discount' %}" class="space-y-2">
@@ -105,7 +123,9 @@
                 ادامه‌ی فرایند خرید
             </a>
 
-            <form method="post" action="{% url 'cart:cart_clear' %}">
+            <form method="post" action="{% url 'cart:cart_clear' %}"
+                  hx-post="{% url 'cart:cart_clear' %}"
+                  hx-target="#mini-cart-content" hx-swap="outerHTML">
                 {% csrf_token %}
                 <button type="submit" class="btn-outline w-full">خالی کردن سبد</button>
             </form>

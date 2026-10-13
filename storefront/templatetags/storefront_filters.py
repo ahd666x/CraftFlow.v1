@@ -68,3 +68,27 @@ def js_number(value):
             return str(float(value))
         except (TypeError, ValueError):
             return 'null'
+
+
+@register.filter
+def free_shipping_progress(total_price, threshold):
+    """محاسبه درصد پیشرفت برای ارسال رایگان."""
+    if not threshold or threshold == 0:
+        return 100
+    try:
+        total = float(total_price)
+        thresh = float(threshold)
+        if total >= thresh:
+            return 100
+        return min(int((total / thresh) * 100), 100)
+    except (TypeError, ValueError):
+        return 0
+
+
+@register.filter
+def subtract(value, arg):
+    """ترکیب دو عدد (value - arg)."""
+    try:
+        return float(value) - float(arg)
+    except (TypeError, ValueError):
+        return value

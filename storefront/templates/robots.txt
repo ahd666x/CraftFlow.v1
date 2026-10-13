@@ -1,0 +1,16 @@
+User-agent: *
+Allow: /shop/
+Allow: /cart/
+Allow: /payments/
+Disallow: /admin/
+Disallow: /accounts/
+Disallow: /inventory/
+Disallow: /craftflow-ai/
+Disallow: /api/
+Disallow: /*/cart/
+Disallow: /*/checkout/
+Disallow: /*/orders/
+Disallow: /*/returns/
+Disallow: /*/profile/
+
+Sitemap: https://craftflow.ir/sitemap.xml

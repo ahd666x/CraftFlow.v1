@@ -79,6 +79,13 @@ def cart_remove(request, item_id):
     cart = get_or_create_cart(request)
     CartService.remove_item(cart, item_id)
     messages.success(request, 'محصول از سبد حذف شد.')
+    
+    if request.headers.get('HX-Request'):
+        items = cart.items.select_related('product', 'product__category').prefetch_related('product__gallery_images')
+        response = render(request, 'cart/_mini_cart.html', {'cart': cart, 'items': items})
+        response['HX-Trigger'] = 'cartUpdated'
+        return response
+    
     return redirect('cart:cart_detail')
 
 
@@ -90,6 +97,13 @@ def cart_update(request, item_id):
     except (TypeError, ValueError):
         quantity = 1
     CartService.update_quantity(cart, item_id, quantity)
+    
+    if request.headers.get('HX-Request'):
+        items = cart.items.select_related('product', 'product__category').prefetch_related('product__gallery_images')
+        response = render(request, 'cart/_mini_cart.html', {'cart': cart, 'items': items})
+        response['HX-Trigger'] = 'cartUpdated'
+        return response
+    
     return redirect('cart:cart_detail')
 
 
@@ -98,4 +112,11 @@ def cart_clear(request):
     cart = get_or_create_cart(request)
     CartService.clear(cart)
     messages.success(request, 'سبد خرید خالی شد.')
+    
+    if request.headers.get('HX-Request'):
+        items = cart.items.select_related('product', 'product__category').prefetch_related('product__gallery_images')
+        response = render(request, 'cart/_mini_cart.html', {'cart': cart, 'items': items})
+        response['HX-Trigger'] = 'cartUpdated'
+        return response
+    
     return redirect('cart:cart_detail')

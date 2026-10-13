@@ -5,7 +5,17 @@
 """
 from django.contrib import admin
 
-from .models import ProductReview, ComparisonList, Address, ReturnRequest, SiteSettings
+from .models import ProductReview, ComparisonList, Address, ReturnRequest, SiteSettings, HeroSlide
+
+
+@admin.register(HeroSlide)
+class HeroSlideAdmin(admin.ModelAdmin):
+    list_display = ['title', 'order', 'is_active', 'created_at']
+    list_filter = ['is_active']
+    list_editable = ['order', 'is_active']
+    search_fields = ['title', 'subtitle']
+    ordering = ['order']
+    fields = ['title', 'subtitle', 'image', 'accent_image', 'button_text', 'link_url', 'order', 'is_active']
 
 
 @admin.register(ProductReview)
