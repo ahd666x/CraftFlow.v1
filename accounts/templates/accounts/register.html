@@ -29,13 +29,7 @@
                 </div>
 
                 <form method="post" class="space-y-5" 
-                      x-data="{ 
-                          showPassword: false, 
-                          showConfirmPassword: false,
-                          password: '',
-                          passwordStrength: 0,
-                          submitting: false 
-                      }" 
+                      x-data="registerForm()" 
                       @submit="submitting = true">
                     {% csrf_token %}
                     {% if form.non_field_errors %}
@@ -74,7 +68,8 @@
                                    id="{{ form.password1.id_for_label }}" 
                                    class="input pr-12" 
                                    :type="showPassword ? 'text' : 'password'"
-                                   @input="password = $event.target.value; calculateStrength()"
+                                   @input="calculateStrength()"
+                                   x-model="password"
                                    required>
                             <button type="button" 
                                     @click="showPassword = !showPassword" 
@@ -155,37 +150,4 @@
         </div>
     </div>
 </div>
-
-<script>
-function calculatePasswordStrength(password) {
-    let strength = 0;
-    if (password.length >= 8) strength++;
-    if (/[A-Z]/.test(password)) strength++;
-    if (/[a-z]/.test(password)) strength++;
-    if (/[0-9]/.test(password)) strength++;
-    if (/[^A-Za-z0-9]/.test(password)) strength++;
-    return Math.min(strength, 4);
-}
-
-function getStrengthText(strength) {
-    const texts = ['', 'بسیار ضعیف', 'ضعیف', 'متوسط', 'قوی', 'بسیار قوی'];
-    return texts[strength] || '';
-}
-
-document.addEventListener('alpine:init', () => {
-    Alpine.data('registerForm', () => ({
-        showPassword: false,
-        showConfirmPassword: false,
-        password: '',
-        passwordStrength: 0,
-        passwordStrengthText: '',
-        submitting: false,
-        
-        calculateStrength() {
-            this.passwordStrength = calculatePasswordStrength(this.password);
-            this.passwordStrengthText = getStrengthText(this.passwordStrength);
-        }
-    }));
-});
-</script>
 {% endblock %}

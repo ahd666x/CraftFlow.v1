@@ -118,7 +118,7 @@
       <h2 class="h6 mb-3"><i class="bi bi-bell"></i> هشدارهای عملیاتی ({{ alert_total }})</h2>
       <ul class="mb-0">
         {% for alert in alerts %}
-          <li class="{% if alert.severity == 'critical' %}text-danger{% elif alert.severity == 'warning' %}text-warning{% endif %}">
+          <li class="{% if alert.severity == 'danger' %}text-danger{% elif alert.severity == 'warning' %}text-warning{% elif alert.severity == 'info' %}text-info{% endif %}">
             <strong>{{ alert.title }}</strong> — {{ alert.message }}
             {% if alert.url %}<a href="{{ alert.url }}">رفتن</a>{% endif %}
           </li>

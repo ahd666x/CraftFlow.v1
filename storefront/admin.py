@@ -69,6 +69,11 @@ class SiteSettingsAdmin(admin.ModelAdmin):
             'production_days_min', 'production_days_max',
             'shipping_days_min', 'shipping_days_max',
         ]}),
+        ('نشان‌های اعتماد', {'fields': [
+            'enamad_logo', 'enamad_url',
+            'zarinpal_logo', 'zarinpal_url',
+            'warranty_years',
+        ]}),
     ]
 
     def has_add_permission(self, request):

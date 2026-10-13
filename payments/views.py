@@ -37,6 +37,14 @@ def _finish_payment(request, payment, result):
     order.paid_at = payment.paid_at
     order.save(update_fields=['status', 'paid_at'])
 
+    # Generate production tasks after successful payment
+    result = order.generate_tasks()
+    if not result.get('success'):
+        messages.warning(
+            request,
+            f"پرداخت موفق، اما صدور دستور تولید با مشکل مواجه شد: {result.get('error')}",
+        )
+
     return redirect('storefront:order_detail', order_id=order.id)
 
 
@@ -57,18 +65,20 @@ def payment_create(request, order_id):
     if not created and payment.status == 'success':
         return redirect('storefront:order_detail', order_id=order.id)
 
-    gateway_name = request.POST.get('gateway', payment.gateway) if request.method == 'POST' else payment.gateway
-    payment.gateway = gateway_name
-    payment.save(update_fields=['gateway'])
+    if request.method == 'POST':
+        gateway_name = request.POST.get('gateway', payment.gateway)
+        payment.gateway = gateway_name
+        payment.save(update_fields=['gateway'])
 
-    gateway = PaymentGatewayFactory.get(payment.gateway)
-    result = gateway.pay(request, payment)
-    if result.get('success'):
-        if request.method == 'GET':
-            return render(request, 'payments/payment_create.html', {'order': order, 'payment': payment})
-        return redirect(result['url'])
+        gateway = PaymentGatewayFactory.get(payment.gateway)
+        result = gateway.pay(request, payment)
+        if result.get('success'):
+            return redirect(result['url'])
 
-    return render(request, 'payments/payment_error.html', {'error': result.get('error')})
+        return render(request, 'payments/payment_error.html', {'error': result.get('error')})
+
+    # GET request - show payment method selection
+    return render(request, 'payments/payment_create.html', {'order': order, 'payment': payment})
 
 
 @login_required
@@ -98,13 +108,17 @@ def payment_verify(request):
             'error': f'مبلغ پرداخت ({payment.amount}) با مبلغ سفارش ({expected_amount}) مطابقت ندارد.'
         })
 
-    # پرداخت درب_home: بدون پرداخت واقعی، سفارش paid نمی‌شود.
+    # پرداخت درب منزل: بدون پرداخت واقعی، سفارش paid نمی‌شود.
     # Payment در حالت `pending` می‌ماند تا مدیر هنگام تحویل دستی تغییر دهد.
     if payment.gateway == 'cash_on_delivery':
         messages.success(
             request,
             'سفارش شما ثبت شد. مبلغ آن هنگام تحویل پرداخت خواهد شد.',
         )
+        return redirect('storefront:order_detail', order_id=order.id)
+
+    # Idempotency check - if already successfully paid, don't verify again
+    if payment.status == 'success':
         return redirect('storefront:order_detail', order_id=order.id)
 
     gateway = PaymentGatewayFactory.get(payment.gateway)

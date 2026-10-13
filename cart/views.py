@@ -38,11 +38,17 @@ def cart_add(request, product_id):
     cart = get_or_create_cart(request)
 
     def _int_or_none(value):
+        """Parse integer value, returning None only for empty/invalid input.
+        
+        Returns 0 for explicit '0' input to allow validation to catch it
+        as an out-of-range value rather than silently falling back to default.
+        """
+        if value is None or value == '':
+            return None
         try:
-            parsed = int(value)
+            return int(value)
         except (TypeError, ValueError):
             return None
-        return parsed if parsed > 0 else None
 
     try:
         quantity = int(request.POST.get('quantity', 1))

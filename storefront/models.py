@@ -161,6 +161,7 @@ class SiteSettings(TimeStampedModel):
     یک رکورد تنظیمات دارد (Singleton) تا ادمین بدون نیاز به دسترسی
     مستقیم به دیتابیس بتواند لوگو و عکس کاور را عوض کند.
     """
+    singleton_enforcer = models.CharField(max_length=1, default='a', editable=False, unique=True)
     logo = models.ImageField(upload_to='site/', blank=True, null=True, verbose_name='لوگو')
     cover_image = models.ImageField(upload_to='site/', blank=True, null=True, verbose_name='عکس کاور')
     site_name = models.CharField(max_length=120, default='فروشگاه', verbose_name='نام سایت')
@@ -192,17 +193,21 @@ class SiteSettings(TimeStampedModel):
     def __str__(self):
         return self.site_name
 
-    def save(self, *args, **kwargs):
-        # حذف رکورد قبلی برای نگه داشتن تنها یک نمونه (singleton)
-        SiteSettings.objects.exclude(pk=self.pk).delete()
-        super().save(*args, **kwargs)
-
     @classmethod
     def get_settings(cls):
-        obj = cls.objects.first()
-        if not obj:
-            obj = cls.objects.create()
+        from django.db import transaction
+        with transaction.atomic():
+            obj, _ = cls.objects.select_for_update().get_or_create(
+                singleton_enforcer='a',
+                defaults={'site_name': 'فروشگاه'}
+            )
         return obj
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        # Invalidate cache when settings are updated
+        from django.core.cache import cache
+        cache.delete('site_settings')
 
     @property
     def estimated_delivery_min(self):

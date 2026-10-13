@@ -92,3 +92,27 @@ def subtract(value, arg):
         return float(value) - float(arg)
     except (TypeError, ValueError):
         return value
+
+
+@register.filter
+def mul(value, arg):
+    """ضرب دو عدد (value * arg)."""
+    try:
+        return float(value) * float(arg)
+    except (TypeError, ValueError):
+        return value
+
+
+@register.simple_tag
+def active_filter_count(q=None, selected_category=None, min_price=None, max_price=None):
+    """تعداد فیلترهای فعال را برمی‌گرداند."""
+    count = 0
+    if q:
+        count += 1
+    if selected_category:
+        count += 1
+    if min_price:
+        count += 1
+    if max_price:
+        count += 1
+    return count

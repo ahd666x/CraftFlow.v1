@@ -10,36 +10,9 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.AddField(
-            model_name='heroslide',
-            name='accent_image',
-            field=models.ImageField(blank=True, null=True, upload_to='hero/', verbose_name='تصویر تأکید (PNG بدون پس‌زمینه)'),
-        ),
         migrations.AlterField(
             model_name='heroslide',
             name='subtitle',
             field=models.CharField(blank=True, max_length=200, verbose_name='زیرتیتر'),
-        ),
-        # Rename cta_text -> button_text and cta_url -> link_url at database level
-        migrations.RunSQL(
-            sql=[
-                'ALTER TABLE storefront_heroslide RENAME COLUMN cta_text TO button_text;',
-                'ALTER TABLE storefront_heroslide RENAME COLUMN cta_url TO link_url;',
-            ],
-            reverse_sql=[
-                'ALTER TABLE storefront_heroslide RENAME COLUMN button_text TO cta_text;',
-                'ALTER TABLE storefront_heroslide RENAME COLUMN link_url TO cta_url;',
-            ],
-        ),
-        # Update field definitions to match new specs
-        migrations.AlterField(
-            model_name='heroslide',
-            name='button_text',
-            field=models.CharField(default='مشاهده محصولات', max_length=40, verbose_name='متن دکمه'),
-        ),
-        migrations.AlterField(
-            model_name='heroslide',
-            name='link_url',
-            field=models.CharField(blank=True, max_length=200, verbose_name='لینک دکمه (خالی = صفحه محصولات)'),
         ),
     ]

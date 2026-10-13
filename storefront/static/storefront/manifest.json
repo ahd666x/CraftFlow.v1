@@ -2,7 +2,7 @@
     "name": "فروشگاه کرافت‌فلو",
     "short_name": "کرافت‌فلو",
     "description": "فروشگاه آنلاین مبلمان و چوب با ابعاد دلخواه",
-    "start_url": "/",
+    "start_url": "/shop/",
     "display": "standalone",
     "background_color": "#ffffff",
     "theme_color": "#574534",

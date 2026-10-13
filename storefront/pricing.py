@@ -1,5 +1,5 @@
 """
-منطق مشترک محاسبه قیمت بر اساس تغییر ابعاد سفارشی محصول (طول/عرض/ارتفاع).
+محاسبه منطق مشترک محاسبه قیمت بر اساس تغییر ابعاد سفارشی محصول (طول/عرض/ارتفاع).
 تنها منبع محاسبه قیمت ابعاد سفارشی در کل لایه‌ی فروشگاه — هم در سبد خرید
 (نمایش لحظه‌ای) و هم هنگام ثبت نهایی سفارش باید از همین تابع استفاده شود تا
 قیمت سبد و فاکتور نهایی هرگز مغایرت نداشته باشند.
@@ -7,6 +7,13 @@
 فرمول: برای هر بعد جداگانه، اختلاف سانتی‌متری نسبت به پیش‌فرض ضربدر درصد
 افزایش قیمت آن بعد. مجموع سه بعد در قیمت نهایی لحاظ می‌شود.
 """
+
+from decimal import Decimal, ROUND_HALF_UP
+
+
+def _round_half_up(value):
+    """Round half up (matching JavaScript's Math.round behavior)."""
+    return int(Decimal(str(value)).quantize(Decimal('1'), rounding=ROUND_HALF_UP))
 
 
 def _dimension_diff(custom, default):
@@ -64,4 +71,4 @@ def calculate_dimension_price(
 
     if final_price < 0:
         return 0
-    return int(round(final_price))
+    return _round_half_up(final_price)

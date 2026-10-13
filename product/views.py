@@ -517,6 +517,11 @@ def admin_edit_order_item(request, item_id):
         item_form = AdminEditOrderItemForm(request.POST, instance=item)
         color_form = ColorSelectionForm(request.POST)
 
+        # Capture original dimension values BEFORE form validation modifies the instance
+        original_length = item.length
+        original_width = item.width
+        original_height = item.height
+
         if item_form.is_valid() and color_form.is_valid():
             with transaction.atomic():
                 updated_item = item_form.save(commit=False)
@@ -524,14 +529,29 @@ def admin_edit_order_item(request, item_id):
                 product_changed = updated_item.product_id != new_product.id
                 if product_changed:
                     updated_item.product = new_product
+                
+                # Build size string from dimensions for legacy pricing compatibility
+                new_length = item_form.cleaned_data.get('length')
+                new_width = item_form.cleaned_data.get('width')
+                new_height = item_form.cleaned_data.get('height')
+                size_parts = [str(v) for v in (new_length, new_width, new_height) if v]
+                updated_item.size = 'x'.join(size_parts)
+                
                 manual_price = item_form.cleaned_data.get('unit_price')
                 if 'unit_price' in item_form.changed_data and manual_price not in (None, ''):
                     updated_item.unit_price = manual_price
                     updated_item._skip_price_calc = True
-                elif product_changed or {'length', 'width', 'height'} & set(item_form.changed_data):
-                    pass
                 else:
-                    updated_item._skip_price_calc = True
+                    # Check if dimensions actually changed from original values
+                    dimensions_changed = (
+                        new_length != original_length or
+                        new_width != original_width or
+                        new_height != original_height
+                    )
+                    if product_changed or dimensions_changed:
+                        pass  # Allow price recalculation
+                    else:
+                        updated_item._skip_price_calc = True
                 updated_item.save()
                 updated_item.sync_packaging_units()
 

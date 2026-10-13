@@ -53,15 +53,7 @@
                 {% if addresses %}
                 <div class="mb-4">
                     <label class="label" for="address_id">آدرس‌های ذخیره‌شده</label>
-                    <select id="address_id" name="address_id" class="select"
-                            x-data
-                            @change="
-                                var textarea = document.getElementById('shipping_address');
-                                var saved = JSON.parse(document.getElementById('saved-addresses').textContent);
-                                if (this.value && saved[this.value]) {
-                                    textarea.value = saved[this.value];
-                                }
-                            ">
+                    <select id="address_id" name="address_id" class="select">
                         <option value="">— انتخاب کنید —</option>
                         {% for address in addresses %}
                         <option value="{{ address.pk }}">{{ address }}</option>
@@ -137,7 +129,7 @@
                 {# Tax #}
                 {% if cart.tax_amount > 0 %}
                 <div class="flex items-center justify-between text-sm text-stone-600">
-                    <span>مالیات ({{ site_settings.tax_rate|floatformat:0|add:"%" }})</span>
+                    <span>مالیات ({{ site_settings.tax_percent }}%)</span>
                     <span>{{ cart.tax_amount|fa_price }} تومان</span>
                 </div>
                 {% endif %}

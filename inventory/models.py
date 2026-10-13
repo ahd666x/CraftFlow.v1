@@ -1,7 +1,7 @@
 from django.db import models
 from django.conf import settings
 from django.contrib.auth.models import User
-from django.db.models import Sum, Case, When, Value, DecimalField, F
+from django.db.models import Sum, Case, When, Value, DecimalField, F, Q
 from django.utils import timezone
 
 
@@ -356,8 +356,10 @@ class DailyMaterialQueueSource(models.Model):
         ordering = ['queue', 'kind', 'id']
         constraints = [
             # Prevent duplicate sources for same queue + identifying fields
+            # Only apply when the identifying fields are not null (SQLite treats NULL as distinct)
             models.UniqueConstraint(
                 fields=['queue', 'kind', 'production_task', 'painting_stage', 'defect', 'carryover_from', 'raw_material'],
+                condition=~Q(production_task__isnull=True) & ~Q(painting_stage__isnull=True) & ~Q(defect__isnull=True) & ~Q(carryover_from__isnull=True),
                 name='unique_queue_source_identifiers',
             ),
         ]
@@ -480,7 +482,10 @@ class StockCount(models.Model):
         return f"شمارش {self.date} — {self.get_status_display()}"
 
     def approve(self, approved_by):
-        """تأیید سند شمارش و ایجاد حرکات اصلاح برای خطوط با اختلاف."""
+        """تأیید سند شمارش و ایجاد حرکات اصلاح برای خطوط با اختلاف.
+        
+        اختلاف با موجودی فعلی محاسبه می‌شود، نه موجودی لحظه شمارش.
+        """
         if self.status == 'approved':
             raise ValueError('این سند شمارش قبلاً تأیید شده است.')
         from django.db import transaction
@@ -488,7 +493,9 @@ class StockCount(models.Model):
 
         with transaction.atomic():
             for line in self.lines.all():
-                diff = line.counted_quantity - line.system_quantity
+                # Use current stock instead of system_quantity at time of count
+                current_stock = line.raw_material.current_stock
+                diff = line.counted_quantity - current_stock
                 if diff == 0:
                     continue
                 # Determine movement type based on sign of difference
@@ -497,7 +504,6 @@ class StockCount(models.Model):
                 else:
                     movement_type = 'adjust_out'
                     # Prevent negative stock
-                    current_stock = line.raw_material.current_stock
                     if current_stock + diff < 0:
                         raise ValueError(
                             f'موجودی «{line.raw_material.name}» برای اصلاح شمارش کافی نیست. '
@@ -508,7 +514,7 @@ class StockCount(models.Model):
                     raw_material=line.raw_material,
                     movement_type=movement_type,
                     quantity=abs(diff),
-                    note=f'اصلاح شمارش انبار: {self.date} (سیستم: {line.system_quantity}, شمارش: {line.counted_quantity})',
+                    note=f'اصلاح شمارش انبار: {self.date} (سیستم: {current_stock}, شمارش: {line.counted_quantity})',
                     created_by=approved_by,
                 )
             self.status = 'approved'

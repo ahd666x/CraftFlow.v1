@@ -36,6 +36,247 @@
     <link rel="stylesheet" href="{% static 'storefront/css/vazirmatn-fonts.css' %}">
     <link rel="stylesheet" href="{% static 'storefront/css/style.css' %}">
 
+    <script>
+        // Register Alpine components BEFORE Alpine initializes
+        document.addEventListener('alpine:init', function () {
+            var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+            Alpine.directive('reveal', function (el, { modifiers }) {
+                el.classList.add('reveal');
+                var i = modifiers.indexOf('delay');
+                if (i !== -1 && modifiers[i + 1]) {
+                    el.style.transitionDelay = modifiers[i + 1] + 'ms';
+                }
+                if (reduce || !('IntersectionObserver' in window)) {
+                    el.classList.add('is-visible');
+                    return;
+                }
+                var io = new IntersectionObserver(function (entries) {
+                    entries.forEach(function (e) {
+                        if (e.isIntersecting) {
+                            e.target.classList.add('is-visible');
+                            io.unobserve(e.target);
+                        }
+                    });
+                }, { threshold: 0.15 });
+                io.observe(el);
+            });
+
+            Alpine.data('heroSlider', function (count) {
+                return {
+                    current: 0,
+                    timer: null,
+                    paused: false,
+                    init: function () {
+                        if (reduce || count < 2) return;
+                        var self = this;
+                        this.timer = setInterval(function () {
+                            if (!self.paused && !document.hidden) self.next();
+                        }, 6000);
+                    },
+                    destroy: function () { clearInterval(this.timer); },
+                    next: function () { this.current = (this.current + 1) % count; },
+                    prev: function () { this.current = (this.current - 1 + count) % count; },
+                    go: function (i) { this.current = i; },
+                };
+            });
+
+            Alpine.data('dimensionPrice', function (config) {
+                var axes = ['length', 'width', 'height'];
+
+                function toAxis(key, spec) {
+                    return {
+                        value: null,
+                        def: (spec.def === null || spec.def === undefined) ? null : Number(spec.def),
+                        editable: !!spec.editable,
+                        percent: Number(spec.percent || 0),
+                    };
+                }
+
+                return {
+                    basePrice: Number(config.basePrice || 0),
+                    dims: {
+                        length: toAxis('length', config.dims.length),
+                        width: toAxis('width', config.dims.width),
+                        height: toAxis('height', config.dims.height),
+                    },
+                    quantity: 1,
+                    adding: false,
+
+                    diffFor: function (axis) {
+                        var d = this.dims[axis];
+                        if (!d.editable || d.def === null || d.value === null || d.value === '') {
+                            return 0;
+                        }
+                        return Number(d.value) - d.def;
+                    },
+
+                    unitPrice: function () {
+                        var diffs = 0;
+                        for (var i = 0; i < axes.length; i++) {
+                            var axis = axes[i];
+                            diffs += this.diffFor(axis) * this.dims[axis].percent;
+                        }
+                        var finalPrice = this.basePrice + this.basePrice * (diffs / 100);
+                        return finalPrice < 0 ? 0 : Math.round(finalPrice);
+                    },
+
+                    total: function () {
+                        var qty = parseInt(this.quantity, 10);
+                        if (!qty || qty < 1) {
+                            qty = 1;
+                        }
+                        return this.unitPrice() * qty;
+                    },
+
+                    recalc: function () {
+                        // placeholder for @input
+                    },
+                };
+            });
+
+            Alpine.data('productGallery', function (config) {
+                var thumbnails = config?.thumbnails || 0;
+                return {
+                    mainIndex: config?.mainIndex || 0,
+                    lightboxOpen: false,
+                    lightboxIndex: 0,
+                    init: function () {
+                        this.mainIndex = config?.mainIndex || 0;
+                    },
+                    next: function () {
+                        if (thumbnails > 1) {
+                            this.mainIndex = (this.mainIndex + 1) % thumbnails;
+                        }
+                    },
+                    prev: function () {
+                        if (thumbnails > 1) {
+                            this.mainIndex = (this.mainIndex - 1 + thumbnails) % thumbnails;
+                        }
+                    },
+                    go: function (i) {
+                        if (i >= 0 && i < thumbnails) {
+                            this.mainIndex = i;
+                        }
+                    },
+                    openLightbox: function () {
+                        this.lightboxOpen = true;
+                        this.lightboxIndex = this.mainIndex;
+                    },
+                    closeLightbox: function () {
+                        this.lightboxOpen = false;
+                    },
+                    lightboxNext: function () {
+                        if (thumbnails > 1) {
+                            this.lightboxIndex = (this.lightboxIndex + 1) % thumbnails;
+                        }
+                    },
+                    lightboxPrev: function () {
+                        if (thumbnails > 1) {
+                            this.lightboxIndex = (this.lightboxIndex - 1 + thumbnails) % thumbnails;
+                        }
+                    },
+                };
+            });
+
+            Alpine.data('dimensionInput', function (config) {
+                return {
+                    axis: config?.axis || 'length',
+                    value: config?.def || null,
+                    def: config?.def || null,
+                    editable: !!config?.editable,
+                    min: config?.min || 1,
+                    max: config?.max || 1000,
+                    step: config?.step || 1,
+                    percent: config?.percent || 0,
+                    error: '',
+                    init: function () {
+                        this.value = this.def;
+                    },
+                    increment: function () {
+                        if (!this.editable) return;
+                        if (this.value === null || this.value === '') {
+                            this.value = this.def || this.min;
+                        } else if (this.value < this.max) {
+                            this.value += this.step;
+                        }
+                        this.validate();
+                        this.$dispatch('dimension-changed', { axis: this.axis, value: this.value });
+                    },
+                    decrement: function () {
+                        if (!this.editable) return;
+                        if (this.value === null || this.value === '') {
+                            this.value = this.def || this.min;
+                        } else if (this.value > this.min) {
+                            this.value -= this.step;
+                        }
+                        this.validate();
+                        this.$dispatch('dimension-changed', { axis: this.axis, value: this.value });
+                    },
+                    validate: function () {
+                        this.error = '';
+                        if (!this.editable) return;
+                        var val = this.value;
+                        if (val === null || val === '' || val === undefined) {
+                            this.error = 'مقدار وارد نشده است';
+                            return;
+                        }
+                        var num = Number(val);
+                        if (isNaN(num)) {
+                            this.error = 'مقدار نامعتبر است';
+                            return;
+                        }
+                        if (num < this.min || num > this.max) {
+                            this.error = 'باید بین ' + this.min + ' تا ' + this.max + ' باشد';
+                            return;
+                        }
+                        this.value = num;
+                    },
+                    recalc: function () {
+                        this.validate();
+                        this.$dispatch('dimension-changed', { axis: this.axis, value: this.value });
+                    },
+                };
+            });
+
+            Alpine.data('dimensionBox', function () {
+                return {
+                    init: function () {},
+                };
+            });
+
+            Alpine.data('miniCart', function () {
+                return {
+                    loaded: false,
+                    miniCartUrl: '',
+                    init: function () {
+                        this.miniCartUrl = this.$el.getAttribute('data-mini-cart-url') || '/cart/mini/';
+                    },
+                    loadContent: function () {
+                        if (this.loaded) return;
+                        var drawerContent = document.getElementById('mini-cart-content');
+                        if (!drawerContent) return;
+
+                        fetch(this.miniCartUrl, {
+                            headers: { 'HX-Request': 'true' }
+                        })
+                        .then(function (response) { return response.text(); })
+                        .then(function (html) {
+                            drawerContent.innerHTML = html;
+                            this.loaded = true;
+                        }.bind(this))
+                        .catch(function (err) {
+                            console.error('Mini cart load failed:', err);
+                            drawerContent.innerHTML = '<p class="text-center text-red-600 p-4">خطا در بارگذاری سبد</p>';
+                        });
+                    },
+                    close: function () {
+                        this.$dispatch('close-mini-cart');
+                    }
+                };
+            });
+        });
+    </script>
     <script defer src="{% static 'storefront/js/alpine.min.js' %}"></script>
     <script defer src="{% static 'storefront/js/htmx.min.js' %}"></script>
     <script defer src="{% static 'storefront/js/storefront.js' %}"></script>

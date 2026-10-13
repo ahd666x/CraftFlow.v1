@@ -600,7 +600,7 @@ def daily_closing(request):
 
 
 @login_required
-@day_close_required
+@warehouse_or_manager_required
 @require_POST
 def daily_closing_confirm(request):
     """ثبت سند «روز بررسی و تأیید شد»."""
@@ -1138,11 +1138,21 @@ def material_edit(request, material_id):
 def material_delete(request, material_id):
     material = get_object_or_404(RawMaterial, pk=material_id)
     name = material.name
-    material.delete()
-    messages.success(request, f'ماده «{name}» حذف شد.')
-    if _is_xhr(request):
-        return JsonResponse({'success': True})
-    return redirect('inventory:material_list')
+    try:
+        material.delete()
+        messages.success(request, f'ماده «{name}» حذف شد.')
+        if _is_xhr(request):
+            return JsonResponse({'success': True})
+        return redirect('inventory:material_list')
+    except Exception as e:
+        # Handle ProtectedError from StockMovement foreign key
+        if 'ProtectedError' in str(type(e)) or 'protected' in str(e).lower():
+            messages.error(request, f'ماده «{name}» قابل حذف نیست چون دارای گردش انبار است. ابتدا گردش‌های مرتبط را حذف کنید.')
+        else:
+            messages.error(request, f'خطا در حذف: {str(e)}')
+        if _is_xhr(request):
+            return JsonResponse({'success': False, 'error': str(e)}, status=400)
+        return redirect('inventory:material_list')
 
 
 @login_required

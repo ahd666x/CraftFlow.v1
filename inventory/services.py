@@ -1236,9 +1236,8 @@ def execute_daily_return(*, queue_id, returned_by, returned_quantity, note=''):
         * مادهٔ برگشتی دوباره موجودی عمومی انبار است و برای کارگر امانت یا
           رزروی ساخته نمی‌شود.
 
-    بازگشت جزئی مجاز است: چند بازگشت تا وقتی جمعشان از مقدار تحویل‌شده بیشتر
-    نشود ثبت می‌شود. وقتی چیزی برای برگشت نماند، درخواست بعدی رد می‌شود
-    (idempotent).
+    هر ردیف فقط یک‌بار قابل برگشت است (بازگشت جزئی هم مجاز نیست).
+    وقتی یک‌بار برگشت ثبت شد، درخواست‌های بعدی رد می‌شوند.
 
     ردیف صف برای کل عملیات قفل می‌شود، پس دو درخواست هم‌زمان هرگز دو حرکت
     برگشت برای یک ردیف نمی‌سازند.
@@ -1268,13 +1267,13 @@ def execute_daily_return(*, queue_id, returned_by, returned_quantity, note=''):
     if delivered <= 0:
         raise HandoverError('این ردیف هنوز تحویل نشده است؛ ابتدا تحویل را ثبت کنید.')
 
-    max_returnable = _q2(delivered - already_returned)
-    if max_returnable <= 0:
-        raise HandoverError('همهٔ مقدار تحویل‌شدهٔ این ردیف قبلاً برگشت داده شده است.')
-    if ret > max_returnable:
+    # Enforce one return per row rule
+    if already_returned > 0:
+        raise HandoverError('این ردیف قبلاً برگشت داشته است؛ هر ردیف فقط یک‌بار قابل برگشت است.')
+
+    if ret > delivered:
         raise HandoverError(
-            f'مقدار برگشتی ({ret}) نمی‌تواند از مقدار تحویل‌شدهٔ برگشت‌نشده '
-            f'({max_returnable}) بیشتر باشد.'
+            f'مقدار برگشتی ({ret}) نمی‌تواند از مقدار تحویل‌شده ({delivered}) بیشتر باشد.'
         )
 
     # Get primary task and order_item for traceability
@@ -1290,7 +1289,7 @@ def execute_daily_return(*, queue_id, returned_by, returned_quantity, note=''):
         created_by=returned_by,
         note=(note or '')[:255] or f'بازگشت روزانه — {queue.raw_material.name} از {queue.worker}',
     )
-    queue.returned_quantity = _q2(already_returned + ret)
+    queue.returned_quantity = ret
     queue.status = _delivery_status(queue)
     # planned_quantity و منابع برنامه‌ریزی دست‌نخورده می‌مانند.
     queue.recalculate_consumption()
@@ -1658,6 +1657,9 @@ def daily_material_report(date, *, worker_id=None, material_id=None, status=None
     خروجی: dict با کلیدهای ``rows`` (صف آمادهٔ نمایش/صفحه‌بندی) و ``summary``.
     هیچ نوشتنی در دیتابیس انجام نمی‌شود و planned_quantity دست‌نخورده می‌ماند.
     """
+    # First sync the queue to ensure planned quantities are up to date
+    _, diagnostics = sync_queue_for_date(date)
+
     base = daily_queue_filtered_queryset(
         date, worker_id=worker_id, material_id=material_id, status=status,
     )
@@ -1671,9 +1673,6 @@ def daily_material_report(date, *, worker_id=None, material_id=None, status=None
             'raw_material__name',
         )
     )
-
-    # Get diagnostics from sync
-    _, diagnostics = sync_queue_for_date(date)
 
     return {
         'rows': rows_qs,
@@ -1718,15 +1717,13 @@ def daily_queue_action_state(queue, *, with_suggestion=True, locked=None):
         and no_returns
         and delivered > 0
     )
-    # Each row may be returned at most once.  ``no_returns`` is the authoritative
-    # record: ``returned_quantity`` is only ever set by execute_daily_return,
-    # and execute_daily_return itself now refuses a second call.
+    # Each row may be returned at most once. ``already_returned > 0`` means
+    # a return has already been registered for this row.
     can_return = (
         not locked
         and queue.status not in ('cancelled', 'returned')
         and delivered > 0
-        and max_returnable > 0
-        and no_returns
+        and already_returned == 0
     )
 
     if with_suggestion:
@@ -1943,7 +1940,7 @@ def confirm_daily_closing(*, date, closed_by, note='', force=False):
     try:
         closing = DailyMaterialClosing.objects.create(
             work_date=date,
-            status='locked',  # Auto-lock on confirm
+            status='confirmed',
             closed_by=closed_by,
             locked_by=closed_by,
             locked_at=timezone.now(),

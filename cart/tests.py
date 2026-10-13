@@ -135,7 +135,7 @@ class DimensionLockTests(TestCase):
         )
         factory = RequestFactory()
         request = factory.post('/checkout/', {
-            'shipping_address': 'آدرس', 'name': 'خریدار', 'phone': '0912',
+            'shipping_address': 'آدرس', 'name': 'خریدار', 'phone': '09123456789',
         })
         setattr(request, 'session', 'session')
         setattr(request, '_messages', FallbackStorage(request))

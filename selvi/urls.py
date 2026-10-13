@@ -35,7 +35,7 @@ urlpatterns = [
     ),
     re_path(
         r'^media/(?P<path>.*)$',
-        login_required(serve),
+        serve,
         {'document_root': settings.MEDIA_ROOT}
     ),
     path('', include('product.urls')),

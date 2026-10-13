@@ -47,7 +47,7 @@ class CategorySitemap(Sitemap):
 
 
 class HeroSlideSitemap(Sitemap):
-    changefreq = 'monthly'
+    changefreq = 'daily'
     priority = 0.6
 
     def items(self):

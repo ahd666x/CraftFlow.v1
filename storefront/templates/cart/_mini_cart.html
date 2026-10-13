@@ -1,5 +1,5 @@
 {% load storefront_filters %}
-<div class="space-y-4" id="mini-cart-content">
+<div class="space-y-4">
     {% if items %}
         {% for item in items %}
         <div class="flex gap-3">
@@ -42,7 +42,7 @@
             <div class="flex items-center gap-2">
                 <form method="post" action="{% url 'cart:cart_update' item.id %}"
                       hx-post="{% url 'cart:cart_update' item.id %}"
-                      hx-target="#mini-cart-content" hx-swap="outerHTML"
+                      hx-target="#mini-cart-content" hx-swap="innerHTML"
                       class="flex items-center gap-2">
                     {% csrf_token %}
                     <button type="button" data-cart-step="-1" aria-label="کاهش تعداد"
@@ -61,7 +61,7 @@
 
             <form method="post" action="{% url 'cart:cart_remove' item.id %}"
                   hx-post="{% url 'cart:cart_remove' item.id %}"
-                  hx-target="#mini-cart-content" hx-swap="outerHTML">
+                  hx-target="#mini-cart-content" hx-swap="innerHTML">
                 {% csrf_token %}
                 <button type="submit" class="btn-outline px-3 py-1.5 text-xs"
                         aria-label="حذف {{ item.product.name }}">✕</button>
@@ -125,7 +125,7 @@
 
             <form method="post" action="{% url 'cart:cart_clear' %}"
                   hx-post="{% url 'cart:cart_clear' %}"
-                  hx-target="#mini-cart-content" hx-swap="outerHTML">
+                  hx-target="#mini-cart-content" hx-swap="innerHTML">
                 {% csrf_token %}
                 <button type="submit" class="btn-outline w-full">خالی کردن سبد</button>
             </form>

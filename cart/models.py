@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.db import models
+from django.utils.functional import cached_property
 
 from storefront.base import TimeStampedModel
 from storefront.models import SiteSettings
@@ -28,11 +29,25 @@ class Cart(TimeStampedModel):
             return f"سبد خرید {self.user.username}"
         return f"سبد خرید مهمان ({self.session_key})"
 
-    @property
-    def total_items(self):
-        return sum(item.quantity for item in self.items.all())
+    def _get_items(self):
+        """Cache items queryset to avoid repeated queries."""
+        if not hasattr(self, '_cached_items'):
+            self._cached_items = list(self.items.select_related('product').all())
+        return self._cached_items
 
-    @property
+    @cached_property
+    def total_items(self):
+        return sum(item.quantity for item in self._get_items())
+
+    @cached_property
+    def total_price(self):
+        return sum(item.total_price for item in self._get_items())
+
+    @cached_property
+    def _site_settings(self):
+        return SiteSettings.get_settings()
+
+    @cached_property
     def discount_amount(self):
         """مبلغ تخفیف محاسبه‌شده بر اساس کد فعلی سبد."""
         if not self.discount or not self.discount.is_valid:
@@ -42,37 +57,42 @@ class Cart(TimeStampedModel):
             return int(total * self.discount.value / 100)
         return min(self.discount.value, total)
 
-    @property
-    def total_price(self):
-        return sum(item.total_price for item in self.items.all())
-
-    @property
+    @cached_property
     def shipping_cost(self):
-        """هزینه ارسال - رایگان اگر بیش از آستانه باشد."""
-        settings = SiteSettings.get_settings()
-        if self.total_price >= settings.free_shipping_threshold:
+        """هزینه ارسال - رایگان اگر بیش از آستانه باشد.
+        
+        اگر free_shipping_threshold برابر 0 باشد، یعنی ارسال رایگان غیرفعال است.
+        """
+        settings = self._site_settings
+        if settings.free_shipping_threshold > 0 and self.total_price >= settings.free_shipping_threshold:
             return 0
         return settings.shipping_cost
 
-    @property
+    @cached_property
     def tax_amount(self):
         """مبلغ مالیات بر اساس نرخ تنظیمات."""
-        settings = SiteSettings.get_settings()
+        settings = self._site_settings
         return int(self.total_price * settings.tax_rate)
 
-    @property
+    @cached_property
     def final_price(self):
         return max(self.total_price - self.discount_amount + self.shipping_cost + self.tax_amount, 0)
 
-    @property
+    @cached_property
     def estimated_delivery_min(self):
-        settings = SiteSettings.get_settings()
-        return settings.estimated_delivery_min
+        return self._site_settings.estimated_delivery_min
 
-    @property
+    @cached_property
     def estimated_delivery_max(self):
-        settings = SiteSettings.get_settings()
-        return settings.estimated_delivery_max
+        return self._site_settings.estimated_delivery_max
+
+    def _clear_cached_properties(self):
+        """Clear cached properties when cart items change."""
+        for attr in ['total_items', 'total_price', 'discount_amount', 'shipping_cost',
+                     'tax_amount', 'final_price', 'estimated_delivery_min',
+                     'estimated_delivery_max', '_site_settings', '_cached_items']:
+            if hasattr(self, attr):
+                delattr(self, attr)
 
 
 class CartItem(TimeStampedModel):
@@ -94,8 +114,12 @@ class CartItem(TimeStampedModel):
     class Meta:
         verbose_name = "آیتم سبد خرید"
         verbose_name_plural = "آیتم‌های سبد خرید"
-        # توجه: unique_together ندارد، چون یک محصول می‌تواند با ابعاد
-        # سفارشی متفاوت چند بار در سبد باشد.
+        constraints = [
+            models.UniqueConstraint(
+                fields=['cart', 'product', 'custom_length', 'custom_width', 'custom_height'],
+                name='unique_cart_item_per_dimensions'
+            )
+        ]
 
     def __str__(self):
         return f"{self.product.name} - {self.quantity}"

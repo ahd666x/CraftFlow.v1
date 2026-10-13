@@ -207,7 +207,7 @@ class OrderItemCustomDimensionsTests(TestCase):
         request = factory.post('/checkout/', {
             'shipping_address': 'آدرس',
             'name': 'خریدار',
-            'phone': '0912',
+            'phone': '09123456789',
         })
         setattr(request, 'session', 'session')
         setattr(request, '_messages', FallbackStorage(request))
@@ -219,7 +219,8 @@ class OrderItemCustomDimensionsTests(TestCase):
 
     def test_parse_size_string_with_height(self):
         from product.utils import parse_size_string
-        self.assertEqual(parse_size_string('50'), {'length': 50, 'width': 50})
+        # Single number -> length only (legacy 1D format)
+        self.assertEqual(parse_size_string('50'), {'length': 50})
         self.assertEqual(parse_size_string('50x30'), {'length': 50, 'width': 30})
         self.assertEqual(
             parse_size_string('50x30x40'),
@@ -339,7 +340,7 @@ class CheckoutTests(TestCase):
         response = self.client.post('/shop/checkout/', {
             'shipping_address': 'آدرس تست',
             'name': 'خریدار',
-            'phone': '0912',
+            'phone': '09123456789',
         })
         self.assertEqual(response.status_code, 302)
         self.assertTrue(Order.objects.filter(user=self.user).exists())

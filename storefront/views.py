@@ -117,14 +117,18 @@ def product_list(request):
         .filter(reviews__is_active=True)
         .select_related('category')
         .prefetch_related('gallery_images')
-        .order_by('-rev_count')[:6]
-    ).distinct()
+    ).order_by('-rev_count').distinct()[:6]
+
+    current_category = None
+    if category_slug:
+        current_category = ProductCategory.objects.filter(slug=category_slug, is_active=True).first()
 
     return render(request, 'storefront/product_list.html', {
         'page_obj': page_obj,
         'categories': ProductCategory.objects.filter(is_active=True),
         'q': q,
         'selected_category': category_slug,
+        'current_category': current_category,
         'sort': sort,
         'min_price': min_price,
         'max_price': max_price,
@@ -197,7 +201,7 @@ def review_create(request, slug):
     if request.headers.get('HX-Request'):
         # Return updated reviews list for HTMX
         reviews = product.reviews.filter(is_active=True).select_related('user')
-        return render(request, 'storefront/partials/reviews_list.html', {'reviews': reviews})
+        return render(request, 'storefront/partials/reviews_list.html', {'reviews': reviews, 'product': product})
     
     return redirect('storefront:product_detail', slug=slug)
 
@@ -290,6 +294,16 @@ def _create_order(request, cart, items):
 
     notes = (request.POST.get('notes') or '').strip()
     phone = (request.POST.get('phone') or '').strip()
+    
+    # Validate phone number format (same as frontend: ^09\d{9}$)
+    import re
+    if not phone:
+        messages.error(request, 'شماره موبایل الزامی است.')
+        return redirect('storefront:checkout')
+    if not re.match(r'^09\d{9}$', phone):
+        messages.error(request, 'شماره موبایل باید با ۰۹ شروع شود و ۱۱ رقم باشد.')
+        return redirect('storefront:checkout')
+
     name = (request.POST.get('name') or '').strip() or request.user.get_full_name() or request.user.username
 
     address = None
@@ -359,21 +373,20 @@ def _create_order(request, cart, items):
     order.final_amount = cart.final_price
     order.save(update_fields=['total_amount', 'discount', 'discount_amount', 'final_amount'])
 
-    cart.items.all().delete()
+    # Increment discount used_count if discount was applied
+    if cart.discount:
+        cart.discount.used_count += 1
+        cart.discount.save(update_fields=['used_count'])
 
-    # صدور دستور تولید با منطق خود CraftFlow — نه نسخه‌ی قدیمی پروژه‌ی store.
-    # این همان مسیری است که با صف روزانه‌ی انبار و زمان‌بندی نقاشی هماهنگ است.
-    result = order.generate_tasks()
-    if not result.get('success'):
-        # سفارش ثبت شده، اما تولید نمی‌تواند شروع شود؛ مشتری باید بداند
-        # پیگیری می‌شود.
-        messages.warning(
-            request,
-            f"سفارش ثبت شد، اما صدور دستور تولید با مشکل مواجه شد: {result.get('error')}",
-        )
-    else:
-        messages.success(request, f'سفارش شما با شماره {order.id} ثبت شد.')
-    return redirect('storefront:order_detail', order_id=order.id)
+    cart.items.all().delete()
+    # Clear cart discount after order is placed
+    cart.discount = None
+    cart.save(update_fields=['discount'])
+
+    # NOTE: generate_tasks() is now called after successful payment in _finish_payment
+    # to ensure payment happens before production tasks are generated.
+    messages.success(request, f'سفارش شما با شماره {order.id} ثبت شد. برای تکمیل خرید به درگاه پرداخت هدایت می‌شوید.')
+    return redirect('payments:payment_create', order_id=order.id)
 
 
 @login_required

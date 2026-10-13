@@ -70,12 +70,18 @@
                             <div class="mt-1 text-sm text-stone-500">رنگ: {{ item.color_summary }}</div>
                             {% endif %}
                         </div>
-                        <div class="text-left whitespace-nowrap">
+                        <div class="text-left whitespace-nowrap flex flex-col items-end gap-2">
                             <span class="block text-xs text-stone-500">
                                 {% if item.unit_price %}{{ item.unit_price|fa_price }}{% else %}—{% endif %}
                             </span>
                             <span class="font-bold">{{ item.line_total|fa_price }}</span>
                             <span class="text-xs text-stone-500"> تومان</span>
+                            {# Return button for delivered orders with standard items #}
+                            {% if order.status == 'delivered' and not item.length and not item.width and not item.height %}
+                            <a href="{% url 'storefront:return_create' item.id %}" class="btn-outline text-xs py-1 px-2">
+                                درخواست مرجوعی
+                            </a>
+                            {% endif %}
                         </div>
                     </div>
                 </div>
@@ -107,7 +113,7 @@
                     {# Tax #}
                     {% if order.tax_amount > 0 %}
                     <div class="flex justify-between text-stone-600">
-                        <span>مالیات ({{ site_settings.tax_rate|floatformat:0|add:"%" }})</span>
+                        <span>مالیات ({{ site_settings.tax_percent }}%)</span>
                         <span>{{ order.tax_amount|fa_price }} تومان</span>
                     </div>
                     {% endif %}

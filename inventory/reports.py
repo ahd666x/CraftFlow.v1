@@ -415,6 +415,7 @@ def material_planning_dashboard(date=None):
     stock_rows = (
         RawMaterial.objects
         .filter(is_active=True)
+        .select_related('category')
         .annotate(stock=Sum(_signed('movements__')))
         .order_by('name')
     )
@@ -424,6 +425,7 @@ def material_planning_dashboard(date=None):
         materials.append({
             'id': material.id,
             'name': material.name,
+            'category': material.category.name if material.category else '—',
             'unit': material.get_unit_display(),
             'stock': stock,
             'min_stock_alert': _q(material.min_stock_alert),

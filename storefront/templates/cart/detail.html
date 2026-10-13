@@ -43,7 +43,7 @@
             {# Tax #}
             {% if cart.tax_amount > 0 %}
             <div class="mt-1 flex items-center justify-between text-sm text-stone-600">
-                <span>مالیات ({{ site_settings.tax_rate|floatformat:0|add:"%" }})</span>
+                <span>مالیات ({{ site_settings.tax_percent }}%)</span>
                 <span>{{ cart.tax_amount|fa_price }} تومان</span>
             </div>
             {% endif %}

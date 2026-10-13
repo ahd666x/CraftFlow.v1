@@ -27,10 +27,30 @@ class ReturnRequestCreateView(LoginRequiredMixin, CreateView):
     success_url = reverse_lazy('storefront:return_list')
 
     def form_valid(self, form):
-        form.instance.user = self.request.user
-        form.instance.order_item = get_object_or_404(
+        order_item = get_object_or_404(
             OrderItem, pk=self.kwargs['order_item_id'], order__user=self.request.user,
         )
+        
+        # Validate return rules
+        if order_item.order.status != 'delivered':
+            form.add_error(None, 'فقط سفارش‌های تحویل‌شده قابل مرجوعی هستند.')
+            return self.form_invalid(form)
+        
+        # Check if item has custom dimensions (non-returnable)
+        if order_item.length or order_item.width or order_item.height:
+            form.add_error(None, 'محصولات با ابعاد سفارشی قابل مرجوعی نیستند.')
+            return self.form_invalid(form)
+        
+        # Check 7-day return window
+        from django.utils import timezone
+        from datetime import timedelta
+        if order_item.order.delivered_at:
+            if timezone.now() > order_item.order.delivered_at + timedelta(days=7):
+                form.add_error(None, 'مهلت ۷ روزه مرجوعی از بین رفته است.')
+                return self.form_invalid(form)
+        
+        form.instance.user = self.request.user
+        form.instance.order_item = order_item
         messages.success(self.request, 'درخواست مرجوعی ثبت شد.')
         return super().form_valid(form)
 

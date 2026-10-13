@@ -78,10 +78,11 @@ class ProductDimensionsMixin:
         for axis in self.AXES:
             default = getattr(product, axis)
             value = cleaned.get(axis)
-            if default is None:
-                cleaned[axis] = None
-            elif value in (None, ''):
-                cleaned[axis] = default
+            if value in (None, ''):
+                # Only fill from product default if product has a default set
+                if default is not None:
+                    cleaned[axis] = default
+                # Otherwise keep user's input (or None if not provided)
             elif not getattr(product, f'{axis}_editable') and value != default:
                 self.add_error(axis, 'این بعد برای این محصول قابل تغییر نیست.')
         # Keep the legacy `size` string in sync for templates / display.

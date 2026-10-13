@@ -2,6 +2,7 @@ from django.core.exceptions import ValidationError
 from django.db import models, transaction
 from django.contrib.auth.models import User
 from django.urls import reverse
+from django.utils.functional import cached_property
 import jdatetime
 from .fields import PersianDateField
 from storefront.managers import ActiveManager
@@ -173,31 +174,42 @@ class Order(models.Model):
     def total_price(self):
         return sum(item.line_total for item in self.items.all())
 
-    @property
-    def shipping_cost(self):
-        """هزینه ارسال - رایگان اگر بیش از آستانه باشد."""
+    @cached_property
+    def _site_settings(self):
         from storefront.models import SiteSettings
-        settings = SiteSettings.get_settings()
-        if self.total_price >= settings.free_shipping_threshold:
+        return SiteSettings.get_settings()
+
+    @cached_property
+    def shipping_cost(self):
+        """هزینه ارسال - رایگان اگر بیش از آستانه باشد.
+        
+        اگر free_shipping_threshold برابر 0 باشد، یعنی ارسال رایگان غیرفعال است.
+        """
+        settings = self._site_settings
+        if settings.free_shipping_threshold > 0 and self.total_price >= settings.free_shipping_threshold:
             return 0
         return settings.shipping_cost
 
-    @property
+    @cached_property
     def tax_amount(self):
         """مبلغ مالیات بر اساس نرخ تنظیمات."""
-        from storefront.models import SiteSettings
-        settings = SiteSettings.get_settings()
+        settings = self._site_settings
         return int(self.total_price * settings.tax_rate)
 
-    @property
+    @cached_property
     def estimated_delivery_min(self):
-        from storefront.models import SiteSettings
-        return SiteSettings.get_settings().estimated_delivery_min
+        return self._site_settings.estimated_delivery_min
 
-    @property
+    @cached_property
     def estimated_delivery_max(self):
-        from storefront.models import SiteSettings
-        return SiteSettings.get_settings().estimated_delivery_max
+        return self._site_settings.estimated_delivery_max
+
+    def _clear_cached_properties(self):
+        """Clear cached properties when order items change."""
+        for attr in ['total_price', 'shipping_cost', 'tax_amount', 
+                     'estimated_delivery_min', 'estimated_delivery_max', '_site_settings']:
+            if hasattr(self, attr):
+                delattr(self, attr)
 
 
     @property
@@ -596,17 +608,52 @@ class OrderItem(models.Model):
 
 
     def calculate_price(self):
-        """محاسبه قیمت بر اساس طول سفارش"""
+        """محاسبه قیمت بر اساس ابعاد سفارشی.
+        
+        سازگاری با هر دو مدل قیمت‌گذاری:
+        - جدید (3D): length/width/height با length_price_percent/width_price_percent/height_price_percent
+        - قدیمی (1D): default_size با price_increment_per_cm (فقط برای length)
+        """
         if not self.product:
             return 0
-            
+
+        # Check if product has new 3D pricing fields configured
+        has_3d_pricing = (
+            self.product.length is not None or 
+            self.product.width is not None or 
+            self.product.height is not None
+        ) and (
+            self.product.length_price_percent or 
+            self.product.width_price_percent or 
+            self.product.height_price_percent
+        )
+
+        if has_3d_pricing:
+            from storefront.pricing import calculate_dimension_price
+            return calculate_dimension_price(
+                base_price=self.product.base_price,
+                default_length=self.product.length,
+                default_width=self.product.width,
+                default_height=self.product.height,
+                length_percent=self.product.length_price_percent,
+                width_percent=self.product.width_price_percent,
+                height_percent=self.product.height_price_percent,
+                length_editable=self.product.length_editable,
+                width_editable=self.product.width_editable,
+                height_editable=self.product.height_editable,
+                length=self.length,
+                width=self.width,
+                height=self.height,
+            )
+        
+        # Legacy 1D pricing fallback
+        import re
         order_size_str = self.size or self.product.default_size
         default_size_str = self.product.default_size
         
         if not order_size_str or not default_size_str:
             return int(self.product.base_price or 0)
             
-        import re
         order_numbers = re.findall(r'\d+', order_size_str)
         default_numbers = re.findall(r'\d+', default_size_str)
         
@@ -622,12 +669,8 @@ class OrderItem(models.Model):
         base_price_int = int(self.product.base_price or 0)
         increment_percent_float = float(self.product.price_increment_per_cm or 0)
         
-        # diff_percent = ((order_length - default_length) / default_length) * 100
-        # price_increase = (base_price_int * diff_percent * increment_percent_float) / 100
-        # final_price = base_price_int + price_increase
-
-        diff_percent = ((order_length - default_length) * increment_percent_float )/100
-        price_increase = (base_price_int * diff_percent ) 
+        diff_percent = ((order_length - default_length) * increment_percent_float) / 100
+        price_increase = base_price_int * diff_percent
         final_price = base_price_int + price_increase
         
         if final_price < 0:

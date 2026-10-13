@@ -15,6 +15,8 @@ urlpatterns = [
     path('addresses/add/', views.AddressCreateView.as_view(), name='address_add'),
     path('addresses/<int:pk>/edit/', views.AddressUpdateView.as_view(), name='address_edit'),
     path('addresses/<int:pk>/delete/', views.AddressDeleteView.as_view(), name='address_delete'),
+    path('password-change/', auth_views.PasswordChangeView.as_view(template_name='accounts/password_change.html'), name='password_change'),
+    path('password-change/done/', auth_views.PasswordChangeDoneView.as_view(template_name='accounts/password_change_done.html'), name='password_change_done'),
     path('password-reset/', views.CustomPasswordResetView.as_view(), name='password_reset'),
     path('password-reset/done/', auth_views.PasswordResetDoneView.as_view(template_name='accounts/password_reset_done.html'), name='password_reset_done'),
     path('password-reset-confirm/<uidb64>/<token>/', views.CustomPasswordResetConfirmView.as_view(), name='password_reset_confirm'),

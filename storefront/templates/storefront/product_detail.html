@@ -13,15 +13,15 @@
 {
   "@context": "https://schema.org/",
   "@type": "Product",
-  "name": "{{ product.name }}",
+  "name": "{{ product.name|escapejs }}",
   "image": [
-    {% if gallery %}"{{ gallery.0.image.url }}"{% elif product.image %}"{{ product.image.url }}"{% endif %}
+    {% if gallery %}"{{ gallery.0.image.url }}"{% elif product.image %}"{{ product.image.url }}"{% else %}""{% endif %}
   ],
   "description": "{{ product.description|truncatewords:25|escapejs }}",
   "sku": "{{ product.slug }}",
   "brand": {
     "@type": "Brand",
-    "name": "{{ site_settings.site_name }}"
+    "name": "{{ site_settings.site_name|escapejs }}"
   },
   "offers": {
     "@type": "Offer",
@@ -29,12 +29,15 @@
     "priceCurrency": "IRR",
     "price": "{{ product.base_price|floatformat:0 }}",
     "availability": "https://schema.org/InStock"
-  },
+  }
+  {% if product.review_count|default:0 > 0 %}
+  ,
   "aggregateRating": {
     "@type": "AggregateRating",
     "ratingValue": "{{ product.average_rating|default:0 }}",
     "reviewCount": "{{ product.review_count|default:0 }}"
   }
+  {% endif %}
 }
 </script>
 {% endblock %}
@@ -208,7 +211,7 @@
                 </div>
 
                 {# Tab: Reviews #}
-                <div x-show="activeTab === 'reviews'" x-transition class="mt-4" role="tabpanel" id="tab-reviews" id="reviews-list">
+                <div x-show="activeTab === 'reviews'" x-transition class="mt-4" role="tabpanel" id="tab-reviews">
                     {% if reviews %}
                     <div class="space-y-4">
                         {% for review in reviews %}
@@ -298,22 +301,14 @@
                         <span>قیمت پایه</span>
                         <span>{{ product.base_price|fa_price }} تومان</span>
                     </div>
-                    <template x-if="unitPrice() !== basePrice">
-                    <div class="flex justify-between text-primary-700">
-                        <span>افزایش ابعاد ({{ Math.round(((unitPrice() - basePrice) / basePrice) * 100) }}%)</span>
-                        <span>+{{ (unitPrice() - basePrice)|fa_price }} تومان</span>
+                    <div x-show="unitPrice() !== basePrice" class="flex justify-between text-primary-700">
+                        <span>افزایش ابعاد (<span x-text="Math.round(((unitPrice() - basePrice) / basePrice) * 100)"></span>%)</span>
+                        <span x-text="'+' + (unitPrice() - basePrice).toLocaleString('fa-IR') + ' تومان'"></span>
                     </div>
-                    </template>
                     <div class="flex justify-between border-t border-stone-100 pt-2">
                         <span class="font-semibold">قیمت واحد</span>
-                        <span class="text-lg font-bold text-stone-900">{{ product.base_price|fa_price }}</span>
+                        <span class="text-lg font-bold text-stone-900" x-text="unitPrice().toLocaleString('fa-IR') + ' تومان'"></span>
                     </div>
-                    <template x-if="unitPrice() !== basePrice">
-                    <div class="flex justify-between">
-                        <span class="font-semibold">قیمت واحد (با ابعاد)</span>
-                        <span class="text-lg font-bold text-primary-800" x-text="unitPrice().toLocaleString('fa-IR') + ' تومان'"></span>
-                    </div>
-                    </template>
                 </div>
 
                 {# Dimension Inputs #}
@@ -500,6 +495,7 @@
 {% endif %}
 
 {# Lightbox Modal #}
+{% if gallery %}
 <div x-data="{ lightboxOpen: false, lightboxIndex: 0 }"
      x-show="lightboxOpen"
      x-cloak
@@ -512,10 +508,11 @@
     <button type="button" @click="lightboxOpen = false" class="absolute top-4 right-4 text-white/70 hover:text-white text-3xl" aria-label="بستن">×</button>
     <button type="button" @click="lightboxPrev()" class="absolute left-4 text-white/70 hover:text-white text-4xl" aria-label="قبلی">‹</button>
     <button type="button" @click="lightboxNext()" class="absolute right-4 text-white/70 hover:text-white text-4xl" aria-label="بعدی">›</button>
-    <img x-show="lightboxIndex === 0" :src="{{ gallery.0.image.url }}" alt="{{ product.name }}" class="max-h-[85vh] max-w-[90vw] object-contain">
+    <img x-show="lightboxIndex === 0" :src="'{{ gallery.0.image.url }}'" alt="{{ product.name }}" class="max-h-[85vh] max-w-[90vw] object-contain">
     {% for img in gallery|slice:"1:" %}
-    <img x-show="lightboxIndex === {{ forloop.counter }}" :src="{{ img.image.url }}" alt="{{ img.alt_text|default:product.name }}" class="max-h-[85vh] max-w-[90vw] object-contain hidden">
+    <img x-show="lightboxIndex === {{ forloop.counter }}" :src="'{{ img.image.url }}'" alt="{{ img.alt_text|default:product.name }}" class="max-h-[85vh] max-w-[90vw] object-contain hidden">
     {% endfor %}
 </div>
+{% endif %}
 
 {% endblock %}

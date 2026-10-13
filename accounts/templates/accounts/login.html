@@ -28,7 +28,7 @@
                     <p class="mt-2 text-stone-500">برای ادامه به حساب کاربری خود وارد شوید</p>
                 </div>
 
-                <form method="post" class="space-y-5" x-data="{ showPassword: false }" @submit="submitting = true">
+                <form method="post" class="space-y-5" x-data="{ showPassword: false, submitting: false }" @submit="submitting = true">
                     {% csrf_token %}
                     {% if form.non_field_errors %}
                     <div class="rounded-lg bg-red-50 p-3 text-sm text-red-700">{{ form.non_field_errors }}</div>

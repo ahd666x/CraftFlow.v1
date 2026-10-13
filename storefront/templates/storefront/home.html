@@ -185,12 +185,12 @@
     </div>
     <div class="flex justify-center gap-2 mt-4">
       <button type="button" class="btn-outline"
-              @click="$prev('.scrollbar-hide').scrollBy({left: -320, behavior: 'smooth'})"
+              @click="$el.querySelector('.scrollbar-hide').scrollBy({left: -320, behavior: 'smooth'})"
               aria-label="محصولات قبلی">
         <svg class="h-5 w-5 rtl:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
       </button>
       <button type="button" class="btn-outline"
-              @click="$prev('.scrollbar-hide').scrollBy({left: 320, behavior: 'smooth'})"
+              @click="$el.querySelector('.scrollbar-hide').scrollBy({left: 320, behavior: 'smooth'})"
               aria-label="محصولات بعدی">
         <svg class="h-5 w-5 rtl:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
       </button>

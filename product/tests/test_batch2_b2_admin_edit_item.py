@@ -92,7 +92,7 @@ class Batch2B2AdminEditItemTests(TestCase):
     def test_change_size_recalculates_price(self):
         product_with_increment = Product.objects.create(
             category=self.category, name='محصول C', base_price=1000,
-            default_size='50', price_increment_per_cm=10,
+            length=50, default_size='50', price_increment_per_cm=10,
         )
         order = Order.objects.create(user=self.admin, customer=self.customer, number='B2-2')
         item = OrderItem.objects.create(
@@ -102,7 +102,7 @@ class Batch2B2AdminEditItemTests(TestCase):
             'category': product_with_increment.category.id,
             'product': product_with_increment.id,
             'quantity': 1,
-            'size': '100',
+            'length': '100',
             'notes': '',
             'unit_price': '',
         }

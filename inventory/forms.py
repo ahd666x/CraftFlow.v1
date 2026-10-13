@@ -76,10 +76,13 @@ class RawMaterialForm(forms.ModelForm):
         """
         بارکد در کل سیستم یکتا است؛ اگر مادهٔ دیگری آن را دارد خطا می‌دهیم
         تا اسکن، مادهٔ اشتباه را وارد نکند.
+        
+        اگر بارکد خالی باشد، None برمی‌گردانیم تا unique constraint
+        روی null=True کار نکند (عده‌ای null در دیتابیس یکتا محسوب نمی‌شوند).
         """
         barcode = (self.cleaned_data.get('barcode') or '').strip()
         if not barcode:
-            return barcode
+            return None
         clash = RawMaterial.objects.filter(barcode=barcode)
         if self.instance.pk:
             clash = clash.exclude(pk=self.instance.pk)

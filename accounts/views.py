@@ -11,6 +11,7 @@ from .forms import LoginForm, UserRegistrationForm, ProfileUpdateForm
 from .models import UserProfile
 from storefront.models import Address
 from product.models import Order
+from cart.services import merge_guest_cart_to_user
 
 REPRESENTATIVE_GROUP = 'نماینده'
 
@@ -29,6 +30,12 @@ class CustomLoginView(auth_views.LoginView):
                 and not user.groups.filter(name__in=['1', '2', '3', 'انبار']).exists()):
             return reverse('customer_order_list')  # /customer/orders/
         return super().get_success_url()
+
+    def form_valid(self, form):
+        response = super().form_valid(form)
+        # Merge guest cart into user cart after successful login
+        merge_guest_cart_to_user(self.request, self.request.user)
+        return response
 
 
 class CustomLogoutView(auth_views.LogoutView):

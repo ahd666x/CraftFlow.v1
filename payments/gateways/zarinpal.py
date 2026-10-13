@@ -25,37 +25,92 @@ class ZarinpalGateway:
             return {'error': 'request', 'message': f'خطا در ارتباط: {str(e)}'}
 
     def pay(self, request, payment):
-        callback_url = request.build_absolute_uri(reverse('payments:payment_verify'))
-        data = {
-            'MerchantID': self.merchant_id,
-            'Amount': int(payment.amount),
-            'Description': f'پرداخت سفارش #{payment.order.id}',
-            'CallbackURL': callback_url,
-        }
+        callback_url = request.build_absolute_uri(reverse('payments:payment_verify')) + f'?gateway=zarinpal'
+        
+        if self.sandbox:
+            # Old sandbox API format
+            data = {
+                'MerchantID': self.merchant_id,
+                'Amount': int(payment.amount),
+                'Description': f'پرداخت سفارش #{payment.order.id}',
+                'CallbackURL': callback_url,
+            }
+        else:
+            # New v4 API format for production
+            data = {
+                'merchant_id': self.merchant_id,
+                'amount': int(payment.amount),
+                'description': f'پرداخت سفارش #{payment.order.id}',
+                'callback_url': callback_url,
+                'metadata': {'order_id': payment.order.id},
+            }
+        
         result = self._post_json(self.request_url, data)
-        if result.get('data', {}).get('code') == 100:
-            payment.authority = result['data']['authority']
-            payment.save()
-            return {'success': True, 'url': f'{self.start_pay_url}{result["data"]["authority"]}'}
-        error_msg = result.get('errors', {}).get('message', 'خطا در اتصال به درگاه')
-        if result.get('error'):
-            error_msg = result.get('message', error_msg)
-        return {'success': False, 'error': error_msg}
+        
+        if self.sandbox:
+            # Old sandbox API response format
+            if result.get('Status') == 100:
+                payment.authority = result.get('Authority', '')
+                payment.save()
+                return {'success': True, 'url': f'{self.start_pay_url}{payment.authority}'}
+            error_msg = result.get('Status', 'خطا در اتصال به درگاه')
+        else:
+            # New v4 API response format
+            if result.get('data', {}).get('code') == 100:
+                payment.authority = result['data'].get('authority', '')
+                payment.save()
+                return {'success': True, 'url': f'{self.start_pay_url}{payment.authority}'}
+            error_msg = result.get('errors', {}).get('message', 'خطا در اتصال به درگاه')
+            if result.get('error'):
+                error_msg = result.get('message', error_msg)
+        
+        return {'success': False, 'error': str(error_msg)}
 
     def verify(self, request, payment):
-        data = {
-            'MerchantID': self.merchant_id,
-            'Amount': int(payment.amount),
-            'Authority': payment.authority,
-        }
-        result = self._post_json(self.verify_url, data)
-        if result.get('data', {}).get('code') in (100, 101):
-            return {
-                'success': True,
-                'ref_id': str(result['data'].get('ref_id', '')),
-                'card_pan': result['data'].get('card_pan', ''),
+        # Check for idempotency - if already paid, don't verify again
+        if payment.status == 'success':
+            return {'success': True, 'ref_id': payment.transaction_id, 'card_pan': ''}
+        
+        # Check Status=OK from callback for v4 API
+        if request.GET.get('Status') != 'OK':
+            return {'success': False, 'error': 'پرداخت توسط کاربر لغو شد یا ناموفق بود'}
+        
+        if self.sandbox:
+            # Old sandbox API format
+            data = {
+                'MerchantID': self.merchant_id,
+                'Amount': int(payment.amount),
+                'Authority': payment.authority,
             }
-        error_msg = result.get('errors', {}).get('message', 'پرداخت ناموفق بود')
-        if result.get('error'):
-            error_msg = result.get('message', error_msg)
-        return {'success': False, 'error': error_msg}
+        else:
+            # New v4 API format
+            data = {
+                'merchant_id': self.merchant_id,
+                'amount': int(payment.amount),
+                'authority': payment.authority,
+            }
+        
+        result = self._post_json(self.verify_url, data)
+        
+        if self.sandbox:
+            # Old sandbox API response format
+            if result.get('Status') in (100, 101):
+                return {
+                    'success': True,
+                    'ref_id': str(result.get('RefID', '')),
+                    'card_pan': result.get('CardPan', ''),
+                }
+            error_msg = result.get('Status', 'پرداخت ناموفق بود')
+        else:
+            # New v4 API response format
+            if result.get('data', {}).get('code') in (100, 101):
+                return {
+                    'success': True,
+                    'ref_id': str(result['data'].get('ref_id', '')),
+                    'card_pan': result['data'].get('card_pan', ''),
+                }
+            error_msg = result.get('errors', {}).get('message', 'پرداخت ناموفق بود')
+            if result.get('error'):
+                error_msg = result.get('message', error_msg)
+        
+        return {'success': False, 'error': str(error_msg)}
