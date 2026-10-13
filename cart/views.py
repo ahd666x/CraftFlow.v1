@@ -68,12 +68,16 @@ def cart_add(request, product_id):
         )
     except ValueError as exc:
         messages.error(request, str(exc))
+        if request.headers.get('HX-Request'):
+            # برای HTMX یک پاسخ 422 برمی‌گردانیم تا swap انجام نشود
+            from django.http import HttpResponse
+            return HttpResponse(str(exc), status=422)
         return redirect(request.META.get('HTTP_REFERER') or 'cart:cart_detail')
 
     if request.headers.get('HX-Request'):
         # پاسخ HTMX فقط شماره‌ی سبد است؛ هدف هدر badge است.
         response = render(request, 'cart/_count.html', {'cart': cart})
-        response['HX-Trigger'] = 'cartUpdated'
+        response['HX-Trigger'] = '{"cartUpdated": {"count": ' + str(cart.total_items) + '}}'
         return response
 
     messages.success(request, f"«{item.product.name}» به سبد اضافه شد.")
@@ -89,7 +93,7 @@ def cart_remove(request, item_id):
     if request.headers.get('HX-Request'):
         items = cart.items.select_related('product', 'product__category').prefetch_related('product__gallery_images')
         response = render(request, 'cart/_mini_cart.html', {'cart': cart, 'items': items})
-        response['HX-Trigger'] = 'cartUpdated'
+        response['HX-Trigger'] = '{"cartUpdated": {"count": ' + str(cart.total_items) + '}}'
         return response
     
     return redirect('cart:cart_detail')
@@ -107,7 +111,7 @@ def cart_update(request, item_id):
     if request.headers.get('HX-Request'):
         items = cart.items.select_related('product', 'product__category').prefetch_related('product__gallery_images')
         response = render(request, 'cart/_mini_cart.html', {'cart': cart, 'items': items})
-        response['HX-Trigger'] = 'cartUpdated'
+        response['HX-Trigger'] = '{"cartUpdated": {"count": ' + str(cart.total_items) + '}}'
         return response
     
     return redirect('cart:cart_detail')
@@ -122,7 +126,7 @@ def cart_clear(request):
     if request.headers.get('HX-Request'):
         items = cart.items.select_related('product', 'product__category').prefetch_related('product__gallery_images')
         response = render(request, 'cart/_mini_cart.html', {'cart': cart, 'items': items})
-        response['HX-Trigger'] = 'cartUpdated'
+        response['HX-Trigger'] = '{"cartUpdated": {"count": ' + str(cart.total_items) + '}}'
         return response
     
     return redirect('cart:cart_detail')

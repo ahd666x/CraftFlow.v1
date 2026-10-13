@@ -174,6 +174,9 @@ def review_create(request, slug):
     existing = ProductReview.objects.filter(product=product, user=request.user).first()
     if existing:
         messages.error(request, 'شما قبلاً برای این محصول نظر داده‌اید.')
+        if request.headers.get('HX-Request'):
+            from django.http import HttpResponse
+            return HttpResponse('شما قبلاً برای این محصول نظر داده‌اید.', status=422)
         return redirect('storefront:product_detail', slug=slug)
 
     try:
@@ -183,6 +186,9 @@ def review_create(request, slug):
     
     if rating < 1 or rating > 5:
         messages.error(request, 'امتیاز باید بین ۱ تا ۵ باشد.')
+        if request.headers.get('HX-Request'):
+            from django.http import HttpResponse
+            return HttpResponse('امتیاز باید بین ۱ تا ۵ باشد.', status=422)
         return redirect('storefront:product_detail', slug=slug)
 
     comment = request.POST.get('comment', '').strip()
@@ -194,6 +200,7 @@ def review_create(request, slug):
         rating=rating,
         comment=comment,
         image=image,
+        is_active=False,  # نیاز به تایید ادمین
     )
 
     messages.success(request, 'نظر شما با موفقیت ثبت شد و پس از تایید نمایش داده می‌شود.')

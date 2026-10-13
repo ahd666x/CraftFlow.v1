@@ -5,14 +5,15 @@
  */
 
 /* Toast for HTMX events (like cartUpdated). */
-document.addEventListener('cartUpdated', function () {
+document.addEventListener('cartUpdated', function (e) {
+    var count = e.detail?.count;
     var host = document.getElementById('toast-host');
     if (!host) {
         return;
     }
     var toast = document.createElement('div');
     toast.className = 'card px-4 py-3 text-sm text-stone-800 animate-slide-up';
-    toast.textContent = 'به سبد اضافه شد';
+    toast.textContent = count === 0 ? 'سبد خرید خالی شد' : 'به سبد اضافه شد';
     host.appendChild(toast);
     setTimeout(function () {
         toast.classList.remove('animate-slide-up');
@@ -20,6 +21,14 @@ document.addEventListener('cartUpdated', function () {
         toast.style.transform = 'translateY(-16px)';
         setTimeout(function () { toast.remove(); }, 300);
     }, 2000);
+
+    // آپدیت تمام شمارنده‌های سبد در صفحه
+    if (typeof count === 'number') {
+        document.querySelectorAll('#cart-count, [data-cart-count]').forEach(function (el) {
+            el.textContent = count;
+            el.classList.toggle('hidden', count === 0);
+        });
+    }
 });
 
 /* Quantity increment/decrement in cart rows — delegated event on

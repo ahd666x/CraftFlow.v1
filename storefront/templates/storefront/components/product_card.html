@@ -61,6 +61,7 @@
               btn.disabled = true;
               btn.textContent = '✓ افزوده شد';
               setTimeout(() => { btn.disabled = false; btn.textContent = 'افزودن سریع'; }, 2000);
+              window.dispatchEvent(new Event('open-mini-cart'));
             }
           "
           class="absolute bottom-3 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 md:translate-y-2 md:group-hover:translate-y-0 transition-all duration-200 inline md:opacity-0">
