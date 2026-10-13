@@ -1,14 +1,15 @@
 {% load static %}
 <header class="sticky top-0 z-sticky"
         x-data="{ open: false, cartOpen: false, scrolled: false, isHome: {{ is_home|yesno:'true,false' }} }"
-        x-init="
+         x-init="
           cartOpen = false;
+          scrolled = window.scrollY > 80;
           window.addEventListener('scroll', function () {
             scrolled = window.scrollY > 80;
           }, { passive: true });
         "
         @close-mini-cart.window="cartOpen = false"
-        @open-mini-cart.window="cartOpen = true; loadContent()"
+        @open-mini-cart.window="cartOpen = true; if (window.miniCart) window.miniCart.loadContent()"
         :class="isHome && !scrolled
           ? 'border-b-0 bg-transparent text-white'
           : 'border-b border-stone-100 bg-white/90 backdrop-blur text-stone-900'">
@@ -35,13 +36,13 @@
                <span class="absolute bottom-[-4px] left-0 right-0 h-1 bg-primary-600 rounded-full"></span>
                {% endif %}
             </a>
-            <a href="{% url 'storefront:about' %}"
+<a href="{% url 'storefront:about' %}"
                class="link-muted relative {% if request.resolver_match.url_name == 'about' %}text-primary-700 font-medium{% endif %}"
                :class="isHome && !scrolled ? 'text-white hover:text-primary-100' : 'text-stone-600 hover:text-stone-900'">
-               درباره ما
-               {% if request.resolver_match.url_name == 'about' %}
-               <span class="absolute bottom-[4px] left-0 right-0 h-1 bg-primary-600 rounded-full"></span>
-               {% endif %}
+              درباره ما
+              {% if request.resolver_match.url_name == 'about' %}
+              <span class="absolute bottom-[-4px] left-0 right-0 h-1 bg-primary-600 rounded-full"></span>
+              {% endif %}
             </a>
             <a href="{% url 'storefront:return_policy' %}"
                class="link-muted relative {% if request.resolver_match.url_name == 'return_policy' %}text-primary-700 font-medium{% endif %}"
@@ -86,9 +87,9 @@
                 </a>
             {% endif %}
 
-            <div x-data="miniCart()" x-init="loadContent()" data-mini-cart-url="{% url 'cart:mini_cart' %}">
+            <div x-data="miniCart()" data-mini-cart-url="{% url 'cart:mini_cart' %}">
                 <button type="button"
-                        @click="cartOpen = true; loadContent()"
+                        @click="cartOpen = true; if (window.miniCart) window.miniCart.loadContent()"
                         class="relative btn-sm"
                         aria-label="سبد خرید"
                         aria-expanded="false"

@@ -40,7 +40,11 @@ document.addEventListener('click', function (e) {
     var delta = parseInt(btn.getAttribute('data-cart-step'), 10) || 0;
     var val = parseInt(input.value, 10) || 1;
     input.value = Math.max(1, val + delta);
-    form.submit();
+    if (typeof htmx !== 'undefined') {
+        htmx.trigger(form, 'submit');
+    } else {
+        form.requestSubmit();
+    }
 });
 
 /* Quantity change on input in cart */
@@ -51,21 +55,16 @@ document.addEventListener('change', function (e) {
     }
     var form = input.closest('form');
     if (form) {
-        form.submit();
+        if (typeof htmx !== 'undefined') {
+            htmx.trigger(form, 'submit');
+        } else {
+            form.requestSubmit();
+        }
     }
 });
 
-/* Product image gallery — click on thumbnail */
-document.addEventListener('click', function (e) {
-    var thumb = e.target.closest ? e.target.closest('.gallery-thumb') : null;
-    if (!thumb) {
-        return;
-    }
-    var mainImg = document.getElementById('gallery-main');
-    if (mainImg) {
-        mainImg.src = thumb.getAttribute('data-img-src');
-    }
-});
+/* Product image gallery is handled by Alpine.js productGallery component in the template.
+   No additional JavaScript needed for thumbnail click handling. */
 
 /* Close mini-cart from outside (e.g. after going to checkout) */
 document.addEventListener('close-mini-cart', function () {

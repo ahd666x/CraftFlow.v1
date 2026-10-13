@@ -74,6 +74,9 @@ class SiteSettingsAdmin(admin.ModelAdmin):
             'zarinpal_logo', 'zarinpal_url',
             'warranty_years',
         ]}),
+        ('شبکه‌های اجتماعی', {'fields': [
+            'instagram_url', 'telegram_url', 'twitter_url', 'aparat_url',
+        ]}),
     ]
 
     def has_add_permission(self, request):

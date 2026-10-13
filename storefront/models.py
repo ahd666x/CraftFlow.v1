@@ -186,6 +186,12 @@ class SiteSettings(TimeStampedModel):
     zarinpal_url = models.URLField(blank=True, verbose_name='لینک زرین‌پال')
     warranty_years = models.PositiveIntegerField(default=0, verbose_name='سال‌های گارانتی (۰ = نمایش داده نشود)')
 
+    # شبکه‌های اجتماعی
+    instagram_url = models.URLField(blank=True, verbose_name='لینک اینستاگرام')
+    telegram_url = models.URLField(blank=True, verbose_name='لینک تلگرام')
+    twitter_url = models.URLField(blank=True, verbose_name='لینک توییتر')
+    aparat_url = models.URLField(blank=True, verbose_name='لینک آپارات')
+
     class Meta:
         verbose_name = 'تنظیمات سایت'
         verbose_name_plural = 'تنظیمات سایت'

@@ -1,6 +1,8 @@
 {% load storefront_filters %}
 {% comment %}
 یک سطر سبد. `item` از نوع CartItem است.
+اگر `use_htmx` صحیح باشد، فرم‌ها با HTMX عمل می‌کنند (برای مینی‌کارت).
+در غیر این صورت، فرم‌ها به‌صورت معمولی ارسال می‌شوند (برای صفحه جزئیات سبد).
 {% endcomment %}
 <div class="card flex flex-wrap items-center gap-4 p-4">
     {% if item.product.image %}
@@ -41,6 +43,9 @@
 
     <div class="flex items-center gap-2">
         <form method="post" action="{% url 'cart:cart_update' item.id %}"
+              {% if use_htmx %}hx-post="{% url 'cart:cart_update' item.id %}"
+              hx-target="#mini-cart-content"
+              hx-swap="innerHTML"{% endif %}
               class="flex items-center gap-2">
             {% csrf_token %}
             <button type="button" data-cart-step="-1" aria-label="کاهش تعداد"
@@ -57,7 +62,10 @@
         <span class="text-xs text-stone-500">تومان</span>
     </div>
 
-    <form method="post" action="{% url 'cart:cart_remove' item.id %}">
+    <form method="post" action="{% url 'cart:cart_remove' item.id %}"
+          {% if use_htmx %}hx-post="{% url 'cart:cart_remove' item.id %}"
+          hx-target="#mini-cart-content"
+          hx-swap="innerHTML"{% endif %}>
         {% csrf_token %}
         <button type="submit" class="btn-outline px-3 py-1.5 text-xs"
                 aria-label="حذف {{ item.product.name }}">حذف</button>

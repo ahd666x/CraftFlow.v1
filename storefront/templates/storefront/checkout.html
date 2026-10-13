@@ -28,20 +28,48 @@
                         <input id="name" name="name" type="text" class="input"
                                value="{% if customer.name %}{{ customer.name }}{% elif user.is_authenticated %}{{ user.get_full_name }}{% endif %}" required>
                     </div>
-<div x-data="{ valid: true }">
+        <div>
                         <label class="label" for="phone">شماره موبایل</label>
                         <input id="phone" name="phone" type="tel" class="input"
                                value="{{ customer.phone }}" required
                                pattern="^09\d{9}$"
                                title="شماره موبایل باید با ۰۹ شروع شود و ۱۱ رقم باشد"
+                               inputmode="numeric"
                                @input="
-                                   // Convert Persian/Arabic digits to Latin
-                                   var value = $event.target.value.replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d))
-                                                           .replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d));
-                                   $event.target.value = value;
-                                   valid = /^09\d{9}$/.test(value);
-                                   $event.target.setCustomValidity(valid ? '' : 'شماره موبایل باید با ۰۹ شروع شود و ۱۱ رقم باشد');
-                               ">
+                                    var value = $event.target.value;
+                                    // Convert Persian/Arabic digits to Latin
+                                    var persianMap = { '۰': '0', '۱': '1', '۲': '2', '۳': '3', '۴': '4', '۵': '5', '۶': '6', '۷': '7', '۸': '8', '۹': '9' };
+                                    var arabicMap = { '٠': '0', '١': '1', '٢': '2', '٣': '3', '٤': '4', '٥': '5', '٦': '6', '٧': '7', '٨': '8', '٩': '9' };
+                                    value = value.replace(/[۰-۹]/g, d => persianMap[d]);
+                                    value = value.replace(/[٠-٩]/g, d => arabicMap[d]);
+                                    // Strip non-digits
+                                    value = value.replace(/\D/g, '');
+                                    // Format as 09XXXXXXXXX
+                                    if (value.length > 0) {
+                                        if (value[0] === '9' && value.length >= 2) {
+                                            value = '0' + value;
+                                        } else if (value[0] !== '0' && value.length === 10) {
+                                            value = '0' + value;
+                                        }
+                                        if (value.length > 11) value = value.slice(0, 11);
+                                    }
+                                    $event.target.value = value;
+                                    valid = /^09\d{9}$/.test(value);
+                                    $event.target.setCustomValidity(valid ? '' : 'شماره موبایل باید با ۰۹ شروع شود و ۱۱ رقم باشد');
+                                "
+                               @paste="
+                                    var pasted = $event.clipboardData.getData('text/plain');
+                                    var persianMap = { '۰': '0', '۱': '1', '۲': '2', '۳': '3', '۴': '4', '۵': '5', '۶': '6', '۷': '7', '۸': '8', '۹': '9' };
+                                    var arabicMap = { '٠': '0', '١': '1', '٢': '2', '٣': '3', '٤': '4', '٥': '5', '٦': '6', '٧': '7', '٨': '8', '٩': '9' };
+                                    pasted = pasted.replace(/[۰-۹]/g, d => persianMap[d]);
+                                    pasted = pasted.replace(/[٠-٩]/g, d => arabicMap[d]);
+                                    pasted = pasted.replace(/\D/g, '');
+                                    if (pasted.length > 11) pasted = pasted.slice(0, 11);
+                                    $event.target.value = pasted;
+                                    valid = /^09\d{9}$/.test(pasted);
+                                    $event.target.setCustomValidity(valid ? '' : 'شماره موبایل باید با ۰۹ شروع شود و ۱۱ رقم باشد');
+                                    $event.preventDefault();
+                                ">
                         <p class="mt-1 text-xs text-red-600" x-show="!valid" x-cloak>شماره موبایل باید با ۰۹ شروع شود و ۱۱ رقم باشد</p>
                     </div>
                 </div>

@@ -81,13 +81,36 @@
                 };
             });
 
+            Alpine.data('testimonialSlider', function () {
+                var items = {{ testimonials|length|default:0 }};
+                return {
+                    current: 0,
+                    timer: null,
+                    paused: false,
+                    init: function () {
+                        if (items < 2) return;
+                        var self = this;
+                        this.timer = setInterval(function () {
+                            if (!self.paused && !document.hidden) {
+                                self.current = (self.current + 1) % items;
+                            }
+                        }, 6000);
+                    },
+                    destroy: function () { clearInterval(this.timer); },
+                    resetTimer: function () {
+                        this.current;
+                    },
+                };
+            });
+
             Alpine.data('dimensionPrice', function (config) {
                 var axes = ['length', 'width', 'height'];
 
-                function toAxis(key, spec) {
+                 function toAxis(key, spec) {
+                    var def = (spec.def === null || spec.def === undefined) ? null : Number(spec.def);
                     return {
-                        value: null,
-                        def: (spec.def === null || spec.def === undefined) ? null : Number(spec.def),
+                        value: def,
+                        def: def,
                         editable: !!spec.editable,
                         percent: Number(spec.percent || 0),
                     };
@@ -195,80 +218,84 @@
                     },
                     increment: function () {
                         if (!this.editable) return;
-                        if (this.value === null || this.value === '') {
-                            this.value = this.def || this.min;
-                        } else if (this.value < this.max) {
-                            this.value += this.step;
+                        var current = this.value === null || this.value === '' ? (this.def || this.min) : Number(this.value);
+                        if (current < this.max) {
+                            this.value = current + this.step;
                         }
                         this.validate();
                         this.$dispatch('dimension-changed', { axis: this.axis, value: this.value });
                     },
                     decrement: function () {
                         if (!this.editable) return;
-                        if (this.value === null || this.value === '') {
-                            this.value = this.def || this.min;
-                        } else if (this.value > this.min) {
-                            this.value -= this.step;
+                        var current = this.value === null || this.value === '' ? (this.def || this.min) : Number(this.value);
+                        if (current > this.min) {
+                            this.value = current - this.step;
                         }
                         this.validate();
                         this.$dispatch('dimension-changed', { axis: this.axis, value: this.value });
                     },
                     validate: function () {
                         this.error = '';
-                        if (!this.editable) return;
+                        if (!this.editable) return this.value;
                         var val = this.value;
                         if (val === null || val === '' || val === undefined) {
                             this.error = 'مقدار وارد نشده است';
-                            return;
+                            return val;
                         }
                         var num = Number(val);
                         if (isNaN(num)) {
                             this.error = 'مقدار نامعتبر است';
-                            return;
+                            return val;
                         }
                         if (num < this.min || num > this.max) {
                             this.error = 'باید بین ' + this.min + ' تا ' + this.max + ' باشد';
-                            return;
+                            return val;
                         }
                         this.value = num;
+                        return num;
                     },
                     recalc: function () {
-                        this.validate();
-                        this.$dispatch('dimension-changed', { axis: this.axis, value: this.value });
+                        var val = this.validate();
+                        this.$dispatch('dimension-changed', { axis: this.axis, value: val });
                     },
-                };
-            });
-
-            Alpine.data('dimensionBox', function () {
-                return {
-                    init: function () {},
                 };
             });
 
             Alpine.data('miniCart', function () {
                 return {
-                    loaded: false,
                     miniCartUrl: '',
+                    loading: false,
+                    abortController: null,
                     init: function () {
                         this.miniCartUrl = this.$el.getAttribute('data-mini-cart-url') || '/cart/mini/';
+                        window.miniCart = this;
                     },
                     loadContent: function () {
-                        if (this.loaded) return;
                         var drawerContent = document.getElementById('mini-cart-content');
                         if (!drawerContent) return;
+                        if (this.loading) return;
+                        
+                        if (this.abortController) {
+                            this.abortController.abort();
+                        }
+                        this.abortController = new AbortController();
+                        this.loading = true;
 
                         fetch(this.miniCartUrl, {
-                            headers: { 'HX-Request': 'true' }
+                            headers: { 'HX-Request': 'true' },
+                            signal: this.abortController.signal
                         })
                         .then(function (response) { return response.text(); })
                         .then(function (html) {
                             drawerContent.innerHTML = html;
-                            this.loaded = true;
+                            this.loading = false;
                         }.bind(this))
                         .catch(function (err) {
+                            if (err.name === 'AbortError') return;
                             console.error('Mini cart load failed:', err);
                             drawerContent.innerHTML = '<p class="text-center text-red-600 p-4">خطا در بارگذاری سبد</p>';
-                        });
+                            this.loading = false;
+                        }.bind(this));
                     },
                     close: function () {
                         this.$dispatch('close-mini-cart');
@@ -327,9 +354,11 @@
            aria-label="سبد خرید">
             <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
             <span>سبد</span>
-            {% if cart_total_items|default:0 > 0 %}
-            <span class="absolute -top-1 -right-1 h-4 min-w-[1rem] grid place-items-center rounded-full bg-primary-600 px-1 text-[10px] text-white">{{ cart_total_items }}</span>
-            {% endif %}
+            <span id="cart-count"
+                  class="absolute -top-1 -right-1 h-4 min-w-[1rem] grid place-items-center rounded-full bg-primary-600 px-1 text-[10px] text-white"
+                  x-bind:class="{'hidden': !parseInt($el.textContent || '0')}">
+                {{ cart_total_items|default:0 }}
+            </span>
         </a>
         {% if user.is_authenticated %}
         <a href="{% url 'accounts:profile' %}" 
