@@ -1,179 +1,86 @@
 {% extends "inventory/base.html" %}
-{% load static %}
-{% load product_filters %}
+{% load static product_filters %}
 {% block title %}کار روزانه انبار{% endblock %}
-
+{% block extra_css %}
+<style>
+  .day-head{display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;margin-bottom:1rem}
+  .day-title{font-size:1.35rem;font-weight:750;margin:0;color:#102038}
+  .day-subtitle{color:#718096;font-size:.83rem;margin-top:.2rem}
+  .day-nav{display:flex;align-items:center;gap:.6rem}
+  .day-nav-date{font-weight:700;min-width:116px;text-align:center;color:#1e293b}
+  .day-nav .btn{border-radius:999px}
+  .summary-strip{display:flex;gap:.6rem;flex-wrap:wrap;margin-bottom:1rem}
+  .summary-pill{display:flex;gap:.4rem;align-items:center;padding:.45rem .75rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:11px;font-size:.8rem;color:#475569}
+  .summary-pill strong{font-size:.92rem;color:#0f172a}
+  .filters-box{border:1px solid #e2e8f0;border-radius:12px;background:#fff;margin-bottom:1rem}
+  .filters-box summary{list-style:none;cursor:pointer;padding:.7rem .9rem;color:#475569;font-size:.84rem;font-weight:600}
+  .filters-box summary::-webkit-details-marker{display:none}
+  .filters-box[open] summary{border-bottom:1px solid #eef2f7}
+  .filters-content{padding:.8rem}
+  .worker-section{margin:1.1rem 0 1.35rem}
+  .worker-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:.55rem;padding:0 .15rem}
+  .worker-name{font-weight:700;color:#1e293b;display:flex;align-items:center;gap:.45rem}
+  .worker-count{color:#64748b;font-size:.77rem}
+  .worker-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:.7rem}
+  .material-card{background:#fff;border:1px solid #e5eaf1;border-right:3px solid #cbd5e1;border-radius:13px;padding:.78rem .85rem;box-shadow:0 2px 7px rgba(15,23,42,.035);transition:box-shadow .16s,border-color .16s}
+  .material-card:hover{box-shadow:0 5px 14px rgba(15,23,42,.08)}
+  .material-card.status-pending{border-right-color:#3b82f6}.material-card.status-delivered{border-right-color:#22a06b}.material-card.status-partial{border-right-color:#f59e0b}.material-card.status-problem{border-right-color:#dc2626}
+  .material-card-line{display:flex;justify-content:space-between;align-items:flex-start;gap:.5rem}
+  .material-name{font-weight:700;color:#172033;font-size:.92rem;line-height:1.45}
+  .status-label{font-size:.69rem;padding:.18rem .5rem;border-radius:999px;background:#f1f5f9;color:#526174;white-space:nowrap}
+  .status-label.status-pending{background:#eff6ff;color:#1d4ed8}.status-label.status-delivered{background:#ecfdf5;color:#047857}.status-label.status-partial{background:#fffbeb;color:#a16207}.status-label.status-problem{background:#fef2f2;color:#b91c1c}
+  .card-quantities{display:flex;gap:.35rem;align-items:center;flex-wrap:wrap;margin:.6rem 0;color:#475569;font-size:.78rem}
+  .quantity-chip{border-radius:7px;background:#f8fafc;padding:.23rem .48rem}.quantity-chip strong{color:#1f2937}
+  .card-actions{display:flex;gap:.4rem;align-items:center}.card-actions .btn{font-size:.76rem;padding:.26rem .55rem;border-radius:8px}
+  .empty-day{border:1px dashed #d3dae4;border-radius:14px;color:#718096;text-align:center;padding:2.5rem 1rem;background:#fafbfc}
+  .extra-details{border:1px solid #e2e8f0;border-radius:12px;background:#fff;margin-top:1rem}
+  .extra-details summary{padding:.7rem .9rem;cursor:pointer;font-weight:600;color:#475569;list-style:none}
+  .extra-details summary::-webkit-details-marker{display:none}
+  .extra-form{padding:.9rem;border-top:1px solid #eef2f7}
+  .alert-compact{padding:.65rem .85rem;font-size:.85rem}
+  @media(max-width:600px){.day-head{align-items:flex-start}.day-head-actions{width:100%}.day-head-actions .btn{flex:1}.worker-grid{grid-template-columns:1fr}.day-nav{width:100%;justify-content:space-between}}
+</style>
+{% endblock %}
 {% block inventory_content %}
-<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
-  <div>
-    <h1 class="h3 mb-1">کار روزانه انبار</h1>
-    <div class="small text-muted">
-      صف مواد روزانه
-    </div>
+<header class="day-head">
+  <div><h1 class="day-title">کار روزانه انبار</h1><div class="day-subtitle">موارد امروز، به تفکیک دریافت‌کننده</div></div>
+  <div class="day-head-actions d-flex gap-2">
+    <a href="{% url 'inventory:raw_material_receive_scan' %}" class="btn btn-sm btn-outline-success"><i class="bi bi-upc-scan"></i> دریافت کالا</a>
+    <a href="{% url 'inventory:daily_closing' %}?date={{ date_str }}" class="btn btn-sm btn-primary"><i class="bi bi-check2-circle"></i> بستن روز</a>
   </div>
-  <div class="d-flex gap-2">
-    <a href="{% url 'inventory:raw_material_receive_scan' %}" class="btn btn-sm btn-outline-success">
-      <i class="bi bi-barcode"></i> دریافت کالا
-    </a>
-    <a href="{% url 'inventory:daily_closing' %}?date={{ date_str }}" class="btn btn-sm btn-primary">
-      <i class="bi bi-shield-check"></i> کنترل و بستن روز
-    </a>
+</header>
+<div class="day-nav mb-3">
+  <a href="?date={{ previous_date }}" class="btn btn-sm btn-outline-secondary" aria-label="روز قبل"><i class="bi bi-chevron-right"></i></a>
+  <span class="day-nav-date">{{ date_str }}</span>
+  <a href="?date={{ next_date }}" class="btn btn-sm btn-outline-secondary" aria-label="روز بعد"><i class="bi bi-chevron-left"></i></a>
+</div>
+<div class="summary-strip"><span class="summary-pill"><i class="bi bi-hourglass-split text-primary"></i> در انتظار <strong>{{ summary.pending_count }}</strong></span><span class="summary-pill"><i class="bi bi-check-circle text-success"></i> تحویل‌شده <strong>{{ summary.delivered_count }}</strong></span><span class="summary-pill">نیاز امروز <strong>{{ summary.total_planned|floatformat:2 }}</strong></span></div>
+<details class="filters-box no-print"><summary><i class="bi bi-search me-1"></i> جستجو و فیلتر</summary><form method="get" class="filters-content"><div class="d-flex gap-2 flex-wrap align-items-center">
+  <label class="form-label small mb-0" for="dateFilter">تاریخ</label><input type="text" name="date" id="dateFilter" class="form-control form-control-sm text-center" value="{{ date_str }}" inputmode="numeric" pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}" maxlength="10" dir="ltr" style="max-width:125px">
+  <select name="worker" class="form-select form-select-sm" style="max-width:180px"><option value="">همهٔ افراد</option>{% for w in paint_workers %}<option value="{{ w.id }}" {% if worker_filter == w.id|stringformat:"s" %}selected{% endif %}>{{ w.get_full_name|default:w.username }}</option>{% endfor %}</select>
+  <select name="material" class="form-select form-select-sm" style="max-width:210px"><option value="">همهٔ مواد</option>{% for m in materials %}<option value="{{ m.id }}" {% if material_filter == m.id|stringformat:"s" %}selected{% endif %}>{{ m.name }}</option>{% endfor %}</select>
+  <select name="status" class="form-select form-select-sm" style="max-width:155px"><option value="">همهٔ وضعیت‌ها</option>{% for value,label in status_choices %}<option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+  <button class="btn btn-sm btn-primary" type="submit">اعمال فیلتر</button><a href="{% url 'inventory:daily_material_queue' %}" class="btn btn-sm btn-outline-secondary">پاک‌کردن</a>
+</div></form></details>
+{% if summary.conflict_count %}<div class="alert alert-warning alert-compact"><i class="bi bi-exclamation-triangle me-1"></i>{{ summary.conflict_count }} مورد نیاز بررسی دارد.</div>{% endif %}
+<div id="dailyQueueTable">
+{% for col in worker_columns %}<section class="worker-section">
+  <header class="worker-head"><span class="worker-name"><i class="bi bi-person-circle text-secondary"></i>{{ col.label }}</span><span class="worker-count">{{ col.queues|length }} مورد</span></header>
+  <div class="worker-grid">
+  {% for queue in col.queues %}<article class="material-card {% if queue.has_plan_conflict %}status-problem{% elif queue.status == 'delivered' or queue.status == 'returned' %}status-delivered{% elif queue.status == 'partial' %}status-partial{% elif queue.status == 'pending' %}status-pending{% endif %}" data-queue="{{ queue.id }}">
+    <div class="material-card-line"><div class="material-name">{{ queue.raw_material.name }}</div><span class="status-label {% if queue.has_plan_conflict %}status-problem{% elif queue.status == 'delivered' or queue.status == 'returned' %}status-delivered{% elif queue.status == 'partial' %}status-partial{% elif queue.status == 'pending' %}status-pending{% endif %}">{% if queue.has_plan_conflict %}نیاز بررسی{% else %}{{ queue.get_status_display }}{% endif %}</span></div>
+    <div class="card-quantities"><span class="quantity-chip">نیاز <strong>{{ queue.planned_quantity|floatformat:2 }}</strong> {{ queue.raw_material.get_unit_display }}</span><span class="quantity-chip">تحویل <strong>{{ queue.delivered_quantity|floatformat:2 }}</strong></span>{% if queue.excess_consumption > 0 %}<span class="text-danger">اضافه {{ queue.excess_consumption|floatformat:2 }}</span>{% endif %}</div>
+    <div class="card-actions">{% if queue.action.can_deliver %}<button type="button" class="btn btn-sm btn-primary btn-preview-delivery"><i class="bi bi-box-arrow-in-down"></i> تحویل</button>{% endif %}{% if queue.action.can_return %}<button type="button" class="btn btn-sm btn-outline-secondary btn-return">ثبت برگشت</button>{% endif %}<button type="button" class="btn btn-sm btn-link text-secondary btn-sources" aria-label="جزئیات">جزئیات</button></div>
+  </article>{% endfor %}
   </div>
+</section>{% empty %}<div class="empty-day"><i class="bi bi-check2-circle fs-4 d-block mb-2"></i>برای این روز موردی ثبت نشده است.</div>{% endfor %}
 </div>
-
-<form method="get" class="d-flex gap-2 flex-wrap mb-3 no-print">
-  {% comment %} {# تاریخ شمسی (۱۴۰۵-۰۷-۱۰). input[type=date] مقدار میلادی می‌فرستاد و با
-     parse_jalali_date اشتباه تفسیر می‌شد، پس از input متنی استفاده می‌کنیم. #} {% endcomment %}
-  <label class="form-label small align-self-center mb-0" for="dateFilter">تاریخ کاری</label>
-  <input type="text" name="date" id="dateFilter" class="form-control form-control-sm text-center"
-         value="{{ date_str }}" placeholder="1405-07-10" inputmode="numeric"
-         pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}" maxlength="10" dir="ltr"
-         style="max-width:130px" title="تاریخ کاری به تقویم شمسی، مثل 1405-07-10">
-  <select name="worker" class="form-select form-select-sm" style="max-width:200px">
-    <option value="">همه کارگران</option>
-    {% for w in paint_workers %}
-      <option value="{{ w.id }}" {% if worker_filter == w.id|stringformat:"s" %}selected{% endif %}>{{ w.get_full_name|default:w.username }}</option>
-    {% endfor %}
-  </select>
-  <details class="d-inline">
-    <summary class="btn btn-sm btn-outline-secondary">فیلتر بیشتر</summary>
-    <div class="card card-body card-modern mt-2" style="max-width:400px; position:absolute; z-index:100; background:var(--bs-body-bg);">
-      <select name="material" class="form-select form-select-sm mb-2" style="max-width:200px">
-        <option value="">همه مواد</option>
-        {% for m in materials %}
-          <option value="{{ m.id }}" {% if material_filter == m.id|stringformat:"s" %}selected{% endif %}>{{ m.name }} ({{ m.get_unit_display }})</option>
-        {% endfor %}
-      </select>
-      <select name="status" class="form-select form-select-sm" style="max-width:160px">
-        <option value="">همه وضعیت‌ها</option>
-        {% for value, label in status_choices %}
-          <option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }}</option>
-        {% endfor %}
-      </select>
-    </div>
-  </details>
-  <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-funnel"></i> فیلتر</button>
-  <a href="{% url 'inventory:daily_material_queue' %}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-x-circle"></i> پاک</a>
-</form>
-
-{% if summary.conflict_count %}
-<div class="alert alert-warning d-flex align-items-start gap-2">
-  <i class="bi bi-exclamation-triangle-fill"></i>
-  <div>
-    <strong>{{ summary.conflict_count }} ردیف</strong> مغایرت برنامه دارد: برنامه تولید پس از
-    ثبت تحویل یا بازگشت تغییر کرده است. مقادیر واقعی و تاریخچه انبار دست‌نخورده
-    مانده‌اند و روی آن‌ها نوشته نشده است.
-  </div>
-</div>
-{% endif %}
-
-<div class="d-flex flex-wrap gap-2 text-muted small mb-3 no-print">
-  <span class="badge bg-primary bg-opacity-10 text-primary px-2 py-1">در انتظار تحویل: {{ summary.pending_count }}</span>
-  <span class="badge bg-success bg-opacity-10 text-success px-2 py-1">تحویل‌شده: {{ summary.delivered_count }}</span>
-  {% if summary.conflict_count %}
-  <span class="badge bg-warning bg-opacity-10 text-warning px-2 py-1">مغایرت: {{ summary.conflict_count }}</span>
-  {% endif %}
-</div>
-<div class="text-muted small mb-3 no-print">
-  مجموع نیاز {{ summary.total_planned|floatformat:2 }} · تحویل {{ summary.total_delivered|floatformat:2 }} · برگشتی {{ summary.total_returned|floatformat:2 }}
-</div>
-
-<div class="card-modern">
-  <div class="card-body p-0">
-    <div class="table-responsive">
-      <table class="table table-hover align-middle mb-0" id="dailyQueueTable">
-        <thead class="table-light">
-          <tr>
-            <th>کارگر</th>
-            <th>ماده اولیه</th>
-            <th>نیاز</th>
-            <th>تحویل</th>
-            <th>برگشتی</th>
-            <th>وضعیت</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for queue in queues %}
-            <tr data-queue="{{ queue.id }}"
-                class="{% if queue.has_plan_conflict %}table-warning{% endif %} {% if queue.status == 'delivered' %}table-success{% elif queue.status == 'returned' %}table-info{% elif queue.status == 'closed' %}table-secondary{% endif %}">
-              <td>
-                <strong>{{ queue.worker.get_full_name|default:queue.worker.username }}</strong>
-                {% if queue.has_plan_conflict %}
-                  <span class="badge bg-warning text-dark ms-1" title="{{ queue.conflict_note }}"><i class="bi bi-exclamation-triangle"></i> مغایرت</span>
-                {% endif %}
-              </td>
-              <td>
-                <strong>{{ queue.raw_material.name }}</strong>
-                {% if queue.raw_material.code %}<div class="small text-muted">{{ queue.raw_material.code }}</div>{% endif %}
-              </td>
-              <td class="fw-bold">{{ queue.planned_quantity|floatformat:2 }} <span class="small text-muted">{{ queue.raw_material.get_unit_display }}</span></td>
-              <td>{{ queue.delivered_quantity|floatformat:2 }}
-                {% if queue.excess_consumption > 0 %}
-                  <div class="small text-danger">+{{ queue.excess_consumption|floatformat:2 }} اضافه</div>
-                {% endif %}
-              </td>
-              <td>{{ queue.returned_quantity|floatformat:2 }}</td>
-              <td>
-                <span class="badge {% if queue.status == 'pending' %}bg-primary{% elif queue.status == 'delivered' %}bg-success{% elif queue.status == 'returned' %}bg-info text-dark{% elif queue.status == 'partial' %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
-                  {{ queue.get_status_display }}
-                </span>
-              </td>
-              <td>
-                <div class="btn-group btn-group-sm" role="group">
-                  {% if queue.action.can_deliver %}
-                    <button type="button" class="btn btn-outline-primary btn-preview-delivery" data-queue="{{ queue.id }}" title="تحویل این ردیف">
-                      <i class="bi bi-box-arrow-in-down"></i> تحویل
-                    </button>
-                  {% endif %}
-                  {% if queue.action.can_return %}
-                    <button type="button" class="btn btn-outline-warning btn-return" data-queue="{{ queue.id }}" title="ثبت بازگشت">
-                      <i class="bi bi-box-arrow-up"></i> بازگشت
-                    </button>
-                  {% endif %}
-                  <button type="button" class="btn btn-outline-info btn-sources" data-queue="{{ queue.id }}" title="">
-                    <i class="bi bi-diagram-3"></i> 
-                  </button>
-                </div>
-              </td>
-            </tr>
-          {% empty %}
-            <tr>
-              <td colspan="7" class="text-center text-muted py-5">
-                <i class="bi bi-inbox"></i> برای این تاریخ و فیلترها ردیفی یافت نشد.
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
-</div>
-
-{% if queues.has_other_pages %}
-<nav aria-label="صفحه‌بندی" class="mt-3">
-  <ul class="pagination justify-content-center">
-    {% if queues.has_previous %}
-      <li class="page-item"><a class="page-link" href="?date={{ date_str }}{% if worker_filter %}&worker={{ worker_filter }}{% endif %}{% if material_filter %}&material={{ material_filter }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}&page={{ queues.previous_page_number }}">قبلی</a></li>
-    {% else %}
-      <li class="page-item disabled"><span class="page-link">قبلی</span></li>
-    {% endif %}
-    {% for num in queues.paginator.page_range %}
-      {% if queues.number == num %}
-        <li class="page-item active"><span class="page-link">{{ num }}</span></li>
-      {% elif num > queues.number|add:'-3' and num < queues.number|add:'3' %}
-        <li class="page-item"><a class="page-link" href="?date={{ date_str }}{% if worker_filter %}&worker={{ worker_filter }}{% endif %}{% if material_filter %}&material={{ material_filter }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}&page={{ num }}">{{ num }}</a></li>
-      {% endif %}
-    {% endfor %}
-    {% if queues.has_next %}
-      <li class="page-item"><a class="page-link" href="?date={{ date_str }}{% if worker_filter %}&worker={{ worker_filter }}{% endif %}{% if material_filter %}&material={{ material_filter }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}&page={{ queues.next_page_number }}">بعدی</a></li>
-    {% else %}
-      <li class="page-item disabled"><span class="page-link">بعدی</span></li>
-    {% endif %}
-  </ul>
-</nav>
-{% endif %}
-
+{% if queues.has_other_pages %}<nav aria-label="صفحه‌بندی" class="mt-3"><ul class="pagination pagination-sm justify-content-center">{% if queues.has_previous %}<li class="page-item"><a class="page-link" href="?date={{ date_str }}&page={{ queues.previous_page_number }}">قبلی</a></li>{% endif %}<li class="page-item active"><span class="page-link">{{ queues.number }} / {{ queues.paginator.num_pages }}</span></li>{% if queues.has_next %}<li class="page-item"><a class="page-link" href="?date={{ date_str }}&page={{ queues.next_page_number }}">بعدی</a></li>{% endif %}</ul></nav>{% endif %}
+<details class="extra-details no-print"><summary><i class="bi bi-plus-circle me-1"></i> تحویل ماده خارج از برنامه</summary><form method="post" action="{% url 'inventory:daily_unplanned_delivery' %}" class="extra-form row g-2 align-items-end">{% csrf_token %}<input type="hidden" name="date" value="{{ date_str }}">
+  <div class="col-12 col-md-4"><label class="form-label small">دریافت‌کننده</label><select name="worker" class="form-select form-select-sm" required><option value="">انتخاب کنید</option>{% for w in paint_workers %}<option value="{{ w.id }}">{{ w.get_full_name|default:w.username }}</option>{% endfor %}</select></div>
+  <div class="col-12 col-md-4"><label class="form-label small">ماده</label><select name="material" class="form-select form-select-sm" required><option value="">انتخاب کنید</option>{% for m in materials %}<option value="{{ m.id }}">{{ m.name }}</option>{% endfor %}</select></div>
+  <div class="col-6 col-md-2"><label class="form-label small">مقدار</label><input name="quantity" type="number" min="0.01" step="0.01" class="form-control form-control-sm" required></div><div class="col-6 col-md-2"><button type="submit" class="btn btn-sm btn-outline-primary w-100">ثبت</button></div>
+</form></details>
 <!-- پیش‌نمایش و ثبت تحویل -->
 <div class="modal fade" id="deliveryPreviewModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog">
@@ -254,7 +161,7 @@
   <div class="modal-dialog modal-lg modal-dialog-scrollable">
     <div class="modal-content">
       <div class="modal-header bg-info text-dark">
-        <h5 class="modal-title"></h5>
+        <h5 class="modal-title">مصادر احتياج المادة</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="بستن"></button>
       </div>
       <div class="modal-body">
@@ -263,12 +170,7 @@
           <div class="col-4"><label class="form-label fw-bold">ماده اولیه</label><div class="form-control-plaintext" id="sourcesMaterialName">—</div></div>
           <div class="col-4"><label class="form-label fw-bold">مجموع نیاز</label><div class="form-control-plaintext fw-bold" id="sourcesPlanned">—</div></div>
         </div>
-        <div class="table-responsive">
-          <table class="table table-sm align-middle mb-0">
-            <thead class="table-light"><tr><th>نوع منبع</th><th>عنوان</th><th>جزئیات</th><th>سهم</th></tr></thead>
-            <tbody id="sourcesTableBody"></tbody>
-          </table>
-        </div>
+        <div id="sourcesTableBody" class="d-grid gap-2"></div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">بستن</button>
@@ -369,8 +271,8 @@
       const data = await getJSON(urls.preview.replace('{id}', queueId));
       activeDeliveryId = queueId;
       previewData = data;
-      const row = document.querySelector('tr[data-queue="' + queueId + '"]');
-      el('deliveryWorkerName').textContent = row?.querySelector('td strong')?.textContent?.trim() || '—';
+      const row = document.querySelector('.material-card[data-queue="' + queueId + '"]');
+      el('deliveryWorkerName').textContent = row?.closest('.worker-section')?.querySelector('.worker-name')?.textContent?.trim() || '—';
       el('deliveryMaterialName').textContent = data.name;
       el('deliveryPlanned').textContent = data.remaining + ' ' + data.unit;
       el('deliveryUnit').textContent = data.unit;
@@ -492,14 +394,24 @@
       // ردیف‌ها با DOM ساخته می‌شوند نه innerHTML: برچسب‌ها متن آزاد هستند.
       body.textContent = '';
       (data.rows || []).forEach(row => {
-        const tr = document.createElement('tr');
-        [row.kind_display, row.label, row.detail, row.quantity].forEach((value, index) => {
-          const td = document.createElement('td');
-          td.textContent = value == null ? '' : String(value);
-          if (index === 3) td.classList.add('fw-bold');
-          tr.appendChild(td);
-        });
-        body.appendChild(tr);
+        const card = document.createElement('div');
+        card.className = 'd-flex justify-content-between align-items-start gap-3 rounded-3 border p-2';
+        const description = document.createElement('div');
+        const title = document.createElement('div');
+        title.className = 'fw-semibold';
+        title.textContent = [row.kind_display, row.label].filter(Boolean).join(' · ') || 'منبع';
+        description.appendChild(title);
+        if (row.detail) {
+          const detail = document.createElement('div');
+          detail.className = 'small text-muted mt-1';
+          detail.textContent = row.detail;
+          description.appendChild(detail);
+        }
+        const quantity = document.createElement('strong');
+        quantity.className = 'text-nowrap';
+        quantity.textContent = row.quantity == null ? '' : String(row.quantity);
+        card.append(description, quantity);
+        body.appendChild(card);
       });
       sourcesModal.show();
     } catch (err) {
@@ -508,7 +420,7 @@
   }
 
   el('dailyQueueTable')?.addEventListener('click', event => {
-    const row = event.target.closest('tr[data-queue]');
+    const row = event.target.closest('.material-card[data-queue]');
     if (!row) return;
     const queueId = row.dataset.queue;
 

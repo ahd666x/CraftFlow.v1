@@ -46,14 +46,14 @@
               <span class="absolute bottom-[-4px] left-0 right-0 h-1 bg-primary-600 rounded-full"></span>
               {% endif %}
             </a>
-            <a href="{% url 'storefront:return_policy' %}"
+            {% comment %} <a href="{% url 'storefront:return_policy' %}"
                class="link-muted relative {% if request.resolver_match.url_name == 'return_policy' %}text-primary-700 font-medium{% endif %}"
                :class="isHome && !scrolled ? 'text-white hover:text-primary-100' : 'text-stone-600 hover:text-stone-900'">
                مرجوعی
                {% if request.resolver_match.url_name == 'return_policy' %}
                <span class="absolute bottom-[-4px] left-0 right-0 h-1 bg-primary-600 rounded-full"></span>
                {% endif %}
-            </a>
+            </a> {% endcomment %}
             {% if user.is_authenticated %}
             <a href="{% url 'storefront:order_list' %}"
                class="link-muted relative {% if request.resolver_match.url_name == 'order_list' or request.resolver_match.url_name == 'order_detail' %}text-primary-700 font-medium{% endif %}"

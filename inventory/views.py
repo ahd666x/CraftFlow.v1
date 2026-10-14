@@ -244,9 +244,18 @@ def daily_material_queue(request):
 
     # Attach action state to each queue row for template buttons
     queues.object_list = list(queues.object_list)
+    worker_columns = []
+    worker_index = {}
     for q in queues.object_list:
         q.action = services.daily_queue_action_state(q, with_suggestion=False)
+        if q.worker_id not in worker_index:
+            worker_index[q.worker_id] = {'worker_id': q.worker_id, 'label': q.worker.get_full_name() or q.worker.username, 'queues': []}
+            worker_columns.append(worker_index[q.worker_id])
+        worker_index[q.worker_id]['queues'].append(q)
 
+    from datetime import timedelta
+    previous_date = selected - timedelta(days=1)
+    next_date = selected + timedelta(days=1)
     diagnostics = report.get('diagnostics', {})
     unresolved_materials = diagnostics.get('unresolved_materials', [])
     skipped = diagnostics.get('skipped', [])
@@ -254,6 +263,9 @@ def daily_material_queue(request):
     context = {
         **_inventory_context('queue'),
         'queues': queues,
+        'worker_columns': worker_columns,
+        'previous_date': previous_date.strftime('%Y-%m-%d'),
+        'next_date': next_date.strftime('%Y-%m-%d'),
         'summary': report['summary'],
         'total_count': paginator.count,
         'selected_date': selected,
@@ -270,6 +282,34 @@ def daily_material_queue(request):
         'skipped_tasks': skipped,
     }
     return _no_store(render(request, 'inventory/queue.html', context))
+
+
+@login_required
+@warehouse_deliver_required
+@require_POST
+def daily_unplanned_delivery(request):
+    """صرف إضافي خارج البرنامج مع تسجيله كاستهلاك زائد قابل للتتبع."""
+    worker_id = _int(request.POST.get('worker'))
+    material_id = _int(request.POST.get('material'))
+    quantity = (request.POST.get('quantity') or '').strip()
+    selected = _parse_date_param(request.POST.get('date', '').strip())
+    work_date = selected.togregorian() if selected else _today_gregorian_from_request(request)
+    worker = User.objects.filter(pk=worker_id, is_active=True, workerprofile__isnull=False).first()
+    material = RawMaterial.objects.filter(pk=material_id, is_active=True).first()
+    if not worker or not material or not quantity:
+        messages.error(request, 'کارگر، ماده و مقدار را به‌درستی انتخاب کنید.')
+        return redirect(f"{request.META.get('HTTP_REFERER', '/inventory/')}#extra-issue")
+    try:
+        queue = DailyMaterialQueue.objects.create(work_date=work_date, worker=worker,
+            raw_material=material, color_part='خارج برنامه', planned_quantity=Decimal('0'))
+        services.execute_daily_delivery(queue_id=queue.pk, delivered_by=request.user,
+            quantity=quantity, note='صرف خارج از برنامه')
+    except Exception as exc:
+        logger.warning('unplanned material delivery failed: %s', exc)
+        messages.error(request, f'صرف انجام نشد: {exc}')
+    else:
+        messages.success(request, f'{material.name} به مقدار {quantity} {material.get_unit_display()} خارج از برنامه تحویل شد و به‌عنوان مصرف اضافه ثبت شد.')
+    return redirect(request.META.get('HTTP_REFERER', '/inventory/'))
 
 
 def _today_gregorian_from_request(request):
@@ -715,6 +755,12 @@ def reports_view(request):
         tab = 'overview'
 
     filters = _report_filters(request)
+    if tab == 'consumption' and not filters.get('date_from') and not filters.get('date_to'):
+        from datetime import timedelta
+        from django.utils import timezone
+        previous_month_end = timezone.localdate().replace(day=1) - timedelta(days=1)
+        filters['date_to'] = previous_month_end
+        filters['date_from'] = previous_month_end.replace(day=1)
     context = {
         **_inventory_context('reports'),
         'tabs': REPORT_TABS,
@@ -750,6 +796,7 @@ def reports_view(request):
     else:
         context['dashboard'] = reports.material_planning_dashboard(
             date=filters.get('date_to'))
+        context['stock_forecast'] = reports.material_stock_forecast()
         # inventory_alerts یک dict برمی‌گرداند، نه یک لیست.
         alert_data = reports.inventory_alerts(date=filters.get('date_to'))
         context['alerts'] = alert_data['alerts']

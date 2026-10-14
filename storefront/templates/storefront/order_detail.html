@@ -141,7 +141,7 @@
                     {% if order.payment and order.payment.gateway == 'cash_on_delivery' and order.payment.status == 'pending' %}
                         <p class="mb-2 text-xs text-stone-500">پرداخت هنگام تحویل است.</p>
                     {% elif order.status == 'draft' %}
-                        <p class="mb-2 text-xs text-stone-500">سفارش ثبت شده است. برای شروع تولید، مبلغ را پرداخت کنید.</p>
+                        {% comment %} <p class="mb-2 text-xs text-stone-500">سفارش ثبت شده است. برای شروع تولید، مبلغ را پرداخت کنید.</p> {% endcomment %}
                     {% else %}
                         <p class="mb-2 text-xs text-stone-500">مبلغ سفارش را پرداخت کنید تا تولید آزاد شود.</p>
                     {% endif %}

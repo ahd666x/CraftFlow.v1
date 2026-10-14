@@ -37,6 +37,7 @@ urlpatterns = [
          views.daily_queue_batch_auto_return, name='daily_queue_batch_auto_return'),
     path('daily-queue/<int:queue_id>/cancel/',
          views.daily_queue_cancel, name='daily_queue_cancel'),
+    path('daily-queue/unplanned-delivery/', views.daily_unplanned_delivery, name='daily_unplanned_delivery'),
     path('daily-queue/refresh/',
          views.daily_queue_refresh, name='daily_queue_refresh'),
     path('daily-queue/repair/',

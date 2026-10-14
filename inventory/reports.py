@@ -229,7 +229,23 @@ def consumption_report(*, date=None, date_from=None, date_to=None,
         totals['conflicts'] += row['conflicts']
 
     totals['variance'] = _q(totals['actual'] - totals['planned'])
-    return {'rows': rows, 'totals': totals}
+    worker_grouped = qs.values(
+        'worker_id', 'worker__first_name', 'worker__last_name', 'worker__username',
+        'raw_material__name', 'raw_material__unit',
+    ).annotate(
+        planned=Sum('planned_quantity'), actual=Sum('actual_consumption'),
+        excess=Sum('excess_consumption'),
+    ).order_by('worker__first_name', 'worker__last_name', 'raw_material__name')
+    by_worker = {}
+    for item in worker_grouped:
+        name = ' '.join(filter(None, (item['worker__first_name'], item['worker__last_name']))) or item['worker__username'] or '—'
+        worker = by_worker.setdefault(item['worker_id'], {'name': name, 'planned': Decimal('0'), 'actual': Decimal('0'), 'excess': Decimal('0'), 'materials': []})
+        planned, actual, excess = _q(item['planned']), _q(item['actual']), _q(item['excess'])
+        worker['planned'] += planned
+        worker['actual'] += actual
+        worker['excess'] += excess
+        worker['materials'].append({'name': item['raw_material__name'], 'unit': item['raw_material__unit'], 'planned': planned, 'actual': actual, 'excess': excess})
+    return {'rows': rows, 'totals': totals, 'by_worker': list(by_worker.values())}
 
 
 # ===================================================================
@@ -383,6 +399,41 @@ def low_stock_rows():
 # ===================================================================
 #  Phase 13 — داشبورد برنامه‌ریزی مواد
 # ===================================================================
+
+def material_stock_forecast(*, today=None, days=60):
+    """پیش‌بینی موجودی پس از نیاز برنامه‌ریزی‌شده در روزهای پیش رو."""
+    from datetime import timedelta
+    today = today or timezone.localdate()
+    end = today + timedelta(days=days)
+    stock = dict(RawMaterial.objects.filter(is_active=True).annotate(
+        balance=Sum(_signed('movements__'))).values_list('id', 'balance'))
+    queues = DailyMaterialQueue.objects.filter(
+        work_date__gte=today, work_date__lte=end,
+        status__in=('pending', 'partial'),
+    ).select_related('raw_material', 'worker').prefetch_related(
+        'sources__production_task__order_item__order', 'sources__production_task')
+    rows = []
+    for queue in queues.order_by('work_date', 'raw_material__name', 'worker__first_name'):
+        remaining = _q(max(queue.planned_quantity - queue.delivered_quantity, Decimal('0')))
+        stock[queue.raw_material_id] = _q((stock.get(queue.raw_material_id) or 0) - remaining)
+        details = []
+        for source in queue.sources.all():
+            task = source.production_task
+            order = getattr(getattr(task, 'order_item', None), 'order', None) if task else None
+            details.append({'worker': queue.worker.get_full_name() or queue.worker.username,
+                'quantity': _q(source.quantity), 'order': f'سفارش #{order.pk}' if order else '—',
+                'task': f'تسک #{task.pk}' if task else '—'})
+        if not details:
+            details.append({'worker': queue.worker.get_full_name() or queue.worker.username,
+                'quantity': remaining, 'order': '—', 'task': '—'})
+        rows.append({'queue_id': queue.pk, 'date': queue.work_date,
+            'url': _queue_url(queue.work_date),
+            'material_url': _queue_url(queue.work_date) + f'&material={queue.raw_material_id}',
+            'material': queue.raw_material, 'needed': remaining,
+            'balance': stock[queue.raw_material_id], 'details': details,
+            'short': stock[queue.raw_material_id] < 0})
+    return rows
+
 
 def material_planning_dashboard(date=None):
     """داشبورد مدیریتی + بخش انبار برای یک روز (فقط خواندنی)."""

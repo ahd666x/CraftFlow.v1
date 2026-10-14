@@ -17,11 +17,11 @@
             {% if current_category %}{{ current_category.name }}{% else %}همه محصولات{% endif %}
         </h1>
         
-        {% if page_obj %}
+        {% comment %} {% if page_obj %}
         <p class="text-sm text-stone-500">
             {{ page_obj.paginator.count }} محصول یافت شد
         </p>
-        {% endif %}
+        {% endif %} {% endcomment %}
 
         <form method="get" class="flex items-center gap-2">
             {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}

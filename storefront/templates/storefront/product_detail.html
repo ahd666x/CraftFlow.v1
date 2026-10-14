@@ -332,7 +332,7 @@
             class="lg:order-2 lg:sticky lg:top-20 lg:self-start">
 
             <div class="card p-5 space-y-4">
-                <h2 class="font-semibold text-lg">قیمت و خرید</h2>
+                {% comment %} <h2 class="font-semibold text-lg">قیمت و خرید</h2>
 
                 <div class="space-y-2 text-sm">
                     <div class="flex justify-between text-stone-600">
@@ -347,7 +347,7 @@
                         <span class="font-semibold">قیمت واحد</span>
                         <span class="font-bold" x-text="unitPrice().toLocaleString('fa-IR') + ' تومان'"></span>
                     </div>
-                </div>
+                </div> {% endcomment %}
 
                 <form method="post" action="{% url 'cart:cart_add' product.id %}"
                       hx-post="{% url 'cart:cart_add' product.id %}"
@@ -419,7 +419,7 @@
                             </div>
                             {% endfor %}
                         </div>
-                        <p class="mt-2 text-xs text-stone-500">کد رنگ هر بخش قابل تغییر است؛ پیش‌فرض همان رنگ استاندارد محصول است.</p>
+                        {% comment %} <p class="mt-2 text-xs text-stone-500">کد رنگ هر بخش قابل تغییر است؛ پیش‌فرض همان رنگ استاندارد محصول است.</p> {% endcomment %}
                     </div>
                     {% endif %}
 

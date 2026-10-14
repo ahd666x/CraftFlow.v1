@@ -4,8 +4,8 @@
 
 {% block title %}فروشگاه — خانه{% endblock %}
 
-{% block og_title %}فروشگاه آنلاین مبلمان و چوب با ابعاد دلخواه{% endblock %}
-{% block og_description %}فضای هر خانه متفاوت است؛ ابعاد قطعه را خودتان تعیین کنید و قیمت نهایی را همان لحظه ببینید.{% endblock %}
+{% comment %} {% block og_title %}فروشگاه آنلاین مبلمان و چوب با ابعاد دلخواه{% endblock %}
+{% block og_description %}فضای هر خانه متفاوت است؛ ابعاد قطعه را خودتان تعیین کنید و قیمت نهایی را همان لحظه ببینید.{% endblock %} {% endcomment %}
 {% block og_image %}{% if site_settings and site_settings.cover_image %}{{ site_settings.cover_image.url }}{% endif %}{% endblock %}
 
 {% block content %}
@@ -69,7 +69,7 @@
 {% endif %}
 
 {# ۲) نوار اعتماد: ۴ آیتم فقط عنوان کوتاه #}
-<section class="py-20 bg-white">
+{% comment %} <section class="py-20 bg-white">
   <div class="mx-auto max-w-6xl px-4">
     <div class="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
       {% for icon, title, desc in features %}
@@ -90,7 +90,7 @@
       {% endfor %}
     </div>
   </div>
-</section>
+</section> {% endcomment %}
 
 {# ۳) جدیدترین محصولات - کاروسل افقی #}
 <section class="py-24 bg-cream">

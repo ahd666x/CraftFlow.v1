@@ -2,7 +2,7 @@
 {% load static %}
 
 {% block title %}درباره ما — {{ site_settings.site_name }}{% endblock %}
-{% block meta_description %}درباره {{ site_settings.site_name }}، ماموریت ما و تاریخچه{% endblock %}
+{% comment %} {% block meta_description %}درباره {{ site_settings.site_name }}، ماموریت ما و تاریخچه{% endblock %} {% endcomment %}
 {% block og_title %}درباره {{ site_settings.site_name }}{% endblock %}
 {% block og_description %}درباره ما، ماموریت و ارزش‌های {{ site_settings.site_name }}{% endblock %}
 {% block og_image %}{% if site_settings.cover_image %}{{ site_settings.cover_image.url }}{% endif %}{% endblock %}
@@ -15,17 +15,17 @@
         {% if site_settings.about_text %}
         <div class="whitespace-pre-line text-stone-600 mb-8">{{ site_settings.about_text }}</div>
         {% else %}
-        <p class="lead text-stone-600 mb-8">
+        {% comment %} <p class="lead text-stone-600 mb-8">
             {{ site_settings.site_name }} یک فروشگاه آنلاین تخصصی مبلمان و چوب با ابعاد دلخواه است که به شما امکان می‌دهد دقیقاً همان قطعه‌ای که در ذهن دارید را با ابعاد، رنگ و مشخصات دلخواه سفارش دهید.
-        </p>
+        </p> {% endcomment %}
         {% endif %}
         
-        <h2 class="text-2xl font-bold text-stone-900 mt-8 mb-4">ماموریت ما</h2>
+        {% comment %} <h2 class="text-2xl font-bold text-stone-900 mt-8 mb-4">ماموریت ما</h2>
         <p>
             ما با اعتقاد به این که هر خانه منحصر به فرد است، پلتفرمی فراهم کرده‌ایم که در آن شما طراح مبلمان خود هستید. از انتخاب چوب تا ابعاد دقیق سانتی‌متری، همه چیز در دست شماست.
-        </p>
+        </p> {% endcomment %}
         
-        <h2 class="text-2xl font-bold text-stone-900 mt-8 mb-4">چرا {{ site_settings.site_name }}؟</h2>
+        {% comment %} <h2 class="text-2xl font-bold text-stone-900 mt-8 mb-4">چرا {{ site_settings.site_name }}؟</h2>
         <ul class="list-disc list-inside space-y-2 mt-4 text-stone-600">
             <li><strong>ابعاد دلخواه:</strong> طول، عرض و ارتفاع را به سانتی‌متر دقیق تعیین کنید</li>
             <li><strong>قیمت شفاف:</strong> قیمت نهایی بر اساس ابعاد انتخابی شما به‌صورت لحظه‌ای محاسبه می‌شود</li>
@@ -34,7 +34,7 @@
             <li><strong>گارانتی {{ site_settings.warranty_years }} ساله:</strong> اطمینان از کیفیت ساخت و مواد اولیه</li>
             {% endif %}
             <li><strong>ارسال سراسری:</strong> بسته‌بندی ایمن و ارسال به سراسر ایران</li>
-        </ul>
+        </ul> {% endcomment %}
         
         <h2 class="text-2xl font-bold text-stone-900 mt-8 mb-4">تماس با ما</h2>
         <address class="not-italic text-stone-600 mt-4 space-y-2">

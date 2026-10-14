@@ -13,8 +13,8 @@
                     <li><a href="{% url 'storefront:product_list' %}" class="hover:text-white transition">محصولات</a></li>
                     <li><a href="{% url 'storefront:category_list' %}" class="hover:text-white transition">دسته‌بندی‌ها</a></li>
                     <li><a href="{% url 'storefront:about' %}" class="hover:text-white transition">درباره ما</a></li>
-                    <li><a href="{% url 'storefront:return_policy' %}" class="hover:text-white transition">قوانین مرجوعی</a></li>
-                    <li><a href="{% url 'storefront:terms_of_service' %}" class="hover:text-white transition">شرایط استفاده</a></li>
+                    {% comment %} <li><a href="{% url 'storefront:return_policy' %}" class="hover:text-white transition">قوانین مرجوعی</a></li>
+                    <li><a href="{% url 'storefront:terms_of_service' %}" class="hover:text-white transition">شرایط استفاده</a></li> {% endcomment %}
                     {% if user.is_authenticated %}
                     <li><a href="{% url 'storefront:order_list' %}" class="hover:text-white transition">سفارش‌های من</a></li>
                     <li><a href="{% url 'accounts:address_list' %}" class="hover:text-white transition">آدرس‌های من</a></li>
@@ -90,7 +90,7 @@
         </div>
 
         <div class="mt-8 pt-6 border-t border-primary-800 flex flex-col items-center justify-between gap-2 sm:flex-row text-xs text-primary-300">
-            <p>© {{ site_settings.site_name }} - تمام حقوق محفوظ است.</p>
+            {% comment %} <p>© {{ site_settings.site_name }} - تمام حقوق محفوظ است.</p> {% endcomment %}
             {% if user.is_staff %}
             <a href="{% url 'dashboard' %}" class="font-medium text-secondary-400 underline underline-offset-4 transition hover:text-secondary-300">به پنل مدیریت بروید</a>
             {% endif %}
