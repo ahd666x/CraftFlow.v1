@@ -116,3 +116,12 @@ def active_filter_count(q=None, selected_category=None, min_price=None, max_pric
     if max_price:
         count += 1
     return count
+
+
+@register.filter
+def color_hex(code):
+    """کد هگز یک کد رنگی را برمی‌گرداند (از تعریف‌های کد رنگ فعال)."""
+    from product.utils import get_color_hex_map
+    if code is None or code == '':
+        return ''
+    return get_color_hex_map().get(str(code), '')

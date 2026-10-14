@@ -51,6 +51,32 @@ def _resolve_dim(raw, default, editable, label):
         raise ValueError(f'{label} باید بین ۱ تا {MAX_CUSTOM_DIMENSION_CM} سانتیمتر باشد.')
     return value
 
+
+def _resolve_colors(product, colors):
+    """کدهای رنگ انتخاب‌شده را اعتبارسنجی و نرمال‌سازی می‌کند.
+
+    فقط بخش‌هایی که در رنگ‌های پیش‌فرض محصول تعریف شده‌اند و فقط
+    کدهایی که در تعریف‌های کد رنگ فعال موجودند پذیرفته می‌شوند.
+    کلیدها مرتب می‌شوند تا سریال‌سازی JSON (و در نتیجه برابری در
+    دیتابیس و unique constraint) قطعی باشد.
+    """
+    from product.utils import get_color_code_choices, _parse_default_colors
+
+    if not colors:
+        return {}
+    if not isinstance(colors, dict):
+        return {}
+    allowed_parts = set(_parse_default_colors(product).keys())
+    valid_codes = {str(code) for code, _label in get_color_code_choices()}
+    resolved = {}
+    for part, code in colors.items():
+        part = str(part).strip()
+        code = str(code).strip() if code is not None else ''
+        if not part or not code or part not in allowed_parts or code not in valid_codes:
+            continue
+        resolved[part] = code
+    return dict(sorted(resolved.items()))
+
 def get_or_create_cart(request):
     """
     سبد کاربر را برمی‌گرداند و در نبودِ آن می‌سازد.
@@ -96,6 +122,7 @@ def merge_guest_cart_to_user(request, user):
             custom_length=guest_item.custom_length,
             custom_width=guest_item.custom_width,
             custom_height=guest_item.custom_height,
+            selected_colors=guest_item.selected_colors or {},
             defaults={'quantity': guest_item.quantity}
         )
         if not created:
@@ -118,10 +145,12 @@ def merge_guest_cart_to_user(request, user):
 class CartService:
     @staticmethod
     @transaction.atomic
-    def add_item(cart, product_id, quantity=1, length=None, width=None, height=None):
+    def add_item(cart, product_id, quantity=1, length=None, width=None, height=None, colors=None):
         """
         آیتم را به سبد اضافه می‌کند. اگر ابعاد سفارشی داده نشود، ابعاد
         پیش‌فرم محصول جایگزین می‌شود (یعنی اختلاف قیمت صفر و قیمت = قیمت پایه).
+        کدهای رنگ انتخاب‌شده برای بخش‌های رنگی محصول هم در آیتم ذخیره
+        می‌شوند؛ ترکیب متفاوتِ رنگ‌ها یک آیتم جداگانه می‌سازد.
         """
         product = get_object_or_404(Product, id=product_id, is_active=True)
 
@@ -130,10 +159,12 @@ class CartService:
         length = _resolve_dim(length, product.length, product.length_editable, 'length')
         width = _resolve_dim(width, product.width, product.width_editable, 'width')
         height = _resolve_dim(height, product.height, product.height_editable, 'height')
+        colors = _resolve_colors(product, colors)
 
         cart_item, created = CartItem.objects.select_for_update().get_or_create(
             cart=cart, product=product,
             custom_length=length, custom_width=width, custom_height=height,
+            selected_colors=colors,
             defaults={'quantity': quantity}
         )
 

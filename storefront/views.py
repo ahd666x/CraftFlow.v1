@@ -137,26 +137,63 @@ def product_list(request):
 
 
 def product_detail(request, slug):
+    from product.utils import _parse_default_colors, get_color_code_choices, get_color_hex_map
+
     product = get_object_or_404(
         _with_rating(Product.active_objects.select_related('category')),
         slug=slug,
     )
     gallery = product.gallery_images.filter(is_active=True)
+
+    # محصولات پیشنهادی: هم‌نام‌های همین محصول از دیگر دسته‌بندی‌ها
+    # (مثلاً برای «جلومبل فیدان»، محصولات «فیدان» در کنسول، عسلی و...).
+    # اگر هم‌نامی در دسته‌ای دیگر نبود، به محصولات همان دسته برمی‌گردیم.
     related_products = _with_rating(
         Product.active_objects
-        .filter(category=product.category)
-        .exclude(pk=product.pk)
+        .filter(name=product.name)
+        .exclude(category=product.category)
         .select_related('category')
         .prefetch_related('gallery_images')
-        .order_by('-id')[:6]
+        .order_by('category_id', '-id')[:6]
     )
+    related_by_name = bool(related_products)
+    if not related_products:
+        related_products = _with_rating(
+            Product.active_objects
+            .filter(category=product.category)
+            .exclude(pk=product.pk)
+            .select_related('category')
+            .prefetch_related('gallery_images')
+            .order_by('-id')[:6]
+        )
+
     reviews = product.reviews.filter(is_active=True).select_related('user')
+
+    default_colors = _parse_default_colors(product)
+
+    # بخش‌های رنگی قابل انتخاب، به ترتیب استاندارد PART_CHOICES.
+    # کدهای خالی/نامعتبر (مثل nan) از پیش‌فرض حذف می‌شوند؛ اگر کد
+    # پیش‌فرض در تعریف‌های فعال نباشد، اولین گزینه انتخاب می‌شود.
+    valid_codes = {code for code, _label in get_color_code_choices()}
+    color_parts = []
+    for part, _label in Color.PART_CHOICES:
+        code = str(default_colors.get(part, '') or '').strip()
+        if not code or code.lower() == 'nan':
+            continue
+        color_parts.append({
+            'part': part,
+            'default_code': code if code in valid_codes else '',
+        })
 
     context = {
         'product': product,
         'gallery': gallery,
-        'default_colors': product.default_colors or {},
+        'default_colors': default_colors,
+        'color_parts': color_parts,
+        'color_code_choices': [code for code, _label in get_color_code_choices()],
+        'color_hex_map': get_color_hex_map(),
         'related_products': related_products,
+        'related_by_name': related_by_name,
         'reviews': reviews,
     }
     return render(request, 'storefront/product_detail.html', context)
@@ -364,10 +401,15 @@ def _create_order(request, cart, items):
         # محاسبه شده، پس بازنویسی را غیرفعال می‌کنیم.
         order_item._skip_price_calc = True
         order_item.save()
-        # رنگ‌های پیش‌فرض محصول به آیتم سفارش منتقل می‌شوند تا بعداً
-        # انبار و نقاشی بتوانند از آن استفاده کنند.
-        for part, code in (product.default_colors or {}).items():
-            if not code or code == 'nan':
+        # رنگ‌های انتخاب‌شده توسط مشتری (و در نبودِ آن، رنگ‌های پیش‌فرض
+        # محصول) به آیتم سفارش منتقل می‌شوند تا بعداً انبار و نقاشی
+        # بتوانند از آن استفاده کنند.
+        from product.utils import _parse_default_colors
+        item_colors = item.selected_colors if isinstance(item.selected_colors, dict) and item.selected_colors else None
+        if item_colors is None:
+            item_colors = _parse_default_colors(product)
+        for part, code in item_colors.items():
+            if not code or str(code).lower() == 'nan':
                 continue
             Color.objects.get_or_create(
                 part=part, code=str(code), orderitem=order_item,

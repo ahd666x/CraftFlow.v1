@@ -111,18 +111,35 @@ class CartItem(TimeStampedModel):
     # کاربر همان چیزی بماند که در لحظه انتخاب دیده است.
     unit_price = models.DecimalField(max_digits=12, decimal_places=0, default=0, verbose_name="قیمت واحد")
 
+    # کدهای رنگی که مشتری برای بخش‌های رنگی محصول انتخاب کرده است
+    # (نگاشت «بخش → کد رنگ»). خالی یعنی رنگ‌های پیش‌فرض محصول.
+    selected_colors = models.JSONField(
+        default=dict, blank=True, verbose_name="کدهای رنگ انتخاب‌شده",
+    )
+
     class Meta:
         verbose_name = "آیتم سبد خرید"
         verbose_name_plural = "آیتم‌های سبد خرید"
         constraints = [
             models.UniqueConstraint(
-                fields=['cart', 'product', 'custom_length', 'custom_width', 'custom_height'],
-                name='unique_cart_item_per_dimensions'
+                fields=['cart', 'product', 'custom_length', 'custom_width', 'custom_height', 'selected_colors'],
+                name='unique_cart_item_per_dimensions_and_colors'
             )
         ]
 
     def __str__(self):
         return f"{self.product.name} - {self.quantity}"
+
+    @property
+    def resolved_colors(self):
+        """رنگ‌های نهایی آیتم: انتخاب مشتری، و در نبود آن پیش‌فرض محصول.
+
+        همیشه یک dict برمی‌گرداند (حتی اگر default_colors محصول به‌صورت
+        رشته‌ی JSON ذخیره شده باشد)."""
+        if isinstance(self.selected_colors, dict) and self.selected_colors:
+            return self.selected_colors
+        from product.utils import _parse_default_colors
+        return _parse_default_colors(self.product)
 
     def recalculate_price(self):
         """قیمت واحد را بر اساس ابعاد سفارشی فعلی دوباره محاسبه می‌کند."""

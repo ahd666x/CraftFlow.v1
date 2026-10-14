@@ -1,3 +1,5 @@
+import json
+
 from django.contrib import messages
 from django.shortcuts import redirect, render
 from django.views.decorators.http import require_POST
@@ -57,6 +59,15 @@ def cart_add(request, product_id):
     if quantity < 1:
         quantity = 1
 
+    # کدهای رنگ انتخاب‌شده برای بخش‌های رنگی؛ فیلدها با پیشوند color_ ارسال
+    # می‌شوند (مثل color_بدنه=9). مقدار خالی یعنی همان پیش‌فرض محصول.
+    colors = {}
+    for key in request.POST:
+        if key.startswith('color_') and len(key) > 6:
+            code = (request.POST.get(key) or '').strip()
+            if code:
+                colors[key[6:]] = code
+
     try:
         item = CartService.add_item(
             cart,
@@ -65,13 +76,17 @@ def cart_add(request, product_id):
             length=_int_or_none(request.POST.get('length')),
             width=_int_or_none(request.POST.get('width')),
             height=_int_or_none(request.POST.get('height')),
+            colors=colors,
         )
     except ValueError as exc:
         messages.error(request, str(exc))
         if request.headers.get('HX-Request'):
-            # برای HTMX یک پاسخ 422 برمی‌گردانیم تا swap انجام نشود
+            # ۲۰۴: هیچ محتوایی در هدف swap نمی‌شود؛ پیام خطا از طریق
+            # هدر HX-Trigger و رویداد cartError به صورت toast نمایش داده می‌شود
             from django.http import HttpResponse
-            return HttpResponse(str(exc), status=422)
+            response = HttpResponse(status=204)
+            response['HX-Trigger'] = json.dumps({'cartError': str(exc)})
+            return response
         return redirect(request.META.get('HTTP_REFERER') or 'cart:cart_detail')
 
     if request.headers.get('HX-Request'):

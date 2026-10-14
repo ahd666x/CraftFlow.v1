@@ -130,6 +130,17 @@
                             {% endif %}
                             × {{ item.quantity }}
                         </span>
+                        {% if item.resolved_colors %}
+                        <span class="mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5 text-xs text-stone-500">
+                            {% for part, code in item.resolved_colors.items %}
+                            <span class="flex items-center gap-1">
+                                <span class="inline-block h-3 w-3 rounded-full border border-stone-300"
+                                      style="background: {{ code|color_hex }}" aria-hidden="true"></span>
+                                {{ part }}: کد {{ code }}
+                            </span>
+                            {% endfor %}
+                        </span>
+                        {% endif %}
                     </div>
                     <span class="whitespace-nowrap">{{ item.total_price|fa_price }}</span>
                 </li>

@@ -39,6 +39,17 @@
         <div class="mt-0.5 text-sm text-stone-500">
             قیمت واحد: {{ item.unit_price|fa_price }} تومان
         </div>
+        {% if item.resolved_colors %}
+        <div class="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-stone-500">
+            {% for part, code in item.resolved_colors.items %}
+            <span class="flex items-center gap-1">
+                <span class="inline-block h-3 w-3 rounded-full border border-stone-300"
+                      style="background: {{ code|color_hex }}" aria-hidden="true"></span>
+                {{ part }}: کد {{ code }}
+            </span>
+            {% endfor %}
+        </div>
+        {% endif %}
     </div>
 
     <div class="flex items-center gap-2">

@@ -31,6 +31,25 @@ document.addEventListener('cartUpdated', function (e) {
     }
 });
 
+/* Toast for HTMX cart errors (e.g. out-of-range dimension on add-to-cart).
+   Dispatched via the HX-Trigger response header (cartError). */
+document.addEventListener('cartError', function (e) {
+    var host = document.getElementById('toast-host');
+    if (!host) {
+        return;
+    }
+    var toast = document.createElement('div');
+    toast.className = 'card px-4 py-3 text-sm text-red-700 border-red-200 bg-red-50 animate-slide-up';
+    toast.textContent = e.detail || 'خطا در افزودن به سبد خرید';
+    host.appendChild(toast);
+    setTimeout(function () {
+        toast.classList.remove('animate-slide-up');
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(-16px)';
+        setTimeout(function () { toast.remove(); }, 300);
+    }, 3000);
+});
+
 /* Quantity increment/decrement in cart rows — delegated event on
    `data-cart-step` buttons instead of inline scripts. */
 document.addEventListener('click', function (e) {
