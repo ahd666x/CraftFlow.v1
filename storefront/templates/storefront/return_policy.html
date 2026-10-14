@@ -55,9 +55,13 @@
         <div class="mt-10 p-4 bg-primary-50 border border-primary-100 rounded-lg">
             <p class="text-sm text-primary-800">
                 برای اطلاعات بیشتر یا ثبت درخواست مرجوعی، با پشتیبانی تماس بگیرید:
-                <a href="tel:02188000000" class="font-medium underline underline-offset-2">۰۲۱-۸۸۰۰۰۰۰۰</a> 
-                یا ایمیل 
-                <a href="mailto:info@craftflow.ir" class="font-medium underline underline-offset-2">info@craftflow.ir</a>
+                {% if site_settings.contact_phone %}
+                <a href="tel:{{ site_settings.contact_phone }}" class="font-medium underline underline-offset-2">{{ site_settings.contact_phone }}</a>
+                {% endif %}
+                {% if site_settings.contact_email %}
+                یا ایمیل
+                <a href="mailto:{{ site_settings.contact_email }}" class="font-medium underline underline-offset-2">{{ site_settings.contact_email }}</a>
+                {% endif %}
             </p>
         </div>
     </div>

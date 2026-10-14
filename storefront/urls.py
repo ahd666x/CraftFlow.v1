@@ -28,4 +28,5 @@ urlpatterns = [
     path('about/', views.about, name='about'),
     path('return-policy/', views.return_policy, name='return_policy'),
     path('terms-of-service/', views.terms_of_service, name='terms_of_service'),
+    path('manifest.json', views.manifest, name='manifest'),
 ]

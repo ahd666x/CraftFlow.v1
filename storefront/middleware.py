@@ -16,7 +16,8 @@ class MaintenanceModeMiddleware:
         if (request.path.startswith('/static/') or 
             request.path.startswith('/media/') or 
             request.path.startswith('/admin/') or
-            request.path.startswith('/accounts/')):
+            request.path.startswith('/accounts/') or
+            request.path.endswith('/manifest.json')):
             return self.get_response(request)
 
         # بررسی حالت تعمیرات (با کش برای جلوگیری از کوئری تکراری)

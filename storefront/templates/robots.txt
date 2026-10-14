@@ -18,4 +18,4 @@ Disallow: /orders/
 Disallow: /returns/
 Disallow: /profile/
 
-Sitemap: https://craftflow.ir/sitemap.xml
+Sitemap: {{ request.scheme }}://{{ request.get_host }}/sitemap.xml

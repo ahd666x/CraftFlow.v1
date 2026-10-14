@@ -18,7 +18,7 @@
         {% endif %}
 
         <a href="{% url 'storefront:home' %}" class="flex items-center gap-2">
-            <img src="{% static 'storefront/img/logo.png' %}" alt="لوگو" class="h-8 w-auto">
+            <img src="{% if site_settings.logo %}{{ site_settings.logo.url }}{% else %}{% static 'storefront/img/logo.png' %}{% endif %}" alt="{{ site_settings.site_name }}" class="h-8 w-auto">
         </a>
 
         <nav class="hidden items-center gap-6 md:flex">

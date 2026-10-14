@@ -3,11 +3,36 @@ from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Avg, Count, Q
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.templatetags.static import static
 
 from cart.services import get_or_create_cart
 from product.models import Color, Customer, Order, OrderItem, Product, ProductCategory
 from storefront.models import Address, HeroSlide, ProductReview, SiteSettings
+
+
+def manifest(request):
+    s = SiteSettings.objects.first() or SiteSettings.get_settings()
+    icon = s.pwa_icon.url if s.pwa_icon else static('storefront/img/icon-512.png')
+    data = {
+        'name': s.site_name,
+        'short_name': s.short_name or s.site_name,
+        'description': s.short_description,
+        'start_url': '/shop/',
+        'scope': '/shop/',
+        'display': 'standalone',
+        'dir': 'rtl',
+        'lang': 'fa',
+        'background_color': '#ffffff',
+        'theme_color': s.primary_color,
+        'icons': [
+            {'src': icon, 'sizes': '192x192', 'type': 'image/png', 'purpose': 'any maskable'},
+            {'src': icon, 'sizes': '512x512', 'type': 'image/png', 'purpose': 'any maskable'},
+        ],
+    }
+    return JsonResponse(data, json_dumps_params={'ensure_ascii': False},
+                        content_type='application/manifest+json')
 
 
 def _with_rating(queryset):

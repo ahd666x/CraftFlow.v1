@@ -84,8 +84,13 @@
         <div class="mt-10 p-4 bg-primary-50 border border-primary-100 rounded-lg">
             <p class="text-sm text-primary-800">
                 تاریخ آخرین به‌روزرسانی: {{ site_settings.updated_at|default:"مهر ۱۴۰۳"|date:"j F Y" }}<br>
-                برای هر سوالی با ما تماس بگیرید: 
-                <a href="mailto:info@craftflow.ir" class="font-medium underline underline-offset-2">info@craftflow.ir</a>
+                برای هر سوالی با ما تماس بگیرید:
+                {% if site_settings.contact_email %}
+                <a href="mailto:{{ site_settings.contact_email }}" class="font-medium underline underline-offset-2">{{ site_settings.contact_email }}</a>
+                {% endif %}
+                {% if site_settings.contact_phone %}
+                <a href="tel:{{ site_settings.contact_phone }}" class="font-medium underline underline-offset-2 ml-2">{{ site_settings.contact_phone }}</a>
+                {% endif %}
             </p>
         </div>
     </div>

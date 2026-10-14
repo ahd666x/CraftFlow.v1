@@ -3,9 +3,20 @@
 
 اینجا فقط مدل‌های اختصاصی لایه فروشگاه (نه مدل‌های `product`) ثبت می‌شوند.
 """
+from django import forms
 from django.contrib import admin
 
 from .models import ProductReview, ComparisonList, Address, ReturnRequest, SiteSettings, HeroSlide
+
+
+class SiteSettingsForm(forms.ModelForm):
+    class Meta:
+        model = SiteSettings
+        fields = '__all__'
+        widgets = {
+            f: forms.TextInput(attrs={'type': 'color', 'style': 'width:80px;height:36px;padding:0'})
+            for f in ('primary_color', 'secondary_color', 'background_color')
+        }
 
 
 @admin.register(HeroSlide)
@@ -58,10 +69,14 @@ class ReturnRequestAdmin(admin.ModelAdmin):
 
 @admin.register(SiteSettings)
 class SiteSettingsAdmin(admin.ModelAdmin):
+    form = SiteSettingsForm
     list_display = ['site_name', 'is_maintenance', 'shipping_cost', 'free_shipping_threshold']
     list_filter = ['is_maintenance']
     fieldsets = [
-        ('عمومی', {'fields': ['site_name', 'logo', 'cover_image', 'is_maintenance']}),
+        ('عمومی', {'fields': ['site_name', 'short_name', 'short_description', 'logo', 'favicon', 'pwa_icon', 'cover_image', 'is_maintenance']}),
+        ('رنگ‌بندی', {'fields': ['primary_color', 'secondary_color', 'background_color']}),
+        ('اطلاعات تماس', {'fields': ['contact_phone', 'contact_email', 'contact_address', 'working_hours']}),
+        ('درباره ما', {'fields': ['about_text']}),
         ('بخش هیرو', {'fields': ['hero_title', 'hero_subtitle']}),
         ('فوتر', {'fields': ['footer_text']}),
         ('ارسال و تحویل', {'fields': [

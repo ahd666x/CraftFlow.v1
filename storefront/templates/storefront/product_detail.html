@@ -189,18 +189,33 @@
                         <div class="text-stone-900">{{ product.category.name }}</div>
                         <div class="font-medium text-stone-500">قیمت پایه</div>
                         <div class="text-stone-900">{{ product.base_price|fa_price }} تومان</div>
-                        {% if product.length %}
-                        <div class="font-medium text-stone-500">طول پیش‌فرض</div>
-                        <div class="text-stone-900">{{ product.length }} سانتی‌متر</div>
+                        
+                        {% if product.length or product.width or product.height %}
+                        <div class="font-medium text-stone-500">ابعاد پیش‌فرض</div>
+                        <div class="text-stone-900">
+                            <div class="grid grid-cols-3 gap-2">
+                                {% if product.length %}
+                                <div class="text-center p-2 bg-stone-50 rounded">
+                                    <div class="text-xs text-stone-500">طول</div>
+                                    <div class="font-medium">{{ product.length }} سانتی‌متر</div>
+                                </div>
+                                {% endif %}
+                                {% if product.width %}
+                                <div class="text-center p-2 bg-stone-50 rounded">
+                                    <div class="text-xs text-stone-500">عرض</div>
+                                    <div class="font-medium">{{ product.width }} سانتی‌متر</div>
+                                </div>
+                                {% endif %}
+                                {% if product.height %}
+                                <div class="text-center p-2 bg-stone-50 rounded">
+                                    <div class="text-xs text-stone-500">ارتفاع</div>
+                                    <div class="font-medium">{{ product.height }} سانتی‌متر</div>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
                         {% endif %}
-                        {% if product.width %}
-                        <div class="font-medium text-stone-500">عرض پیش‌فرض</div>
-                        <div class="text-stone-900">{{ product.width }} سانتی‌متر</div>
-                        {% endif %}
-                        {% if product.height %}
-                        <div class="font-medium text-stone-500">ارتفاع پیش‌فرض</div>
-                        <div class="text-stone-900">{{ product.height }} سانتی‌متر</div>
-                        {% endif %}
+                        
                         {% if product.length_editable %}
                         <div class="font-medium text-stone-500">طول قابل تنظیم</div>
                         <div class="text-stone-900">بله (هر سانتی‌متر {{ product.length_price_percent }}٪ افزایش)</div>
@@ -221,7 +236,7 @@
                                 <li class="flex items-center gap-1.5 rounded bg-stone-100 px-2 py-0.5">
                                     <span class="inline-block h-3 w-3 rounded-full border border-stone-300"
                                           style="background: {{ code|color_hex }}" aria-hidden="true"></span>
-                                    {{ part }}: کد {{ code }}
+                                    {{ part }}: {{ code|color_description }}
                                 </li>
                                 {% endfor %}
                             </ul>
@@ -395,7 +410,7 @@
                                             class="select w-28 text-center"
                                             @change="$el.nextElementSibling.style.background = (hexMap[$el.value] || 'transparent')">
                                         {% for code in color_code_choices %}
-                                        <option value="{{ code }}"{% if code == cp.default_code %} selected{% endif %}>{{ code }}</option>
+                                        <option value="{{ code }}"{% if code == cp.default_code %} selected{% endif %}>{{ code|color_description }}</option>
                                         {% endfor %}
                                     </select>
                                     <span class="h-6 w-6 shrink-0 rounded-full border border-stone-300"

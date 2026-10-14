@@ -9,6 +9,17 @@
   html { @apply antialiased; }
   body { @apply bg-cream text-stone-900; }
   h1, h2, h3 { @apply tracking-tight; }
+  :root {
+    --primary-50:245 240 235; --primary-100:232 221 211; --primary-200:212 194 171;
+    --primary-300:184 160 130; --primary-400:154 130 97;  --primary-500:125 104 73;
+    --primary-600:107 84 61;   --primary-700:87 69 52;    --primary-800:69 56 44;
+    --primary-900:51 42 35;    --primary-950:38 31 26;
+    --secondary-50:251 246 234; --secondary-100:246 235 210; --secondary-200:241 222 175;
+    --secondary-300:232 198 128; --secondary-400:221 176 80; --secondary-500:200 155 60;
+    --secondary-600:178 138 54; --secondary-700:144 112 44; --secondary-800:115 89 35;
+    --secondary-900:84 65 26; --secondary-950:64 50 20;
+    --cream:250 247 242;
+  }
 }
 
 @layer utilities {

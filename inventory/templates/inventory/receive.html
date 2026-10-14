@@ -24,22 +24,21 @@
             <label class="form-label fw-bold" for="barcodeInput">بارکد ماده <span class="text-danger">*</span></label>
             <input type="text" name="barcode" id="barcodeInput" class="form-control form-control-lg text-center"
                    placeholder="بارکد را اسکن کنید" inputmode="numeric" dir="ltr" required autofocus>
-            <div class="form-text">
+            {% comment %} <div class="form-text">
               اگر بارکد شناخته نشد، خطا می‌گیرید تا کالای اشتباه وارد انبار نشود.
-            </div>
+            </div> {% endcomment %}
           </div>
 
           <div class="mb-3">
             <label class="form-label fw-bold" for="packCountInput">تعداد بسته <span class="text-danger">*</span></label>
             <input type="number" name="pack_count" id="packCountInput"
                    class="form-control form-control-lg text-center" value="1" min="1" max="1000" step="1" required>
-            <div class="form-text">مقدار انبار از «اندازهٔ بستهٔ» همان ماده حساب می‌شود.</div>
+            {% comment %} <div class="form-text">مقدار انبار از «اندازهٔ بستهٔ» همان ماده حساب می‌شود.</div> {% endcomment %}
           </div>
 
           <div class="mb-3">
             <label class="form-label" for="noteInput">یادداشت</label>
-            <input type="text" name="note" id="noteInput" class="form-control" maxlength="255"
-                   placeholder="اختیاری — مثلاً شمارهٔ حواله">
+            <input type="text" name="note" id="noteInput" class="form-control" maxlength="255">
           </div>
 
           <button type="submit" class="btn btn-success btn-lg w-100">
@@ -74,7 +73,7 @@
       </div>
     </div>
 
-    {% if no_barcode_materials %}
+    {% comment %} {% if no_barcode_materials %}
       <div class="card-modern">
         <div class="card-body">
           <h2 class="h6 mb-2"><i class="bi bi-exclamation-circle text-warning"></i> مواد بدون بارکد</h2>
@@ -89,7 +88,7 @@
           </ul>
         </div>
       </div>
-    {% endif %}
+    {% endif %} {% endcomment %}
   </div>
 </div>
 {% endblock %}

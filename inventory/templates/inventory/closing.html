@@ -6,7 +6,7 @@
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
   <div>
     <h1 class="h3 mb-1">کنترل و بستن روز</h1>
-    <div class="small text-muted">آخرین قدم شیفت انبار — نسخهٔ صفحه: <code>{{ page_version|default:"—" }}</code></div>
+    {% comment %} <div class="small text-muted">آخرین قدم شیفت انبار — نسخهٔ صفحه: <code>{{ page_version|default:"—" }}</code></div> {% endcomment %}
   </div>
   <a href="{% url 'inventory:daily_material_queue' %}?date={{ date_str }}" class="btn btn-sm btn-outline-primary">
     <i class="bi bi-clipboard2-data"></i> صف مواد روزانه
@@ -33,7 +33,7 @@
   <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-funnel"></i> بررسی کن</button>
 </form>
 
-<div class="row g-3 mb-3">
+{% comment %} <div class="row g-3 mb-3">
   <div class="col-6 col-lg-3">
     <div class="card-modern h-100"><div class="card-body py-3">
       <div class="text-muted small">ردیف‌های صف</div>
@@ -64,7 +64,7 @@
       </div>
     </div></div>
   </div>
-</div>
+</div> {% endcomment %}
 
 {% if closing %}
   <div class="alert alert-success d-flex align-items-start gap-2">

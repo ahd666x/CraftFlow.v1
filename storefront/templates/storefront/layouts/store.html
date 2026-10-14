@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token }}">
     <title>{% block title %}فروشگاه{% endblock %}</title>
-    <meta name="description" content="{% block meta_description %}فروشگاه آنلاین{% endblock %}">
+    <meta name="description" content="{% block meta_description %}{{ site_settings.short_description|default:site_settings.site_name }}{% endblock %}">
 
     {# Open Graph / Social Sharing #}
     <meta property="og:title" content="{% block og_title %}{% endblock %}">
@@ -13,7 +13,7 @@
     <meta property="og:type" content="{% block og_type %}website{% endblock %}">
     <meta property="og:url" content="{% block og_url %}{{ request.build_absolute_uri }}{% endblock %}">
     <meta property="og:image" content="{% block og_image %}{% if site_settings and site_settings.cover_image %}{{ site_settings.cover_image.url }}{% endif %}{% endblock %}">
-    <meta property="og:site_name" content="{{ site_settings.site_name|default:'کرافت‌فلو' }}">
+    <meta property="og:site_name" content="{{ site_settings.site_name|default:'' }}">
 
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="{% block twitter_title %}{% endblock %}">
@@ -21,9 +21,10 @@
     <meta name="twitter:image" content="{% block twitter_image %}{% if site_settings and site_settings.cover_image %}{{ site_settings.cover_image.url }}{% endif %}{% endblock %}">
 
     {# Favicon #}
-    <link rel="icon" href="{% static 'storefront/img/favicon.svg' %}" type="image/svg+xml" sizes="any">
-    <link rel="apple-touch-icon" href="{% static 'storefront/img/favicon.svg' %}">
-    <link rel="manifest" href="{% static 'storefront/manifest.json' %}">
+    <link rel="icon" href="{% if site_settings.favicon %}{{ site_settings.favicon.url }}{% else %}{% static 'storefront/img/favicon.svg' %}{% endif %}" type="image/svg+xml" sizes="any">
+    <link rel="apple-touch-icon" href="{% if site_settings.favicon %}{{ site_settings.favicon.url }}{% else %}{% static 'storefront/img/favicon.svg' %}{% endif %}">
+    <link rel="manifest" href="{% url 'storefront:manifest' %}">
+    <meta name="theme-color" content="{{ site_settings.primary_color|default:'#6b543d' }}">
 
     {# Font Preloads #}
     <link rel="preload" as="font" type="font/woff2" crossorigin="anonymous" href="{% static 'storefront/fonts/Vazirmatn-Regular.woff2' %}">
@@ -35,6 +36,7 @@
        دارد و بارگذاری هر دو در یک صفحه، استایل‌ها را قاطی می‌کند. #} {% endcomment %}
     <link rel="stylesheet" href="{% static 'storefront/css/vazirmatn-fonts.css' %}">
     <link rel="stylesheet" href="{% static 'storefront/css/style.css' %}">
+    {% if site_settings %}<style>:root{ {{ site_settings.theme_css|safe }} }</style>{% endif %}
 
     <script>
         // Register Alpine components BEFORE Alpine initializes

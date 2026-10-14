@@ -125,3 +125,18 @@ def color_hex(code):
     if code is None or code == '':
         return ''
     return get_color_hex_map().get(str(code), '')
+
+
+@register.filter
+def color_description(code):
+    """توضیحات یک کد رنگی را برمی‌گرداند (از تعریف‌های کد رنگ فعال)."""
+    from product.models import ColorCode
+    if code is None or code == '':
+        return ''
+    try:
+        cc = ColorCode.objects.filter(is_active=True, code=str(code)).first()
+        if cc and cc.description:
+            return cc.description
+    except Exception:
+        pass
+    return str(code)

@@ -1,12 +1,12 @@
 {% extends "inventory/base.html" %}
 {% load static %}
 {% load product_filters %}
-{% block title %}کار روزانهٔ انبار{% endblock %}
+{% block title %}کار روزانه انبار{% endblock %}
 
 {% block inventory_content %}
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
   <div>
-    <h1 class="h3 mb-1">کار روزانهٔ انبار</h1>
+    <h1 class="h3 mb-1">کار روزانه انبار</h1>
     <div class="small text-muted">
       صف مواد روزانه
     </div>
@@ -22,15 +22,15 @@
 </div>
 
 <form method="get" class="d-flex gap-2 flex-wrap mb-3 no-print">
-  {# تاریخ شمسی (۱۴۰۵-۰۷-۱۰). input[type=date] مقدار میلادی می‌فرستاد و با
-     parse_jalali_date اشتباه تفسیر می‌شد، پس از input متنی استفاده می‌کنیم. #}
+  {% comment %} {# تاریخ شمسی (۱۴۰۵-۰۷-۱۰). input[type=date] مقدار میلادی می‌فرستاد و با
+     parse_jalali_date اشتباه تفسیر می‌شد، پس از input متنی استفاده می‌کنیم. #} {% endcomment %}
   <label class="form-label small align-self-center mb-0" for="dateFilter">تاریخ کاری</label>
   <input type="text" name="date" id="dateFilter" class="form-control form-control-sm text-center"
          value="{{ date_str }}" placeholder="1405-07-10" inputmode="numeric"
          pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}" maxlength="10" dir="ltr"
          style="max-width:130px" title="تاریخ کاری به تقویم شمسی، مثل 1405-07-10">
   <select name="worker" class="form-select form-select-sm" style="max-width:200px">
-    <option value="">همهٔ کارگران</option>
+    <option value="">همه کارگران</option>
     {% for w in paint_workers %}
       <option value="{{ w.id }}" {% if worker_filter == w.id|stringformat:"s" %}selected{% endif %}>{{ w.get_full_name|default:w.username }}</option>
     {% endfor %}
@@ -39,7 +39,7 @@
     <summary class="btn btn-sm btn-outline-secondary">فیلتر بیشتر</summary>
     <div class="card card-body card-modern mt-2" style="max-width:400px; position:absolute; z-index:100; background:var(--bs-body-bg);">
       <select name="material" class="form-select form-select-sm mb-2" style="max-width:200px">
-        <option value="">همهٔ مواد</option>
+        <option value="">همه مواد</option>
         {% for m in materials %}
           <option value="{{ m.id }}" {% if material_filter == m.id|stringformat:"s" %}selected{% endif %}>{{ m.name }} ({{ m.get_unit_display }})</option>
         {% endfor %}
@@ -60,8 +60,8 @@
 <div class="alert alert-warning d-flex align-items-start gap-2">
   <i class="bi bi-exclamation-triangle-fill"></i>
   <div>
-    <strong>{{ summary.conflict_count }} ردیف</strong> مغایرت برنامه دارد: برنامهٔ تولید پس از
-    ثبت تحویل یا بازگشت تغییر کرده است. مقادیر واقعی و تاریخچهٔ انبار دست‌نخورده
+    <strong>{{ summary.conflict_count }} ردیف</strong> مغایرت برنامه دارد: برنامه تولید پس از
+    ثبت تحویل یا بازگشت تغییر کرده است. مقادیر واقعی و تاریخچه انبار دست‌نخورده
     مانده‌اند و روی آن‌ها نوشته نشده است.
   </div>
 </div>
@@ -131,8 +131,8 @@
                       <i class="bi bi-box-arrow-up"></i> بازگشت
                     </button>
                   {% endif %}
-                  <button type="button" class="btn btn-outline-info btn-sources" data-queue="{{ queue.id }}" title="این نیاز از کجا آمده">
-                    <i class="bi bi-diagram-3"></i> منشأ
+                  <button type="button" class="btn btn-outline-info btn-sources" data-queue="{{ queue.id }}" title="">
+                    <i class="bi bi-diagram-3"></i> 
                   </button>
                 </div>
               </td>
@@ -254,7 +254,7 @@
   <div class="modal-dialog modal-lg modal-dialog-scrollable">
     <div class="modal-content">
       <div class="modal-header bg-info text-dark">
-        <h5 class="modal-title">این نیاز از کجا آمده</h5>
+        <h5 class="modal-title"></h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="بستن"></button>
       </div>
       <div class="modal-body">
@@ -377,8 +377,8 @@
       el('deliveryQuantityInput').value = data.physical;
       el('deliveryNoteInput').value = '';
       el('deliveryDetails').textContent = 'موجودی انبار: ' + data.stock + ' ' + data.unit +
-        (parseFloat(data.pack_size) > 0 ? ' · اندازهٔ بسته: ' + data.pack_size : '') +
-        (parseFloat(data.from_open) > 0 ? ' · از بستهٔ باز: ' + data.from_open : '');
+        (parseFloat(data.pack_size) > 0 ? ' · اندازه بسته: ' + data.pack_size : '') +
+        (parseFloat(data.from_open) > 0 ? ' · از بسته باز: ' + data.from_open : '');
 
       // وضعیت قابل‌تحویل بودن از سرویس می‌آید، نه از متن Badge.
       if (!data.can_deliver) {
@@ -425,7 +425,7 @@
     clearAlert(returnAlert);
     busy(confirmReturnBtn, true);
     try {
-      // قاعدهٔ «حداکثر قابل بازگشت» از سرویس می‌آید و در جاوااسکریپت تکرار نمی‌شود.
+      // قاعده «حداکثر قابل بازگشت» از سرویس می‌آید و در جاوااسکریپت تکرار نمی‌شود.
       const data = await getJSON(urls.sources.replace('{id}', queueId));
       activeReturnId = queueId;
       el('returnMaterialName').textContent = data.material;

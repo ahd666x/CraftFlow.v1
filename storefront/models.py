@@ -8,9 +8,13 @@
 اینجا تعریف می‌شوند.
 """
 from django.conf import settings
+from django.core.validators import RegexValidator
 from django.db import models
 
 from storefront.base import TimeStampedModel
+from storefront.colors import build_palette, hex_to_rgb, rgb_str
+
+hex_validator = RegexValidator(r'^#[0-9a-fA-F]{6}$', 'رنگ باید به شکل #RRGGBB باشد.')
 
 
 class HeroSlide(TimeStampedModel):
@@ -192,6 +196,24 @@ class SiteSettings(TimeStampedModel):
     twitter_url = models.URLField(blank=True, verbose_name='لینک توییتر')
     aparat_url = models.URLField(blank=True, verbose_name='لینک آپارات')
 
+    # برند و PWA
+    short_name = models.CharField(max_length=30, blank=True, verbose_name='نام کوتاه (برای آیکن نصب روی گوشی)')
+    short_description = models.CharField(max_length=200, blank=True, verbose_name='توضیح کوتاه سایت')
+    favicon = models.ImageField(upload_to='site/', blank=True, null=True, verbose_name='فاوآیکن')
+    pwa_icon = models.ImageField(upload_to='site/', blank=True, null=True, verbose_name='آیکن نصب (PNG مربع ۵۱۲×۵۱۲)')
+
+    # رنگ‌ها
+    primary_color = models.CharField(max_length=7, default='#6b543d', validators=[hex_validator], verbose_name='رنگ اصلی')
+    secondary_color = models.CharField(max_length=7, default='#ddb050', validators=[hex_validator], verbose_name='رنگ فرعی')
+    background_color = models.CharField(max_length=7, default='#faf7f2', validators=[hex_validator], verbose_name='رنگ پس‌زمینه')
+
+    # اطلاعات تماس
+    contact_phone = models.CharField(max_length=40, blank=True, verbose_name='تلفن تماس')
+    contact_email = models.EmailField(blank=True, verbose_name='ایمیل')
+    contact_address = models.TextField(blank=True, verbose_name='آدرس')
+    working_hours = models.CharField(max_length=120, blank=True, verbose_name='ساعت کاری')
+    about_text = models.TextField(blank=True, verbose_name='متن صفحه درباره ما')
+
     class Meta:
         verbose_name = 'تنظیمات سایت'
         verbose_name_plural = 'تنظیمات سایت'
@@ -227,3 +249,12 @@ class SiteSettings(TimeStampedModel):
     def tax_percent(self):
         pct = self.tax_rate * 100
         return int(pct) if pct == int(pct) else float(pct)
+
+    @property
+    def theme_css(self):
+        lines = []
+        for name, color in (('primary', self.primary_color), ('secondary', self.secondary_color)):
+            for shade, rgb in build_palette(color).items():
+                lines.append(f'--{name}-{shade}:{rgb};')
+        lines.append(f'--cream:{rgb_str(hex_to_rgb(self.background_color))};')
+        return ''.join(lines)
