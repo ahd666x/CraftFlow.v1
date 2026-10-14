@@ -15,79 +15,9 @@
   </button>
 </div>
 
-<form method="get" class="d-flex gap-2 flex-wrap mb-3 no-print">
-  <input type="text" name="q" value="{{ search }}" class="form-control form-control-sm"
-         placeholder="جست‌وجو در نام، کد یا بارکد" style="max-width:280px">
-  <select name="category" class="form-select form-select-sm" style="max-width:200px">
-    <option value="">همهٔ دسته‌ها</option>
-    {% for category in categories %}
-      <option value="{{ category.id }}" {% if category_filter == category.id|stringformat:"s" %}selected{% endif %}>{{ category.name }}</option>
-    {% endfor %}
-  </select>
-  <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-funnel"></i> فیلتر</button>
-  <a href="{% url 'inventory:material_list' %}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-x-circle"></i> پاک</a>
-</form>
-
-<div class="card-modern">
-  <div class="card-body p-0">
-    <div class="table-responsive">
-      <table class="table table-hover align-middle mb-0">
-        <thead class="table-light">
-          <tr>
-            <th>نام</th><th>دسته</th><th>کد</th><th>بارکد</th>
-            <th>موجودی</th><th>اندازهٔ بسته</th><th>حد هشدار</th><th>فعال</th><th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for material in materials %}
-            <tr class="{% if material.is_active %}{% else %}table-light{% endif %}">
-              <td><strong>{{ material.name }}</strong></td>
-              <td class="small">{{ material.category.name|default:"—" }}</td>
-              <td class="small">{{ material.code|default:"—" }}</td>
-              <td class="small">
-                {% if material.barcode %}
-                  <code dir="ltr">{{ material.barcode }}</code>
-                {% else %}
-                  <span class="badge bg-warning text-dark">بدون بارکد</span>
-                {% endif %}
-              </td>
-              <td class="fw-bold">{{ material.current_stock|floatformat:2 }} {{ material.get_unit_display }}</td>
-              <td>{{ material.pack_size|floatformat:2 }}</td>
-              <td>{{ material.min_stock_alert|floatformat:2 }}</td>
-              <td>{% if material.is_active %}<i class="bi bi-check-circle text-success"></i>{% else %}<i class="bi bi-dash-circle text-muted"></i>{% endif %}</td>
-              <td>
-                <div class="btn-group btn-group-sm">
-                  <button type="button" class="btn btn-outline-primary btn-edit-material"
-                          data-id="{{ material.id }}">ویرایش</button>
-                  <form method="post" action="{% url 'inventory:material_delete' material.id %}"
-                        onsubmit="return confirm('ماده «{{ material.name|escapejs }}» حذف شود؟ اگر در سوابق انبار یا برنامه استفاده شده باشد، حذف انجام نمی‌شود.');">
-                    {% csrf_token %}
-                    <button type="submit" class="btn btn-outline-danger">حذف</button>
-                  </form>
-                </div>
-              </td>
-            </tr>
-          {% empty %}
-            <tr><td colspan="9" class="text-center text-muted py-5"><i class="bi bi-inbox"></i> ماده‌ای ثبت نشده است.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
-</div>
-
-{% if materials.has_other_pages %}
-<nav class="mt-3">
-  <ul class="pagination justify-content-center">
-    {% if materials.has_previous %}
-      <li class="page-item"><a class="page-link" href="?page={{ materials.previous_page_number }}{% if search %}&q={{ search }}{% endif %}{% if category_filter %}&category={{ category_filter }}{% endif %}">قبلی</a></li>
-    {% else %}<li class="page-item disabled"><span class="page-link">قبلی</span></li>{% endif %}
-    {% if materials.has_next %}
-      <li class="page-item"><a class="page-link" href="?page={{ materials.next_page_number }}{% if search %}&q={{ search }}{% endif %}{% if category_filter %}&category={{ category_filter }}{% endif %}">بعدی</a></li>
-    {% else %}<li class="page-item disabled"><span class="page-link">بعدی</span></li>{% endif %}
-  </ul>
-</nav>
-{% endif %}
+<details class="filter-disclosure mb-3 no-print"><summary><i class="bi bi-search me-1"></i> جست‌وجو و پالایه</summary><form method="get" class="d-flex gap-2 flex-wrap mt-2"><input type="text" name="q" value="{{ search }}" class="form-control form-control-sm" placeholder="نام، کد یا بارکد" style="max-width:280px"><select name="category" class="form-select form-select-sm" style="max-width:200px"><option value="">همهٔ دسته‌ها</option>{% for category in categories %}<option value="{{ category.id }}" {% if category_filter == category.id|stringformat:"s" %}selected{% endif %}>{{ category.name }}</option>{% endfor %}</select><button class="btn btn-sm btn-primary">اعمال</button><a href="{% url 'inventory:material_list' %}" class="btn btn-sm btn-outline-secondary">پاک‌کردن</a></form></details>
+<div class="inventory-card-list">{% for material in materials %}<article class="inventory-item-card {% if not material.is_active %}opacity-75{% endif %}"><div class="d-flex justify-content-between gap-2"><div class="inventory-item-title">{{ material.name }}</div>{% if material.is_active %}<span class="badge text-bg-success">فعال</span>{% else %}<span class="badge text-bg-secondary">غیرفعال</span>{% endif %}</div><div class="inventory-item-meta">{{ material.category.name|default:"بدون دسته" }} · موجودی <strong>{{ material.current_stock|floatformat:2 }} {{ material.get_unit_display }}</strong></div><div class="inventory-item-meta">{% if material.code %}کد {{ material.code }} · {% endif %}{% if material.barcode %}بارکد <code dir="ltr">{{ material.barcode }}</code>{% else %}بدون بارکد{% endif %}</div><div class="inventory-item-meta">بسته {{ material.pack_size|floatformat:2 }} · حد هشدار {{ material.min_stock_alert|floatformat:2 }}</div><div class="inventory-item-actions"><button type="button" class="btn btn-sm btn-outline-primary btn-edit-material" data-id="{{ material.id }}">ویرایش</button><form method="post" action="{% url 'inventory:material_delete' material.id %}" onsubmit="return confirm('ماده «{{ material.name|escapejs }}» حذف شود؟ اگر در سوابق استفاده شده باشد حذف نمی‌شود.');">{% csrf_token %}<button type="submit" class="btn btn-sm btn-outline-danger">حذف</button></form></div></article>{% empty %}<div class="empty-day text-muted text-center p-5">ماده‌ای ثبت نشده است.</div>{% endfor %}</div>
+{% if materials.has_other_pages %}<nav class="mt-3"><ul class="pagination pagination-sm justify-content-center">{% if materials.has_previous %}<li class="page-item"><a class="page-link" href="?page={{ materials.previous_page_number }}{% if search %}&q={{ search }}{% endif %}{% if category_filter %}&category={{ category_filter }}{% endif %}">قبلی</a></li>{% endif %}<li class="page-item active"><span class="page-link">{{ materials.number }} / {{ materials.paginator.num_pages }}</span></li>{% if materials.has_next %}<li class="page-item"><a class="page-link" href="?page={{ materials.next_page_number }}{% if search %}&q={{ search }}{% endif %}{% if category_filter %}&category={{ category_filter }}{% endif %}">بعدی</a></li>{% endif %}</ul></nav>{% endif %}
 
 <div class="modal fade" id="materialFormModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog">

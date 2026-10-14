@@ -12,38 +12,7 @@
   </button>
 </div>
 
-<div class="card-modern">
-  <div class="card-body p-0">
-    <div class="table-responsive">
-      <table class="table table-hover align-middle mb-0">
-        <thead class="table-light"><tr><th>نام دسته</th><th>تعداد مواد</th><th></th></tr></thead>
-        <tbody>
-          {% for category in categories %}
-            <tr>
-              <td><strong>{{ category.name }}</strong></td>
-              <td>{{ category.material_count }}</td>
-              <td>
-                <div class="btn-group btn-group-sm">
-                  <a href="{% url 'inventory:material_list' %}?category={{ category.id }}"
-                     class="btn btn-outline-secondary">مواد</a>
-                  <button type="button" class="btn btn-outline-primary btn-edit-category"
-                          data-id="{{ category.id }}" data-name="{{ category.name }}">ویرایش</button>
-                  <form method="post" action="{% url 'inventory:category_delete' category.id %}"
-                        onsubmit="return confirm('دسته «{{ category.name|escapejs }}» حذف شود؟');">
-                    {% csrf_token %}
-                    <button type="submit" class="btn btn-outline-danger">حذف</button>
-                  </form>
-                </div>
-              </td>
-            </tr>
-          {% empty %}
-            <tr><td colspan="3" class="text-center text-muted py-5"><i class="bi bi-inbox"></i> دسته‌ای ثبت نشده است.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
-</div>
+<div class="inventory-card-list">{% for category in categories %}<article class="inventory-item-card"><div class="d-flex justify-content-between align-items-center"><div><div class="inventory-item-title">{{ category.name }}</div><div class="inventory-item-meta">{{ category.material_count }} ماده</div></div><span class="rounded-circle bg-light p-3"><i class="bi bi-tag text-primary"></i></span></div><div class="inventory-item-actions"><a href="{% url 'inventory:material_list' %}?category={{ category.id }}" class="btn btn-sm btn-outline-secondary">نمایش مواد</a><button type="button" class="btn btn-sm btn-outline-primary btn-edit-category" data-id="{{ category.id }}" data-name="{{ category.name }}">ویرایش</button><form method="post" action="{% url 'inventory:category_delete' category.id %}" onsubmit="return confirm('دسته «{{ category.name|escapejs }}» حذف شود؟');">{% csrf_token %}<button type="submit" class="btn btn-sm btn-outline-danger">حذف</button></form></div></article>{% empty %}<div class="empty-day text-muted text-center p-5">دسته‌ای ثبت نشده است.</div>{% endfor %}</div>
 
 <div class="modal fade" id="categoryFormModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog">

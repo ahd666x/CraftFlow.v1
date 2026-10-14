@@ -1665,9 +1665,17 @@ def daily_material_report(date, *, worker_id=None, material_id=None, status=None
     )
     summary = daily_queue_summary(base)
 
+    from django.db.models import Prefetch
+    from .models import DailyMaterialQueueSource
+    source_rows = DailyMaterialQueueSource.objects.select_related(
+        'production_task', 'production_task__order_item',
+        'production_task__order_item__order', 'production_task__order_item__order__user',
+        'production_task__order_item__product', 'painting_stage', 'defect', 'carryover_from',
+    )
     rows_qs = (
         base
-        .select_related('worker', 'raw_material', 'raw_material__category')
+        .select_related('worker', 'raw_material', 'raw_material__category', 'painting_stage')
+        .prefetch_related(Prefetch('sources', queryset=source_rows, to_attr='ui_sources'))
         .order_by(
             'worker__first_name', 'worker__last_name', 'worker__username',
             'raw_material__name',

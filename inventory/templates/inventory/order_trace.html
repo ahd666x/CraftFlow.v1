@@ -35,62 +35,6 @@
   </div></div></div>
 </div>
 
-<div class="card-modern mb-3">
-  <div class="card-body p-0">
-    <div class="table-responsive">
-      <table class="table align-middle mb-0">
-        <thead class="table-light">
-          <tr><th>ماده</th><th>واحد</th><th>سهم این سفارش</th><th>تحویل</th><th>برگشتی</th><th>مصرف واقعی</th><th>وضعیت</th><th>کارگران</th><th>تسک‌ها</th></tr>
-        </thead>
-        <tbody>
-          {% for row in trace.rows %}
-            <tr class="{% if row.status == 'conflict' %}table-warning{% endif %}">
-              <td><strong>{{ row.raw_material }}</strong></td>
-              <td>{{ row.unit }}</td>
-              <td class="fw-bold">{{ row.planned|floatformat:2 }}</td>
-              <td>{{ row.delivered|floatformat:2 }}</td>
-              <td>{{ row.returned|floatformat:2 }}</td>
-              <td class="fw-bold">{{ row.actual|floatformat:2 }}</td>
-              <td>
-                {% if row.status == 'conflict' %}
-                  <span class="badge bg-warning text-dark">مغایرت</span>
-                {% else %}
-                  <span class="badge bg-secondary">{{ row.status }}</span>
-                {% endif %}
-              </td>
-              <td>{{ row.workers|length }}</td>
-              <td>{{ row.task_count }}</td>
-            </tr>
-          {% empty %}
-            <tr><td colspan="9" class="text-center text-muted py-5">برای این سفارش ماده‌ای در صف روزانه ثبت نشده است.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
-</div>
-
-<div class="card-modern">
-  <div class="card-body">
-    <h2 class="h6 mb-3">حرکات انبار مرتبط با این سفارش</h2>
-    <div class="table-responsive">
-      <table class="table table-sm align-middle mb-0">
-        <thead class="table-light"><tr><th>تاریخ</th><th>ماده</th><th>نوع</th><th>مقدار</th><th>یادداشت</th></tr></thead>
-        <tbody>
-          {% for movement in trace.movements %}
-            <tr>
-              <td class="small">{{ movement.created_at|persian_datetime }}</td>
-              <td>{{ movement.raw_material.name }}</td>
-              <td>{{ movement.get_movement_type_display }}</td>
-              <td>{{ movement.quantity|floatformat:2 }} {{ movement.raw_material.get_unit_display }}</td>
-              <td class="small text-muted">{{ movement.note|default:"—" }}</td>
-            </tr>
-          {% empty %}
-            <tr><td colspan="5" class="text-center text-muted py-4">حرکتی ثبت نشده است.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
-</div>
+<section class="mb-4"><h2 class="h6 mb-2">مواد هذا الطلب</h2><div class="inventory-card-list">{% for row in trace.rows %}<article class="inventory-item-card {% if row.status == 'conflict' %}is-warning{% endif %}"><div class="d-flex justify-content-between gap-2"><strong>{{ row.raw_material }}</strong><span class="badge {% if row.status == 'conflict' %}text-bg-warning{% else %}text-bg-secondary{% endif %}">{% if row.status == 'conflict' %}مغایرت{% else %}{{ row.status }}{% endif %}</span></div><div class="inventory-item-meta">سهم سفارش {{ row.planned|floatformat:2 }} {{ row.unit }} · مصرف {{ row.actual|floatformat:2 }}</div><div class="inventory-item-meta">تحویل {{ row.delivered|floatformat:2 }} · برگشتی {{ row.returned|floatformat:2 }} · {{ row.workers|length }} نفر · {{ row.task_count }} کار</div></article>{% empty %}<div class="empty-day">برای این سفارش ماده‌ای ثبت نشده است.</div>{% endfor %}</div></section>
+<section><h2 class="h6 mb-2">گردش مواد این سفارش</h2><div class="d-flex flex-column gap-2">{% for movement in trace.movements %}<article class="inventory-item-card"><div class="d-flex justify-content-between gap-2"><strong>{{ movement.raw_material.name }}</strong><strong>{{ movement.quantity|floatformat:2 }} {{ movement.raw_material.get_unit_display }}</strong></div><div class="inventory-item-meta">{{ movement.created_at|persian_datetime }} · {{ movement.get_movement_type_display }}</div>{% if movement.note %}<div class="inventory-item-meta">{{ movement.note }}</div>{% endif %}</article>{% empty %}<div class="empty-day">گردشی ثبت نشده است.</div>{% endfor %}</div></section>
 {% endblock %}

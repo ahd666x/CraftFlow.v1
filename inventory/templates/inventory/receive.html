@@ -53,23 +53,7 @@
     <div class="card-modern mb-3">
       <div class="card-body">
         <h2 class="h6 mb-3">آخرین دریافت‌ها</h2>
-        <div class="table-responsive">
-          <table class="table table-sm align-middle mb-0">
-            <thead class="table-light"><tr><th>ماده</th><th>مقدار</th><th>ثبت‌کننده</th><th>زمان</th></tr></thead>
-            <tbody>
-              {% for movement in recent_movements %}
-                <tr>
-                  <td>{{ movement.raw_material.name }}</td>
-                  <td class="fw-bold">{{ movement.quantity|floatformat:2 }} {{ movement.raw_material.get_unit_display }}</td>
-                  <td>{% if movement.created_by %}{{ movement.created_by.get_full_name|default:movement.created_by.username }}{% else %}—{% endif %}</td>
-                  <td class="small text-muted">{{ movement.created_at|persian_datetime }}</td>
-                </tr>
-              {% empty %}
-                <tr><td colspan="4" class="text-center text-muted py-4">هنوز دریافتی ثبت نشده است.</td></tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
+        <div class="d-flex flex-column gap-2">{% for movement in recent_movements %}<article class="inventory-item-card is-success"><div class="d-flex justify-content-between"><strong>{{ movement.raw_material.name }}</strong><strong>{{ movement.quantity|floatformat:2 }} {{ movement.raw_material.get_unit_display }}</strong></div><div class="inventory-item-meta">{{ movement.created_at|persian_datetime }} · {% if movement.created_by %}{{ movement.created_by.get_full_name|default:movement.created_by.username }}{% else %}—{% endif %}</div></article>{% empty %}<div class="text-center text-muted py-4">هنوز دریافتی ثبت نشده است.</div>{% endfor %}</div>
       </div>
     </div>
 
