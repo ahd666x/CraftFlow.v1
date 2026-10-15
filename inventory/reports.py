@@ -12,7 +12,7 @@
 """
 from decimal import Decimal
 
-from django.db.models import Case, Count, DecimalField, F, Q, Sum, When
+from django.db.models import Case, Count, DecimalField, ExpressionWrapper, F, Q, Sum, Value, When
 from django.utils import timezone
 
 from .models import (
@@ -174,11 +174,12 @@ def consumption_report(*, date=None, date_from=None, date_to=None,
     """
     Planned / Delivered / Returned / Actual / Variance برای ماده و کارگر.
 
-    هیچ مصرفی دوباره محاسبه نمی‌شود: ``actual_consumption`` از همان فیلد
-    ذخیره‌شدهٔ صف خوانده می‌شود. ``variance`` صرفاً اختلاف عددی
-    ``actual - planned`` است، نه قاعدهٔ مصرف تازه.
+    مقدارها از ردیف صف گرفته می‌شوند. برای سازگاری با ردیف‌های تاریخی که
+    هنگام اضافه‌شدن ستون ``actual_consumption`` مقدار پیش‌فرض صفر گرفته‌اند،
+    مصرف با فرمول رسمی مدل ``delivered_quantity - returned_quantity`` ساخته
+    می‌شود؛ اضافه نیز ``max(0, actual - planned)`` است.
     """
-    qs = DailyMaterialQueue.objects.filter(status__in=('pending', 'delivered', 'returned'))
+    qs = DailyMaterialQueue.objects.filter(status__in=('pending', 'partial', 'delivered', 'returned', 'closed'))
     if date:
         qs = qs.filter(work_date=date)
     if date_from:
@@ -190,14 +191,31 @@ def consumption_report(*, date=None, date_from=None, date_to=None,
     if worker_id:
         qs = qs.filter(worker_id=worker_id)
 
+    decimal_output = DecimalField(max_digits=12, decimal_places=2)
+    actual_expression = ExpressionWrapper(
+        F('delivered_quantity') - F('returned_quantity'),
+        output_field=decimal_output,
+    )
+    excess_expression = Case(
+        When(
+            delivered_quantity__gt=F('planned_quantity') + F('returned_quantity'),
+            then=ExpressionWrapper(
+                F('delivered_quantity') - F('returned_quantity') - F('planned_quantity'),
+                output_field=decimal_output,
+            ),
+        ),
+        default=Value(Decimal('0.00')),
+        output_field=decimal_output,
+    )
+
     grouped = (
         qs.values('raw_material_id', 'raw_material__name', 'raw_material__unit')
         .annotate(
             planned=Sum('planned_quantity'),
             delivered=Sum('delivered_quantity'),
             returned=Sum('returned_quantity'),
-            actual=Sum('actual_consumption'),
-            excess=Sum('excess_consumption'),
+            actual=Sum(actual_expression),
+            excess=Sum(excess_expression),
             conflicts=Count('id', filter=Q(has_plan_conflict=True)),
         )
         .order_by('raw_material__name')
@@ -231,10 +249,10 @@ def consumption_report(*, date=None, date_from=None, date_to=None,
     totals['variance'] = _q(totals['actual'] - totals['planned'])
     worker_grouped = qs.values(
         'worker_id', 'worker__first_name', 'worker__last_name', 'worker__username',
-        'raw_material__name', 'raw_material__unit',
+        'raw_material_id', 'raw_material__name', 'raw_material__unit',
     ).annotate(
-        planned=Sum('planned_quantity'), actual=Sum('actual_consumption'),
-        excess=Sum('excess_consumption'),
+        planned=Sum('planned_quantity'), actual=Sum(actual_expression),
+        excess=Sum(excess_expression),
     ).order_by('worker__first_name', 'worker__last_name', 'raw_material__name')
     by_worker = {}
     for item in worker_grouped:
@@ -244,7 +262,113 @@ def consumption_report(*, date=None, date_from=None, date_to=None,
         worker['planned'] += planned
         worker['actual'] += actual
         worker['excess'] += excess
-        worker['materials'].append({'name': item['raw_material__name'], 'unit': item['raw_material__unit'], 'planned': planned, 'actual': actual, 'excess': excess})
+        worker['materials'].append({
+            'material_id': item['raw_material_id'],
+            'name': item['raw_material__name'],
+            'unit': item['raw_material__unit'],
+            'planned': planned, 'actual': actual, 'excess': excess,
+            'details': [],
+        })
+
+    # Drill-down records stay at the daily queue/source level so the operator
+    # can see which orders contributed to each worker/material total.
+    worker_materials = {
+        (worker_id, material['material_id']): material
+        for worker_id, worker in by_worker.items()
+        for material in worker['materials']
+    }
+    material_rows = {row['raw_material_id']: row for row in rows}
+    detail_rows = qs.select_related(
+        'worker', 'raw_material', 'painting_stage',
+    ).prefetch_related(
+        'sources__production_task__order_item__order__customer',
+        'sources__production_task__order_item__order__user',
+        'sources__production_task__order_item__product',
+        'sources__production_task__painting_stage',
+        'sources__painting_stage',
+        'sources__defect__order__customer',
+        'sources__defect__order__user',
+        'sources__defect__order_item__product',
+        'sources__defect__task__order_item__order__customer',
+        'sources__defect__task__order_item__order__user',
+        'sources__defect__task__order_item__product',
+        'movements__reference_task__order__customer',
+        'movements__reference_task__order__user',
+        'movements__reference_order_item__order__customer',
+        'movements__reference_order_item__order__user',
+        'movements__reference_order_item__product',
+    ).order_by('work_date', 'worker__first_name', 'worker__last_name', 'id')
+
+    for queue in detail_rows:
+        actual = _q(queue.delivered_quantity - queue.returned_quantity)
+        excess = _q(max(actual - queue.planned_quantity, Decimal('0.00')))
+        sources = list(queue.sources.all())
+        if not sources:
+            # Manual/out-of-plan handouts may have no planning source. Their
+            # movement can still identify a reference order.
+            sources = [None]
+        shares = [max(_q(source.quantity), Decimal('0.00')) if source else Decimal('0.00')
+                  for source in sources]
+        share_total = sum(shares, Decimal('0.00'))
+        remaining_actual, remaining_excess = actual, excess
+
+        for index, source in enumerate(sources):
+            if source and share_total > 0:
+                if index == len(sources) - 1:
+                    allocated_actual, allocated_excess = remaining_actual, remaining_excess
+                else:
+                    allocated_actual = _q(actual * shares[index] / share_total)
+                    allocated_excess = _q(excess * shares[index] / share_total)
+                    remaining_actual -= allocated_actual
+                    remaining_excess -= allocated_excess
+                planned_part = shares[index]
+                task = source.production_task
+                defect = source.defect
+                if defect and not task:
+                    task = defect.task
+                order_item = (task.order_item if task else None) or (defect.order_item if defect else None)
+                order = (order_item.order if order_item else None) or (task.order if task else None) or (defect.order if defect else None)
+                kind_label = source.get_kind_display()
+                stage = source.painting_stage or (task.painting_stage if task else None)
+            else:
+                movement = next((m for m in queue.movements.all()
+                                 if m.movement_type == 'consumption'), None)
+                task = movement.reference_task if movement else None
+                order_item = (movement.reference_order_item if movement else None)
+                order = (order_item.order if order_item else None) or (task.order if task else None)
+                allocated_actual, allocated_excess = actual, excess
+                planned_part = _q(queue.planned_quantity)
+                kind_label = 'تحویل خارج از برنامه' if not source else source.get_kind_display()
+                stage = queue.painting_stage or (task.painting_stage if task else None)
+
+            if source and share_total <= 0:
+                planned_part = _q(queue.planned_quantity)
+            customer = getattr(order, 'customer', None) if order else None
+            representative = getattr(order, 'user', None) if order else None
+            product = order_item.product if order_item else None
+            record = {
+                'work_date': queue.work_date,
+                'worker': queue.worker.get_full_name() or queue.worker.username,
+                'order_number': (getattr(order, 'number', '') or f'#{order.pk}') if order else 'بدون سفارش',
+                'customer': getattr(customer, 'name', '') if customer else '',
+                'representative': (representative.get_full_name() or representative.username) if representative else '',
+                'product': getattr(product, 'name', '') if product else '',
+                'kind': kind_label,
+                'stage': getattr(stage, 'name', '') if stage else '',
+                'color_part': getattr(task, 'color_part', '') if task else '',
+                'task_id': getattr(task, 'pk', None),
+                'planned': planned_part,
+                'actual': allocated_actual,
+                'excess': allocated_excess,
+                'unit': queue.raw_material.get_unit_display(),
+            }
+            worker_material = worker_materials.get((queue.worker_id, queue.raw_material_id))
+            if worker_material is not None:
+                worker_material['details'].append(record)
+            material_row = material_rows.get(queue.raw_material_id)
+            if material_row is not None:
+                material_row.setdefault('details', []).append(record)
+
     return {'rows': rows, 'totals': totals, 'by_worker': list(by_worker.values())}
 
 
@@ -602,15 +726,14 @@ def inventory_alerts(date=None, *, limit=100):
         )
 
     # 4) تحویل انجام شده ولی برگشتی/وضعیت نهایی مشخص نیست
-    for queue in queues.filter(status='delivered'):
-        if _q(queue.returned_quantity) <= 0:
-            add(
-                'unreturned', 'warning', 'تحویل بدون برگشت نهایی',
-                f'{queue.worker} / {queue.raw_material.name}: '
-                f'{_q(queue.delivered_quantity)} {queue.raw_material.get_unit_display()} '
-                'تحویل شده و هنوز برگشتی ثبت نشده.',
-                url=_queue_url(queue.work_date),
-            )
+    for queue in queues.filter(status='delivered', return_settled=False, returned_quantity__lte=0):
+        add(
+            'unreturned', 'warning', 'تحویل بدون برگشت نهایی',
+            f'{queue.worker} / {queue.raw_material.name}: '
+            f'{_q(queue.delivered_quantity)} {queue.raw_material.get_unit_display()} '
+            'تحویل شده و هنوز وضعیت برگشت ثبت نشده.',
+            url=_queue_url(queue.work_date),
+        )
 
     # 5) روز هنوز بررسی و تأیید نشده
     if not DailyMaterialClosing.objects.filter(work_date=date).exists():

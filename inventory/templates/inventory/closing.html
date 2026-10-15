@@ -8,9 +8,9 @@
     <h1 class="h3 mb-1">کنترل و بستن روز</h1>
     {% comment %} <div class="small text-muted">آخرین قدم شیفت انبار — نسخهٔ صفحه: <code>{{ page_version|default:"—" }}</code></div> {% endcomment %}
   </div>
-  <a href="{% url 'inventory:daily_material_queue' %}?date={{ date_str }}" class="btn btn-sm btn-outline-primary">
+  {% comment %} <a href="{% url 'inventory:daily_material_queue' %}?date={{ date_str }}" class="btn btn-sm btn-outline-primary">
     <i class="bi bi-clipboard2-data"></i> صف مواد روزانه
-  </a>
+  </a> {% endcomment %}
 </div>
 
 <form method="get" class="d-flex gap-2 flex-wrap mb-3 no-print">
@@ -116,6 +116,6 @@
     </div>
   </div>
 
-  <div class="inventory-card-list">{% for problem in problems %}<article class="inventory-item-card is-warning"><div class="d-flex justify-content-between gap-2"><strong>{{ problem.queue.raw_material.name }}</strong><span class="badge text-bg-secondary">{{ problem.queue.get_status_display }}</span></div><div class="inventory-item-meta">{{ problem.queue.worker.get_full_name|default:problem.queue.worker.username }}</div><div class="inventory-item-meta">تحویل {{ problem.queue.delivered_quantity|floatformat:2 }} · برگشتی {{ problem.queue.returned_quantity|floatformat:2 }}</div><div class="inventory-item-actions">{% for reason in problem.reasons %}{% if reason == 'conflict' %}<span class="badge text-bg-warning">مغایرت برنامه</span>{% elif reason == 'incomplete' %}<span class="badge text-bg-primary">تحویل‌نشده</span>{% elif reason == 'inconsistent' %}<span class="badge text-bg-danger">ناسازگار</span>{% endif %}{% endfor %}<a href="{% url 'inventory:daily_material_queue' %}?date={{ date_str }}" class="btn btn-sm btn-outline-primary">بازکردن کار روزانه</a></div></article>{% empty %}<div class="empty-day">موردی برای بررسی نمانده است.</div>{% endfor %}</div>
+  <div class="inventory-card-list">{% for problem in problems %}<article class="inventory-item-card is-warning"><div class="d-flex justify-content-between gap-2"><strong>{{ problem.queue.raw_material.name }}</strong><span class="badge text-bg-secondary">{{ problem.queue.get_status_display }}</span></div><div class="inventory-item-meta">{{ problem.queue.worker.get_full_name|default:problem.queue.worker.username }}</div><div class="inventory-item-meta">تحویل {{ problem.queue.delivered_quantity|floatformat:2 }} · برگشتی {{ problem.queue.returned_quantity|floatformat:2 }}</div><div class="inventory-item-actions">{% for reason in problem.reasons %}{% if reason == 'conflict' %}<span class="badge text-bg-warning">مغایرت برنامه</span>{% elif reason == 'incomplete' %}<span class="badge text-bg-primary">تحویل‌نشده</span>{% elif reason == 'inconsistent' %}<span class="badge text-bg-danger">ناسازگار</span>{% elif reason == 'excess_delivered' %}<span class="badge text-bg-info">مازادِ تحویل تسویه‌نشده</span>{% elif reason == 'overdue_partial' %}<span class="badge text-bg-secondary">کسریِ منتقل‌شده از روز قبل</span>{% endif %}{% endfor %}<a href="{% url 'inventory:daily_material_queue' %}?date={{ date_str }}" class="btn btn-sm btn-outline-primary">بازکردن کار روزانه</a></div></article>{% empty %}<div class="empty-day">موردی برای بررسی نمانده است.</div>{% endfor %}</div>
 {% endif %}
 {% endblock %}

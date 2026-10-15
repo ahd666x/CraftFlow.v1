@@ -480,15 +480,18 @@ class ClosingViewTests(ClosingBase):
         response = self._get({'material': str(self.raw_b.pk)})
         self.assertEqual(response.context['summary']['total_planned'], Decimal('2.00'))
 
-    def test_26_totals_are_rendered(self):
+    def test_26_compact_closing_state_is_rendered_without_legacy_totals(self):
         self._task(quantity=2)
         for queue in self._day_queues():
             self._deliver(queue)
         self._return(self._day_queues()[0], '0.50')
 
         response = self._get()
-        self.assertContains(response, '4.00')   # مجموع برنامه و تحویل
-        self.assertContains(response, '0.50')   # مجموع برگشت
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'بستن روز')
+        # خلاصه‌های جدولی حذف شده‌اند؛ اطلاعات کنترل مهم به صورت کارت ارائه می‌شود.
+        self.assertContains(response, 'inventory-item-card')
+        self.assertNotContains(response, '<table')
 
     def test_27_navigation_link_exists(self):
         response = self._get()

@@ -466,8 +466,8 @@ class ReportConflictTests(ReportBase):
         self.assertEqual(summary['conflict_count'], 1)
 
         response = self._get_page()
-        self.assertContains(response, 'مغایرت برنامه')
-        self.assertContains(response, 'مغایرت')
+        self.assertContains(response, 'status-problem')
+        self.assertContains(response, 'نیازمند بررسی')
 
     def test_27_no_conflict_when_plan_matches(self):
         self._make_task(worker=self.worker_a, order_item=self.item_a, quantity=4)

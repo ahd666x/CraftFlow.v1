@@ -275,7 +275,9 @@ class DailyQueuePageTests(DailyQueueUIBase):
         queue.refresh_from_db()
         self.assertTrue(queue.has_plan_conflict)
         self.assertTrue(queue.conflict_note)
-        self.assertContains(response, 'مغایرت')
+        card = DailyQueueActionButtonTests._card_html(response, queue.pk)
+        self.assertIn('status-problem', card)
+        self.assertIn('نیازمند بررسی', card)
 
     def test_11_unassigned_task_does_not_appear_as_queue_row(self):
         """تسک بدون کارگر تخصیص‌یافته نباید ردیف عادی صف داشته باشد."""
@@ -328,7 +330,7 @@ class DailyQueueActionTests(DailyQueueUIBase):
         self.assertEqual(self.raw.current_stock, stock_before - Decimal('1.00'))
 
     def test_21_delivery_applies_pack_size_rounding(self):
-        """نیاز ۱ کیلو با بستهٔ ۴ کیلویی → خروج فیزیکی ۴ کیلو."""
+        """موجودی ۵۰ با بستهٔ ۴ یعنی ۲ کیلو ته‌مانده باز؛ همان اول تحویل می‌شود."""
         self._make_task(worker=self.worker_a, start=self.day_start, quantity=2)
         # نیاز این ماده را به مادهٔ بسته‌دار تغییر می‌دهیم
         queue = self._queue()
@@ -344,13 +346,13 @@ class DailyQueueActionTests(DailyQueueUIBase):
 
         self.assertEqual(response.status_code, 200)
         queue.refresh_from_db()
-        # delivered_quantity مقدار فیزیکی تحویل‌شده (پک گرد‌شده) است، نه مقدار نیاز.
-        self.assertEqual(queue.delivered_quantity, Decimal('4.00'))
-        self.assertEqual(queue.actual_consumption, Decimal('4.00'))
+        # ماندهٔ بستهٔ باز پیش از باز کردن بستهٔ تازه تحویل می‌شود.
+        self.assertEqual(queue.delivered_quantity, Decimal('2.00'))
+        self.assertEqual(queue.actual_consumption, Decimal('2.00'))
         movement = StockMovement.objects.filter(
             raw_material=self.raw_kg4, movement_type='consumption'
         ).order_by('-id').first()
-        self.assertEqual(movement.quantity, Decimal('4.00'))
+        self.assertEqual(movement.quantity, Decimal('2.00'))
 
     def test_22_delivery_rejected_for_insufficient_stock(self):
         self._make_task(worker=self.worker_a, start=self.day_start, quantity=2)
@@ -362,7 +364,7 @@ class DailyQueueActionTests(DailyQueueUIBase):
         self.client.force_login(self.warehouse_user)
         response = self.client.post(
             reverse('inventory:daily_queue_delivery', args=[queue.pk]),
-            {}, **self._ajax(),
+            {'quantity': '100.00'}, **self._ajax(),
         )
 
         self.assertEqual(response.status_code, 400)
@@ -460,8 +462,10 @@ class DailyQueueActionTests(DailyQueueUIBase):
         self.assertEqual(response.status_code, 200)
         payload = json.loads(response.content)
         self.assertTrue(payload['success'])
-        self.assertEqual(payload['packs'], 1)
-        self.assertEqual(payload['physical'], '4.00')
+        # از ته‌ماندهٔ بستهٔ باز استفاده می‌شود؛ بستهٔ تازه‌ای باز نمی‌شود.
+        self.assertEqual(payload['packs'], 0)
+        self.assertEqual(payload['physical'], '2.00')
+        self.assertEqual(payload['from_open'], '2.00')
         self.assertTrue(payload['enough'])
 
 
@@ -525,6 +529,16 @@ class DailyQueuePermissionTests(DailyQueueUIBase):
 class DailyQueueActionButtonTests(DailyQueueUIBase):
     """تست‌های دکمه‌های اقدام بر اساس action state از سرویس."""
 
+    @staticmethod
+    def _card_html(response, queue_id):
+        """HTML کارت همان صف؛ ساختار فعلی کارت‌محور است و جدول ندارد."""
+        content = response.content.decode('utf-8')
+        marker = f'data-queue="{queue_id}"'
+        position = content.index(marker)
+        start = content.rfind('<article', 0, position)
+        end = content.index('</article>', position) + len('</article>')
+        return content[start:end]
+
     def test_partial_row_shows_delivery_button(self):
         """ردیف partial باید دکمهٔ تحویل داشته باشد (و اگر تحویل قبلی دارد، دکمهٔ بازگشت هم)."""
         self._make_task(worker=self.worker_a, start=self.day_start, quantity=2)
@@ -537,14 +551,10 @@ class DailyQueueActionButtonTests(DailyQueueUIBase):
         self.client.force_login(self.warehouse_user)
         response = self.client.get(reverse('inventory:daily_material_queue'))
 
-        # باید دکمهٔ تحویل (btn-preview-delivery) در ردیف جدول باشد
-        content = response.content.decode('utf-8')
-        tbody_start = content.index('<tbody>')
-        tbody_end = content.index('</tbody>')
-        tbody = content[tbody_start:tbody_end]
-        self.assertIn('btn-preview-delivery', tbody)
-        # چون تحویل قبلی 0.50 دارد، دکمهٔ بازگشت هم باید باشد (can_return=True)
-        self.assertIn('btn-return', tbody)
+        # هر دو دکمه باید داخل کارت همین ماده باشند.
+        card = self._card_html(response, queue.pk)
+        self.assertIn('btn-preview-delivery', card)
+        self.assertIn('btn-return', card)
 
     def test_pending_row_shows_delivery_not_return(self):
         """ردیف pending فقط دکمهٔ تحویل داشته باشد."""
@@ -554,13 +564,9 @@ class DailyQueueActionButtonTests(DailyQueueUIBase):
         response = self.client.get(reverse('inventory:daily_material_queue'))
 
         self.assertContains(response, 'btn-preview-delivery')
-        # چک در tbody - نباید btn-return در ردیف‌های جدول باشد
-        content = response.content.decode('utf-8')
-        tbody_start = content.index('<tbody>')
-        tbody_end = content.index('</tbody>')
-        tbody = content[tbody_start:tbody_end]
-        self.assertIn('btn-preview-delivery', tbody)
-        self.assertNotIn('btn-return', tbody)
+        card = self._card_html(response, self._queue().pk)
+        self.assertIn('btn-preview-delivery', card)
+        self.assertNotIn('btn-return', card)
 
     def test_delivered_row_with_returnable_shows_return_button(self):
         """ردیف delivered با برگشت‌پذیر باید دکمهٔ بازگشت داشته باشد."""
@@ -573,13 +579,23 @@ class DailyQueueActionButtonTests(DailyQueueUIBase):
         self.client.force_login(self.warehouse_user)
         response = self.client.get(reverse('inventory:daily_material_queue'))
 
-        # در tbody باید btn-return باشد
-        content = response.content.decode('utf-8')
-        tbody_start = content.index('<tbody>')
-        tbody_end = content.index('</tbody>')
-        tbody = content[tbody_start:tbody_end]
-        self.assertIn('btn-return', tbody)
-        self.assertNotIn('btn-preview-delivery', tbody)
+        card = self._card_html(response, queue.pk)
+        self.assertIn('btn-return', card)
+        self.assertNotIn('btn-preview-delivery', card)
+
+    def test_card_shows_solar_date_material_code_and_combined_product_name(self):
+        self._make_task(worker=self.worker_a, start=self.day_start, quantity=2)
+        queue = self._queue()
+        self.client.force_login(self.warehouse_user)
+        response = self.client.get(reverse('inventory:daily_material_queue'))
+        card = self._card_html(response, queue.pk)
+        solar = jdatetime.date.fromgregorian(date=self.today_date).strftime('%Y/%m/%d')
+        self.assertContains(response, solar)
+        self.assertIn('R-WHITE', card)
+        self.assertIn('دسته تست', card)
+        self.assertIn('محصول تست', card)
+        # مرحله و بخش رنگ فقط یک‌بار از اطلاعات همان منبع نمایش داده می‌شود.
+        self.assertEqual(card.count(self.stage_1.name), 1)
 
     def test_template_no_useOpenPackInput(self):
         """قالب نباید شامل useOpenPackInput باشد."""

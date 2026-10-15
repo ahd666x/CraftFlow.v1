@@ -210,6 +210,10 @@ class DailyMaterialQueue(models.Model):
         max_digits=12, decimal_places=2, default=0,
         verbose_name="برگشتی",
     )
+    return_settled = models.BooleanField(
+        default=False, verbose_name="وضعیت برگشت بررسی شد",
+        help_text="یعنی انباردار وضعیت ماده را مشخص کرده است، حتی اگر مقدار برگشتی صفر باشد.",
+    )
     actual_consumption = models.DecimalField(
         max_digits=12, decimal_places=2, default=0,
         verbose_name="مصرف واقعی",
@@ -430,7 +434,7 @@ class DailyMaterialClosing(models.Model):
         self.status = 'locked'
         self.locked_at = timezone.now()
         self.locked_by = locked_by
-        self.save(update_fields=['status', 'locked_at', 'locked_by', 'updated_at'])
+        self.save(update_fields=['status', 'locked_at', 'locked_by'])
 
     @classmethod
     def is_locked(cls, date):

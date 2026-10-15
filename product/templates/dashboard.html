@@ -116,16 +116,16 @@
                 <h6 class="fw-bold">گزارش یکپارچه</h6>
             </a>
         </div> {% endcomment %}
-        <div class="col-6 col-md-3">
+        {% comment %} <div class="col-6 col-md-3">
             <a href="{% url 'report_material_consumption' %}" class="quick-link-card">
                 <div class="quick-link-icon"><i class="bi bi-box-seam"></i></div>
                 <h6 class="fw-bold">مصرف مواد اولیه</h6>
             </a>
         </div>
-    </div>
+    </div> {% endcomment %}
 
     <!-- ردیف چهارم -->
-    <div class="row g-3 mb-3">
+    {% comment %} <div class="row g-3 mb-3">
 
         <div class="col-6 col-md-3">
             <a href="{% url 'product_defects' %}" class="quick-link-card">
@@ -133,7 +133,7 @@
                 <h6 class="fw-bold">خرابی و ساخت مجدد</h6>
             </a>
         </div>
-    </div>
+    </div> {% endcomment %}
 
 </div>
 {% endblock %}

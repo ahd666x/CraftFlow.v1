@@ -24,6 +24,7 @@ from django.core.paginator import Paginator
 from django.db.models import Q, Count
 from django.http import JsonResponse, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, render, redirect
+from django.db import transaction
 from django.db.transaction import atomic
 from django.views.decorators.http import require_http_methods, require_POST
 
@@ -300,10 +301,22 @@ def daily_unplanned_delivery(request):
         messages.error(request, 'کارگر، ماده و مقدار را به‌درستی انتخاب کنید.')
         return redirect(f"{request.META.get('HTTP_REFERER', '/inventory/')}#extra-issue")
     try:
-        queue = DailyMaterialQueue.objects.create(work_date=work_date, worker=worker,
-            raw_material=material, color_part='خارج برنامه', planned_quantity=Decimal('0'))
-        services.execute_daily_delivery(queue_id=queue.pk, delivered_by=request.user,
-            quantity=quantity, note='صرف خارج از برنامه')
+        # Keep queue creation and the stock movement atomic: a failed issue
+        # must not leave an empty, misleading row that blocks day closing.
+        with atomic():
+            queue = DailyMaterialQueue.objects.filter(
+                work_date=work_date, worker=worker, raw_material=material,
+                painting_stage__isnull=True, color_part='خارج برنامه',
+            ).first()
+            if queue is None:
+                queue = DailyMaterialQueue.objects.create(
+                    work_date=work_date, worker=worker, raw_material=material,
+                    color_part='خارج برنامه', planned_quantity=Decimal('0'),
+                )
+            services.execute_daily_delivery(
+                queue_id=queue.pk, delivered_by=request.user,
+                quantity=quantity, note='تحویل خارج از برنامه',
+            )
     except Exception as exc:
         logger.warning('unplanned material delivery failed: %s', exc)
         messages.error(request, f'صرف انجام نشد: {exc}')
@@ -649,7 +662,7 @@ def daily_closing_confirm(request):
         import jdatetime
         parsed = jdatetime.date.today()
 
-    force = request.POST.get('force') == 'true'
+    force = request.POST.get('force') == 'true' and request.user.is_superuser
 
     try:
         services.confirm_daily_closing(
@@ -735,9 +748,9 @@ def stock_adjustment(request):
 
 REPORT_TABS = (
     ('overview', 'نگاه کلی'),
-    ('ledger', 'دفتر گردش انبار'),
+    ('ledger', 'گردش انبار'),
     ('consumption', 'تحلیل مصرف'),
-    ('history', 'گزارش‌های تاریخی'),
+    ('history', 'گزارش‌های مصرف'),
 )
 
 
@@ -756,16 +769,26 @@ def reports_view(request):
 
     filters = _report_filters(request)
     if tab == 'consumption' and not filters.get('date_from') and not filters.get('date_to'):
-        from datetime import timedelta
         from django.utils import timezone
-        previous_month_end = timezone.localdate().replace(day=1) - timedelta(days=1)
-        filters['date_to'] = previous_month_end
-        filters['date_from'] = previous_month_end.replace(day=1)
+        import jdatetime
+        today_jalali = jdatetime.date.fromgregorian(date=timezone.localdate())
+        previous_month_end_jalali = today_jalali.replace(day=1) - jdatetime.timedelta(days=1)
+        previous_month_start_jalali = previous_month_end_jalali.replace(day=1)
+        filters['date_from'] = previous_month_start_jalali.togregorian()
+        filters['date_to'] = previous_month_end_jalali.togregorian()
+    def _jalali_input_date(value):
+        if not value:
+            return ''
+        import jdatetime
+        return jdatetime.date.fromgregorian(date=value).strftime('%Y-%m-%d')
+
     context = {
         **_inventory_context('reports'),
         'tabs': REPORT_TABS,
         'tab': tab,
         'filters': filters,
+        'date_from_jalali': _jalali_input_date(filters.get('date_from')),
+        'date_to_jalali': _jalali_input_date(filters.get('date_to')),
         'materials': _active_materials(),
         'paint_workers': _paint_workers(),
         'page_version': _page_version(),
@@ -797,6 +820,11 @@ def reports_view(request):
         context['dashboard'] = reports.material_planning_dashboard(
             date=filters.get('date_to'))
         context['stock_forecast'] = reports.material_stock_forecast()
+        depletion_dates = {}
+        for forecast_row in context['stock_forecast']:
+            if forecast_row['short']:
+                depletion_dates.setdefault(forecast_row['material'].id, forecast_row['date'])
+        context['depletion_dates'] = depletion_dates
         # inventory_alerts یک dict برمی‌گرداند، نه یک لیست.
         alert_data = reports.inventory_alerts(date=filters.get('date_to'))
         context['alerts'] = alert_data['alerts']
@@ -991,7 +1019,7 @@ def material_ledger_export(request):
     filters = _report_filters(request)
     export_format = request.GET.get('format', 'csv').lower()
     
-    ledger = reports.material_ledger(**filters, export=True)
+    ledger = reports.material_ledger(**filters)
     
     if export_format == 'xlsx':
         try:
@@ -1097,6 +1125,12 @@ def material_list(request):
         'form': RawMaterialForm(),
         'page_version': _page_version(),
     }
+    context['depletion_dates'] = {}
+    for forecast_row in reports.material_stock_forecast():
+        if forecast_row['short']:
+            context['depletion_dates'].setdefault(
+                forecast_row['material'].id, forecast_row['date'],
+            )
     return render(request, 'inventory/materials.html', context)
 
 
@@ -1346,9 +1380,18 @@ def daily_queue_repair(request):
 
     try:
         with transaction.atomic():
-            # Delete all queues for this date
+            date = parsed.togregorian()
+            protected = DailyMaterialQueue.objects.filter(
+                work_date=date, movements__isnull=False,
+            ).distinct()
+            if protected.exists():
+                return JsonResponse({
+                    'success': False,
+                    'error': 'بازسازی انجام نشد؛ این روز حرکت تحویل یا برگشت ثبت‌شده دارد و حذف آن تاریخچهٔ انبار را مخدوش می‌کند.',
+                }, status=409)
+            # Only transaction-free queue rows are safe to rebuild.
             deleted_count, _ = DailyMaterialQueue.objects.filter(
-                work_date=parsed.togregorian()
+                work_date=date,
             ).delete()
             # Force rebuild
             queue_count, diagnostics = services.sync_queue_for_date(parsed.togregorian())

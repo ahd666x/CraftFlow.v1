@@ -778,6 +778,8 @@ def _get_scheduled_painting_tasks(date):
 # ساخت و همگام‌سازی صف
 # ---------------------------------------------------------------------------
 
+UNPLANNED_COLOR_PART = 'خارج برنامه'
+
 CONFLICT_NOTE_PLAN_CHANGED = (
     'تغییر برنامه پس از ثبت تحویل/بازگشت اعمال نشد؛ تاریخچهٔ واقعی حفظ شد.'
 )
@@ -904,6 +906,12 @@ def build_daily_queue_for_date(date):
         for key, queue in existing_keys.items():
             if key in grouped:
                 continue
+            if queue.color_part == UNPLANNED_COLOR_PART:
+                if queue.has_plan_conflict:
+                    queue.has_plan_conflict = False
+                    queue.conflict_note = ''
+                    queue.save(update_fields=['has_plan_conflict', 'conflict_note', 'updated_at'])
+                continue
             if queue.has_transaction:
                 if not queue.has_plan_conflict:
                     _mark_conflict(queue, CONFLICT_NOTE_DROPPED)
@@ -919,12 +927,6 @@ def build_daily_queue_for_date(date):
     log_queue_diagnostics(date, diagnostics)
 
     return len(grouped), diagnostics
-
-    return list(
-        DailyMaterialQueue.objects
-        .filter(work_date=date)
-        .order_by('worker', 'raw_material__name')
-    )
 
 
 def sync_daily_material_queue(date):
@@ -1117,6 +1119,7 @@ def execute_daily_delivery(*, queue_id, delivered_by, note='', quantity=None):
                     بارهای بعد دقیقاً باقی‌مانده).
     quantity=X    → انباردار مقدار دلخواه (کمتر یا بیشتر از نیاز) را تحویل می‌دهد.
     مازاد روی نیاز در excess_consumption می‌آید؛ کسری در روز کاری بعد منتقل می‌شود.
+    پس از ثبت هر نوع برگشت، حتی برگشت صفر برای تأیید مصرف کامل، تحویل مجدد مجاز نیست.
     """
     try:
         queue = DailyMaterialQueue.objects.select_for_update().get(pk=queue_id)
@@ -1130,7 +1133,9 @@ def execute_daily_delivery(*, queue_id, delivered_by, note='', quantity=None):
             'این ردیف از برنامهٔ روز حذف شده است؛ تا زمانی که نیاز آن در '
             'برنامه نباشد، تحویل ممکن نیست.'
         )
-    if queue.status in ('returned', 'closed') or _q2(queue.returned_quantity) > 0:
+    if (queue.status in ('returned', 'closed') or _q2(queue.returned_quantity) > 0
+            or queue.return_settled
+            or StockMovement.objects.filter(daily_queue=queue, movement_type='return').exists()):
         raise HandoverError(
             'این ردیف قبلاً تحویل داده شده است و تحویل دوبارهٔ آن ممکن نیست.'
         )
@@ -1236,8 +1241,8 @@ def execute_daily_return(*, queue_id, returned_by, returned_quantity, note=''):
         * مادهٔ برگشتی دوباره موجودی عمومی انبار است و برای کارگر امانت یا
           رزروی ساخته نمی‌شود.
 
-    هر ردیف فقط یک‌بار قابل برگشت است (بازگشت جزئی هم مجاز نیست).
-    وقتی یک‌بار برگشت ثبت شد، درخواست‌های بعدی رد می‌شوند.
+    برای ثبت مصرف کامل، مقدار صفر هم مجاز است؛ وجود حرکت برگشت (حتی صفر)
+    وضعیت ردیف را نهایی می‌کند و درخواست‌های تکراری یا تحویل دوباره رد می‌شوند.
 
     ردیف صف برای کل عملیات قفل می‌شود، پس دو درخواست هم‌زمان هرگز دو حرکت
     برگشت برای یک ردیف نمی‌سازند.
@@ -1246,8 +1251,8 @@ def execute_daily_return(*, queue_id, returned_by, returned_quantity, note=''):
         ret = _q2(returned_quantity)
     except (TypeError, ValueError, ArithmeticError, InvalidOperation):
         raise HandoverError('مقدار برگشتی معتبر نیست.')
-    if not ret.is_finite() or ret <= 0:
-        raise HandoverError('مقدار برگشتی باید بزرگ‌تر از صفر باشد.')
+    if not ret.is_finite() or ret < 0:
+        raise HandoverError('مقدار برگشتی نمی‌تواند منفی باشد.')
 
     try:
         queue = DailyMaterialQueue.objects.select_for_update().get(pk=queue_id)
@@ -1267,14 +1272,28 @@ def execute_daily_return(*, queue_id, returned_by, returned_quantity, note=''):
     if delivered <= 0:
         raise HandoverError('این ردیف هنوز تحویل نشده است؛ ابتدا تحویل را ثبت کنید.')
 
-    # Enforce one return per row rule
-    if already_returned > 0:
-        raise HandoverError('این ردیف قبلاً برگشت داشته است؛ هر ردیف فقط یک‌بار قابل برگشت است.')
+    # وجود یک حرکت برگشت حتی با مقدار صفر یعنی مصرف کامل تأیید شده است.
+    # مقدار برگشتی به‌تنهایی نمی‌تواند بین «ثبت نشده» و «صفر» تمایز بگذارد.
+    if queue.return_settled or StockMovement.objects.filter(
+        daily_queue=queue, movement_type='return',
+    ).exists():
+        raise HandoverError('برگشت این ردیف قبلاً ثبت شده است؛ هر ردیف فقط یک‌بار قابل برگشت است.')
 
     if ret > delivered:
         raise HandoverError(
             f'مقدار برگشتی ({ret}) نمی‌تواند از مقدار تحویل‌شده ({delivered}) بیشتر باشد.'
         )
+
+    if ret == 0:
+        # Zero means the worker consumed everything; it is a state confirmation,
+        # not an inventory movement.
+        queue.return_settled = True
+        queue.recalculate_consumption()
+        queue.save(update_fields=[
+            'return_settled', 'actual_consumption', 'excess_consumption', 'updated_at',
+        ])
+        _clear_conflict_if_resolved(queue)
+        return queue
 
     # Get primary task and order_item for traceability
     ref_task, ref_order_item = _get_primary_task_and_order(queue)
@@ -1290,11 +1309,12 @@ def execute_daily_return(*, queue_id, returned_by, returned_quantity, note=''):
         note=(note or '')[:255] or f'بازگشت روزانه — {queue.raw_material.name} از {queue.worker}',
     )
     queue.returned_quantity = ret
+    queue.return_settled = True
     queue.status = _delivery_status(queue)
     # planned_quantity و منابع برنامه‌ریزی دست‌نخورده می‌مانند.
     queue.recalculate_consumption()
     queue.save(update_fields=[
-        'returned_quantity', 'status',
+        'returned_quantity', 'return_settled', 'status',
         'actual_consumption', 'excess_consumption', 'updated_at',
     ])
 
@@ -1336,6 +1356,10 @@ def execute_auto_return(*, queue_id, returned_by, note=''):
 
     if delivered <= 0:
         raise HandoverError('این ردیف هنوز تحویل نشده است؛ ابتدا تحویل را ثبت کنید.')
+    # Zero means fully consumed; a positive manual return can still leave a
+    # surplus that the end-of-day auto-return must top up.
+    if queue.return_settled and already_returned <= 0:
+        return queue
 
     actual_consumption = _q2(delivered - already_returned)
     excess = _q2(actual_consumption - planned)
@@ -1359,10 +1383,11 @@ def execute_auto_return(*, queue_id, returned_by, note=''):
         note=(note or '')[:255] or f'برگشت خودکار مازاد تحویل — {queue.raw_material.name}',
     )
     queue.returned_quantity = _q2(already_returned + actual_return)
+    queue.return_settled = True
     queue.status = _delivery_status(queue)
     queue.recalculate_consumption()
     queue.save(update_fields=[
-        'returned_quantity', 'status',
+        'returned_quantity', 'return_settled', 'status',
         'actual_consumption', 'excess_consumption', 'updated_at',
     ])
 
@@ -1388,8 +1413,8 @@ def execute_batch_auto_return(*, date, returned_by, note=''):
     qs = DailyMaterialQueue.objects.select_for_update().filter(
         work_date=date,
         status__in=('delivered', 'partial'),
-        returned_quantity=0,
-    )
+        returned_quantity=0, return_settled=False,
+    ).exclude(movements__movement_type='return')
     # Filter in Python to check excess > 0
     processed = 0
     total_returned = Decimal('0')
@@ -1419,10 +1444,11 @@ def execute_batch_auto_return(*, date, returned_by, note=''):
             note=(note or '')[:255] or f'برگشت خودکار انبوه — {queue.raw_material.name}',
         )
         queue.returned_quantity = _q2(queue.returned_quantity + excess)
+        queue.return_settled = True
         queue.status = _delivery_status(queue)
         queue.recalculate_consumption()
         queue.save(update_fields=[
-            'returned_quantity', 'status',
+            'returned_quantity', 'return_settled', 'status',
             'actual_consumption', 'excess_consumption', 'updated_at',
         ])
         _clear_conflict_if_resolved(queue)
@@ -1657,8 +1683,9 @@ def daily_material_report(date, *, worker_id=None, material_id=None, status=None
     خروجی: dict با کلیدهای ``rows`` (صف آمادهٔ نمایش/صفحه‌بندی) و ``summary``.
     هیچ نوشتنی در دیتابیس انجام نمی‌شود و planned_quantity دست‌نخورده می‌ماند.
     """
-    # First sync the queue to ensure planned quantities are up to date
-    _, diagnostics = sync_queue_for_date(date)
+    # This report is strictly read-only. Queue synchronization belongs to
+    # explicit operational refresh/task hooks, never to opening a report.
+    diagnostics = {'unresolved_materials': [], 'skipped': []}
 
     base = daily_queue_filtered_queryset(
         date, worker_id=worker_id, material_id=material_id, status=status,
@@ -1670,7 +1697,8 @@ def daily_material_report(date, *, worker_id=None, material_id=None, status=None
     source_rows = DailyMaterialQueueSource.objects.select_related(
         'production_task', 'production_task__order_item',
         'production_task__order_item__order', 'production_task__order_item__order__user',
-        'production_task__order_item__product', 'painting_stage', 'defect', 'carryover_from',
+        'production_task__order_item__product', 'production_task__order_item__product__category',
+        'painting_stage', 'defect', 'carryover_from',
     )
     rows_qs = (
         base
@@ -1706,7 +1734,8 @@ def daily_queue_action_state(queue, *, with_suggestion=True, locked=None):
     already_returned = _q2(queue.returned_quantity)
     max_returnable = _q2(max(delivered - already_returned, Decimal('0')))
     remaining = _q2(max(planned - delivered, Decimal('0')))
-    no_returns = already_returned <= 0
+    settled = bool(queue.return_settled) or already_returned > 0
+    no_returns = already_returned <= 0 and not settled
 
     if locked is None:
         from .models import DailyMaterialClosing
@@ -1731,7 +1760,7 @@ def daily_queue_action_state(queue, *, with_suggestion=True, locked=None):
         not locked
         and queue.status not in ('cancelled', 'returned')
         and delivered > 0
-        and already_returned == 0
+        and no_returns
     )
 
     if with_suggestion:
@@ -1771,6 +1800,7 @@ def daily_queue_action_state(queue, *, with_suggestion=True, locked=None):
         'can_auto_return': can_auto_return,
         'can_cancel': can_cancel,
         'return_recorded': not no_returns,
+        'return_settled': settled,
         'locked': locked,
     }
 
@@ -1825,13 +1855,13 @@ def daily_closing_problems(qs):
         # unreturned material.
         if queue.status == 'pending' and planned > 0:
             reasons.add('incomplete')
-        elif queue.status == 'partial':
+        elif queue.status == 'partial' and not queue.return_settled:
             reasons.add('incomplete')
 
         # excess_delivered: only when nothing has been returned yet.  Once a
         # return is recorded the surplus is resolved and the row is no longer
         # flagged.
-        if returned <= 0 and delivered > planned:
+        if returned <= 0 and delivered > planned and not queue.return_settled:
             reasons.add('excess_delivered')
 
         # overdue_partial: partial from carryover (source kind == 'carryover')
@@ -1905,7 +1935,7 @@ def get_daily_closing(date):
 @transaction.atomic
 def confirm_daily_closing(*, date, closed_by, note='', force=False):
     """
-    ثبت «روز بررسی و تأیید شد».
+    روز را پس از بررسی واقعاً قفل می‌کند تا تحویل/برگشت بعدی تاریخچه را عوض نکند.
 
     قوانین:
         * روز دارای مشکل کنترل‌نشده بسته نمی‌شود (مگر با force=True);
@@ -1948,7 +1978,7 @@ def confirm_daily_closing(*, date, closed_by, note='', force=False):
     try:
         closing = DailyMaterialClosing.objects.create(
             work_date=date,
-            status='confirmed',
+            status='locked',
             closed_by=closed_by,
             locked_by=closed_by,
             locked_at=timezone.now(),

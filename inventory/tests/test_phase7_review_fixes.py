@@ -110,7 +110,7 @@ class ReviewBase(TestCase):
             color_part='بدنه', consumption_per_unit=Decimal('0.004'),
         )
 
-        for raw, qty in ((cls.raw, '100'), (cls.raw_pack4, '50'), (cls.raw_tiny, '10')):
+        for raw, qty in ((cls.raw, '100'), (cls.raw_pack4, '48'), (cls.raw_tiny, '10')):
             StockMovement.objects.create(
                 raw_material=raw, movement_type='purchase',
                 quantity=Decimal(qty), created_by=cls.superuser,
@@ -159,13 +159,13 @@ class DeliveryAccountingTests(ReviewBase):
         services.execute_daily_delivery(queue_id=queue.pk, delivered_by=self.superuser)
         queue.refresh_from_db()
 
-        # ۳ نیاز، پک ۴ ⇒ مقدار فیزیکی ۴
-        self.assertEqual(queue.delivered_quantity, Decimal('4.00'))
+        # در نبود باقیماندهٔ بستهٔ باز، تحویل دقیقاً برابر نیاز است.
+        self.assertEqual(queue.delivered_quantity, Decimal('3.00'))
 
         movement = StockMovement.objects.filter(
             raw_material=self.raw_pack4, movement_type='consumption',
         ).order_by('-id').first()
-        self.assertEqual(movement.quantity, Decimal('4.00'))
+        self.assertEqual(movement.quantity, Decimal('3.00'))
 
     def test_02_planned_quantity_never_changes_on_delivery(self):
         self._task(quantity=6)
@@ -201,9 +201,8 @@ class DeliveryAccountingTests(ReviewBase):
         services.execute_daily_delivery(queue_id=queue.pk, delivered_by=self.superuser)
         queue.refresh_from_db()
 
-        self.assertEqual(queue.actual_consumption, Decimal('4.00'))
-        # پک اضافه به‌صورت مصرف اضافه گزارش می‌شود
-        self.assertEqual(queue.excess_consumption, Decimal('1.00'))
+        self.assertEqual(queue.actual_consumption, Decimal('3.00'))
+        self.assertEqual(queue.excess_consumption, Decimal('0.00'))
 
     def test_05_full_pack_can_be_returned_and_stock_is_fully_restored(self):
         self._task(quantity=6)
@@ -212,11 +211,11 @@ class DeliveryAccountingTests(ReviewBase):
 
         services.execute_daily_delivery(queue_id=queue.pk, delivered_by=self.superuser)
         services.execute_daily_return(
-            queue_id=queue.pk, returned_by=self.superuser, returned_quantity='4.00',
+            queue_id=queue.pk, returned_by=self.superuser, returned_quantity='3.00',
         )
         queue.refresh_from_db()
 
-        self.assertEqual(queue.returned_quantity, Decimal('4.00'))
+        self.assertEqual(queue.returned_quantity, Decimal('3.00'))
         self.assertEqual(queue.actual_consumption, Decimal('0.00'))
         self.assertEqual(queue.status, 'returned')
         # نه کیلو بدون حساب نمانده است
@@ -225,7 +224,7 @@ class DeliveryAccountingTests(ReviewBase):
     def test_06_surplus_pack_return_leaves_actual_equal_to_planned(self):
         self._task(quantity=6)
         queue = self._queue(raw=self.raw_pack4)
-        services.execute_daily_delivery(queue_id=queue.pk, delivered_by=self.superuser)
+        services.execute_daily_delivery(queue_id=queue.pk, delivered_by=self.superuser, quantity='4.00')
         services.execute_daily_return(
             queue_id=queue.pk, returned_by=self.superuser, returned_quantity='1.00',
         )
@@ -254,7 +253,7 @@ class DeliveryAccountingTests(ReviewBase):
         queue = self._queue(raw=self.raw_pack4)
 
         preview = services.preview_daily_delivery(queue.pk)
-        self.assertEqual(preview['physical'], Decimal('4.00'))
+        self.assertEqual(preview['physical'], Decimal('3.00'))
         self.assertEqual(preview['packs'], 1)
         self.assertTrue(preview['can_deliver'])
         self.assertEqual(preview['status'], 'pending')
@@ -268,7 +267,7 @@ class DeliveryAccountingTests(ReviewBase):
     def test_09_report_shows_physical_delivered_and_correct_actual(self):
         self._task(quantity=6)
         queue = self._queue(raw=self.raw_pack4)
-        services.execute_daily_delivery(queue_id=queue.pk, delivered_by=self.superuser)
+        services.execute_daily_delivery(queue_id=queue.pk, delivered_by=self.superuser, quantity='4.00')
         services.execute_daily_return(
             queue_id=queue.pk, returned_by=self.superuser, returned_quantity='1.00',
         )
@@ -644,14 +643,14 @@ class ActionStateTests(ReviewBase):
         state = services.daily_queue_action_state(queue)
         self.assertFalse(state['can_deliver'])
         self.assertTrue(state['can_return'])
-        self.assertEqual(state['max_returnable'], '4.00')
+        self.assertEqual(state['max_returnable'], '3.00')
 
     def test_37_fully_returned_row_cannot_return_again(self):
         self._task(quantity=6)
         queue = self._queue(raw=self.raw_pack4)
         services.execute_daily_delivery(queue_id=queue.pk, delivered_by=self.superuser)
         services.execute_daily_return(
-            queue_id=queue.pk, returned_by=self.superuser, returned_quantity='4.00',
+            queue_id=queue.pk, returned_by=self.superuser, returned_quantity='3.00',
         )
         queue.refresh_from_db()
 

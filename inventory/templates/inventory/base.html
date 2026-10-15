@@ -18,7 +18,7 @@
     .inventory-panel .filter-disclosure{border:1px solid var(--inventory-border);border-radius:12px;background:#fff;padding:.65rem .85rem}
     .inventory-panel .filter-disclosure summary{cursor:pointer;list-style:none;font-size:.84rem;font-weight:650;color:#475569}
     .inventory-panel .filter-disclosure summary::-webkit-details-marker{display:none}
-    .inventory-panel .inventory-card-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(245px,1fr));gap:.7rem}
+    .inventory-panel .inventory-card-list{display:flex;flex-direction:column;gap:.55rem}
     .inventory-panel .inventory-item-card{background:#fff;border:1px solid var(--inventory-border);border-right:3px solid #cbd5e1;border-radius:13px;padding:.8rem .9rem;box-shadow:0 2px 7px rgba(15,23,42,.035)}
     .inventory-panel .inventory-item-card.is-warning{border-right-color:#f59e0b;background:#fffdf7}
     .inventory-panel .inventory-item-card.is-danger{border-right-color:#dc2626;background:#fffafa}
@@ -26,7 +26,7 @@
     .inventory-panel .inventory-item-title{font-weight:700;color:#172033}
     .inventory-panel .inventory-item-meta{font-size:.76rem;color:var(--inventory-muted);margin-top:.28rem}
     .inventory-panel .inventory-item-actions{display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.65rem}
-    @media(max-width:600px){.inventory-panel .inventory-card-list{grid-template-columns:1fr}.inventory-panel .header-nav{gap:.4rem}}
+    @media(max-width:600px){.inventory-panel .header-nav{gap:.4rem}}
 </style>
 {# چاپ تمیز این پنل؛ print-base.css عمومی است و کلاس‌های این نوار را نمی‌شناسد. #}
 <style>
@@ -65,10 +65,10 @@
            class="nav-link {% if active_tab == 'reports' %}active{% endif %}">
             <i class="bi bi-journal-text"></i> گزارش‌ها
         </a>
-        <a href="{% url 'inventory:data_integrity_audit' %}"
+        {% comment %} <a href="{% url 'inventory:data_integrity_audit' %}"
            class="nav-link {% if active_tab == 'audit' %}active{% endif %}">
             <i class="bi bi-shield-exclamation"></i> بررسی سلامت داده
-        </a>
+        </a> {% endcomment %}
 
         <span class="nav-separator" aria-hidden="true"></span>
 

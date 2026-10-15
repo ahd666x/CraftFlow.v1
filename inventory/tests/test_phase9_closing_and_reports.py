@@ -34,6 +34,7 @@ from product.models import (
     Product,
     ProductCategory,
     ProductionTask,
+    WorkerProfile,
 )
 
 
@@ -119,7 +120,8 @@ class ClosingConfirmationTests(Base):
             date=self.today, closed_by=self.warehouse, note='ok')
 
         self.assertEqual(closing.work_date, self.today)
-        self.assertEqual(closing.status, 'confirmed')
+        self.assertEqual(closing.status, 'locked')
+        self.assertTrue(DailyMaterialClosing.is_locked(self.today))
         self.assertEqual(closing.closed_by, self.warehouse)
         self.assertEqual(closing.note, 'ok')
 
@@ -235,6 +237,106 @@ class ClosingConfirmationTests(Base):
         self.assertContains(response, 'این روز بسته شده است')
 
 
+    def test_13_unplanned_delivery_can_be_acknowledged_as_fully_consumed(self):
+        queue = DailyMaterialQueue.objects.create(
+            work_date=self.today, worker=self.worker, raw_material=self.raw,
+            color_part='خارج برنامه', planned_quantity=Decimal('0'),
+        )
+        services.execute_daily_delivery(
+            queue_id=queue.pk, delivered_by=self.warehouse,
+            quantity='3.25', note='تحویل خارج از برنامه',
+        )
+        queue.refresh_from_db()
+        self.assertEqual(queue.actual_consumption, Decimal('3.25'))
+        self.assertEqual(queue.excess_consumption, Decimal('3.25'))
+
+        queue = services.execute_daily_return(
+            queue_id=queue.pk, returned_by=self.warehouse, returned_quantity='0',
+            note='تمام مقدار مصرف شد',
+        )
+        self.assertEqual(queue.returned_quantity, Decimal('0.00'))
+        self.assertEqual(queue.actual_consumption, Decimal('3.25'))
+        self.assertTrue(queue.return_settled)
+        self.assertFalse(StockMovement.objects.filter(
+            daily_queue=queue, movement_type='return',
+        ).exists())
+        self.assertFalse(services.daily_queue_action_state(queue)['can_return'])
+        self.assertFalse(services.daily_closing_status(self.today)['problems'])
+
+        closing = services.confirm_daily_closing(
+            date=self.today, closed_by=self.warehouse,
+        )
+        self.assertEqual(closing.work_date, self.today)
+
+    def test_unplanned_queue_is_not_marked_conflicted_by_plan_sync(self):
+        queue = DailyMaterialQueue.objects.create(
+            work_date=self.today, worker=self.worker, raw_material=self.raw,
+            color_part=services.UNPLANNED_COLOR_PART,
+            planned_quantity=Decimal('0'),
+        )
+        services.execute_daily_delivery(
+            queue_id=queue.pk, delivered_by=self.warehouse, quantity='2',
+        )
+        services.sync_queue_for_date(self.today)
+        queue.refresh_from_db()
+        self.assertFalse(queue.has_plan_conflict)
+        self.assertEqual(queue.delivered_quantity, Decimal('2.00'))
+
+    def test_14_zero_return_is_recorded_once_and_not_auto_returned(self):
+        queue = DailyMaterialQueue.objects.create(
+            work_date=self.today, worker=self.worker, raw_material=self.raw,
+            color_part='خارج برنامه', planned_quantity=Decimal('0'),
+        )
+        services.execute_daily_delivery(
+            queue_id=queue.pk, delivered_by=self.warehouse, quantity='2',
+        )
+        services.execute_daily_return(
+            queue_id=queue.pk, returned_by=self.warehouse, returned_quantity='0',
+        )
+        with self.assertRaises(HandoverError):
+            services.execute_daily_return(
+                queue_id=queue.pk, returned_by=self.warehouse, returned_quantity='0',
+            )
+        processed, total_returned, ids = services.execute_batch_auto_return(
+            date=self.today, returned_by=self.warehouse,
+        )
+        self.assertEqual(processed, 0)
+        self.assertEqual(total_returned, Decimal('0'))
+        self.assertEqual(ids, [])
+        self.assertEqual(StockMovement.objects.filter(
+            daily_queue=queue, movement_type='return',
+        ).count(), 0)
+        self.assertTrue(DailyMaterialQueue.objects.get(pk=queue.pk).return_settled)
+
+
+    def test_unplanned_delivery_rolls_back_queue_when_stock_is_insufficient(self):
+        WorkerProfile.objects.create(user=self.worker, stage='paint')
+        response = self.client.post(
+            reverse('inventory:daily_unplanned_delivery'),
+            {
+                'worker': self.worker.pk, 'material': self.raw.pk,
+                'quantity': '999', 'date': self.jalali,
+            },
+            HTTP_REFERER='/inventory/',
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(DailyMaterialQueue.objects.filter(
+            work_date=self.today, worker=self.worker, raw_material=self.raw,
+            color_part=services.UNPLANNED_COLOR_PART,
+        ).exists())
+
+    def test_force_flag_from_warehouse_user_cannot_bypass_conflict(self):
+        task = self._task()
+        self._settle()
+        task.quantity = 30
+        task.save()
+        self.client.force_login(self.warehouse)
+        self.client.post(reverse('inventory:daily_closing_confirm'), {
+            'date': self.jalali, 'force': 'true',
+        })
+        self.assertFalse(DailyMaterialClosing.objects.filter(work_date=self.today).exists())
+
+
 class ReportServiceTests(Base):
     def test_13_ledger_lists_movements_with_balance(self):
         self._task()
@@ -278,18 +380,42 @@ class ReportServiceTests(Base):
         self.assertEqual(list(StockMovement.objects.values_list('id', flat=True)), before)
 
     def test_17_consumption_report_uses_stored_values(self):
+        """القيم القديمة تُحسب من المصدر التشغيلي حتى لو بقيت الأعمدة المشتقة صفراً."""
         self._task()
         queue = DailyMaterialQueue.objects.filter(
             work_date=self.today, raw_material=self.raw).first()
-        services.execute_daily_delivery(queue_id=queue.pk, delivered_by=self.superuser)
+        queue.delivered_quantity = Decimal('4.00')
+        queue.returned_quantity = Decimal('1.00')
+        queue.actual_consumption = Decimal('0.00')
+        queue.excess_consumption = Decimal('0.00')
+        queue.status = 'closed'
+        queue.save(update_fields=[
+            'delivered_quantity', 'returned_quantity', 'actual_consumption',
+            'excess_consumption', 'status',
+        ])
 
         data = reports.consumption_report(date=self.today)
         row = next(r for r in data['rows'] if r['raw_material_id'] == self.raw.pk)
 
         self.assertEqual(row['planned'], Decimal('2.00'))
-        self.assertEqual(row['delivered'], Decimal('2.00'))
-        self.assertEqual(row['actual'], Decimal('2.00'))
-        self.assertEqual(row['variance'], Decimal('0.00'))
+        self.assertEqual(row['delivered'], Decimal('4.00'))
+        self.assertEqual(row['returned'], Decimal('1.00'))
+        self.assertEqual(row['actual'], Decimal('3.00'))
+        self.assertEqual(row['excess'], Decimal('1.00'))
+        person = next(p for p in data['by_worker'] if p['name'] == self.worker.get_full_name())
+        self.assertEqual(person['actual'], Decimal('3.00'))
+        self.assertEqual(person['excess'], Decimal('1.00'))
+        self.assertEqual(person['materials'][0]['actual'], Decimal('3.00'))
+        self.assertEqual(person['materials'][0]['excess'], Decimal('1.00'))
+        detail = person['materials'][0]['details'][0]
+        self.assertEqual(detail['order_number'], 'P9-1')
+        self.assertEqual(detail['customer'], 'مشتری')
+        self.assertEqual(detail['product'], 'محصول')
+        self.assertEqual(detail['representative'], self.superuser.username)
+        aggregate_detail = row['details'][0]
+        self.assertEqual(aggregate_detail['worker'], self.worker.get_full_name())
+        self.assertEqual(aggregate_detail['actual'], Decimal('3.00'))
+        self.assertEqual(aggregate_detail['excess'], Decimal('1.00'))
 
     def test_18_consumption_report_variance_is_numeric_difference(self):
         self._task()
@@ -469,7 +595,42 @@ class ReportServiceTests(Base):
             before)
 
 
+    def test_consumption_report_includes_closed_rows(self):
+        DailyMaterialQueue.objects.create(
+            work_date=self.today, worker=self.worker, raw_material=self.raw,
+            planned_quantity=Decimal('3'), delivered_quantity=Decimal('4'),
+            actual_consumption=Decimal('4'), excess_consumption=Decimal('1'),
+            status='closed',
+        )
+        result = reports.consumption_report(date=self.today)
+        self.assertEqual(len(result['rows']), 1)
+        self.assertEqual(result['rows'][0]['actual'], Decimal('4.00'))
+        self.assertEqual(result['totals']['excess'], Decimal('1.00'))
+
+    def test_consumption_report_includes_partial_rows(self):
+        queue = DailyMaterialQueue.objects.create(
+            work_date=self.today, worker=self.worker, raw_material=self.raw,
+            planned_quantity=Decimal('4'), delivered_quantity=Decimal('2'),
+            actual_consumption=Decimal('2'), status='partial',
+        )
+        result = reports.consumption_report(date=self.today, material_id=self.raw.pk)
+        self.assertEqual(len(result['rows']), 1)
+        self.assertEqual(result['rows'][0]['actual'], Decimal('2.00'))
+
+    def test_material_ledger_export_endpoint_returns_csv(self):
+        self.client.force_login(self.warehouse)
+        response = self.client.get(reverse('inventory:material_ledger_export'))
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('text/csv', response['Content-Type'])
+
+
 class NewPageRenderTests(Base):
+    def test_material_and_category_lists_use_single_column(self):
+        for name in ('material_list', 'category_list'):
+            response = self._get(name)
+            self.assertEqual(response.status_code, 200)
+            self.assertContains(response, 'inventory-card-list{display:flex;flex-direction:column')
+
     def test_37_reports_page_overview_tab(self):
         """گزارش‌ها: تب نگاه کلی (material_dashboard + alerts)."""
         self._task()
@@ -486,6 +647,56 @@ class NewPageRenderTests(Base):
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, 'inventory/reports.html')
         self.assertIn('ledger', response.context)
+
+    def test_consumption_page_shows_closed_consumption(self):
+        DailyMaterialQueue.objects.create(
+            work_date=self.today, worker=self.worker, raw_material=self.raw,
+            planned_quantity=Decimal('2'), delivered_quantity=Decimal('3'),
+            actual_consumption=Decimal('0'), excess_consumption=Decimal('0'),
+            status='closed',
+        )
+        solar = jdatetime.date.fromgregorian(date=self.today).strftime('%Y-%m-%d')
+        response = self._get('reports', params={
+            'tab': 'consumption', 'date_from': solar, 'date_to': solar,
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'رنگ سفید')
+        self.assertContains(response, '3.00')
+        self.assertContains(response, 'مصرف اضافه')
+        self.assertContains(response, 'جمع مصرف هر ماده')
+        # بازهٔ شمسی بعد از رندر هم به همان تقویم برمی‌گردد.
+        self.assertContains(response, f'value="{solar}"')
+        # بازهٔ پیش‌فرض ماه گذشته نیز نباید به شکل تاریخ میلادی نمایش داده شود.
+        default_response = self._get('reports', params={'tab': 'consumption'})
+        self.assertRegex(default_response.content.decode(), r'name="date_from"[^>]*value="14\d{2}-\d{2}-\d{2}"')
+        self.assertRegex(default_response.content.decode(), r'name="date_to"[^>]*value="14\d{2}-\d{2}-\d{2}"')
+        today_jalali = jdatetime.date.fromgregorian(date=timezone.localdate())
+        previous_end = today_jalali.replace(day=1) - jdatetime.timedelta(days=1)
+        self.assertEqual(default_response.context['date_from_jalali'], previous_end.replace(day=1).strftime('%Y-%m-%d'))
+        self.assertEqual(default_response.context['date_to_jalali'], previous_end.strftime('%Y-%m-%d'))
+
+    def test_clickable_material_details_show_order_worker_and_amounts(self):
+        self._task()
+        services.sync_queue_for_date(self.today)
+        queue = DailyMaterialQueue.objects.get(work_date=self.today, raw_material=self.raw)
+        queue.delivered_quantity = Decimal('4.00')
+        queue.returned_quantity = Decimal('1.00')
+        queue.actual_consumption = Decimal('0.00')
+        queue.excess_consumption = Decimal('0.00')
+        queue.status = 'closed'
+        queue.save(update_fields=[
+            'delivered_quantity', 'returned_quantity', 'actual_consumption',
+            'excess_consumption', 'status',
+        ])
+        solar = jdatetime.date.fromgregorian(date=self.today).strftime('%Y-%m-%d')
+        response = self._get('reports', params={
+            'tab': 'consumption', 'date_from': solar, 'date_to': solar,
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'سفارش P9-1')
+        self.assertContains(response, 'مصرف 3.00')
+        self.assertContains(response, '1.00')
+        self.assertContains(response, 'نماینده p9admin')
 
     def test_39_reports_page_consumption_tab(self):
         """گزارش‌ها: تب تحلیل مصرف."""
