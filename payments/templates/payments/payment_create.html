@@ -44,7 +44,7 @@
                     <label for="gateway-zarinpal"
                            class="flex cursor-pointer items-center gap-3 rounded-xl border-2 border-stone-200 p-4 transition-colors peer-checked:border-primary-600 peer-checked:bg-primary-50">
                         <div>
-                            <p class="font-semibold">درگاه زرین‌پال</p>
+                            <p class="font-semibold">پرداخت</p>
                             <p class="text-sm text-stone-500">پرداخت آنلاین با کارت بانکی</p>
                         </div>
                     </label>
@@ -53,13 +53,13 @@
                 <div class="relative">
                     <input type="radio" id="gateway-cod" name="gateway" value="cash_on_delivery"
                            class="peer sr-only">
-                    <label for="gateway-cod"
+                    {% comment %} <label for="gateway-cod"
                            class="flex cursor-pointer items-center gap-3 rounded-xl border-2 border-stone-200 p-4 transition-colors peer-checked:border-primary-600 peer-checked:bg-primary-50">
                         <div>
                             <p class="font-semibold">پرداخت درب منزل</p>
                             <p class="text-sm text-stone-500">پرداخت نقدی هنگام تحویل</p>
                         </div>
-                    </label>
+                    </label> {% endcomment %}
                 </div>
             </div>
 

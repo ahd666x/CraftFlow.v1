@@ -32,8 +32,8 @@ class HeroSlide(TimeStampedModel):
     is_active = models.BooleanField(default=True, verbose_name='فعال')
 
     class Meta:
-        verbose_name = 'اسلاید هیرو'
-        verbose_name_plural = 'اسلایدهای هیرو'
+        verbose_name = 'اسلاید'
+        verbose_name_plural = 'اسلایدهای'
         ordering = ['order', 'id']
 
     def __str__(self):

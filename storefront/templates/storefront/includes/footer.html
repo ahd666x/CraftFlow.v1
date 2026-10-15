@@ -3,7 +3,7 @@
         <div class="grid gap-8 md:grid-cols-4">
             <div class="md:col-span-2">
                 <p class="font-bold text-white text-lg">{{ site_settings.site_name }}</p>
-                <p class="mt-2 max-w-xs text-sm leading-relaxed text-primary-200">{{ site_settings.footer_text|default:'تمامی حقوق محفوظ است.' }}</p>
+                <p class="mt-2 max-w-xs text-sm leading-relaxed text-primary-200">{{ site_settings.footer_text|default:'' }}</p>
             </div>
 
             <div>
@@ -50,7 +50,7 @@
             </div>
 
             <div>
-                <h4 class="font-semibold text-white mb-3">دنبال ما کنید</h4>
+                {% comment %} <h4 class="font-semibold text-white mb-3">دنبال ما کنید</h4> {% endcomment %}
                 <div class="flex gap-3">
                     {% if site_settings.instagram_url %}
                     <a href="{{ site_settings.instagram_url }}" class="text-primary-200 hover:text-white transition" aria-label="اینستاگرام" target="_blank" rel="noopener">

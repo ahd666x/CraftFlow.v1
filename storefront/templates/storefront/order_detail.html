@@ -143,7 +143,7 @@
                     {% elif order.status == 'draft' %}
                         {% comment %} <p class="mb-2 text-xs text-stone-500">سفارش ثبت شده است. برای شروع تولید، مبلغ را پرداخت کنید.</p> {% endcomment %}
                     {% else %}
-                        <p class="mb-2 text-xs text-stone-500">مبلغ سفارش را پرداخت کنید تا تولید آزاد شود.</p>
+                        {% comment %} <p class="mb-2 text-xs text-stone-500">مبلغ سفارش را پرداخت کنید تا تولید آزاد شود.</p> {% endcomment %}
                     {% endif %}
                     {% if show_pay_button %}
                     <a href="{% url 'payments:payment_create' order.id %}" class="btn-primary w-full py-3 text-center">

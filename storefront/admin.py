@@ -49,12 +49,12 @@ class AddressAdmin(admin.ModelAdmin):
     search_fields = ['user__username', 'title', 'city']
 
 
-@admin.register(ReturnRequest)
-class ReturnRequestAdmin(admin.ModelAdmin):
-    list_display = ['order_item', 'user', 'status', 'created_at']
-    list_filter = ['status']
-    search_fields = ['user__username', 'reason']
-    actions = ['approve_requests', 'reject_requests']
+# @admin.register(ReturnRequest)
+# class ReturnRequestAdmin(admin.ModelAdmin):
+#     list_display = ['order_item', 'user', 'status', 'created_at']
+#     list_filter = ['status']
+#     search_fields = ['user__username', 'reason']
+#     actions = ['approve_requests', 'reject_requests']
 
     def approve_requests(self, request, queryset):
         for obj in queryset:
@@ -77,13 +77,13 @@ class SiteSettingsAdmin(admin.ModelAdmin):
         ('رنگ‌بندی', {'fields': ['primary_color', 'secondary_color', 'background_color']}),
         ('اطلاعات تماس', {'fields': ['contact_phone', 'contact_email', 'contact_address', 'working_hours']}),
         ('درباره ما', {'fields': ['about_text']}),
-        ('بخش هیرو', {'fields': ['hero_title', 'hero_subtitle']}),
+        ('بخش اسلایدها', {'fields': ['hero_title', 'hero_subtitle']}),
         ('فوتر', {'fields': ['footer_text']}),
-        ('ارسال و تحویل', {'fields': [
-            'shipping_cost', 'free_shipping_threshold', 'tax_rate',
-            'production_days_min', 'production_days_max',
-            'shipping_days_min', 'shipping_days_max',
-        ]}),
+        # ('ارسال و تحویل', {'fields': [
+        #     'shipping_cost', 'free_shipping_threshold', 'tax_rate',
+        #     'production_days_min', 'production_days_max',
+        #     'shipping_days_min', 'shipping_days_max',
+        # ]}),
         ('نشان‌های اعتماد', {'fields': [
             'enamad_logo', 'enamad_url',
             'zarinpal_logo', 'zarinpal_url',

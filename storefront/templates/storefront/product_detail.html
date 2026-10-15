@@ -191,7 +191,7 @@
                         <div class="text-stone-900">{{ product.base_price|fa_price }} تومان</div>
                         
                         {% if product.length or product.width or product.height %}
-                        <div class="font-medium text-stone-500">ابعاد پیش‌فرض</div>
+                        <div class="font-medium text-stone-500">ابعاد</div>
                         <div class="text-stone-900">
                             <div class="grid grid-cols-3 gap-2">
                                 {% if product.length %}
@@ -216,7 +216,7 @@
                         </div>
                         {% endif %}
                         
-                        {% if product.length_editable %}
+                        {% comment %} {% if product.length_editable %}
                         <div class="font-medium text-stone-500">طول قابل تنظیم</div>
                         <div class="text-stone-900">بله (هر سانتی‌متر {{ product.length_price_percent }}٪ افزایش)</div>
                         {% endif %}
@@ -227,7 +227,7 @@
                         {% if product.height_editable %}
                         <div class="font-medium text-stone-500">ارتفاع قابل تنظیم</div>
                         <div class="text-stone-900">بله (هر سانتی‌متر {{ product.height_price_percent }}٪ افزایش)</div>
-                        {% endif %}
+                        {% endif %} {% endcomment %}
                         {% if default_colors %}
                         <div class="font-medium text-stone-500">رنگ‌های پیش‌فرض</div>
                         <div class="text-stone-900">
@@ -301,13 +301,13 @@
                                 </div>
                             </div>
                             <div>
-                                <label for="review_comment" class="label">متن نظر (اختیاری)</label>
-                                <textarea id="review_comment" name="comment" rows="3" class="input" placeholder="تجربتان را با دیگران به اشتراک بگذارید..."></textarea>
+                                <label for="review_comment" class="label">متن نظر</label>
+                                <textarea id="review_comment" name="comment" rows="3" class="input" ></textarea>
                             </div>
-                            <div>
-                                <label for="review_image" class="label">تصویر (اختیاری)</label>
+                            {% comment %} <div>
+                                <label for="review_image" class="label">تصویر </label>
                                 <input type="file" id="review_image" name="image" accept="image/*" class="input">
-                            </div>
+                            </div> {% endcomment %}
                             <button type="submit" class="btn-primary w-full py-2">ارسال نظر</button>
                         </form>
                     </div>
