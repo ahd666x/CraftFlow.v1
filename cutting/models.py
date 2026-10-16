@@ -94,7 +94,7 @@ class CutPlanTask(models.Model):
 
 
 class CutPlanSheet(models.Model):
-    OUTCOMES = [('reserved', 'در انتظار نتیجه'), ('used', 'مصرف شد'), ('untouched', 'استفاده نشد'), ('scrapped', 'غیرقابل استفاده')]
+    OUTCOMES = [('reserved', 'در انتظار نتیجه'), ('used', 'مصرف شد'), ('untouched', 'استفاده نشد'), ('scrapped', 'غیرقابل استفاده'), ('released', 'رزرو آزاد شد؛ برنامه لغو شد')]
     plan = models.ForeignKey(CutPlan, on_delete=models.CASCADE, related_name='planned_sheets')
     source_stock = models.ForeignKey(SheetStock, on_delete=models.PROTECT, related_name='plan_reservations')
     material = models.ForeignKey(Material, on_delete=models.PROTECT, related_name='cut_plan_sheets')
@@ -112,6 +112,20 @@ class CutPlanSheet(models.Model):
             models.CheckConstraint(condition=Q(width__gt=0) & Q(height__gt=0), name='cutplan_sheet_dimensions_positive'),
         ]
         indexes = [models.Index(fields=('source_stock', 'outcome'))]
+
+
+class CutPlanSheetTask(models.Model):
+    """Immutable-at-finalization snapshot of how many pieces for each task were laid on a sheet."""
+    plan_sheet = models.ForeignKey(CutPlanSheet, on_delete=models.CASCADE, related_name='task_counts')
+    task = models.ForeignKey(ProductionTask, on_delete=models.PROTECT, related_name='cut_plan_sheet_counts')
+    quantity = models.PositiveIntegerField()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=('plan_sheet', 'task'), name='cutplansheet_task_once'),
+            models.CheckConstraint(condition=Q(quantity__gt=0), name='cutplansheet_task_quantity_positive'),
+        ]
+        ordering = ('task_id',)
 
 
 class SheetStockEvent(models.Model):

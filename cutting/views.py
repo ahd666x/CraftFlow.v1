@@ -15,7 +15,7 @@ from django.views.decorators.http import require_POST
 
 from product.models import Material, Order, ProductionTask
 from .models import (
-    CuttingSettings, CutPlan, CutPlanSheet, CutPlanTask, SheetSizeSpec,
+    CuttingSettings, CutPlan, CutPlanSheet, CutPlanSheetTask, CutPlanTask, SheetSizeSpec,
     SheetStock, SheetStockEvent,
 )
 from .optimizer import expected_offcuts, make_autocut, optimize
@@ -32,7 +32,7 @@ def cutting_operator(view):
     @wraps(view)
     @login_required
     def wrapped(request, *args, **kwargs):
-        if not _role(request.user, ('1', '2', '3', 'انبار', 'نماینده')):
+        if not _role(request.user, ('1', '2', '3', 'انبار')):
             raise PermissionDenied
         return view(request, *args, **kwargs)
     return wrapped
@@ -193,6 +193,14 @@ def planner(request):
                             was_offcut=source.is_offcut,
                         )
                         stock_data['plan_sheet_id'] = sheet_record.pk
+                        pieces_by_task = Counter(
+                            int(piece['task_id']) for piece in layout['parts']
+                            if piece.get('task_id') is not None
+                        )
+                        for task_id, quantity in pieces_by_task.items():
+                            CutPlanSheetTask.objects.create(
+                                plan_sheet=sheet_record, task_id=task_id, quantity=quantity,
+                            )
                         _event(stock=source, event_type='reserve', user=request.user, plan=plan, note=f'رزرو در برنامه #{plan.pk}')
                 plan.plan_data = _json_safe({'rows': rows, 'kerf': kerf, 'policy': settings_row.strategy})
                 plan.save(update_fields=('plan_data',))
@@ -264,12 +272,19 @@ def mark_cut(request, plan_id):
                 return redirect('cutting:plan_detail', plan_id=plan.pk)
             if plan.status != 'planned':
                 raise ValueError('برنامه لغو شده و قابل ثبت نهایی نیست.')
-            sheets = list(CutPlanSheet.objects.select_for_update().filter(plan=plan).select_related('source_stock', 'material').order_by('pk'))
+            sheets = list(CutPlanSheet.objects.select_for_update().filter(plan=plan).select_related('source_stock', 'material').prefetch_related('task_counts').order_by('pk'))
             task_rows = list(CutPlanTask.objects.select_for_update().filter(plan=plan).select_related('task'))
             if not sheets or not task_rows:
                 raise ValueError('این برنامه قدیمی یا ناقص است؛ برای ایمنی موجودی، برنامه را دوباره ایجاد کنید.')
             if any(row.task.status != 'pending' or row.task.quantity != row.task_quantity or row.task.completed_quantity != row.completed_before for row in task_rows):
                 raise ValueError('تسک‌های برنامه از زمان ایجاد تغییر کرده‌اند؛ برنامه را دوباره بسازید.')
+            planned_piece_counts = Counter()
+            for sheet in sheets:
+                for snapshot in sheet.task_counts.all():
+                    planned_piece_counts[snapshot.task_id] += snapshot.quantity
+            expected_piece_counts = {row.task_id: row.quantity for row in task_rows}
+            if planned_piece_counts != Counter(expected_piece_counts):
+                raise ValueError('snapshot قطعه‌های برنامه ناقص یا ناسازگار است؛ این برنامه را لغو و دوباره ایجاد کنید.')
             results = {sheet.pk: _parse_sheet_result(request, sheet) for sheet in sheets}
             stock_ids = {sheet.source_stock_id for sheet in sheets}
             locked_stock = {row.pk: row for row in SheetStock.objects.select_for_update().filter(pk__in=stock_ids)}
@@ -316,14 +331,10 @@ def mark_cut(request, plan_id):
             # Count only pieces on sheets the operator actually cut; incomplete tasks remain
             # pending with their completed_quantity, so a later plan contains only the remainder.
             cut_piece_counts = Counter()
-            for data_row in plan.plan_data.get('rows', []):
-                for layout in data_row.get('sheets', []):
-                    sheet_id = int(layout['sheet']['plan_sheet_id'])
-                    if results[sheet_id][0] != 'used':
-                        continue
-                    for piece in layout.get('parts', []):
-                        if piece.get('task_id') is not None:
-                            cut_piece_counts[int(piece['task_id'])] += 1
+            for sheet in sheets:
+                if results[sheet.pk][0] == 'used':
+                    for snapshot in sheet.task_counts.all():
+                        cut_piece_counts[snapshot.task_id] += snapshot.quantity
             all_tasks_complete = True
             # Only exact tasks in this plan are updated, in the same transaction.
             for row in task_rows:
@@ -356,7 +367,7 @@ def cancel_plan(request, plan_id):
         sheets = list(CutPlanSheet.objects.select_for_update().filter(plan=plan).select_related('source_stock'))
         for sheet in sheets:
             _event(stock=sheet.source_stock, event_type='release', user=request.user, plan=plan, note=f'لغو برنامه #{plan.pk}')
-            sheet.outcome = 'untouched'; sheet.save(update_fields=('outcome',))
+            sheet.outcome = 'released'; sheet.save(update_fields=('outcome',))
         plan.status = 'cancelled'; plan.cancelled_at = timezone.now(); plan.save(update_fields=('status', 'cancelled_at'))
     messages.success(request, 'برنامه لغو و رزروها آزاد شدند؛ موجودی واقعی تغییری نکرد.')
     return redirect('cutting:plan_detail', plan_id=plan.pk)

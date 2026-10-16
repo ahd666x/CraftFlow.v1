@@ -164,6 +164,9 @@ class InventoryAndCutFlowTests(TestCase):
         source = self.add_stock()
         plan = self.make_plan(); sheet = plan.planned_sheets.get()
         later_task = ProductionTask.objects.create(order=self.order, part=self.part, station_name='cut', step_order=2, quantity=1, status='pending')
+        # Final task counts must use the relational snapshot, not the mutable export JSON.
+        plan.plan_data['rows'][0]['sheets'][0]['parts'] = []
+        plan.save(update_fields=['plan_data'])
         payload = {f'outcome_{sheet.pk}': 'used', f'rem_{sheet.pk}_1_width': '350', f'rem_{sheet.pk}_1_height': '250'}
         self.client.post(reverse('cutting:mark_cut', args=[plan.pk]), payload)
         self.client.post(reverse('cutting:mark_cut', args=[plan.pk]), payload)
@@ -204,7 +207,10 @@ class InventoryAndCutFlowTests(TestCase):
         self.client.post(reverse('cutting:cancel_plan', args=[plan.pk]))
         stock.refresh_from_db(); plan.refresh_from_db()
         self.assertEqual(stock.quantity, 1); self.assertEqual(plan.status, 'cancelled')
+        self.assertEqual(plan.planned_sheets.get().outcome, 'released')
         self.assertTrue(SheetStockEvent.objects.filter(event_type='release', plan=plan).exists())
+        self.assertFalse(SheetStockEvent.objects.filter(event_type='untouched', plan=plan).exists())
+        self.assertContains(self.client.get(reverse('cutting:plan_detail', args=[plan.pk])), 'این برنامه لغو شده است')
         self.assertEqual(self.client.post(reverse('cutting:planner'), {'action':'plan','order_ids':[self.order.pk],'kerf':'4'}).status_code, 302)
 
     def test_changed_task_or_invalid_actual_remainder_rolls_back(self):
@@ -257,6 +263,19 @@ class InventoryAndCutFlowTests(TestCase):
         self.assertEqual(self.client.get(reverse('cutting:inventory')).status_code, 403)
         self.assertEqual(self.client.post(reverse('cutting:stock_create'), {}).status_code, 403)
 
+    def test_representative_cannot_plan_or_confirm_a_cut(self):
+        self.add_stock()
+        plan = self.make_plan()
+        representative = User.objects.create_user(username='cut-representative', password='test')
+        representative.groups.add(Group.objects.get_or_create(name='نماینده')[0])
+        self.client.force_login(representative)
+        self.assertEqual(self.client.get(reverse('cutting:planner')).status_code, 403)
+        self.assertEqual(self.client.get(reverse('cutting:plan_detail', args=[plan.pk])).status_code, 403)
+        sheet = plan.planned_sheets.get()
+        self.assertEqual(self.client.post(reverse('cutting:mark_cut', args=[plan.pk]), {f'outcome_{sheet.pk}': 'used'}).status_code, 403)
+        plan.refresh_from_db()
+        self.assertEqual(plan.status, 'planned')
+
     def test_inventory_and_configuration_screens_render(self):
         self.add_stock()
         for route in ('cutting:planner', 'cutting:inventory', 'cutting:full_sheets', 'cutting:offcuts', 'cutting:stock_create', 'cutting:size_specs', 'cutting:policy', 'cutting:history'):
@@ -290,10 +309,34 @@ class StockMigrationPreservationTests(TransactionTestCase):
         legacy = SheetStockOld.objects.create(material_id=material.pk, width=1830, height=3660, quantity=7, is_offcut=False, grain='lengthwise')
         legacy_id, material_id = legacy.pk, material.pk
 
+        target_before_snapshot = [('cutting', '0004_partial_plan_progress')]
+        executor = MigrationExecutor(connection)
+        executor.migrate(target_before_snapshot)
+        before_apps = executor.loader.project_state(target_before_snapshot).apps
+        CustomerBefore = before_apps.get_model('product', 'Customer')
+        OrderBefore = before_apps.get_model('product', 'Order')
+        PartBefore = before_apps.get_model('product', 'Part')
+        TaskBefore = before_apps.get_model('product', 'ProductionTask')
+        PlanBefore = before_apps.get_model('cutting', 'CutPlan')
+        PlanTaskBefore = before_apps.get_model('cutting', 'CutPlanTask')
+        PlanSheetBefore = before_apps.get_model('cutting', 'CutPlanSheet')
+        customer = CustomerBefore.objects.create(name='Legacy customer')
+        order = OrderBefore.objects.create(customer_id=customer.pk, status='planned')
+        part = PartBefore.objects.create(material_id=material_id, name='Legacy part', length=400, width=300, pname='Legacy product', routing_code='cut', turn=True)
+        task = TaskBefore.objects.create(order_id=order.pk, part_id=part.pk, station_name='cut', step_order=1, quantity=1, status='pending')
+        plan = PlanBefore.objects.create(plan_data={'rows': []})
+        plan.orders.add(order)
+        sheet = PlanSheetBefore.objects.create(plan_id=plan.pk, source_stock_id=legacy_id, material_id=material_id, layout_index=0, width=1830, height=3660)
+        PlanTaskBefore.objects.create(plan_id=plan.pk, task_id=task.pk, quantity=1, task_quantity=1, completed_before=0)
+        plan.plan_data = {'rows': [{'sheets': [{'sheet': {'plan_sheet_id': sheet.pk}, 'parts': [{'task_id': task.pk}]}]}]}
+        plan.save(update_fields=('plan_data',))
+
         executor = MigrationExecutor(connection)
         executor.migrate(executor.loader.graph.leaf_nodes())
         new_apps = executor.loader.project_state().apps
         stock = new_apps.get_model('cutting', 'SheetStock').objects.get(pk=legacy_id)
         event = new_apps.get_model('cutting', 'SheetStockEvent').objects.get(stock_id=legacy_id)
+        snapshot = new_apps.get_model('cutting', 'CutPlanSheetTask').objects.get(plan_sheet_id=sheet.pk, task_id=task.pk)
         self.assertEqual((stock.material_id, stock.width, stock.height, stock.quantity, stock.is_offcut, stock.grain), (material_id, Decimal('1830.0'), Decimal('3660.0'), 7, False, 'lengthwise'))
         self.assertEqual((event.event_type, event.quantity_delta), ('receive', 7))
+        self.assertEqual(snapshot.quantity, 1)

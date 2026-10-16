@@ -12,6 +12,7 @@
   </div>
   {% if messages %}{% for message in messages %}<div class="alert alert-info mt-3">{{ message }}</div>{% endfor %}{% endif %}
   <div class="alert alert-warning mt-3">موجودی در زمان برنامه‌ریزی رزرو شده است. ورق‌های دست‌نخورده با ثبت نتیجه به موجودی اصلی برمی‌گردند. پرت‌های جدید فقط از ابعاد واقعی واردشده ثبت می‌شوند.</div>
+  {% if plan.status == 'cancelled' %}<div class="alert alert-secondary">این برنامه لغو شده است؛ رزروهای آن آزاد شدند. این ورق‌ها به‌عنوان «استفاده‌نشده در عملیات واقعی» ثبت نشده‌اند.</div>{% endif %}
   {% if plan.status == 'partial' %}<div class="alert alert-warning"><b>این برنامه بخشی ثبت شده است.</b> تسک‌های زیر هنوز باقی‌مانده دارند و برنامه بعدی فقط تعداد تکمیل‌نشده را دوباره محاسبه می‌کند:<ul class="mb-0">{% for row in unfinished_tasks %}<li>{{ row.task }} — تکمیل‌شده {{ row.task.completed_quantity }} از {{ row.task.quantity }}</li>{% endfor %}</ul><a class="btn btn-sm btn-warning mt-2" href="{% url 'cutting:planner' %}">ساخت برنامه برای باقی‌مانده‌ها</a></div>{% endif %}
   <div class="row g-3">
     {% for r in summaries %}
