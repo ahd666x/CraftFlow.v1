@@ -20,13 +20,21 @@
             <h2 class="mb-4 font-semibold">خلاصه‌ی سفارش</h2>
             <div class="flex items-center justify-between text-sm text-stone-600">
                 <span>جمع اقلام ({{ cart.total_items }})</span>
+                {% if can_see_prices %}
                 <span>{{ cart.total_price|fa_price }}</span>
+                {% else %}
+                <span>—</span>
+                {% endif %}
             </div>
 
             {% if cart.discount %}
             <div class="mt-2 flex items-center justify-between text-emerald-700 text-sm">
                 <span>تخفیف ({{ cart.discount.code }})</span>
+                {% if can_see_prices %}
                 <span>-{{ cart.discount_amount|fa_price }}</span>
+                {% else %}
+                <span>—</span>
+                {% endif %}
             </div>
             <form method="post" action="{% url 'discounts:remove_discount' %}" class="mt-2">
                 {% csrf_token %}
@@ -50,7 +58,11 @@
 
             <div class="mt-3 flex items-center justify-between border-t border-stone-200 pt-3">
                 <span class="font-semibold">مبلغ قابل پرداخت</span>
+                {% if can_see_prices %}
                 <span class="text-lg font-bold text-primary-800">{{ cart.final_price|fa_price }}</span>
+                {% else %}
+                <span class="text-lg font-bold text-primary-800">—</span>
+                {% endif %}
             </div>
             <p class="mt-1 text-xs text-stone-500">تومان</p>
 

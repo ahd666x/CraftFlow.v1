@@ -5,6 +5,7 @@
 عکس کاور و متن‌ها از پنل مدیریت قابل ویرایش باشند.
 """
 from .models import SiteSettings
+from .permissions import can_see_prices as _can_see_prices
 
 
 def site_settings(request):
@@ -21,3 +22,13 @@ def is_home(request):
         return {'is_home': request.resolver_match and request.resolver_match.url_name == 'home'}
     except Exception:
         return {'is_home': False}
+
+
+def price_visibility(request):
+    """آیا کاربر قیمت‌ها را ببیند؟ — برای مخفی کردن قیمت در فروشگاه."""
+    user = getattr(request, 'user', None)
+    if user is None:
+        return {'can_see_prices': False}
+    if not hasattr(request, '_can_see_prices'):
+        request._can_see_prices = _can_see_prices(user)
+    return {'can_see_prices': request._can_see_prices}

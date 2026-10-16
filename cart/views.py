@@ -5,6 +5,7 @@ from django.shortcuts import redirect, render
 from django.views.decorators.http import require_POST
 
 from cart.services import CartService, get_or_create_cart
+from storefront.permissions import can_see_prices
 
 
 def cart_detail(request):
@@ -37,6 +38,10 @@ def cart_add(request, product_id):
     اگر درخواست HTMX باشد فقط سطر سبد را برمی‌گردانیم (بدون ری‌لود کامل
     صفحه)؛ وگرنه به صفحه‌ی سبد می‌رویم.
     """
+    if not can_see_prices(request.user):
+        messages.info(request, 'برای ثبت سفارش با ما تماس بگیرید.')
+        return redirect('storefront:product_list')
+
     cart = get_or_create_cart(request)
 
     def _int_or_none(value):

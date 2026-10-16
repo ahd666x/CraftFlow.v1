@@ -71,12 +71,16 @@
                             <div class="mt-1 text-sm text-stone-500">رنگ: {{ item.color_summary }}</div>
                             {% endif %}
                         </div>
-                        <div class="text-left whitespace-nowrap flex flex-col items-end gap-2">
-                            <span class="block text-xs text-stone-500">
-                                {% if item.unit_price %}{{ item.unit_price|fa_price }}{% else %}—{% endif %}
-                            </span>
-                            <span class="font-bold">{{ item.line_total|fa_price }}</span>
-                            <span class="text-xs text-stone-500"> تومان</span>
+                            <div class="text-left whitespace-nowrap flex flex-col items-end gap-2">
+                                {% if can_see_prices %}
+                                <span class="block text-xs text-stone-500">
+                                    {% if item.unit_price %}{{ item.unit_price|fa_price }}{% else %}—{% endif %}
+                                </span>
+                                <span class="font-bold">{{ item.line_total|fa_price }}</span>
+                                <span class="text-xs text-stone-500"> تومان</span>
+                                {% else %}
+                                <span class="text-xs text-stone-500">برای اطلاع از قیمت تماس بگیرید</span>
+                                {% endif %}
                             {# Return button for delivered orders with standard items #}
                             {% if order.status == 'delivered' and not item.length and not item.width and not item.height %}
                             <a href="{% url 'storefront:return_create' item.id %}" class="btn-outline text-xs py-1 px-2">
@@ -96,32 +100,52 @@
                 <div class="space-y-2 text-sm">
                     <div class="flex justify-between text-stone-600">
                         <span>جمع اقلام</span>
+                        {% if can_see_prices %}
                         <span>{{ order.total_amount|fa_price }}</span>
+                        {% else %}
+                        <span>—</span>
+                        {% endif %}
                     </div>
                     {% if order.discount_amount > 0 %}
                     <div class="flex justify-between text-emerald-700">
                         <span>تخفیف</span>
+                        {% if can_see_prices %}
                         <span>-{{ order.discount_amount|fa_price }}</span>
+                        {% else %}
+                        <span>—</span>
+                        {% endif %}
                     </div>
                     {% endif %}
                     
                     {# Shipping #}
                     <div class="flex justify-between text-stone-600">
                         <span>هزینه ارسال</span>
+                        {% if can_see_prices %}
                         <span>{{ order.shipping_cost|fa_price }} تومان</span>
+                        {% else %}
+                        <span>—</span>
+                        {% endif %}
                     </div>
 
                     {# Tax #}
                     {% if order.tax_amount > 0 %}
                     <div class="flex justify-between text-stone-600">
                         <span>مالیات ({{ site_settings.tax_percent }}%)</span>
+                        {% if can_see_prices %}
                         <span>{{ order.tax_amount|fa_price }} تومان</span>
+                        {% else %}
+                        <span>—</span>
+                        {% endif %}
                     </div>
                     {% endif %}
 
                     <div class="flex justify-between border-t border-stone-200 pt-2">
                         <span class="font-semibold">مبلغ نهایی</span>
+                        {% if can_see_prices %}
                         <span class="font-bold text-primary-800">{{ order.final_amount|fa_price }}</span>
+                        {% else %}
+                        <span class="font-bold text-primary-800">—</span>
+                        {% endif %}
                     </div>
                     <p class="text-xs text-stone-400">تومان</p>
                 </div>

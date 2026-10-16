@@ -51,7 +51,7 @@
     </a>
 
     {# Quick Add Button (only for products without editable dimensions) #}
-    {% if not product.length_editable and not product.width_editable and not product.height_editable %}
+    {% if can_see_prices and not product.length_editable and not product.width_editable and not product.height_editable %}
     <form method="post" action="{% url 'cart:cart_add' product.id %}"
           hx-post="{% url 'cart:cart_add' product.id %}"
           hx-target="#cart-count" hx-swap="innerHTML"
@@ -85,9 +85,13 @@
                 <span class="text-stone-400">({{ product.review_count }})</span>
             </p>
             {% endif %}
+            {% if can_see_prices %}
             <p class="text-sm text-stone-600">
                 <span class="font-semibold text-stone-900">از {{ product.base_price|fa_price }}</span> تومان
             </p>
+            {% else %}
+            <p class="text-sm text-stone-500">برای اطلاع از قیمت تماس بگیرید</p>
+            {% endif %}
         </a>
     </div>
 </div>
