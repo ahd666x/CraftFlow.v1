@@ -69,6 +69,7 @@ INSTALLED_APPS = [
     'discounts',
     'payments',
     'accounts',
+    'cutting',
     'rest_framework',
     'django.contrib.humanize',
 

@@ -40,6 +40,7 @@ urlpatterns = [
     ),
     path('', include('product.urls')),
     path('inventory/', include('inventory.urls')),
+    path('cutting/', include('cutting.urls')),
     path('craftflow-ai/', include('craftflow_ai.urls')),
     # فروشگاه روی پیشوند /shop سوار می‌شود تا با پنل تولید قاطی نشود.
     # قالب‌های فروشگاه هم namespace مستقل `storefront/` دارند.
