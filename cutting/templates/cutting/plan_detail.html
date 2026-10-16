@@ -1,1 +1,69 @@
-{% extends 'base.html' %}{% block title %}برنامه برش {{ plan.id }}{% endblock %}{% block content %}<div class="container-fluid py-4" dir="rtl"><div class="d-flex justify-content-between align-items-center"><div><h1>برنامه برش #{{ plan.id }}</h1><p>سفارش‌ها: {% for o in plan.orders.all %}{{ o.id }}{% if not forloop.last %}، {% endif %}{% endfor %}</p></div><a class="btn btn-outline-secondary" href="{% url 'cutting:planner' %}">بازگشت</a></div>{% if messages %}{% for message in messages %}<div class="alert alert-info">{{ message }}</div>{% endfor %}{% endif %}<div class="alert alert-warning">این محاسبه بر اساس چیدمان مستطیلی ردیفی و موجودی ثبت‌شده است؛ قبل از شروع برش نقشه را با شرایط واقعی دستگاه بررسی کنید. موجودی فقط با ثبت «برش انجام شد» تغییر می‌کند.</div><div class="row g-3">{% for r in summaries %}<div class="col-12"><div class="card"><div class="card-header"><b>{{ r.material }}</b> — ضخامت {{ r.thickness }} — {{ r.sheet_count }} ورق — {{ r.part_count }} قطعه</div><div class="table-responsive"><table class="table table-sm mb-0"><thead><tr><th>ورق</th><th>ابعاد</th><th>تعداد قطعه چیده‌شده</th><th>مبدأ</th></tr></thead><tbody>{% for s in r.sheets %}<tr><td>{{ forloop.counter }}</td><td>{{ s.sheet.width }} × {{ s.sheet.height }} mm</td><td>{{ s.parts|length }}</td><td>{% if s.sheet.is_offcut %}پرت انبار{% else %}ورق کامل{% endif %}</td></tr>{% endfor %}</tbody></table></div></div></div>{% endfor %}</div><div class="d-flex gap-2 mt-4"><a class="btn btn-primary" href="{% url 'cutting:download_cut' plan.id %}">دانلود فایل برش .CUT</a>{% if plan.status == 'planned' %}<form method="post" action="{% url 'cutting:mark_cut' plan.id %}" onsubmit="return confirm('تأیید برش؟ موجودی ورق کسر و پرت جدید ثبت می‌شود.');">{% csrf_token %}<button class="btn btn-success">ثبت انجام برش و ثبت پرت‌ها</button></form>{% else %}<span class="badge bg-success align-self-center">برش انجام و موجودی به‌روزرسانی شد</span>{% endif %}</div></div>{% endblock %}
+{% extends 'base.html' %}
+{% block title %}برنامه برش {{ plan.id }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-4" dir="rtl">
+  <div class="d-flex flex-wrap justify-content-between align-items-center">
+    <div>
+      <h1>برنامه برش #{{ plan.id }}</h1>
+      <p>سفارش‌ها: {% for o in plan.orders.all %}{{ o.id }}{% if not forloop.last %}، {% endif %}{% endfor %}</p>
+      <span class="badge {% if plan.status == 'cut' %}bg-success{% elif plan.status == 'partial' %}bg-warning text-dark{% elif plan.status == 'cancelled' %}bg-secondary{% else %}bg-primary{% endif %}">{{ plan.get_status_display }}</span>
+    </div>
+    <div class="d-flex gap-2"><a class="btn btn-outline-secondary" href="{% url 'cutting:planner' %}">برنامه جدید</a><a class="btn btn-outline-secondary" href="{% url 'cutting:inventory' %}">موجودی</a></div>
+  </div>
+  {% if messages %}{% for message in messages %}<div class="alert alert-info mt-3">{{ message }}</div>{% endfor %}{% endif %}
+  <div class="alert alert-warning mt-3">موجودی در زمان برنامه‌ریزی رزرو شده است. ورق‌های دست‌نخورده با ثبت نتیجه به موجودی اصلی برمی‌گردند. پرت‌های جدید فقط از ابعاد واقعی واردشده ثبت می‌شوند.</div>
+  {% if plan.status == 'partial' %}<div class="alert alert-warning"><b>این برنامه بخشی ثبت شده است.</b> تسک‌های زیر هنوز باقی‌مانده دارند و برنامه بعدی فقط تعداد تکمیل‌نشده را دوباره محاسبه می‌کند:<ul class="mb-0">{% for row in unfinished_tasks %}<li>{{ row.task }} — تکمیل‌شده {{ row.task.completed_quantity }} از {{ row.task.quantity }}</li>{% endfor %}</ul><a class="btn btn-sm btn-warning mt-2" href="{% url 'cutting:planner' %}">ساخت برنامه برای باقی‌مانده‌ها</a></div>{% endif %}
+  <div class="row g-3">
+    {% for r in summaries %}
+    <div class="col-12"><div class="card">
+      <div class="card-header"><b>{{ r.material }}</b> — ضخامت {{ r.thickness }} mm — {{ r.sheet_count }} ورق — {{ r.part_count }} قطعه</div>
+      <div class="table-responsive"><table class="table table-sm mb-0"><thead><tr><th>ورق</th><th>منبع</th><th>ابعاد</th><th>قطعات</th><th>پرت‌های برآوردی (فقط پیش‌بینی)</th></tr></thead>
+        <tbody>{% for s in r.sheets %}<tr>
+          <td>#{{ forloop.counter }}</td>
+          <td>{% if s.sheet.is_offcut %}<span class="badge bg-warning text-dark">پرت انبار</span>{% else %}<span class="badge bg-primary">ورق کامل</span>{% endif %}</td>
+          <td>{{ s.sheet.width }} × {{ s.sheet.height }} mm</td><td>{{ s.parts|length }}</td>
+          <td>{% for rem in s.expected_offcuts %}{{ rem.width }}×{{ rem.height }} mm{% if not forloop.last %}، {% endif %}{% empty %}—{% endfor %}</td>
+        </tr>{% endfor %}</tbody>
+      </table></div>
+    </div></div>
+    {% endfor %}
+  </div>
+  <div class="d-flex flex-wrap gap-2 mt-4">
+    <a class="btn btn-primary" href="{% url 'cutting:download_cut' plan.id %}">دانلود فایل برش .CUT</a>
+    {% if plan.status == 'planned' %}
+    <a class="btn btn-outline-danger" href="#confirm-result">ثبت نتیجه</a>
+    <form method="post" action="{% url 'cutting:cancel_plan' plan.id %}" onsubmit="return confirm('برنامه لغو و رزرو ورق‌ها آزاد شود؟ موجودی تغییر نمی‌کند.');">{% csrf_token %}<button class="btn btn-outline-secondary">لغو برنامه و آزادسازی رزرو</button></form>
+    {% endif %}
+  </div>
+  {% if plan.status == 'planned' %}
+  <section id="confirm-result" class="card mt-4">
+    <div class="card-header"><h2 class="h5 mb-0">ثبت نتیجه واقعی هر ورق</h2></div>
+    <div class="card-body">
+      <p>برای هر ورق انتخاب کنید مصرف شد، دست‌نخورده ماند یا اسقاط شد. برای ورق مصرف‌شده تا چهار تکه پرت واقعی وارد کنید؛ اندازه‌ها با دقت یک رقم اعشار و بدون گردکردن ثبت می‌شوند.</p>
+      <form method="post" action="{% url 'cutting:mark_cut' plan.id %}" onsubmit="return confirm('نتیجه واقعی ثبت شود؟ فقط ورق‌های مصرف‌شده کسر و تسک‌های همین برنامه تکمیل می‌شوند.');">
+        {% csrf_token %}
+        {% for r in summaries %}<h3 class="h6 mt-4">{{ r.material }}</h3>
+          {% for s in r.sheets %}{% with rec=s.sheet_record %}
+          <div class="border rounded p-3 mb-3">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+              <b>ورق {{ forloop.counter }} — {{ rec.width }}×{{ rec.height }} mm — {% if rec.was_offcut %}پرت قبلی{% else %}ورق کامل{% endif %}</b>
+              <label class="form-label mb-0">نتیجه <select class="form-select form-select-sm d-inline-block" name="outcome_{{ rec.pk }}" style="width:auto"><option value="used">مصرف شد</option><option value="untouched">استفاده نشد (برگشت کامل)</option><option value="scrapped">اسقاط شد</option></select></label>
+            </div>
+            <div class="mt-3"><div class="small text-muted mb-2">ابعاد واقعی پرت‌ها (در صورت وجود)</div>
+              <div class="row g-2">
+                <div class="col-6 col-md-3"><label class="small">پرت ۱ عرض × طول</label><div class="input-group input-group-sm"><input class="form-control" type="number" step="0.1" min="0.1" name="rem_{{ rec.pk }}_1_width" value="{{ s.expected_offcuts.0.width|default:'' }}"><input class="form-control" type="number" step="0.1" min="0.1" name="rem_{{ rec.pk }}_1_height" value="{{ s.expected_offcuts.0.height|default:'' }}"></div></div>
+                <div class="col-6 col-md-3"><label class="small">پرت ۲ عرض × طول</label><div class="input-group input-group-sm"><input class="form-control" type="number" step="0.1" min="0.1" name="rem_{{ rec.pk }}_2_width" value="{{ s.expected_offcuts.1.width|default:'' }}"><input class="form-control" type="number" step="0.1" min="0.1" name="rem_{{ rec.pk }}_2_height" value="{{ s.expected_offcuts.1.height|default:'' }}"></div></div>
+                <div class="col-6 col-md-3"><label class="small">پرت ۳ عرض × طول</label><div class="input-group input-group-sm"><input class="form-control" type="number" step="0.1" min="0.1" name="rem_{{ rec.pk }}_3_width"><input class="form-control" type="number" step="0.1" min="0.1" name="rem_{{ rec.pk }}_3_height"></div></div>
+                <div class="col-6 col-md-3"><label class="small">پرت ۴ عرض × طول</label><div class="input-group input-group-sm"><input class="form-control" type="number" step="0.1" min="0.1" name="rem_{{ rec.pk }}_4_width"><input class="form-control" type="number" step="0.1" min="0.1" name="rem_{{ rec.pk }}_4_height"></div></div>
+              </div><input class="form-control form-control-sm mt-2" name="note_{{ rec.pk }}" maxlength="255" placeholder="یادداشت نتیجه این ورق (اختیاری)">
+            </div>
+          </div>
+          {% endwith %}{% endfor %}
+        {% endfor %}
+        <button class="btn btn-success" type="submit">تأیید نتیجه واقعی و ثبت موجودی</button>
+      </form>
+    </div>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

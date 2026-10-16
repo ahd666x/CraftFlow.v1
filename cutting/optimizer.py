@@ -1,65 +1,137 @@
-"""Deterministic shelf-based rectangular nesting for MDF cutting."""
+"""Deterministic shelf nesting helpers. Dimensions are millimetres; decimals are preserved."""
 import xml.etree.ElementTree as ET
+from decimal import Decimal
 
 NS = 'http://www.King-stone.com'
 ET.register_namespace('', NS)
 
-def optimize(parts, stock, kerf=4):
-    bins = sorted(stock, key=lambda s: (not s.get('is_offcut', False), s['width']*s['height']))
-    remaining = sorted((dict(p) for p in parts), key=lambda p: p['width']*p['height'], reverse=True)
+
+def stock_sort_key(stock, policy='offcuts_first'):
+    priority = int(stock.get('priority', 100))
+    area = stock['width'] * stock['height']
+    stable_id = int(stock.get('stock_id', 0))
+    if policy == 'priority':
+        return (priority, not stock.get('is_offcut', False), area, stock['width'], stock['height'], stable_id)
+    # Default is offcut-first. Priority is the next deterministic tie-breaker.
+    return (not stock.get('is_offcut', False), priority, area, stock['width'], stock['height'], stable_id)
+
+
+def optimize(parts, stock, kerf=4, policy='offcuts_first'):
+    bins = sorted(stock, key=lambda s: stock_sort_key(s, policy))
+    remaining = sorted((dict(p) for p in parts), key=lambda p: p['width'] * p['height'], reverse=True)
     layouts = []
     for sheet in bins:
-        usable_width=max(0, sheet['width']-10)
-        usable_height=max(0, sheet['height']-10)
-        placed=[]; left=[]; x=y=row_h=0
-        for p in remaining:
-            candidates=[(p['width'],p['height'],False)]
-            if p.get('turn',True) and p['width']!=p['height']:
-                candidates.append((p['height'],p['width'],True))
-            # Try current shelf first, then a new shelf; choose the best fitting orientation.
-            options=[]
-            for w,h,rot in candidates:
-                if y+h<=usable_height and x+w<=usable_width:
-                    options.append((h,w,rot,x,y,False))
-                ny=y+row_h+(kerf if placed else 0)
-                if ny+h<=usable_height and w<=usable_width:
-                    options.append((h,w,rot,0,ny,True))
+        usable_width = max(0, sheet['width'] - 10)
+        usable_height = max(0, sheet['height'] - 10)
+        placed = []
+        left = []
+        x = y = row_h = 0
+        for part in remaining:
+            candidates = [(part['width'], part['height'], False)]
+            if part.get('turn', True) and part['width'] != part['height']:
+                candidates.append((part['height'], part['width'], True))
+            options = []
+            for width, height, rotated in candidates:
+                if y + height <= usable_height and x + width <= usable_width:
+                    options.append((height, width, rotated, x, y, False))
+                next_y = y + row_h + (kerf if placed else 0)
+                if next_y + height <= usable_height and width <= usable_width:
+                    options.append((height, width, rotated, 0, next_y, True))
             if not options:
-                left.append(p); continue
-            h,w,rot,nx,ny,newrow=min(options,key=lambda a:(a[0],a[1],a[2]))
-            if newrow:
-                x=0; y=ny; row_h=0
-            placed.append({**p,'x':nx,'y':ny,'width':w,'height':h,'rotated':rot,'row':y})
-            x=nx+w+kerf; row_h=max(row_h,h)
+                left.append(part)
+                continue
+            height, width, rotated, next_x, next_y, new_row = min(options, key=lambda o: (o[0], o[1], o[2], o[5]))
+            if new_row:
+                x, y, row_h = 0, next_y, 0
+            placed.append({**part, 'x': next_x, 'y': next_y, 'width': width, 'height': height, 'rotated': rotated, 'row': y})
+            x = next_x + width + kerf
+            row_h = max(row_h, height)
         if placed:
-            layouts.append({'sheet':sheet,'parts':placed})
-        remaining=left
-        if not remaining: break
+            layouts.append({'sheet': sheet, 'parts': placed})
+        remaining = left
+        if not remaining:
+            break
     if remaining:
-        p=remaining[0]
-        raise ValueError(f"برای قطعه «{p['label']}» ({p['width']}×{p['height']}) ورق قابل استفاده/موجودی کافی نیست.")
+        part = remaining[0]
+        raise ValueError(f"برای قطعه «{part['label']}» ({part['width']}×{part['height']}) ورق قابل استفاده/موجودی کافی نیست.")
     return layouts
 
+
+def expected_offcuts(layout, kerf=4, minimum=200):
+    """Return disjoint, conservative rectangular remnants; these are forecasts only."""
+    sheet = layout['sheet']
+    shelves = {}
+    for part in layout['parts']:
+        shelves.setdefault(part['row'], []).append(part)
+    remnants = []
+    max_bottom = 0
+    for shelf_y, parts in sorted(shelves.items()):
+        row_height = max(part['height'] for part in parts)
+        used_width = max(part['x'] + part['width'] for part in parts)
+        max_bottom = max(max_bottom, shelf_y + row_height)
+        rem_width = sheet['width'] - used_width - kerf - 5
+        if rem_width >= minimum and row_height >= minimum:
+            remnants.append({'width': rem_width, 'height': row_height})
+    bottom_height = sheet['height'] - max_bottom - kerf - 5
+    if sheet['width'] >= minimum and bottom_height >= minimum:
+        remnants.append({'width': sheet['width'] - 10, 'height': bottom_height})
+    return remnants
+
+
 def make_autocut(plan_id, material_rows, kerf=4):
-    root=ET.Element(f'{{{NS}}}AutoCUT',{'ver':'500'})
-    project=ET.SubElement(root,f'{{{NS}}}Project',{'Name':f'CraftFlow-{plan_id}','Selected':'0','Update':'0','DefaultLevel':'0','UserFields':'F2,F3,F4,F5,F26,F18,F19,F20,','FieldLabels':'TLGrain=Grain,TLOrder=Order,TLType=fcfffff,F2=Part,F3=Barcode,F19=Routing,F20=Customer,'})
+    root = ET.Element(f'{{{NS}}}AutoCUT', {'ver': '500'})
+    project = ET.SubElement(root, f'{{{NS}}}Project', {
+        'Name': f'CraftFlow-{plan_id}', 'Selected': '0', 'Update': '0', 'DefaultLevel': '0',
+        'UserFields': 'F2,F3,F4,F5,F26,F18,F19,F20,',
+        'FieldLabels': 'TLGrain=دسته محصول,TLOrder=نام محصول,TLType=fcfffff,F2=نام قطعه,F3=بارکد,F4=نوار طول 1,F5=نوار طول 2,F26=نوار عرض 1,F18=نوار عرض 2,F19=تحویل به,F20=نام مشتری,',
+    })
     for row in material_rows:
-        data=ET.SubElement(project,f'{{{NS}}}Data',{'Class':'3','TotalUnit':'1000000','Type':row['type'],'Ply':str(row['thickness'])})
-        objective=ET.SubElement(data,f'{{{NS}}}Objective',{'Type':'Shape','Count':str(len(row['shapes']))})
-        for i,p in enumerate(row['shapes']):
-            ET.SubElement(objective,f'{{{NS}}}Shape',{'Name':f'P{i+1:03d}','X':str(p['orig_width']),'Y':str(p['orig_height']),'Turn':'true' if p.get('turn',True) else 'false','Grain':p.get('grain',''),'Order':p.get('order',''),'Count':'1','F2':p.get('f2',''),'F3':p.get('f3',''),'F19':p.get('routing',''),'F20':p.get('customer','')})
-        solutions=ET.SubElement(data,f'{{{NS}}}Solutions',{'Selected':'0'})
-        total_area=sum(s['sheet']['width']*s['sheet']['height'] for s in row['sheets'])
-        used_area=sum(p['width']*p['height'] for s in row['sheets'] for p in s['parts'])
-        sol=ET.SubElement(solutions,f'{{{NS}}}Solution',{'SolveGap':str(kerf),'AlgCase':'1','AlgNest':'21','SolveRate':'10','UnitCounts':','.join('1' for _ in row['shapes'])+',','SheetCounts':','.join('1' for _ in row['sheets'])+',','SumUnitArea':str(used_area),'SumSheetArea':str(total_area)})
-        layouts=ET.SubElement(sol,f'{{{NS}}}Layouts')
-        for idx,s in enumerate(row['sheets']):
-            sheet=s['sheet']; area=sum(p['width']*p['height'] for p in s['parts'])
-            uids=','.join(str(p['uid']) for p in s['parts'])+','
-            layout=ET.SubElement(layouts,f'{{{NS}}}Layout',{'ID':str(idx),'SheetID':str(idx),'Count':'1','Cut':'true','Side':'5','SheetName':sheet.get('label',row['type']),'X':str(sheet['width']),'Y':str(sheet['height']),'SX':'5','SY':'5','UIDS':uids,'UnitArea':str(area),'SheetArea':str(sheet['width']*sheet['height']),'SpareArea':str(sheet['width']*sheet['height']-area)})
-            base=ET.SubElement(layout,f'{{{NS}}}Part',{'X':str(sheet['width']),'Y':str(sheet['height']),'Px':'5','Py':'5','Side':'5'})
-            for p in s['parts']:
-                attrs={'X':str(p['width']),'Y':str(p['height']),'Px':str(p['x']+5),'Py':str(p['y']+5),'UID':str(p['uid'])}
-                if p['rotated']: attrs['Angle']='90'
-                ET.SubElement(base,f'{{{NS}}}Part',attrs)
-    return ET.tostring(root,encoding='utf-16',xml_declaration=True)
+        data = ET.SubElement(project, f'{{{NS}}}Data', {'Class': '3', 'TotalUnit': '1000000', 'Type': row['type'], 'UnitPrice': '0', 'Ply': str(row['thickness'])})
+        objective = ET.SubElement(data, f'{{{NS}}}Objective', {'Type': 'Shape', 'Count': str(len(row['shapes']))})
+        for index, part in enumerate(row['shapes']):
+            ET.SubElement(objective, f'{{{NS}}}Shape', {
+                'Name': f'P{index + 1:03d}', 'X': str(part['orig_width']), 'Y': str(part['orig_height']),
+                'Turn': 'true' if part.get('turn', True) else 'false', 'Grain': part.get('grain', ''),
+                'Order': part.get('order', ''), 'Count': '1', 'F2': part.get('f2', ''), 'F3': part.get('f3', ''),
+                'F19': part.get('routing', ''), 'F20': part.get('customer', ''),
+            })
+        condition_sizes = {}
+        for layout_data in row['sheets']:
+            sheet = layout_data['sheet']
+            key = (str(sheet.get('label', row['type'])), str(sheet['width']), str(sheet['height']))
+            condition_sizes[key] = condition_sizes.get(key, 0) + 1
+        condition = ET.SubElement(data, f'{{{NS}}}Condition', {'Type': 'Shape', 'Count': str(len(condition_sizes))})
+        for (name, width, height), count in condition_sizes.items():
+            ET.SubElement(condition, f'{{{NS}}}Shape', {
+                'Name': name, 'X': width, 'Y': height, 'Turn': 'false',
+                'Sx': '5', 'Sy': '5', 'Count': str(count),
+            })
+        solutions = ET.SubElement(data, f'{{{NS}}}Solutions', {'Selected': '0'})
+        total_area = sum(Decimal(str(s['sheet']['width'])) * Decimal(str(s['sheet']['height'])) for s in row['sheets'])
+        used_area = sum(Decimal(str(p['width'])) * Decimal(str(p['height'])) for s in row['sheets'] for p in s['parts'])
+        solution = ET.SubElement(solutions, f'{{{NS}}}Solution', {
+            'SolveGap': str(kerf), 'AlgCase': '1', 'AlgNest': '21', 'SolveRate': '10',
+            'UnitCounts': ','.join('1' for _ in row['shapes']) + ',',
+            'SheetCounts': ','.join('1' for _ in row['sheets']) + ',',
+            'SumUnitArea': str(used_area), 'SumSheetArea': str(total_area),
+        })
+        layouts = ET.SubElement(solution, f'{{{NS}}}Layouts')
+        for index, layout_data in enumerate(row['sheets']):
+            sheet = layout_data['sheet']
+            area = sum(Decimal(str(part['width'])) * Decimal(str(part['height'])) for part in layout_data['parts'])
+            uids = ','.join(str(part['uid']) for part in layout_data['parts']) + ','
+            layout = ET.SubElement(layouts, f'{{{NS}}}Layout', {
+                'ID': str(index), 'SheetID': str(index), 'Count': '1', 'Cut': 'true', 'Side': '5',
+                'SheetName': sheet.get('label', row['type']), 'X': str(sheet['width']), 'Y': str(sheet['height']),
+                'SX': '5', 'SY': '5', 'UIDS': uids, 'UnitArea': str(area),
+                'SheetArea': str(Decimal(str(sheet['width'])) * Decimal(str(sheet['height']))),
+                'SpareArea': str(Decimal(str(sheet['width'])) * Decimal(str(sheet['height'])) - area),
+            })
+            base = ET.SubElement(layout, f'{{{NS}}}Part', {'X': str(sheet['width']), 'Y': str(sheet['height']), 'Px': '5', 'Py': '5', 'Side': '5'})
+            for part in layout_data['parts']:
+                attrs = {'X': str(part['width']), 'Y': str(part['height']), 'Px': str(part['x'] + 5), 'Py': str(part['y'] + 5), 'UID': str(part['uid'])}
+                if part['rotated']:
+                    attrs['Angle'] = '90'
+                ET.SubElement(base, f'{{{NS}}}Part', attrs)
+        ET.SubElement(solution, f'{{{NS}}}Spares')
+    return ET.tostring(root, encoding='utf-16', xml_declaration=True)
