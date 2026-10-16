@@ -2,61 +2,68 @@
 {% block title %}برنامه برش {{ plan.id }}{% endblock %}
 {% block content %}
 <div class="container-fluid py-4" dir="rtl">
-  <div class="d-flex flex-wrap justify-content-between align-items-center">
-    <div>
-      <h1>برنامه برش #{{ plan.id }}</h1>
-      <p>سفارش‌ها: {% for o in plan.orders.all %}{{ o.id }}{% if not forloop.last %}، {% endif %}{% endfor %}</p>
-      <span class="badge {% if plan.status == 'cut' %}bg-success{% elif plan.status == 'partial' %}bg-warning text-dark{% elif plan.status == 'cancelled' %}bg-secondary{% else %}bg-primary{% endif %}">{{ plan.get_status_display }}</span>
-    </div>
-    <div class="d-flex gap-2"><a class="btn btn-outline-secondary" href="{% url 'cutting:planner' %}">برنامه جدید</a><a class="btn btn-outline-secondary" href="{% url 'cutting:inventory' %}">موجودی</a></div>
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+    <div><div class="text-muted small">گردش کار برش / مرحله ۳</div><h1>بازبینی برنامه #{{ plan.id }}</h1><p class="mb-1">سفارش‌ها: {% for o in plan.orders.all %}#{{ o.id }}{% if not forloop.last %}، {% endif %}{% endfor %}</p><span class="badge {% if plan.status == 'cut' %}bg-success{% elif plan.status == 'partial' %}bg-warning text-dark{% elif plan.status == 'cancelled' %}bg-secondary{% else %}bg-primary{% endif %}">{{ plan.get_status_display }}</span></div>
+    <div class="d-flex gap-2"><a class="btn btn-outline-secondary" href="{% url 'cutting:planner' %}">صف برش</a><a class="btn btn-outline-secondary" href="{% url 'cutting:inventory' %}">انبار ورق</a></div>
   </div>
   {% if messages %}{% for message in messages %}<div class="alert alert-info mt-3">{{ message }}</div>{% endfor %}{% endif %}
-  <div class="alert alert-warning mt-3">موجودی در زمان برنامه‌ریزی رزرو شده است. ورق‌های دست‌نخورده با ثبت نتیجه به موجودی اصلی برمی‌گردند. پرت‌های جدید فقط از ابعاد واقعی واردشده ثبت می‌شوند.</div>
+  <div class="alert alert-warning mt-3">موجودی هنگام برنامه‌ریزی رزرو شده است؛ تا ثبت نتیجه کسر نمی‌شود. نقشه، چیدمان الگوریتمی ردیفی را نشان می‌دهد؛ برش و رگه را با اپراتور و دستگاه بررسی کنید.</div>
+  <div class="alert alert-secondary"><b>خروجی دستگاه:</b> فایل `.CUT` بر پایه‌ی نمونه XML موجود تولید می‌شود، اما پذیرش آن توسط کنترلر دستگاه صنعتی شما تأیید نشده است. پیش از اجرای تولیدی، در حالت آزمایشی/بدون برش روی همان دستگاه اعتبارسنجی شود.</div>
   {% if plan.status == 'cancelled' %}<div class="alert alert-secondary">این برنامه لغو شده است؛ رزروهای آن آزاد شدند. این ورق‌ها به‌عنوان «استفاده‌نشده در عملیات واقعی» ثبت نشده‌اند.</div>{% endif %}
-  {% if plan.status == 'partial' %}<div class="alert alert-warning"><b>این برنامه بخشی ثبت شده است.</b> تسک‌های زیر هنوز باقی‌مانده دارند و برنامه بعدی فقط تعداد تکمیل‌نشده را دوباره محاسبه می‌کند:<ul class="mb-0">{% for row in unfinished_tasks %}<li>{{ row.task }} — تکمیل‌شده {{ row.task.completed_quantity }} از {{ row.task.quantity }}</li>{% endfor %}</ul><a class="btn btn-sm btn-warning mt-2" href="{% url 'cutting:planner' %}">ساخت برنامه برای باقی‌مانده‌ها</a></div>{% endif %}
-  <div class="row g-3">
-    {% for r in summaries %}
-    <div class="col-12"><div class="card">
-      <div class="card-header"><b>{{ r.material }}</b> — ضخامت {{ r.thickness }} mm — {{ r.sheet_count }} ورق — {{ r.part_count }} قطعه</div>
-      <div class="table-responsive"><table class="table table-sm mb-0"><thead><tr><th>ورق</th><th>منبع</th><th>ابعاد</th><th>قطعات</th><th>پرت‌های برآوردی (فقط پیش‌بینی)</th></tr></thead>
-        <tbody>{% for s in r.sheets %}<tr>
-          <td>#{{ forloop.counter }}</td>
-          <td>{% if s.sheet.is_offcut %}<span class="badge bg-warning text-dark">پرت انبار</span>{% else %}<span class="badge bg-primary">ورق کامل</span>{% endif %}</td>
-          <td>{{ s.sheet.width }} × {{ s.sheet.height }} mm</td><td>{{ s.parts|length }}</td>
-          <td>{% for rem in s.expected_offcuts %}{{ rem.width }}×{{ rem.height }} mm{% if not forloop.last %}، {% endif %}{% empty %}—{% endfor %}</td>
-        </tr>{% endfor %}</tbody>
-      </table></div>
+  {% if plan.status == 'partial' %}<div class="alert alert-warning"><b>این برنامه بخشی ثبت شده است.</b> تسک‌های زیر باقی‌مانده دارند و برنامه‌ی بعدی فقط تعداد تکمیل‌نشده را محاسبه می‌کند:<ul class="mb-0">{% for row in unfinished_tasks %}<li>{{ row.task }} — تکمیل‌شده {{ row.task.completed_quantity }} از {{ row.task.quantity }}</li>{% endfor %}</ul><a class="btn btn-sm btn-warning mt-2" href="{% url 'cutting:planner' %}">ساخت برنامه برای باقی‌مانده‌ها</a></div>{% endif %}
+
+  {% for r in summaries %}
+  <section class="card mb-4">
+    <div class="card-header d-flex flex-wrap justify-content-between gap-2"><b>{{ r.material }}</b><span>ضخامت {{ r.thickness }} mm · {{ r.sheet_count }} ورق · {{ r.part_count }} قطعه</span></div>
+    <div class="card-body"><div class="row g-4">
+      {% for s in r.sheets %}
+      <div class="col-12 col-xl-6">
+        <article class="border rounded p-3 h-100">
+          <div class="d-flex justify-content-between align-items-start gap-2 mb-2"><div><h2 class="h6 mb-1">ورق {{ forloop.counter }} — {{ s.sheet.width }} × {{ s.sheet.height }} mm</h2><span class="badge {% if s.sheet.is_offcut %}bg-warning text-dark{% else %}bg-primary{% endif %}">{% if s.sheet.is_offcut %}پرت انبار{% else %}ورق کامل{% endif %}</span>{% if s.sheet_record and s.sheet_record.outcome != 'reserved' %}<span class="badge bg-secondary">{{ s.sheet_record.get_outcome_display }}</span>{% endif %}</div><span class="small text-muted">{{ s.parts|length }} قطعه</span></div>
+          <div class="cut-map-wrap" style="background:#f8f9fa;border:1px solid #dee2e6;border-radius:.5rem;padding:.5rem;overflow:auto">
+            <svg class="cut-map" viewBox="0 0 {{ s.sheet.width }} {{ s.sheet.height }}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="نقشه چیدمان ورق {{ s.sheet.width }} در {{ s.sheet.height }} میلی‌متر" style="display:block;width:100%;max-height:68vh;min-height:220px">
+              <rect x="0" y="0" width="{{ s.sheet.width }}" height="{{ s.sheet.height }}" fill="#fffdf5" stroke="#343a40" stroke-width="4" />
+              {% for part in s.parts %}<g transform="translate(5 5)"><title>قطعه {{ forloop.counter }}: {{ part.label }} — {{ part.width }} × {{ part.height }} mm</title><rect x="{{ part.x }}" y="{{ part.y }}" width="{{ part.width }}" height="{{ part.height }}" fill="#cfe2ff" stroke="#0d6efd" stroke-width="3"/><text x="{{ part.x }}" y="{{ part.y }}" dx="8" dy="24" font-size="20" fill="#102a43">{{ forloop.counter }}</text></g>{% endfor %}
+            </svg>
+          </div>
+          <details class="mt-2"><summary class="small fw-semibold">راهنمای شناسه قطعات و جهت</summary><ol class="small mb-0 mt-2">{% for part in s.parts %}<li>قطعه {{ forloop.counter }} — {{ part.label }} · {{ part.width }} × {{ part.height }} mm · {% if part.rotated %}چرخیده ۹۰°{% else %}بدون چرخش{% endif %}</li>{% endfor %}</ol></details>
+          <div class="mt-3"><div class="small fw-semibold">پرت‌های برآوردی (صرفاً پیش‌بینی؛ برای ثبت انبار استفاده نمی‌شود)</div><div class="small text-muted">{% for rem in s.expected_offcuts %}<span class="badge bg-light text-dark border me-1">{{ rem.width }} × {{ rem.height }} mm</span>{% empty %}پرت قابل‌استفاده‌ای برآورد نشد.{% endfor %}</div></div>
+        </article>
+      </div>
+      {% endfor %}
     </div></div>
-    {% endfor %}
+  </section>
+  {% endfor %}
+
+  <div class="d-flex flex-wrap gap-2 mt-3">
+    <a class="btn btn-primary" href="{% url 'cutting:download_cut' plan.id %}">دانلود فایل .CUT</a>
+    {% if plan.status == 'planned' %}<a class="btn btn-outline-danger" href="#confirm-result">ثبت نتیجه واقعی</a><form method="post" action="{% url 'cutting:cancel_plan' plan.id %}" onsubmit="return confirm('برنامه لغو و رزرو ورق‌ها آزاد شود؟ موجودی واقعی تغییر نمی‌کند.');">{% csrf_token %}<button class="btn btn-outline-secondary">لغو برنامه و آزادسازی رزرو</button></form>{% endif %}
   </div>
-  <div class="d-flex flex-wrap gap-2 mt-4">
-    <a class="btn btn-primary" href="{% url 'cutting:download_cut' plan.id %}">دانلود فایل برش .CUT</a>
-    {% if plan.status == 'planned' %}
-    <a class="btn btn-outline-danger" href="#confirm-result">ثبت نتیجه</a>
-    <form method="post" action="{% url 'cutting:cancel_plan' plan.id %}" onsubmit="return confirm('برنامه لغو و رزرو ورق‌ها آزاد شود؟ موجودی تغییر نمی‌کند.');">{% csrf_token %}<button class="btn btn-outline-secondary">لغو برنامه و آزادسازی رزرو</button></form>
-    {% endif %}
-  </div>
+
   {% if plan.status == 'planned' %}
   <section id="confirm-result" class="card mt-4">
-    <div class="card-header"><h2 class="h5 mb-0">ثبت نتیجه واقعی هر ورق</h2></div>
-    <div class="card-body">
-      <p>برای هر ورق انتخاب کنید مصرف شد، دست‌نخورده ماند یا اسقاط شد. برای ورق مصرف‌شده تا چهار تکه پرت واقعی وارد کنید؛ اندازه‌ها با دقت یک رقم اعشار و بدون گردکردن ثبت می‌شوند.</p>
-      <form method="post" action="{% url 'cutting:mark_cut' plan.id %}" onsubmit="return confirm('نتیجه واقعی ثبت شود؟ فقط ورق‌های مصرف‌شده کسر و تسک‌های همین برنامه تکمیل می‌شوند.');">
+    <div class="card-header"><div class="text-muted small">گردش کار برش / مرحله ۵</div><h2 class="h5 mb-0">ثبت نتیجه واقعی هر ورق</h2></div>
+    <div class="card-body"><p>ابعاد پیش‌بینی‌شده فقط در بخش نقشه نمایش داده می‌شوند و به فرم واقعی منتقل نمی‌شوند. هر پرت را بعد از اندازه‌گیری اضافه کنید؛ فرم به‌طور پیش‌فرض خالی است.</p>
+      <form method="post" action="{% url 'cutting:mark_cut' plan.id %}" onsubmit="return confirm('نتیجه واقعی ثبت شود؟ فقط ورق‌های مصرف‌شده کسر و پرت‌های واردشده به موجودی افزوده می‌شوند.');">
         {% csrf_token %}
-        {% for r in summaries %}<h3 class="h6 mt-4">{{ r.material }}</h3>
+        {% for r in summaries %}<h3 class="h6 mt-4">{{ r.material }} — {{ r.thickness }} mm</h3>
           {% for s in r.sheets %}{% with rec=s.sheet_record %}
-          <div class="border rounded p-3 mb-3">
-            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
-              <b>ورق {{ forloop.counter }} — {{ rec.width }}×{{ rec.height }} mm — {% if rec.was_offcut %}پرت قبلی{% else %}ورق کامل{% endif %}</b>
-              <label class="form-label mb-0">نتیجه <select class="form-select form-select-sm d-inline-block" name="outcome_{{ rec.pk }}" style="width:auto"><option value="used">مصرف شد</option><option value="untouched">استفاده نشد (برگشت کامل)</option><option value="scrapped">اسقاط شد</option></select></label>
+          <div class="border rounded p-3 mb-3" data-sheet-result="{{ rec.pk }}">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2"><b>ورق {{ forloop.counter }} — {{ rec.width }}×{{ rec.height }} mm — {% if rec.was_offcut %}پرت قبلی{% else %}ورق کامل{% endif %}</b>
+              <label class="form-label mb-0">نتیجه <select class="form-select form-select-sm d-inline-block cut-outcome" name="outcome_{{ rec.pk }}" data-sheet="{{ rec.pk }}" style="width:auto"><option value="used">مصرف شد</option><option value="untouched">دست‌نخورده ماند؛ برگشت کامل</option><option value="scrapped">اسقاط شد</option></select></label>
             </div>
-            <div class="mt-3"><div class="small text-muted mb-2">ابعاد واقعی پرت‌ها (در صورت وجود)</div>
-              <div class="row g-2">
-                <div class="col-6 col-md-3"><label class="small">پرت ۱ عرض × طول</label><div class="input-group input-group-sm"><input class="form-control" type="number" step="0.1" min="0.1" name="rem_{{ rec.pk }}_1_width" value="{{ s.expected_offcuts.0.width|default:'' }}"><input class="form-control" type="number" step="0.1" min="0.1" name="rem_{{ rec.pk }}_1_height" value="{{ s.expected_offcuts.0.height|default:'' }}"></div></div>
-                <div class="col-6 col-md-3"><label class="small">پرت ۲ عرض × طول</label><div class="input-group input-group-sm"><input class="form-control" type="number" step="0.1" min="0.1" name="rem_{{ rec.pk }}_2_width" value="{{ s.expected_offcuts.1.width|default:'' }}"><input class="form-control" type="number" step="0.1" min="0.1" name="rem_{{ rec.pk }}_2_height" value="{{ s.expected_offcuts.1.height|default:'' }}"></div></div>
-                <div class="col-6 col-md-3"><label class="small">پرت ۳ عرض × طول</label><div class="input-group input-group-sm"><input class="form-control" type="number" step="0.1" min="0.1" name="rem_{{ rec.pk }}_3_width"><input class="form-control" type="number" step="0.1" min="0.1" name="rem_{{ rec.pk }}_3_height"></div></div>
-                <div class="col-6 col-md-3"><label class="small">پرت ۴ عرض × طول</label><div class="input-group input-group-sm"><input class="form-control" type="number" step="0.1" min="0.1" name="rem_{{ rec.pk }}_4_width"><input class="form-control" type="number" step="0.1" min="0.1" name="rem_{{ rec.pk }}_4_height"></div></div>
-              </div><input class="form-control form-control-sm mt-2" name="note_{{ rec.pk }}" maxlength="255" placeholder="یادداشت نتیجه این ورق (اختیاری)">
+            <div class="mt-3 remnant-fields" id="remnants-{{ rec.pk }}" data-sheet="{{ rec.pk }}">
+              <div class="small text-muted mb-2">ابعاد واقعی پرت‌ها (mm) — هر ردیف پس از اندازه‌گیری اضافه شود؛ حداکثر ۵۰ ردیف.</div>
+              <div class="remnant-rows">
+                <div class="row g-2 align-items-end mb-2 remnant-row" data-remnant-row>
+                  <div class="col-12 col-sm-1 small fw-bold remnant-number">پرت ۱</div>
+                  <div class="col-5 col-sm-4"><label class="form-label small">عرض</label><input class="form-control form-control-sm" type="number" step="0.1" min="0.1" name="rem_{{ rec.pk }}_1_width" data-dimension="width" placeholder="اندازه‌گیری شود"></div>
+                  <div class="col-5 col-sm-4"><label class="form-label small">طول</label><input class="form-control form-control-sm" type="number" step="0.1" min="0.1" name="rem_{{ rec.pk }}_1_height" data-dimension="height" placeholder="اندازه‌گیری شود"></div>
+                  <div class="col-2 col-sm-3"><button type="button" class="btn btn-sm btn-outline-danger remove-remnant">حذف ردیف</button></div>
+                </div>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-primary add-remnant mt-1" data-target="remnants-{{ rec.pk }}">افزودن پرت اندازه‌گیری‌شده</button>
+              <input class="form-control form-control-sm mt-2" name="note_{{ rec.pk }}" maxlength="255" placeholder="یادداشت نتیجه این ورق (اختیاری)">
             </div>
           </div>
           {% endwith %}{% endfor %}
@@ -67,4 +74,28 @@
   </section>
   {% endif %}
 </div>
+<style>.cut-map text{font-family:system-ui,sans-serif;font-weight:700;text-anchor:start;dominant-baseline:auto}.cut-map-wrap{max-width:100%}@media print{.cut-map-wrap{break-inside:avoid}.cut-map{max-height:90vh!important}}</style>
+<script>
+(()=>{
+  const maxRows=50;
+  function renumber(container){
+    const sheet=container.dataset.sheet;
+    const rows=[...container.querySelectorAll('[data-remnant-row]')];
+    rows.forEach((row,index)=>{
+      row.querySelector('.remnant-number').textContent=`پرت ${index+1}`;
+      row.querySelectorAll('[data-dimension]').forEach(input=>{input.name=`rem_${sheet}_${index+1}_${input.dataset.dimension}`;});
+      row.querySelector('.remove-remnant').disabled=rows.length===1;
+    });
+    container.querySelector('.add-remnant').disabled=rows.length>=maxRows;
+  }
+  document.querySelectorAll('.remnant-fields').forEach(container=>renumber(container));
+  document.querySelectorAll('.add-remnant').forEach(button=>button.addEventListener('click',()=>{
+    const container=document.getElementById(button.dataset.target);const rows=container.querySelector('.remnant-rows');
+    if(rows.children.length>=maxRows)return;
+    const clone=rows.firstElementChild.cloneNode(true);clone.querySelectorAll('input').forEach(input=>input.value='');rows.appendChild(clone);renumber(container);
+  }));
+  document.addEventListener('click',event=>{if(event.target.classList.contains('remove-remnant')){const container=event.target.closest('.remnant-fields');const rows=container.querySelector('.remnant-rows');if(rows.children.length>1){event.target.closest('[data-remnant-row]').remove();renumber(container);}}});
+  document.querySelectorAll('.cut-outcome').forEach(select=>select.addEventListener('change',()=>{const fields=document.getElementById(`remnants-${select.dataset.sheet}`);const disabled=select.value!=='used';fields.querySelectorAll('input[data-dimension],.add-remnant,.remove-remnant').forEach(control=>control.disabled=disabled);}));
+})();
+</script>
 {% endblock %}

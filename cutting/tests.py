@@ -4,6 +4,7 @@ from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 from django.test import SimpleTestCase, TestCase, TransactionTestCase
 from django.urls import reverse
+from django.utils import timezone
 from product.models import Customer, Material, Order, Part, ProductionTask
 from .models import CuttingSettings, CutPlan, CutPlanSheet, SheetSizeSpec, SheetStock, SheetStockEvent
 from .optimizer import make_autocut, optimize
@@ -151,12 +152,20 @@ class InventoryAndCutFlowTests(TestCase):
         source = self.add_stock()
         plan = self.make_plan(); sheet = plan.planned_sheets.get()
         self.assertFalse(SheetStock.objects.filter(is_offcut=True).exists())
-        response = self.result_post(plan, **{f'rem_{sheet.pk}_1_width': '321.5', f'rem_{sheet.pk}_1_height': '211.2'})
+        detail = self.client.get(reverse('cutting:plan_detail', args=[plan.pk]))
+        self.assertContains(detail, 'placeholder="اندازه‌گیری شود"')
+        self.assertNotContains(detail, f'name="rem_{sheet.pk}_1_width" value=')
+        result = {f'outcome_{sheet.pk}': 'used'}
+        for index in range(1, 6):
+            result[f'rem_{sheet.pk}_{index}_width'] = '100'
+            result[f'rem_{sheet.pk}_{index}_height'] = '100'
+        response = self.client.post(reverse('cutting:mark_cut', args=[plan.pk]), result)
         self.assertEqual(response.status_code, 302)
         source.refresh_from_db()
-        offcut = SheetStock.objects.get(is_offcut=True)
+        offcut = SheetStock.objects.filter(is_offcut=True).order_by('pk').first()
         self.assertEqual(source.quantity, 0); self.assertFalse(source.active)
-        self.assertEqual((offcut.width, offcut.height), (Decimal('321.5'), Decimal('211.2')))
+        self.assertEqual((offcut.width, offcut.height), (Decimal('100.0'), Decimal('100.0')))
+        self.assertEqual(SheetStock.objects.filter(is_offcut=True).count(), 5)
         self.assertEqual(offcut.created_from_plan_id, plan.pk)
         self.assertTrue(SheetStockEvent.objects.filter(event_type='offcut', stock=offcut, plan=plan).exists())
 
@@ -257,6 +266,43 @@ class InventoryAndCutFlowTests(TestCase):
         response = self.client.get(reverse('cutting:inventory'), {'q':'700x700'})
         self.assertEqual(list(response.context['page'].object_list), [offcut])
 
+    def test_inventory_separates_total_reserved_and_free_sheets_and_keeps_filters_in_pagination(self):
+        self.add_stock(quantity=3)
+        self.make_plan()
+        response = self.client.get(reverse('cutting:inventory'))
+        self.assertEqual((response.context['total_count'], response.context['reserved_count'], response.context['available_count']), (3, 1, 2))
+        row = response.context['page'].object_list[0]
+        self.assertEqual((row.reserved_quantity, row.available_quantity), (1, 2))
+        for _ in range(40):
+            self.add_stock(width='900', height='900')
+        response = self.client.get(reverse('cutting:inventory'), {'q':'MDF', 'material':self.material.pk, 'thickness':'16.0', 'sort':'date', 'page':'1'})
+        self.assertTrue(response.context['page'].has_next())
+        for param in ('q=MDF', f'material={self.material.pk}', 'thickness=16.0', 'sort=date'):
+            self.assertIn(param, response.context['pagination_query'])
+
+    def test_planner_checkbox_queue_shows_available_task_and_remaining_piece_count(self):
+        response = self.client.get(reverse('cutting:planner'), {'q':str(self.order.pk), 'status':'planned'})
+        self.assertEqual(response.status_code, 200)
+        order = response.context['orders'].get()
+        self.assertEqual((order.cut_task_count, order.remaining_pieces), (1, 1))
+        self.assertContains(response, 'name="order_ids"')
+        self.assertContains(response, 'انتخاب همه‌ی نمایش‌داده‌شده‌ها')
+
+    def test_history_filters_by_event_type_text_and_date_range(self):
+        event = SheetStockEvent.objects.create(
+            material=self.material, event_type='receive', quantity_delta=2,
+            width=Decimal('1830.0'), height=Decimal('3660.0'), is_offcut=False,
+            note='دریافت انبار شیفت صبح', created_by=self.user,
+        )
+        today = timezone.localdate().isoformat()
+        response = self.client.get(reverse('cutting:history'), {
+            'event_type':'receive', 'q':'شیفت صبح', 'material':self.material.pk,
+            'date_from':today, 'date_to':today,
+        })
+        self.assertEqual(list(response.context['page'].object_list), [event])
+        for param in ('event_type=receive', 'q=', 'material=', 'date_from=', 'date_to='):
+            self.assertIn(param, response.context['pagination_query'])
+
     def test_stock_management_is_forbidden_to_regular_authenticated_user(self):
         normal = User.objects.create_user(username='no-stock-access', password='test')
         self.client.force_login(normal)
@@ -287,6 +333,8 @@ class InventoryAndCutFlowTests(TestCase):
         plan = self.make_plan()
         response = self.client.get(reverse('cutting:plan_detail', args=[plan.pk]))
         self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'class="cut-map"')
+        self.assertContains(response, 'پذیرش آن توسط کنترلر دستگاه صنعتی شما تأیید نشده است')
         self.assertContains(response, 'ثبت نتیجه واقعی هر ورق')
         download = self.client.get(reverse('cutting:download_cut', args=[plan.pk]))
         self.assertEqual(download.status_code, 200)

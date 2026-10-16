@@ -1,1 +1,46 @@
-{% extends 'base.html' %}{% block title %}برنامه‌ریزی برش MDF{% endblock %}{% block content %}<div class="container-fluid py-4" dir="rtl"><div class="d-flex flex-wrap justify-content-between align-items-center gap-2"><div><h1>برنامه‌ریزی برش MDF</h1><p class="text-muted">سفارش‌های آماده را انتخاب کنید؛ موجودی پس از تأیید نتیجه واقعی تغییر می‌کند.</p></div><a class="btn btn-outline-primary" href="{% url 'cutting:inventory' %}">مدیریت موجودی ورق</a></div>{% if messages %}{% for message in messages %}<div class="alert alert-info">{{ message }}</div>{% endfor %}{% endif %}<div class="alert alert-secondary">سیاست فعال: <b>{{ setting.get_strategy_display }}</b> — ذخیره‌ی موجودی فقط در زمان ثبت نتیجه‌ی برش انجام می‌شود.</div><div class="card"><div class="card-header">برنامه جدید</div><div class="card-body"><form method="post">{% csrf_token %}<input type="hidden" name="action" value="plan"><label class="form-label">سفارش‌های دارای تسک برش آزاد و آماده</label><select class="form-select" name="order_ids" multiple size="12" required>{% for o in orders %}<option value="{{ o.id }}">سفارش {{ o.id }} — {{ o.customer.name }} — {{ o.get_status_display }}</option>{% empty %}<option disabled>سفارشی با تسک برش آزاد و آماده نیست.</option>{% endfor %}</select><div class="form-text mb-3">برای انتخاب چند سفارش، Ctrl (ویندوز) یا Command (مک) را نگه دارید. سفارش‌هایی که تسکشان در برنامه دیگری رزرو است در این فهرست نمی‌آیند.</div><div class="mb-3" style="max-width:300px"><label class="form-label">ضخامت تیغه / فاصله برش (mm)</label><input class="form-control" name="kerf" type="number" min="0" step="0.1" value="4"></div><button class="btn btn-success">محاسبه و رزرو موجودی</button></form></div></div><div class="small text-muted mt-3">ابعاد قطعات با دقت اعشاری یک رقم حفظ می‌شوند. چیدمان الگوریتمی فعلی ردیفی است؛ پیش از برش، نقشه را با اپراتور و دستگاه تطبیق دهید.</div></div>{% endblock %}
+{% extends 'base.html' %}
+{% block title %}صف و برنامه‌ریزی برش MDF{% endblock %}
+{% block content %}
+<div class="container-fluid py-4" dir="rtl">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div><div class="text-muted small">گردش کار برش / مرحله ۲</div><h1 class="mb-1">صف آماده برش</h1><p class="text-muted mb-0">سفارش‌های آزاد را جست‌وجو و با چک‌باکس انتخاب کنید؛ رزرو در زمان ساخت برنامه انجام می‌شود و موجودی با تأیید نتیجه تغییر می‌کند.</p></div>
+    <a class="btn btn-outline-primary" href="{% url 'cutting:inventory' %}">مرحله ۱: انبار ورق</a>
+  </div>
+  {% if messages %}{% for message in messages %}<div class="alert alert-info">{{ message }}</div>{% endfor %}{% endif %}
+  <div class="alert alert-secondary">سیاست مصرف فعال: <b>{{ setting.get_strategy_display }}</b>. سفارش‌هایی که یکی از تسک‌های برش‌شان در برنامه‌ی دیگری رزرو است، برای جلوگیری از تداخل در صف انتخاب ظاهر نمی‌شوند.</div>
+
+  <form method="get" class="card card-body mb-3">
+    <div class="row g-2 align-items-end">
+      <div class="col-12 col-md-6"><label class="form-label" for="order-search">جست‌وجوی شماره سفارش یا مشتری</label><input id="order-search" class="form-control" name="q" value="{{ query }}" placeholder="مثلاً 142 یا نام مشتری"></div>
+      <div class="col-8 col-md-3"><label class="form-label" for="order-status">وضعیت سفارش</label><select id="order-status" class="form-select" name="status"><option value="">همه وضعیت‌ها</option>{% for value,label in order_statuses %}<option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+      <div class="col-4 col-md-3 d-flex gap-2"><button class="btn btn-primary flex-fill">جست‌وجو</button><a class="btn btn-outline-secondary" href="{% url 'cutting:planner' %}">پاک‌کردن</a></div>
+    </div>
+  </form>
+
+  <form method="post" class="card mb-4">
+    {% csrf_token %}<input type="hidden" name="action" value="plan">
+    <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2"><div><b>انتخاب سفارش‌ها</b> <span class="text-muted small">({{ orders|length }} سفارش قابل انتخاب)</span></div><label class="form-check mb-0"><input class="form-check-input" type="checkbox" id="select-all-orders"><span class="form-check-label">انتخاب همه‌ی نمایش‌داده‌شده‌ها</span></label></div>
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0"><thead><tr><th></th><th>سفارش / مشتری</th><th>وضعیت</th><th>تسک برش آزاد</th><th>قطعه باقی‌مانده</th></tr></thead><tbody>
+        {% for o in orders %}<tr>
+          <td><input class="form-check-input order-select" type="checkbox" name="order_ids" value="{{ o.pk }}" aria-label="انتخاب سفارش {{ o.pk }}"></td>
+          <td><b>#{{ o.pk }}</b>{% if o.number %} · {{ o.number }}{% endif %}<div class="small text-muted">{{ o.customer.name }}</div></td>
+          <td><span class="badge bg-light text-dark border">{{ o.get_status_display }}</span></td>
+          <td>{{ o.cut_task_count }}</td><td class="fw-bold">{{ o.remaining_pieces|default:0 }}</td>
+        </tr>{% empty %}<tr><td colspan="5" class="text-center text-muted py-4">سفارش آزادی با تسک برش باقی‌مانده پیدا نشد. فیلترها را تغییر دهید یا ابتدا رزرو برنامه‌های موجود را بررسی کنید.</td></tr>{% endfor %}
+      </tbody></table>
+    </div>
+    <div class="card-body border-top"><div class="row g-3 align-items-end">
+      <div class="col-12 col-md-4"><label class="form-label" for="kerf">ضخامت تیغه / فاصله برش (mm)</label><input id="kerf" class="form-control" name="kerf" type="number" min="0" step="0.1" value="4" required></div>
+      <div class="col-12 col-md-8 d-flex flex-wrap gap-2 justify-content-md-end"><button class="btn btn-success">محاسبه و رزرو موجودی</button></div>
+    </div></div>
+  </form>
+
+  {% if active_plans %}<section class="card mb-4"><div class="card-header"><b>برنامه‌های در انتظار برش</b> <span class="text-muted small">رزروهای فعال در موجودی آزاد منظور می‌شوند.</span></div><div class="table-responsive"><table class="table table-sm mb-0"><thead><tr><th>برنامه</th><th>سفارش‌ها</th><th>ورق رزروشده</th><th>ساخته‌شده</th><th></th></tr></thead><tbody>{% for p in active_plans %}<tr><td>#{{ p.pk }}</td><td>{% for order in p.orders.all %}#{{ order.pk }}{% if not forloop.last %}، {% endif %}{% endfor %}</td><td>{{ p.reserved_sheet_count }}</td><td>{{ p.created_at|date:'Y-m-d H:i' }}</td><td><a class="btn btn-sm btn-outline-primary" href="{% url 'cutting:plan_detail' p.pk %}">بازبینی برنامه</a></td></tr>{% endfor %}</tbody></table></div></section>{% endif %}
+
+  <div class="alert alert-warning"><b>اعتبارسنجی دستگاه:</b> فایل `.CUT` فعلی با نمونه‌ی XML موجود در پروژه هم‌تراز شده، اما اجرای آن روی کنترلر دستگاه صنعتی شما در این سامانه تأیید نشده است. قبل از برش تولیدی، فایل را در حالت آزمایشی/بدون برش روی همان دستگاه بررسی کنید. چیدمان فعلی ردیفی است و اپراتور باید نقشه و محدودیت‌های دستگاه را تأیید کند.</div>
+</div>
+<script>
+(()=>{const all=document.getElementById('select-all-orders');if(!all)return;const boxes=[...document.querySelectorAll('.order-select')];all.addEventListener('change',()=>boxes.forEach(box=>box.checked=all.checked));boxes.forEach(box=>box.addEventListener('change',()=>{all.checked=boxes.length>0&&boxes.every(item=>item.checked);all.indeterminate=boxes.some(item=>item.checked)&&!all.checked;}));})();
+</script>
+{% endblock %}

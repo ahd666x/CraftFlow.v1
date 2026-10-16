@@ -1,16 +1,18 @@
 from collections import Counter, defaultdict
 from decimal import Decimal, InvalidOperation
 from functools import wraps
+import re
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
 from django.db import transaction
-from django.db.models import F, Q, Sum
+from django.db.models import Count, F, Q, Sum
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_POST
 
 from product.models import Material, Order, ProductionTask
@@ -22,6 +24,7 @@ from .optimizer import expected_offcuts, make_autocut, optimize
 
 
 MM = Decimal('0.1')
+MAX_REMNANTS_PER_SHEET = 50
 
 
 def _role(user, names):
@@ -207,10 +210,38 @@ def planner(request):
             return redirect('cutting:plan_detail', plan_id=plan.pk)
         except ValueError as exc:
             messages.error(request, str(exc)); return redirect('cutting:planner')
-    available_order_ids = CutPlanTask.objects.filter(plan__status='planned').values('task_id')
-    orders = Order.objects.filter(tasks__station_name='cut', tasks__status='pending').exclude(tasks__pk__in=available_order_ids).distinct().order_by('-id')
+    reserved_order_ids = CutPlanTask.objects.filter(plan__status='planned').values('task__order_id')
+    available_tasks = ProductionTask.objects.filter(
+        station_name='cut', status='pending', part__isnull=False,
+        quantity__gt=F('completed_quantity'), order__isnull=False,
+    ).exclude(order_id__in=reserved_order_ids)
+    order_qs = Order.objects.filter(pk__in=available_tasks.values('order_id')).select_related('customer')
+    status_filter = request.GET.get('status', '')
+    valid_statuses = dict(Order.ORDER_STATUS)
+    if status_filter in valid_statuses:
+        order_qs = order_qs.filter(status=status_filter)
+    query = request.GET.get('q', '').strip()
+    if query:
+        search = Q(customer__name__icontains=query) | Q(number__icontains=query)
+        if query.isdigit():
+            search |= Q(pk=int(query))
+        order_qs = order_qs.filter(search)
+    orders = order_qs.annotate(
+        cut_task_count=Count('tasks', filter=Q(tasks__pk__in=available_tasks), distinct=True),
+        remaining_pieces=Sum(
+            F('tasks__quantity') - F('tasks__completed_quantity'),
+            filter=Q(tasks__pk__in=available_tasks),
+        ),
+    ).order_by('-id')
+    active_plans = CutPlan.objects.filter(status='planned').annotate(
+        reserved_sheet_count=Count('planned_sheets', distinct=True),
+    ).prefetch_related('orders').order_by('-created_at')[:10]
     setting = CuttingSettings.current()
-    return render(request, 'cutting/planner.html', {'materials': materials, 'orders': orders, 'setting': setting})
+    return render(request, 'cutting/planner.html', {
+        'materials': materials, 'orders': orders, 'setting': setting,
+        'order_statuses': Order.ORDER_STATUS, 'status_filter': status_filter, 'query': query,
+        'active_plans': active_plans,
+    })
 
 
 @cutting_operator
@@ -244,9 +275,19 @@ def _parse_sheet_result(request, sheet):
     if outcome != 'used':
         return outcome, []
     remnants = []
-    for index in range(1, 5):
-        raw_w = request.POST.get(f'rem_{sheet.pk}_{index}_width', '').strip()
-        raw_h = request.POST.get(f'rem_{sheet.pk}_{index}_height', '').strip()
+    pattern = re.compile(rf'^rem_{sheet.pk}_(\d+)_(width|height)$')
+    posted_rows = {}
+    for key in request.POST.keys():
+        match = pattern.match(key)
+        if not match:
+            continue
+        index, dimension = int(match.group(1)), match.group(2)
+        if index < 1 or index > MAX_REMNANTS_PER_SHEET:
+            raise ValueError(f'برای هر ورق حداکثر {MAX_REMNANTS_PER_SHEET} پرت قابل ثبت است.')
+        posted_rows.setdefault(index, {})[dimension] = request.POST.get(key, '').strip()
+    for index, row in sorted(posted_rows.items()):
+        raw_w = row.get('width', '')
+        raw_h = row.get('height', '')
         if not raw_w and not raw_h:
             continue
         if not raw_w or not raw_h:
@@ -376,7 +417,13 @@ def cancel_plan(request, plan_id):
 def _inventory_queryset(request, kind=None):
     inactive = request.GET.get('inactive') == '1'
     qs = SheetStock.objects.filter(active=False) if inactive else SheetStock.objects.filter(active=True, quantity__gt=0)
-    qs = qs.select_related('material')
+    qs = qs.select_related('material').annotate(
+        reserved_quantity=Count(
+            'plan_reservations',
+            filter=Q(plan_reservations__outcome='reserved', plan_reservations__plan__status='planned'),
+            distinct=True,
+        ),
+    ).annotate(available_quantity=F('quantity') - F('reserved_quantity'))
     if kind == 'full': qs = qs.filter(is_offcut=False)
     elif kind == 'offcuts': qs = qs.filter(is_offcut=True)
     query = request.GET.get('q', '').strip()
@@ -410,13 +457,40 @@ def inventory(request, kind=None):
     active = SheetStock.objects.filter(active=True, quantity__gt=0)
     full_count = active.filter(is_offcut=False).aggregate(total=Sum('quantity'))['total'] or 0
     offcut_count = active.filter(is_offcut=True).aggregate(total=Sum('quantity'))['total'] or 0
-    summaries = list(active.values('material__name', 'material__thickness', 'is_offcut').annotate(units=Sum('quantity')).order_by('material__name', 'is_offcut'))
+    total_count = full_count + offcut_count
+    summaries = list(active.values('material_id', 'material__name', 'material__thickness', 'is_offcut').annotate(units=Sum('quantity')).order_by('material__name', 'is_offcut'))
+    reserved_groups = CutPlanSheet.objects.filter(
+        outcome='reserved', plan__status='planned', source_stock__active=True, source_stock__quantity__gt=0,
+    ).values(
+        'source_stock__material_id', 'source_stock__is_offcut',
+    ).annotate(units=Count('pk'))
+    reserved_by_group = {
+        (row['source_stock__material_id'], row['source_stock__is_offcut']): row['units']
+        for row in reserved_groups
+    }
+    for summary in summaries:
+        summary['reserved'] = min(summary['units'], reserved_by_group.get((summary['material_id'], summary['is_offcut']), 0))
+        summary['available'] = summary['units'] - summary['reserved']
+    reserved_count = sum(row['reserved'] for row in summaries)
+    available_count = total_count - reserved_count
     rows = _inventory_queryset(request, kind)
     page = Paginator(rows, 40).get_page(request.GET.get('page'))
+    pagination_params = request.GET.copy()
+    pagination_params.pop('page', None)
+    pagination_query = pagination_params.urlencode()
+    toggle_params = request.GET.copy()
+    toggle_params.pop('page', None)
+    if toggle_params.get('inactive') == '1':
+        toggle_params.pop('inactive', None)
+    else:
+        toggle_params['inactive'] = '1'
+    toggle_inactive_query = toggle_params.urlencode()
     setting = CuttingSettings.current()
     return render(request, 'cutting/inventory.html', {
         'kind': kind or 'all', 'page': page, 'materials': Material.objects.all().order_by('name'),
         'summaries': summaries, 'full_count': full_count, 'offcut_count': offcut_count,
+        'total_count': total_count, 'reserved_count': reserved_count, 'available_count': available_count,
+        'pagination_query': pagination_query, 'toggle_inactive_query': toggle_inactive_query,
         'setting': setting, 'query': request.GET.get('q', ''),
         'thicknesses': Material.objects.values_list('thickness', flat=True).distinct().order_by('thickness'),
     })
@@ -429,22 +503,34 @@ def stock_create(request):
     if request.method == 'POST':
         try:
             material = get_object_or_404(Material, pk=request.POST.get('material'))
-            if request.POST.get('stock_type') not in ('full', 'offcut'):
+            stock_type = request.POST.get('stock_type')
+            if stock_type not in ('full', 'offcut'):
                 raise ValueError('نوع موجودی را مشخص کنید.')
-            spec_id = request.POST.get('size_spec')
-            spec = SheetSizeSpec.objects.filter(pk=spec_id, material=material, active=True).first() if spec_id else None
-            if not spec and request.POST.get('stock_type') != 'offcut':
-                spec = SheetSizeSpec.objects.filter(material=material, active=True, is_default=True).first()
             width_raw = request.POST.get('width', '').strip()
             height_raw = request.POST.get('height', '').strip()
-            if bool(width_raw) != bool(height_raw):
-                raise ValueError('برای اندازه سفارشی، عرض و طول را هر دو وارد کنید.')
-            width = _dimension(width_raw, 'عرض') if width_raw else (spec.width if spec else None)
-            height = _dimension(height_raw, 'طول') if height_raw else (spec.height if spec else None)
-            if width is None or height is None: raise ValueError('اندازه استاندارد انتخاب کنید یا ابعاد سفارشی را وارد کنید.')
+            dimension_mode = request.POST.get('dimension_mode') or ('custom' if stock_type == 'offcut' or width_raw or height_raw else 'standard')
+            if stock_type == 'offcut':
+                dimension_mode = 'custom'
+            if dimension_mode == 'standard':
+                if stock_type != 'full':
+                    raise ValueError('برای ثبت پرت، اندازه سفارشی را وارد کنید.')
+                spec_id = request.POST.get('size_spec')
+                spec = SheetSizeSpec.objects.filter(pk=spec_id, material=material, active=True).first() if spec_id else None
+                if not spec:
+                    spec = SheetSizeSpec.objects.filter(material=material, active=True, is_default=True).first()
+                if not spec:
+                    raise ValueError('برای این متریال اندازه استانداردی ثبت نشده است؛ حالت اندازه سفارشی را انتخاب کنید.')
+                width, height = spec.width, spec.height
+            elif dimension_mode == 'custom':
+                if bool(width_raw) != bool(height_raw) or not width_raw:
+                    raise ValueError('برای اندازه سفارشی، عرض و طول را هر دو وارد کنید.')
+                width = _dimension(width_raw, 'عرض')
+                height = _dimension(height_raw, 'طول')
+            else:
+                raise ValueError('روش تعیین اندازه معتبر نیست.')
             quantity = int(request.POST.get('quantity', '1'))
             if quantity < 1: raise ValueError('تعداد باید دست‌کم ۱ باشد.')
-            is_offcut = request.POST.get('stock_type') == 'offcut'
+            is_offcut = stock_type == 'offcut'
             with transaction.atomic():
                 stock = SheetStock.objects.create(
                     material=material, width=width, height=height, quantity=quantity,
@@ -606,8 +692,36 @@ def cutting_policy(request):
 
 @inventory_operator
 def stock_history(request):
-    events = SheetStockEvent.objects.select_related('material', 'stock', 'plan', 'created_by')
+    events = SheetStockEvent.objects.select_related('material', 'stock', 'plan', 'created_by').order_by('-created_at', '-pk')
     if request.GET.get('material'):
         events = events.filter(material_id=request.GET['material'])
+    event_type = request.GET.get('event_type', '')
+    if event_type in dict(SheetStockEvent.TYPES):
+        events = events.filter(event_type=event_type)
+    date_from_raw, date_to_raw = request.GET.get('date_from', ''), request.GET.get('date_to', '')
+    date_from, date_to = parse_date(date_from_raw), parse_date(date_to_raw)
+    if date_from_raw and date_from:
+        events = events.filter(created_at__date__gte=date_from)
+    elif date_from_raw:
+        messages.error(request, 'تاریخ شروع معتبر نیست؛ از انتخاب‌گر تاریخ استفاده کنید.')
+    if date_to_raw and date_to:
+        events = events.filter(created_at__date__lte=date_to)
+    elif date_to_raw:
+        messages.error(request, 'تاریخ پایان معتبر نیست؛ از انتخاب‌گر تاریخ استفاده کنید.')
+    if date_from and date_to and date_from > date_to:
+        messages.error(request, 'تاریخ شروع نمی‌تواند بعد از تاریخ پایان باشد.')
+        events = events.none()
+    query = request.GET.get('q', '').strip()
+    if query:
+        search = Q(material__name__icontains=query) | Q(note__icontains=query) | Q(created_by__username__icontains=query)
+        if query.isdigit():
+            search |= Q(plan_id=int(query)) | Q(width=Decimal(query)) | Q(height=Decimal(query))
+        events = events.filter(search)
     page = Paginator(events, 60).get_page(request.GET.get('page'))
-    return render(request, 'cutting/history.html', {'page': page, 'materials': Material.objects.all().order_by('name')})
+    params = request.GET.copy()
+    params.pop('page', None)
+    return render(request, 'cutting/history.html', {
+        'page': page, 'materials': Material.objects.all().order_by('name'),
+        'event_types': SheetStockEvent.TYPES, 'event_type_filter': event_type,
+        'query': query, 'pagination_query': params.urlencode(),
+    })
