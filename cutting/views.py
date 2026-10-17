@@ -129,6 +129,18 @@ def planner(request):
                     messages.success(request, f'{len(cnc_sheet_plans)} فایل G-code برای ورق‌های CNC ساخته شد.')
             except (ValueError, OSError) as exc:
                 messages.error(request, str(exc)); return redirect('cutting:planner')
+            except Exception as exc:
+                # The CNC resolver raises a domain error when an operator has
+                # not yet approved the per-part CNC profile. Never expose a
+                # traceback from the planning screen in that case.
+                from cnc_resizer.services import CncResolutionError
+                if isinstance(exc, CncResolutionError):
+                    messages.error(
+                        request,
+                        f'{exc} — ابتدا از صفحهٔ اسکن قطعه، الگوی CNC را ثبت و تأیید کنید.',
+                    )
+                    return redirect('cutting:planner')
+                raise
         try:
             with transaction.atomic():
                 task_query = ProductionTask.objects.select_for_update().filter(
