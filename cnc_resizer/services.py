@@ -114,7 +114,6 @@ def resolve_cnc_file(part, created_by=None):
     profile cannot silently reuse an old result.
     """
     base = part.base_part or part
-    profile = _profile_for_part(part)
     base_record = _base_record_for_part(base, created_by)
     if not base_record.resizable:
         raise CncResolutionError(
@@ -124,6 +123,10 @@ def resolve_cnc_file(part, created_by=None):
     delta = Decimal(part.length) - Decimal(base.length)
     if abs(delta) <= Decimal('0.0005'):
         return base_record
+
+    # A part with the same length as its base part does not need a resize
+    # rule. Require an approved profile only when an actual resize is needed.
+    profile = _profile_for_part(part)
 
     if profile.get('axis', 'length') != 'length':
         raise CncResolutionError('محور CNC انتخاب‌شده پشتیبانی نمی‌شود؛ Y باید به Part.length نگاشت شود')

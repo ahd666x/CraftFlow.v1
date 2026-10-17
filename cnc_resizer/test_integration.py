@@ -87,3 +87,28 @@ class CncIntegrationTests(TestCase):
         self.assertTrue(record.path.endswith(".cnc"))
         self.assertTrue(derived_exists)
         self.assertAlmostEqual(float(record.params["delta"]), 20.0, places=3)
+
+    def test_same_length_part_uses_base_without_resize_profile(self):
+        material = Material.objects.create(name="MDF same", thickness=Decimal("16.0"))
+        base = Part.objects.create(
+            material=material, name="Unchanged panel", length=Decimal("100.0"),
+            width=Decimal("50.0"), f3="same.100x50", routing_code="cnc",
+        )
+        same_part = Part.objects.create(
+            material=material, base_part=base, name=base.name,
+            length=Decimal("100.0"), width=Decimal("50.0"),
+            f3="same.100x50.item1", routing_code="cnc",
+        )
+        with tempfile.TemporaryDirectory() as archive:
+            with self.settings(CNC_SOURCE_DIR=archive):
+                with tempfile.NamedTemporaryFile(suffix=".cnc", delete=False) as stream:
+                    with open(SAMPLE, "rb") as sample:
+                        stream.write(sample.read())
+                    source_path = stream.name
+                try:
+                    source = register_base_file(source_path, base.f3, self.manager)
+                    record = resolve_cnc_file(same_part, self.manager)
+                finally:
+                    os.unlink(source_path)
+        self.assertEqual(record.pk, source.pk)
+        self.assertEqual(record.kind, CncFile.KIND_BASE)
