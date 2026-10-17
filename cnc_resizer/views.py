@@ -7,7 +7,7 @@ from django.http import Http404
 
 from product.decorators import admin_or_manager_required
 from . import core
-from .models import CncFile, CncPartProfile
+from .models import CncFile, CncPartProfile, CncSheetPlan
 from product.models import Part
 from .services import _base_record_for_part
 
@@ -137,3 +137,23 @@ def part_profile(request):
             defaults={'source_file': source, 'params': params, 'approved': True, 'approved_by': request.user},
         )
     return JsonResponse({'success': True, 'profile_id': profile.id, 'message': 'الگوی CNC برای این قطعه ثبت و تأیید شد.'})
+
+
+@login_required
+@cnc_operator_required
+@require_GET
+def sheet_plans(request):
+    plans = CncSheetPlan.objects.filter(created_by=request.user).select_related('material', 'source_stock')[:100]
+    return render(request, 'cnc_resizer/sheet_plans.html', {'plans': plans})
+
+
+@login_required
+@cnc_operator_required
+@require_GET
+def download_sheet_plan(request, plan_id):
+    from django.shortcuts import get_object_or_404
+    plan = get_object_or_404(CncSheetPlan, pk=plan_id)
+    from django.http import HttpResponse
+    response = HttpResponse(plan.gcode, content_type='text/plain; charset=utf-8')
+    response['Content-Disposition'] = f'attachment; filename="craftflow_cnc_sheet_{plan.pk}.nc"'
+    return response

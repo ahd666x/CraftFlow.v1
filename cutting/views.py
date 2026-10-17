@@ -109,6 +109,8 @@ def planner(request):
     materials = Material.objects.all().order_by('name')
     if request.method == 'POST' and request.POST.get('action') == 'plan':
         order_ids = request.POST.getlist('order_ids')
+        cnc_sheet_mode = request.POST.get('planning_mode') == 'cnc_sheets'
+        cnc_sheet_plans = []
         try:
             kerf = Decimal(request.POST.get('kerf', str(CuttingSettings.current().default_kerf)))
             if not kerf.is_finite() or kerf < 0 or kerf.quantize(MM) != kerf:
@@ -117,13 +119,28 @@ def planner(request):
             messages.error(request, 'مقدار تیغه معتبر نیست.'); return redirect('cutting:planner')
         if not order_ids:
             messages.error(request, 'برای برنامه‌ریزی دست‌کم یک سفارش انتخاب کنید.'); return redirect('cutting:planner')
+        if cnc_sheet_mode:
+            try:
+                from cnc_resizer.sheet_nesting import create_cnc_sheet_plans
+                cnc_sheet_plans = create_cnc_sheet_plans(
+                    order_ids, request.user, kerf=kerf,
+                )
+                if cnc_sheet_plans:
+                    messages.success(request, f'{len(cnc_sheet_plans)} فایل G-code برای ورق‌های CNC ساخته شد.')
+            except (ValueError, OSError) as exc:
+                messages.error(request, str(exc)); return redirect('cutting:planner')
         try:
             with transaction.atomic():
-                tasks = list(ProductionTask.objects.select_for_update().filter(
+                task_query = ProductionTask.objects.select_for_update().filter(
                     order_id__in=order_ids, station_name='cut', status='pending', part__isnull=False,
                     quantity__gt=F('completed_quantity'),
-                ).select_related('part__material', 'order', 'order__customer').order_by('pk'))
+                )
+                if cnc_sheet_mode:
+                    task_query = task_query.exclude(part__routing_code__iregex=r'^\s*cnc(?:\.|$)')
+                tasks = list(task_query.select_related('part__material', 'order', 'order__customer').order_by('pk'))
                 if not tasks:
+                    if cnc_sheet_plans:
+                        return redirect('cnc_resizer:sheet_plans')
                     raise ValueError('قطعه آماده برش برای سفارش‌های انتخاب‌شده پیدا نشد.')
                 task_ids = [task.pk for task in tasks]
                 if CutPlanTask.objects.filter(task_id__in=task_ids, plan__status='planned').exists():
@@ -280,6 +297,8 @@ def planner_preview(request):
     ).exclude(order_id__in=reserved_order_ids).select_related(
         'part__material', 'order', 'order__customer',
     ).order_by('pk'))
+    if request.GET.get('planning_mode') == 'cnc_sheets':
+        tasks = [task for task in tasks if not (task.part.routing_code or '').strip().lower().split('.')[0:1] == ['cnc']]
     total_pieces = sum(task.quantity - task.completed_quantity for task in tasks)
     invalid_part = next((task.part for task in tasks if task.part.length <= 0 or task.part.width <= 0), None)
     if invalid_part:

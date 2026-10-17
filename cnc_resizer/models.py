@@ -75,3 +75,31 @@ class CncPartProfile(models.Model):
 
     def __str__(self):
         return f"الگوی CNC: {self.part.f3}"
+
+
+class CncSheetPlan(models.Model):
+    STATUS = (
+        ("planned", "برنامه‌ریزی شده"),
+        ("done", "اجرا شده"),
+        ("cancelled", "لغو شده"),
+    )
+    material = models.ForeignKey("product.Material", on_delete=models.PROTECT, related_name="cnc_sheet_plans")
+    source_stock = models.ForeignKey("cutting.SheetStock", on_delete=models.PROTECT, related_name="cnc_sheet_plans")
+    sheet_index = models.PositiveIntegerField(default=0)
+    width = models.DecimalField(max_digits=10, decimal_places=1)
+    height = models.DecimalField(max_digits=10, decimal_places=1)
+    status = models.CharField(max_length=12, choices=STATUS, default="planned")
+    kerf = models.DecimalField(max_digits=6, decimal_places=1, default=4)
+    layout = models.JSONField(default=dict)
+    gcode = models.TextField()
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="cnc_sheet_plans")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("-created_at", "material__name", "sheet_index")
+        constraints = [models.UniqueConstraint(fields=("source_stock", "sheet_index", "created_by"), name="cnc_sheet_plan_stock_index_user_uniq")]
+        verbose_name = "برنامه ورق CNC"
+        verbose_name_plural = "برنامه‌های ورق CNC"
+
+    def __str__(self):
+        return f"CNC {self.material.name} — ورق {self.sheet_index + 1}"

@@ -1,0 +1,19 @@
+{% extends 'base.html' %}
+{% block title %}برنامه ورق‌های CNC{% endblock %}
+{% block content %}
+<div class="container-fluid py-4" dir="rtl">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div><h1>برنامه ورق‌های CNC</h1><p class="text-muted mb-0">برای هر ورق یک فایل G-code تجمیعی ساخته شده است.</p></div>
+    <a class="btn btn-outline-primary" href="{% url 'cutting:planner' %}">بازگشت به برنامه‌ریزی برش</a>
+  </div>
+  {% include 'cutting/_messages.html' %}
+  <div class="card"><div class="table-responsive"><table class="table table-hover align-middle mb-0">
+    <thead><tr><th>برنامه</th><th>متریال</th><th>ورق</th><th>ابعاد</th><th>قطعات</th><th>تاریخ</th><th></th></tr></thead>
+    <tbody>{% for plan in plans %}<tr>
+      <td>#{{ plan.id }}</td><td>{{ plan.material.name }}</td><td>{{ plan.source_stock_id }}</td>
+      <td>{{ plan.width }} × {{ plan.height }}</td><td>{{ plan.layout.parts|length }}</td>
+      <td>{{ plan.created_at }}</td><td><a class="btn btn-sm btn-success" href="{% url 'cnc_resizer:download_sheet_plan' plan.id %}">دانلود G-code</a></td>
+    </tr>{% empty %}<tr><td colspan="7" class="text-center text-muted py-4">هنوز برنامه‌ای ساخته نشده است.</td></tr>{% endfor %}</tbody>
+  </table></div></div>
+</div>
+{% endblock %}

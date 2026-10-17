@@ -9,6 +9,7 @@
   const status = document.getElementById('order-status');
   const clearFilters = document.getElementById('clear-order-filters');
   const kerf = document.getElementById('kerf');
+  const planningModes = [...document.querySelectorAll('input[name="planning_mode"]')];
   const submit = document.getElementById('plan-submit');
   let timer = null;
   let controller = null;
@@ -108,6 +109,8 @@
       const params = new URLSearchParams();
       ids.forEach(id => params.append('order_ids', id));
       if (kerf.value) params.set('kerf', kerf.value);
+      const selectedMode = planningModes.find(input => input.checked);
+      if (selectedMode) params.set('planning_mode', selectedMode.value);
       try {
         const response = await fetch(`${form.dataset.previewUrl}?${params}`, {
           headers: { 'X-Requested-With': 'XMLHttpRequest' },
@@ -144,6 +147,7 @@
     updatePreview();
   }));
   kerf.addEventListener('input', updatePreview);
+  planningModes.forEach(input => input.addEventListener('change', updatePreview));
   form.addEventListener('submit', () => {
     submit.disabled = true;
     submit.querySelector('.spinner-border').hidden = false;

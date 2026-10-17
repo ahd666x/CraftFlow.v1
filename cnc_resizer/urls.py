@@ -9,4 +9,6 @@ urlpatterns = [
     path("api/process/", views.process, name="process"),
     path("api/archive-files/", views.archive_files, name="archive_files"),
     path("api/part-profile/", views.part_profile, name="part_profile"),
+    path("sheets/", views.sheet_plans, name="sheet_plans"),
+    path("sheets/<int:plan_id>/download/", views.download_sheet_plan, name="download_sheet_plan"),
 ]
