@@ -8,7 +8,7 @@ from django.db.models import F
 from cutting.models import SheetStock, CutPlanTask
 from cutting.optimizer import optimize
 from product.models import ProductionTask
-from .models import CncSheetPlan
+from .models import CncPlanningIssue, CncSheetPlan
 from .services import resolve_cnc_file
 
 NUM_RE = r"[+-]?\d+(?:\.\d+)?"
@@ -67,20 +67,32 @@ def create_cnc_sheet_plans(order_ids, user, kerf=Decimal('4.0')):
     ).select_related('part__material', 'order'))
     tasks = [t for t in tasks if is_cnc_first(t.part)]
     if not tasks:
-        return []
+        return [], []
 
     grouped = defaultdict(list)
+    issues = []
+
+    def register_issue(task, reason, **details):
+        issue = CncPlanningIssue.objects.create(
+            task=task, order=task.order, part=task.part, mode='cnc_sheets',
+            reason=str(reason)[:10000], details=details, created_by=user,
+        )
+        issues.append(issue)
+
     for task in tasks:
         for _ in range(task.quantity - task.completed_quantity):
-            record = resolve_cnc_file(task.part, user)
-            text, min_x, min_y, max_x, max_y = _source_geometry(record.path)
-            grouped[task.part.material_id].append({
-                'task_id': task.id, 'part_id': task.part_id, 'label': task.part.f2 or task.part.name,
-                'f3': task.part.f3, 'width': Decimal(str(max_x - min_x)),
-                'height': Decimal(str(max_y - min_y)), 'text': text,
-                'min_x': min_x, 'min_y': min_y, 'max_x': max_x, 'max_y': max_y,
-                'turn': bool(task.part.turn), 'order_id': task.order_id,
-            })
+            try:
+                record = resolve_cnc_file(task.part, user)
+                text, min_x, min_y, max_x, max_y = _source_geometry(record.path)
+                grouped[task.part.material_id].append({
+                    'task_id': task.id, 'part_id': task.part_id, 'label': task.part.f2 or task.part.name or task.part.f3,
+                    'f3': task.part.f3, 'width': Decimal(str(max_x - min_x)),
+                    'height': Decimal(str(max_y - min_y)), 'text': text,
+                    'min_x': min_x, 'min_y': min_y, 'max_x': max_x, 'max_y': max_y,
+                    'turn': bool(task.part.turn), 'order_id': task.order_id,
+                })
+            except Exception as exc:
+                register_issue(task, exc, stage='source_or_geometry')
 
     result = []
     for material_id, pieces in grouped.items():
@@ -88,7 +100,10 @@ def create_cnc_sheet_plans(order_ids, user, kerf=Decimal('4.0')):
             material_id=material_id, active=True, quantity__gt=0, is_offcut=False,
         ).select_related('material').order_by('priority', 'width', 'height', 'pk'))
         if not stock_rows:
-            raise ValueError(f'برای متریال {pieces[0]["label"]} ورق کامل آزاد پیدا نشد.')
+            for piece in pieces:
+                task = next(task for task in tasks if task.id == piece['task_id'])
+                register_issue(task, 'برای متریال قطعه ورق کامل آزاد پیدا نشد.', stage='stock')
+            continue
         sheets = []
         available = []
         for stock in stock_rows:
@@ -100,7 +115,27 @@ def create_cnc_sheet_plans(order_ids, user, kerf=Decimal('4.0')):
         stock_data = [{'stock_id': b['stock'].id, 'width': b['stock'].width, 'height': b['stock'].height,
                        'is_offcut': False, 'priority': b['stock'].priority, 'grain': b['stock'].grain,
                        'label': str(b['stock'])} for b in bins]
-        layouts = optimize(optimizer_parts, stock_data, kerf, policy='priority')
+        try:
+            layouts = optimize(optimizer_parts, stock_data, kerf, policy='priority')
+        except Exception as exc:
+            # Keep feasible pieces and isolate pieces that prevent the batch
+            # from being laid out. A bad piece must not discard good output.
+            remaining = list(optimizer_parts)
+            layouts = []
+            while remaining:
+                try:
+                    layouts = optimize(remaining, stock_data, kerf, policy='priority')
+                    break
+                except Exception as nested_exc:
+                    message = str(nested_exc)
+                    candidate = next((item for item in remaining if item['label'] in message), remaining[-1])
+                    remaining.remove(candidate)
+                    task = next(task for task in tasks if task.id == candidate['task_id'])
+                    register_issue(task, nested_exc, stage='nesting')
+            if not layouts and remaining:
+                for candidate in remaining:
+                    task = next(task for task in tasks if task.id == candidate['task_id'])
+                    register_issue(task, exc, stage='nesting')
         for sheet_index, layout in enumerate(layouts):
             stock = SheetStock.objects.get(pk=layout['sheet']['stock_id'])
             commands = ['%', 'G21', 'G90', f'; CraftFlow CNC sheet {material_id}-{sheet_index + 1}']
@@ -132,4 +167,4 @@ def create_cnc_sheet_plans(order_ids, user, kerf=Decimal('4.0')):
                 gcode='\n'.join(commands) + '\n', created_by=user,
             )
             result.append(plan)
-    return result
+    return result, issues

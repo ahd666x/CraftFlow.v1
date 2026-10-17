@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import CncFile, CncPartProfile, CncSheetPlan
+from .models import CncFile, CncPartProfile, CncPlanningIssue, CncSheetPlan
 
 
 @admin.register(CncFile)
@@ -32,4 +32,12 @@ class CncSheetPlanAdmin(admin.ModelAdmin):
     list_display = ("id", "material", "source_stock", "sheet_index", "status", "created_at")
     list_filter = ("status", "material")
     search_fields = ("material__name",)
+    readonly_fields = ("created_at",)
+
+
+@admin.register(CncPlanningIssue)
+class CncPlanningIssueAdmin(admin.ModelAdmin):
+    list_display = ("id", "task", "order", "part", "mode", "created_by", "created_at")
+    list_filter = ("mode", "created_at")
+    search_fields = ("reason", "part__name", "part__f3")
     readonly_fields = ("created_at",)

@@ -103,3 +103,23 @@ class CncSheetPlan(models.Model):
 
     def __str__(self):
         return f"CNC {self.material.name} — ورق {self.sheet_index + 1}"
+
+
+class CncPlanningIssue(models.Model):
+    MODES = (("cnc_sheets", "تفکیک CNC"), ("standard", "برش عادی"))
+    task = models.ForeignKey("product.ProductionTask", null=True, blank=True, on_delete=models.SET_NULL, related_name="cnc_planning_issues")
+    order = models.ForeignKey("product.Order", null=True, blank=True, on_delete=models.SET_NULL, related_name="cnc_planning_issues")
+    part = models.ForeignKey("product.Part", null=True, blank=True, on_delete=models.SET_NULL, related_name="cnc_planning_issues")
+    mode = models.CharField(max_length=20, choices=MODES, default="cnc_sheets")
+    reason = models.TextField()
+    details = models.JSONField(default=dict, blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="cnc_planning_issues")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("-created_at", "-id")
+        verbose_name = "خطای برنامه‌ریزی CNC"
+        verbose_name_plural = "خطاهای برنامه‌ریزی CNC"
+
+    def __str__(self):
+        return f"خطای CNC تسک {self.task_id or '-'}: {self.reason[:60]}"

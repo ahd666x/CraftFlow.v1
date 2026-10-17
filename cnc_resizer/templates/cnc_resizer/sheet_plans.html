@@ -15,5 +15,10 @@
       <td>{{ plan.created_at }}</td><td><a class="btn btn-sm btn-success" href="{% url 'cnc_resizer:download_sheet_plan' plan.id %}">دانلود G-code</a></td>
     </tr>{% empty %}<tr><td colspan="7" class="text-center text-muted py-4">هنوز برنامه‌ای ساخته نشده است.</td></tr>{% endfor %}</tbody>
   </table></div></div>
+  <div class="card mt-4"><div class="card-header"><b>خطاهای قطعات عبور داده‌شده</b><span class="text-muted small ms-2">این قطعات در خروجی G-code نیامده‌اند و باید جداگانه بررسی شوند.</span></div>
+    <div class="table-responsive"><table class="table table-sm table-hover align-middle mb-0"><thead><tr><th>تسک</th><th>سفارش</th><th>قطعه</th><th>ابعاد</th><th>مرحله</th><th>علت</th><th>زمان</th></tr></thead><tbody>
+      {% for issue in issues %}<tr><td>#{{ issue.task_id|default:'-' }}</td><td>#{{ issue.order_id|default:'-' }}</td><td>{{ issue.part.name|default:issue.part.f3|default:'-' }}</td><td>{% if issue.part %}{{ issue.part.width }} × {{ issue.part.length }}{% else %}—{% endif %}</td><td>{{ issue.get_mode_display }}</td><td class="text-danger">{{ issue.reason }}</td><td>{{ issue.created_at }}</td></tr>{% empty %}<tr><td colspan="7" class="text-center text-muted py-3">خطای ثبت‌شده‌ای وجود ندارد.</td></tr>{% endfor %}
+    </tbody></table></div>
+  </div>
 </div>
 {% endblock %}

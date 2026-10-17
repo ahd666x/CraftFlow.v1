@@ -7,7 +7,7 @@ from django.http import Http404
 
 from product.decorators import admin_or_manager_required
 from . import core
-from .models import CncFile, CncPartProfile, CncSheetPlan
+from .models import CncFile, CncPartProfile, CncPlanningIssue, CncSheetPlan
 from product.models import Part
 from .services import _base_record_for_part
 
@@ -144,7 +144,8 @@ def part_profile(request):
 @require_GET
 def sheet_plans(request):
     plans = CncSheetPlan.objects.filter(created_by=request.user).select_related('material', 'source_stock')[:100]
-    return render(request, 'cnc_resizer/sheet_plans.html', {'plans': plans})
+    issues = CncPlanningIssue.objects.filter(created_by=request.user).select_related('task', 'order', 'part')[:100]
+    return render(request, 'cnc_resizer/sheet_plans.html', {'plans': plans, 'issues': issues})
 
 
 @login_required

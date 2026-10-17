@@ -111,6 +111,7 @@ def planner(request):
         order_ids = request.POST.getlist('order_ids')
         cnc_sheet_mode = request.POST.get('planning_mode') == 'cnc_sheets'
         cnc_sheet_plans = []
+        cnc_issues = []
         try:
             kerf = Decimal(request.POST.get('kerf', str(CuttingSettings.current().default_kerf)))
             if not kerf.is_finite() or kerf < 0 or kerf.quantize(MM) != kerf:
@@ -131,11 +132,13 @@ def planner(request):
                     suffix = f' و {len(cnc_unusual) - 5} مورد دیگر' if len(cnc_unusual) > 5 else ''
                     messages.warning(request, f'قطعات غیرمعمول نیازمند بررسی: {preview}{suffix}')
                 from cnc_resizer.sheet_nesting import create_cnc_sheet_plans
-                cnc_sheet_plans = create_cnc_sheet_plans(
+                cnc_sheet_plans, cnc_issues = create_cnc_sheet_plans(
                     order_ids, request.user, kerf=kerf,
                 )
                 if cnc_sheet_plans:
                     messages.success(request, f'{len(cnc_sheet_plans)} فایل G-code برای ورق‌های CNC ساخته شد.')
+                if cnc_issues:
+                    messages.warning(request, f'{len(cnc_issues)} قطعه به‌دلیل خطا از برنامه عبور داده شد؛ فهرست خطاها در صفحه خروجی‌های ورق CNC ثبت شده است.')
             except (ValueError, OSError) as exc:
                 messages.error(request, str(exc)); return redirect('cutting:planner')
             except Exception as exc:
@@ -160,7 +163,7 @@ def planner(request):
                     task_query = task_query.exclude(part__routing_code__iregex=r'^\s*cnc(?:\.|$)')
                 tasks = list(task_query.select_related('part__material', 'order', 'order__customer').order_by('pk'))
                 if not tasks:
-                    if cnc_sheet_plans:
+                    if cnc_sheet_plans or cnc_issues:
                         return redirect('cnc_resizer:sheet_plans')
                     raise ValueError('قطعه آماده برش برای سفارش‌های انتخاب‌شده پیدا نشد.')
                 task_ids = [task.pk for task in tasks]
