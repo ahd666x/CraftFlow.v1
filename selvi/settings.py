@@ -69,6 +69,7 @@ INSTALLED_APPS = [
     'discounts',
     'payments',
     'accounts',
+    'cutting',
     'rest_framework',
     'django.contrib.humanize',
     # ابزار تغییر طول قطعه CNC
@@ -104,6 +105,7 @@ TEMPLATES = [
                 'storefront.context_processors.site_settings',
                 'storefront.context_processors.is_home',
                 'storefront.context_processors.price_visibility',
+                'cutting.context_processors.cutting_nav',
             ],
         },
     },
