@@ -44,10 +44,19 @@ def _transform_gcode(text, dx, dy, rotate=False, source_width=0, source_height=0
 
 
 def _source_geometry(path):
+    """Bounding box of the *part* geometry, excluding machine reference moves.
+
+    A G-code file ends with a ``G53X0Y3950`` style return to the sheet origin.
+    Counting those coordinates inflated every part's Y span to 3950 mm, which
+    made the sheet placer think even a 300 mm strip was 3.95 m long.
+    """
     with open(path, 'r', encoding='utf-8-sig') as stream:
         text = stream.read()
     points = []
     for line in text.splitlines():
+        stripped = line.strip().upper()
+        if stripped in ('%', 'M2', 'M30') or stripped.startswith('O') or 'G53' in stripped:
+            continue
         xs = re.findall(r'X(' + NUM_RE + r')', line, re.I)
         ys = re.findall(r'Y(' + NUM_RE + r')', line, re.I)
         if xs or ys:
