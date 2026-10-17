@@ -139,13 +139,46 @@ def part_profile(request):
     return JsonResponse({'success': True, 'profile_id': profile.id, 'message': 'الگوی CNC برای این قطعه ثبت و تأیید شد.'})
 
 
+def _layout_preview(plan):
+    """Percent-based rectangles so the template can draw the sheet without JS."""
+    sheet_w, sheet_h = float(plan.width), float(plan.height)
+    boxes = []
+    for piece in (plan.layout or {}).get('parts', []):
+        x, y = float(piece['x']) + 5, float(piece['y']) + 5
+        w, h = float(piece['width']), float(piece['height'])
+        boxes.append({
+            'left': round(x / sheet_w * 100, 3), 'width': round(w / sheet_w * 100, 3),
+            'top': round((sheet_h - y - h) / sheet_h * 100, 3), 'height': round(h / sheet_h * 100, 3),
+            'label': piece.get('f3') or piece.get('label') or '', 'rotated': piece.get('rotated', False),
+        })
+    return boxes
+
+
 @login_required
 @cnc_operator_required
 @require_GET
 def sheet_plans(request):
-    plans = CncSheetPlan.objects.filter(created_by=request.user).select_related('material', 'source_stock')[:100]
+    plans = list(CncSheetPlan.objects.filter(created_by=request.user).select_related('material', 'source_stock')[:100])
+    for plan in plans:
+        plan.preview = _layout_preview(plan)
+        plan.orders = sorted({p.get('order_id') for p in (plan.layout or {}).get('parts', []) if p.get('order_id')})
+        plan.aspect = round(float(plan.height) / float(plan.width) * 100, 2) if plan.width else 50
     issues = CncPlanningIssue.objects.filter(created_by=request.user).select_related('task', 'order', 'part')[:100]
     return render(request, 'cnc_resizer/sheet_plans.html', {'plans': plans, 'issues': issues})
+
+
+@login_required
+@cnc_operator_required
+@require_POST
+def cancel_sheet_plan(request, plan_id):
+    """Release a planned sheet so its stock and its parts can be planned again."""
+    from django.contrib import messages
+    from django.shortcuts import get_object_or_404, redirect
+    plan = get_object_or_404(CncSheetPlan, pk=plan_id, status='planned')
+    plan.status = 'cancelled'
+    plan.save(update_fields=['status'])
+    messages.success(request, f'برنامه ورق #{plan.pk} لغو شد و ورق و قطعات آن آزاد شدند.')
+    return redirect('cnc_resizer:sheet_plans')
 
 
 @login_required

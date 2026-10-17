@@ -91,6 +91,13 @@ def _reserved_counts(stock_ids=None):
     result = Counter()
     for stock_id in qs.values_list('source_stock_id', flat=True):
         result[stock_id] += 1
+    # Sheets already assigned to a planned CNC (G-code) program are not free either.
+    from cnc_resizer.models import CncSheetPlan
+    cnc = CncSheetPlan.objects.filter(status='planned')
+    if stock_ids is not None:
+        cnc = cnc.filter(source_stock_id__in=stock_ids)
+    for stock_id in cnc.values_list('source_stock_id', flat=True):
+        result[stock_id] += 1
     return result
 
 
