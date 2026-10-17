@@ -121,6 +121,15 @@ def planner(request):
             messages.error(request, 'برای برنامه‌ریزی دست‌کم یک سفارش انتخاب کنید.'); return redirect('cutting:planner')
         if cnc_sheet_mode:
             try:
+                from cnc_resizer.anomaly_report import find_unusual_parts
+                unusual = find_unusual_parts(order_ids=order_ids)
+                cnc_unusual = [row for row in unusual if (row['routing_code'] or '').strip().lower().split('.')[0:1] == ['cnc']]
+                if cnc_unusual:
+                    preview = '، '.join(
+                        f"{row['part_name']} ({row['length']}×{row['width']})" for row in cnc_unusual[:5]
+                    )
+                    suffix = f' و {len(cnc_unusual) - 5} مورد دیگر' if len(cnc_unusual) > 5 else ''
+                    messages.warning(request, f'قطعات غیرمعمول نیازمند بررسی: {preview}{suffix}')
                 from cnc_resizer.sheet_nesting import create_cnc_sheet_plans
                 cnc_sheet_plans = create_cnc_sheet_plans(
                     order_ids, request.user, kerf=kerf,
