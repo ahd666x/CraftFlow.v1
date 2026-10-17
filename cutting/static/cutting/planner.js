@@ -29,6 +29,8 @@
       const matches = (!query || (row.dataset.search || '').toLocaleLowerCase().includes(query))
         && (!selectedStatus || row.dataset.status === selectedStatus);
       row.hidden = !matches;
+      const box = row.querySelector('.order-select');
+      row.classList.toggle('order-selected', Boolean(box?.checked));
       if (matches) visibleCount += 1;
     });
     document.getElementById('client-empty').hidden = visibleCount !== 0;
@@ -143,6 +145,7 @@
     filterRows();
   });
   boxes.forEach(box => box.addEventListener('change', () => {
+    box.closest('.order-row')?.classList.toggle('order-selected', box.checked);
     filterRows();
     updatePreview();
   }));

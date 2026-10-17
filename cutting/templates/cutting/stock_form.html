@@ -8,6 +8,7 @@
   {% include 'cutting/_messages.html' %}
   <div class="card"><div class="card-body">
     <form method="post" id="stock-form" data-edit="{% if stock %}1{% else %}0{% endif %}">{% csrf_token %}
+      <div class="alert alert-info py-2"><b>راهنمای ثبت:</b> ابعاد موجودی همیشه به‌صورت <strong>عرض × طول</strong> وارد می‌شود. جهت رگه برای یادآوری محدودیت چرخش قطعه ثبت می‌شود.</div>
       {% if stock %}<div class="alert alert-secondary">نوع این بچ ثابت است: {% if stock.is_offcut %}پرت قابل استفاده{% else %}ورق کامل{% endif %}. برای تبدیل ورق مصرف‌شده به پرت، نتیجه یک برنامه برش را ثبت کنید.</div>{% endif %}
       <div class="mb-3"><label class="form-label" for="material">متریال و ضخامت</label><select class="form-select" name="material" id="material" {% if stock %}data-initial="{{ stock.material_id }}"{% endif %} required>{% for m in materials %}<option value="{{ m.id }}" {% if selected_material_id == m.id|stringformat:'s' %}selected{% endif %}>{{ m.name }} — {{ m.thickness }} mm</option>{% endfor %}</select></div>
       {% if not stock %}

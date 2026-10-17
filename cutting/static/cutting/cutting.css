@@ -15,6 +15,9 @@
 .preview-material{border:1px solid #e2e8f0;border-radius:.55rem;padding:.75rem}
 .preview-material.good{border-inline-start:4px solid #198754}
 .preview-material.bad{border-inline-start:4px solid #dc3545}
+.order-row{transition:background-color .15s ease,box-shadow .15s ease}
+.order-row.order-selected{background:#eff6ff;box-shadow:inset -4px 0 #2563eb}
+.inventory-quick-links .btn{min-height:38px}
 .preview-verdict{border-radius:.5rem;padding:.8rem 1rem;font-weight:700}
 .preview-verdict.neutral{background:#f1f5f9;color:#334155}
 .preview-verdict.good{background:#dcfce7;color:#166534}

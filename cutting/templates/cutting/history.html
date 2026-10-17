@@ -4,6 +4,7 @@
 <div class="container-fluid py-4" dir="rtl">
   <div class="text-muted small">گردش کار برش / تاریخچه</div><h1>تاریخچه موجودی ورق</h1>{% include 'cutting/_inventory_nav.html' %}
   {% include 'cutting/_messages.html' %}
+  <div class="d-flex flex-wrap gap-2 mb-3" aria-label="فیلتر سریع رویدادها"><a class="btn btn-sm btn-outline-secondary" href="{% url 'cutting:history' %}">همه رویدادها</a><a class="btn btn-sm btn-outline-success" href="?event_type=consume">مصرف</a><a class="btn btn-sm btn-outline-warning" href="?event_type=offcut">پرت ایجادشده</a><a class="btn btn-sm btn-outline-primary" href="?event_type=receive">ورود</a><a class="btn btn-sm btn-outline-danger" href="?event_type=scrap">اسقاط</a></div>
   <form method="get" class="card card-body mb-3"><div class="row g-2 align-items-end">
     <div class="col-12 col-md-3"><label class="form-label" for="history-search">جست‌وجو</label><input id="history-search" class="form-control" name="q" value="{{ query }}" placeholder="رویداد، کاربر، برنامه یا ابعاد"></div>
     <div class="col-6 col-md-2"><label class="form-label" for="history-material">متریال</label><select class="form-select" id="history-material" name="material"><option value="">همه متریال‌ها</option>{% for m in materials %}<option value="{{ m.id }}" {% if request.GET.material == m.id|stringformat:'s' %}selected{% endif %}>{{ m.name }} — {{ m.thickness }} mm</option>{% endfor %}</select></div>
