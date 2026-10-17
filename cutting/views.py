@@ -1,6 +1,7 @@
 from collections import Counter, defaultdict
 from decimal import Decimal, InvalidOperation
 from functools import wraps
+from math import ceil
 import re
 
 from django.contrib import messages
@@ -9,11 +10,13 @@ from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Count, F, Q, Sum
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_date
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_GET, require_POST
+import jdatetime
 
 from product.models import Material, Order, ProductionTask
 from .models import (
@@ -226,13 +229,22 @@ def planner(request):
         if query.isdigit():
             search |= Q(pk=int(query))
         order_qs = order_qs.filter(search)
-    orders = order_qs.annotate(
+    orders = list(order_qs.annotate(
         cut_task_count=Count('tasks', filter=Q(tasks__pk__in=available_tasks), distinct=True),
         remaining_pieces=Sum(
             F('tasks__quantity') - F('tasks__completed_quantity'),
             filter=Q(tasks__pk__in=available_tasks),
         ),
-    ).order_by('-id')
+    ).order_by('priority', F('due_date').asc(nulls_last=True), '-id'))
+    material_names = defaultdict(list)
+    if orders:
+        material_rows = available_tasks.filter(order_id__in=[order.pk for order in orders]).values(
+            'order_id', 'part__material__name',
+        ).distinct().order_by('part__material__name')
+        for material_row in material_rows:
+            material_names[material_row['order_id']].append(material_row['part__material__name'])
+        for order in orders:
+            order.cut_material_names = material_names[order.pk]
     active_plans = CutPlan.objects.filter(status='planned').annotate(
         reserved_sheet_count=Count('planned_sheets', distinct=True),
     ).prefetch_related('orders').order_by('-created_at')[:10]
@@ -245,16 +257,180 @@ def planner(request):
 
 
 @cutting_operator
+@require_GET
+def planner_preview(request):
+    """Read-only estimate for selected orders; it never reserves stock."""
+    raw_order_ids = request.GET.getlist('order_ids')
+    if len(raw_order_ids) > 100:
+        return JsonResponse({'error': 'حداکثر ۱۰۰ سفارش را هم‌زمان انتخاب کنید.'}, status=400)
+    try:
+        order_ids = list(dict.fromkeys(int(value) for value in raw_order_ids))
+        kerf = Decimal(request.GET.get('kerf', '4'))
+        if any(value <= 0 for value in order_ids) or not kerf.is_finite() or kerf < 0 or kerf.quantize(MM) != kerf:
+            raise ValueError
+    except (TypeError, ValueError, InvalidOperation):
+        return JsonResponse({'error': 'شناسه سفارش یا ضخامت تیغه معتبر نیست.'}, status=400)
+    if not order_ids:
+        return JsonResponse({'selected_order_count': 0, 'piece_count': 0, 'materials': []})
+
+    reserved_order_ids = CutPlanTask.objects.filter(plan__status='planned').values('task__order_id')
+    tasks = list(ProductionTask.objects.filter(
+        order_id__in=order_ids, station_name='cut', status='pending', part__isnull=False,
+        quantity__gt=F('completed_quantity'),
+    ).exclude(order_id__in=reserved_order_ids).select_related(
+        'part__material', 'order', 'order__customer',
+    ).order_by('pk'))
+    total_pieces = sum(task.quantity - task.completed_quantity for task in tasks)
+    invalid_part = next((task.part for task in tasks if task.part.length <= 0 or task.part.width <= 0), None)
+    if invalid_part:
+        return JsonResponse({'error': f'ابعاد قطعه «{invalid_part.name}» باید مثبت باشند.'}, status=400)
+    if len(tasks) > 2000 or total_pieces > 10000:
+        return JsonResponse({'error': 'این انتخاب برای پیش‌نمایش خیلی بزرگ است؛ سفارش‌ها را به چند برنامه تقسیم کنید.'}, status=400)
+
+    setting = CuttingSettings.current()
+    stocks = list(SheetStock.objects.filter(
+        active=True, quantity__gt=0, material_id__in={task.part.material_id for task in tasks},
+    ).select_related('material').order_by('priority', 'is_offcut', 'width', 'height', 'pk'))
+    reserved = _reserved_counts([stock.pk for stock in stocks])
+    stock_by_material = defaultdict(list)
+    for stock in stocks:
+        if setting.strategy == 'full_only' and stock.is_offcut:
+            continue
+        for _ in range(max(0, stock.quantity - reserved[stock.pk])):
+            stock_by_material[stock.material_id].append({
+                'stock_id': stock.pk, 'width': stock.width, 'height': stock.height,
+                'is_offcut': stock.is_offcut, 'priority': stock.priority,
+                'grain': stock.grain, 'label': f'{stock.material.name} {stock.width}×{stock.height}',
+            })
+
+    grouped = defaultdict(list)
+    for task in tasks:
+        part = task.part
+        for _ in range(task.quantity - task.completed_quantity):
+            grouped[part.material_id].append({
+                'width': part.length, 'height': part.width, 'orig_width': part.length,
+                'orig_height': part.width, 'turn': part.turn, 'grain': part.grain,
+                'label': f'{part.name} / سفارش {task.order_id}', 'uid': len(grouped[part.material_id]),
+                'task_id': task.pk,
+            })
+
+    material_results = []
+    material_by_id = {item.pk: item for item in Material.objects.filter(pk__in=grouped)}
+    for material_id, parts in grouped.items():
+        material = material_by_id[material_id]
+        stock = stock_by_material[material_id]
+        required_area = sum((Decimal(str(p['width'])) * Decimal(str(p['height'])) for p in parts), Decimal('0'))
+        available_area = sum((Decimal(str(s['width'])) * Decimal(str(s['height'])) for s in stock), Decimal('0'))
+        size = SheetSizeSpec.objects.filter(material_id=material_id, active=True, is_default=True).first()
+        if not size:
+            size = SheetSizeSpec.objects.filter(material_id=material_id, active=True).order_by('pk').first()
+        reference_area = Decimal(str(size.width)) * Decimal(str(size.height)) if size else max(
+            (Decimal(str(s['width'])) * Decimal(str(s['height'])) for s in stock), default=Decimal('0'),
+        )
+        rough_estimate = ceil(required_area / reference_area) if reference_area else None
+        fits, exact_estimate = False, None
+        try:
+            exact_estimate = len(optimize(parts, stock, kerf, policy=setting.strategy))
+            fits = True
+        except ValueError:
+            pass
+        estimate = exact_estimate if fits else rough_estimate
+        additional = 0 if fits else (estimate - len(stock) if estimate is not None and estimate > len(stock) else None)
+        material_results.append({
+            'material_id': material_id, 'name': material.name, 'thickness': format(material.thickness, 'f'),
+            'piece_count': len(parts), 'required_area_m2': format(required_area / Decimal('1000000'), '.3f'),
+            'available_sheets': len(stock), 'available_area_m2': format(available_area / Decimal('1000000'), '.3f'),
+            'available_full_sheets': sum(not sheet['is_offcut'] for sheet in stock),
+            'available_offcut_sheets': sum(bool(sheet['is_offcut']) for sheet in stock),
+            'estimated_sheets': estimate, 'estimate_is_exact': fits, 'estimated_additional_sheets': additional,
+            'fits': fits,
+        })
+    return JsonResponse({
+        'selected_order_count': len({task.order_id for task in tasks}),
+        'piece_count': total_pieces, 'strategy': setting.get_strategy_display(), 'materials': material_results,
+    })
+
+
+@cutting_operator
+def plan_list(request):
+    plans = CutPlan.objects.prefetch_related('orders').annotate(sheet_count=Count('planned_sheets', distinct=True))
+    status_filter = request.GET.get('status', '')
+    if status_filter in dict(CutPlan.STATUS):
+        plans = plans.filter(status=status_filter)
+    query = request.GET.get('q', '').strip()
+    if query:
+        search = Q(orders__customer__name__icontains=query) | Q(orders__number__icontains=query)
+        if query.isdigit():
+            search |= Q(pk=int(query)) | Q(orders__pk=int(query))
+        plans = plans.filter(search).distinct()
+    page = Paginator(plans.order_by('-created_at', '-pk'), 40).get_page(request.GET.get('page'))
+    for plan in page.object_list:
+        rows = plan.plan_data.get('rows', [])
+        plan.part_count = sum(len(row.get('shapes', [])) for row in rows)
+        plan.material_names = ', '.join(row.get('type', '') for row in rows)
+    params = request.GET.copy()
+    params.pop('page', None)
+    return render(request, 'cutting/plan_list.html', {
+        'page': page, 'status_filter': status_filter, 'statuses': CutPlan.STATUS,
+        'query': query, 'pagination_query': params.urlencode(),
+    })
+
+
+@cutting_operator
 def plan_detail(request, plan_id):
-    plan = get_object_or_404(CutPlan.objects.prefetch_related('orders', 'planned_sheets__material', 'planned_sheets__source_stock'), pk=plan_id)
+    plan = get_object_or_404(CutPlan.objects.prefetch_related(
+        'orders', 'planned_sheets__material', 'planned_sheets__source_stock', 'planned_sheets__task_counts',
+    ), pk=plan_id)
     summaries = []
     planned_by_id = {s.pk: s for s in plan.planned_sheets.all()}
+    palette = ['#2563eb', '#dc2626', '#059669', '#7c3aed', '#d97706', '#0891b2', '#be185d', '#4d7c0f', '#9333ea', '#0f766e']
+    colors_by_task = {}
+    color_legend = []
+    total_sheet_area = Decimal('0')
+    total_piece_area = Decimal('0')
     for row in plan.plan_data.get('rows', []):
+        row_piece_area = Decimal('0')
         for layout in row['sheets']:
             layout['sheet_record'] = planned_by_id.get(layout['sheet'].get('plan_sheet_id'))
-        summaries.append({'material': row['type'], 'thickness': row['thickness'], 'sheet_count': len(row['sheets']), 'part_count': len(row['shapes']), 'sheets': row['sheets']})
+            sheet_area = Decimal(str(layout['sheet']['width'])) * Decimal(str(layout['sheet']['height']))
+            piece_area = sum((Decimal(str(part['width'])) * Decimal(str(part['height'])) for part in layout['parts']), Decimal('0'))
+            layout['sheet_area_mm2'] = sheet_area
+            layout['piece_area_mm2'] = piece_area
+            layout['utilization_percent'] = (piece_area / sheet_area * 100) if sheet_area else Decimal('0')
+            record = layout['sheet_record']
+            layout['planned_piece_count'] = sum(snapshot.quantity for snapshot in record.task_counts.all()) if record else len(layout['parts'])
+            for part in layout['parts']:
+                task_id = part.get('task_id')
+                part['show_dimensions'] = (
+                    Decimal(str(part['width'])) >= Decimal('250')
+                    and Decimal(str(part['height'])) >= Decimal('150')
+                )
+                if task_id not in colors_by_task:
+                    color = palette[len(colors_by_task) % len(palette)]
+                    colors_by_task[task_id] = color
+                    color_legend.append({'color': color, 'label': part.get('label', f'تسک {task_id}')})
+                part['color'] = colors_by_task[task_id]
+            row_piece_area += piece_area
+            total_sheet_area += sheet_area
+            total_piece_area += piece_area
+        summaries.append({
+            'material': row['type'], 'thickness': row['thickness'],
+            'sheet_count': len(row['sheets']), 'part_count': len(row['shapes']),
+            'piece_area_mm2': row_piece_area, 'sheets': row['sheets'],
+        })
+    plan_metrics = {
+        'sheet_count': sum(summary['sheet_count'] for summary in summaries),
+        'piece_count': sum(summary['part_count'] for summary in summaries),
+        'sheet_area_m2': total_sheet_area / Decimal('1000000'),
+        'piece_area_m2': total_piece_area / Decimal('1000000'),
+        'waste_area_m2': max(Decimal('0'), total_sheet_area - total_piece_area) / Decimal('1000000'),
+        'utilization_percent': (total_piece_area / total_sheet_area * 100) if total_sheet_area else Decimal('0'),
+    }
     unfinished_tasks = [row for row in plan.planned_tasks.select_related('task', 'task__part') if row.task.status != 'done']
-    return render(request, 'cutting/plan_detail.html', {'plan': plan, 'summaries': summaries, 'unfinished_tasks': unfinished_tasks})
+    return render(request, 'cutting/plan_detail.html', {
+        'plan': plan, 'summaries': summaries, 'unfinished_tasks': unfinished_tasks,
+        'plan_metrics': plan_metrics, 'color_legend': color_legend,
+    })
 
 
 @cutting_operator
@@ -475,6 +651,11 @@ def inventory(request, kind=None):
     available_count = total_count - reserved_count
     rows = _inventory_queryset(request, kind)
     page = Paginator(rows, 40).get_page(request.GET.get('page'))
+    for stock in page.object_list:
+        stock.reserve_percent = min(100, round(100 * stock.reserved_quantity / stock.quantity)) if stock.quantity else 0
+        longest = max(float(stock.width), float(stock.height), 1)
+        stock.visual_width_px = max(12, round(58 * float(stock.width) / longest))
+        stock.visual_height_px = max(10, round(32 * float(stock.height) / longest))
     pagination_params = request.GET.copy()
     pagination_params.pop('page', None)
     pagination_query = pagination_params.urlencode()
@@ -539,10 +720,17 @@ def stock_create(request):
                 )
                 _event(stock=stock, event_type='receive', user=request.user, quantity_delta=quantity, note=stock.note or 'ثبت گروهی موجودی')
             messages.success(request, f'{quantity} ورق {"پرت" if is_offcut else "کامل"} با ابعاد {width}×{height} ثبت شد.')
+            if is_offcut and request.POST.get('quick_repeat') == '1':
+                return redirect(f"{reverse('cutting:stock_create')}?material={material.pk}&stock_type=offcut&quick_repeat=1")
             return redirect('cutting:offcuts' if is_offcut else 'cutting:full_sheets')
         except (ValueError, InvalidOperation) as exc:
             messages.error(request, str(exc))
-    return render(request, 'cutting/stock_form.html', {'materials': materials, 'sizes': sizes, 'stock': None})
+    return render(request, 'cutting/stock_form.html', {
+        'materials': materials, 'sizes': sizes, 'stock': None,
+        'selected_material_id': request.GET.get('material', ''),
+        'stock_type': request.GET.get('stock_type', 'full'),
+        'quick_repeat': request.GET.get('quick_repeat') == '1',
+    })
 
 
 @inventory_operator
@@ -699,15 +887,15 @@ def stock_history(request):
     if event_type in dict(SheetStockEvent.TYPES):
         events = events.filter(event_type=event_type)
     date_from_raw, date_to_raw = request.GET.get('date_from', ''), request.GET.get('date_to', '')
-    date_from, date_to = parse_date(date_from_raw), parse_date(date_to_raw)
+    date_from, date_to = _parse_history_date(date_from_raw), _parse_history_date(date_to_raw)
     if date_from_raw and date_from:
         events = events.filter(created_at__date__gte=date_from)
     elif date_from_raw:
-        messages.error(request, 'تاریخ شروع معتبر نیست؛ از انتخاب‌گر تاریخ استفاده کنید.')
+        messages.error(request, 'تاریخ شروع معتبر نیست؛ تاریخ شمسی ۱۴۰۵/۰۷/۲۵ یا میلادی YYYY-MM-DD وارد کنید.')
     if date_to_raw and date_to:
         events = events.filter(created_at__date__lte=date_to)
     elif date_to_raw:
-        messages.error(request, 'تاریخ پایان معتبر نیست؛ از انتخاب‌گر تاریخ استفاده کنید.')
+        messages.error(request, 'تاریخ پایان معتبر نیست؛ تاریخ شمسی ۱۴۰۵/۰۷/۲۵ یا میلادی YYYY-MM-DD وارد کنید.')
     if date_from and date_to and date_from > date_to:
         messages.error(request, 'تاریخ شروع نمی‌تواند بعد از تاریخ پایان باشد.')
         events = events.none()
@@ -718,6 +906,9 @@ def stock_history(request):
             search |= Q(plan_id=int(query)) | Q(width=Decimal(query)) | Q(height=Decimal(query))
         events = events.filter(search)
     page = Paginator(events, 60).get_page(request.GET.get('page'))
+    for event in page.object_list:
+        local_datetime = timezone.localtime(event.created_at)
+        event.created_at_jalali = jdatetime.datetime.fromgregorian(datetime=local_datetime).strftime('%Y/%m/%d %H:%M')
     params = request.GET.copy()
     params.pop('page', None)
     return render(request, 'cutting/history.html', {
@@ -725,3 +916,19 @@ def stock_history(request):
         'event_types': SheetStockEvent.TYPES, 'event_type_filter': event_type,
         'query': query, 'pagination_query': params.urlencode(),
     })
+
+
+def _parse_history_date(value):
+    value = (value or '').strip().translate(str.maketrans('۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩', '01234567890123456789'))
+    if not value:
+        return None
+    match = re.fullmatch(r'(\d{4})[-/](\d{1,2})[-/](\d{1,2})', value)
+    if not match:
+        return None
+    year, month, day = map(int, match.groups())
+    try:
+        if year < 1700:
+            return jdatetime.date(year, month, day).togregorian()
+        return parse_date(f'{year:04d}-{month:02d}-{day:02d}')
+    except (ValueError, TypeError):
+        return None

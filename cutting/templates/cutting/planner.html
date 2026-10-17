@@ -1,46 +1,67 @@
 {% extends 'base.html' %}
 {% block title %}صف و برنامه‌ریزی برش MDF{% endblock %}
 {% block content %}
-<div class="container-fluid py-4" dir="rtl">
+<div class="container-fluid py-4 planner-page" dir="rtl">
+  {% include 'cutting/_inventory_nav.html' %}
   <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-    <div><div class="text-muted small">گردش کار برش / مرحله ۲</div><h1 class="mb-1">صف آماده برش</h1><p class="text-muted mb-0">سفارش‌های آزاد را جست‌وجو و با چک‌باکس انتخاب کنید؛ رزرو در زمان ساخت برنامه انجام می‌شود و موجودی با تأیید نتیجه تغییر می‌کند.</p></div>
-    <a class="btn btn-outline-primary" href="{% url 'cutting:inventory' %}">مرحله ۱: انبار ورق</a>
+    <div><div class="text-muted small">گردش کار برش · مرحله ۲ از ۵</div><h1 class="mb-1">صف آماده برش</h1><p class="text-muted mb-0">انتخاب چند سفارش، مشاهده‌ی نیاز مواد و سپس محاسبه و رزرو بدون کسر موجودی.</p></div>
+    <div class="d-flex flex-wrap gap-2 align-items-center"><span class="badge text-bg-light border">سیاست مصرف: {{ setting.get_strategy_display }}</span><a class="btn btn-outline-secondary" href="{% url 'cutting:inventory' %}">بررسی موجودی ورق</a></div>
   </div>
-  {% if messages %}{% for message in messages %}<div class="alert alert-info">{{ message }}</div>{% endfor %}{% endif %}
-  <div class="alert alert-secondary">سیاست مصرف فعال: <b>{{ setting.get_strategy_display }}</b>. سفارش‌هایی که یکی از تسک‌های برش‌شان در برنامه‌ی دیگری رزرو است، برای جلوگیری از تداخل در صف انتخاب ظاهر نمی‌شوند.</div>
+  {% include 'cutting/_messages.html' %}
+  <details class="mb-3"><summary class="small text-muted">راهنمای خروجی و سیاست مصرف</summary><div class="alert alert-secondary mt-2 mb-0">سفارش‌های دارای تسک رزروشده در برنامه‌ای دیگر از صف انتخاب پنهان می‌شوند. فایل `.CUT` بر پایه‌ی نمونه‌ی پروژه تولید می‌شود، اما پذیرش آن روی کنترلر دستگاه شما در این سامانه تأیید نشده است؛ پیش از برش تولیدی، در حالت آزمایشی بررسی شود.</div></details>
 
-  <form method="get" class="card card-body mb-3">
+  <form method="get" id="order-filters" class="card card-body mb-3">
     <div class="row g-2 align-items-end">
-      <div class="col-12 col-md-6"><label class="form-label" for="order-search">جست‌وجوی شماره سفارش یا مشتری</label><input id="order-search" class="form-control" name="q" value="{{ query }}" placeholder="مثلاً 142 یا نام مشتری"></div>
+      <div class="col-12 col-md-6"><label class="form-label" for="order-search">جست‌وجوی شماره سفارش یا مشتری</label><input id="order-search" class="form-control" name="q" value="{{ query }}" placeholder="مثلاً 142 یا نام مشتری" autocomplete="off"></div>
       <div class="col-8 col-md-3"><label class="form-label" for="order-status">وضعیت سفارش</label><select id="order-status" class="form-select" name="status"><option value="">همه وضعیت‌ها</option>{% for value,label in order_statuses %}<option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
       <div class="col-4 col-md-3 d-flex gap-2"><button class="btn btn-primary flex-fill">جست‌وجو</button><a class="btn btn-outline-secondary" href="{% url 'cutting:planner' %}">پاک‌کردن</a></div>
     </div>
   </form>
 
-  <form method="post" class="card mb-4">
+  <form method="post" id="planning-form" class="mb-5" data-preview-url="{% url 'cutting:planner_preview' %}">
     {% csrf_token %}<input type="hidden" name="action" value="plan">
-    <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2"><div><b>انتخاب سفارش‌ها</b> <span class="text-muted small">({{ orders|length }} سفارش قابل انتخاب)</span></div><label class="form-check mb-0"><input class="form-check-input" type="checkbox" id="select-all-orders"><span class="form-check-label">انتخاب همه‌ی نمایش‌داده‌شده‌ها</span></label></div>
-    <div class="table-responsive">
-      <table class="table table-hover align-middle mb-0"><thead><tr><th></th><th>سفارش / مشتری</th><th>وضعیت</th><th>تسک برش آزاد</th><th>قطعه باقی‌مانده</th></tr></thead><tbody>
-        {% for o in orders %}<tr>
-          <td><input class="form-check-input order-select" type="checkbox" name="order_ids" value="{{ o.pk }}" aria-label="انتخاب سفارش {{ o.pk }}"></td>
-          <td><b>#{{ o.pk }}</b>{% if o.number %} · {{ o.number }}{% endif %}<div class="small text-muted">{{ o.customer.name }}</div></td>
-          <td><span class="badge bg-light text-dark border">{{ o.get_status_display }}</span></td>
-          <td>{{ o.cut_task_count }}</td><td class="fw-bold">{{ o.remaining_pieces|default:0 }}</td>
-        </tr>{% empty %}<tr><td colspan="5" class="text-center text-muted py-4">سفارش آزادی با تسک برش باقی‌مانده پیدا نشد. فیلترها را تغییر دهید یا ابتدا رزرو برنامه‌های موجود را بررسی کنید.</td></tr>{% endfor %}
-      </tbody></table>
+    <div class="row g-3 align-items-start">
+      <div class="col-12 col-xl-8">
+        <div class="card"><div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2"><div><b>انتخاب سفارش‌ها</b> <span class="text-muted small">({{ orders|length }} قابل انتخاب)</span></div><label class="form-check mb-0"><input class="form-check-input" type="checkbox" id="select-all-orders"><span class="form-check-label">انتخاب موارد نمایان</span></label></div>
+          <div class="table-responsive"><table class="table table-hover align-middle mb-0"><thead><tr><th></th><th>سفارش / مشتری</th><th>وضعیت</th><th class="d-none d-lg-table-cell">موعد</th><th class="d-none d-md-table-cell">اولویت</th><th>مواد درگیر</th><th>قطعه باقی‌مانده</th></tr></thead><tbody id="order-rows">
+            {% for o in orders %}<tr class="order-row" data-search="{{ o.pk }} {{ o.number }} {{ o.customer.name }}" data-status="{{ o.status }}">
+              <td><input class="form-check-input order-select" type="checkbox" name="order_ids" value="{{ o.pk }}" aria-label="انتخاب سفارش {{ o.pk }}"></td>
+              <td><b>#{{ o.pk }}</b>{% if o.number %} · {{ o.number }}{% endif %}<div class="small text-muted">{{ o.customer.name }}</div></td>
+              <td><span class="badge bg-light text-dark border">{{ o.get_status_display }}</span></td>
+              <td class="d-none d-lg-table-cell text-nowrap">{{ o.due_date|default:'—' }}</td>
+              <td class="d-none d-md-table-cell"><span class="badge {% if o.priority == 1 %}bg-danger{% elif o.priority == 2 %}bg-warning text-dark{% else %}bg-light text-dark border{% endif %}">{{ o.get_priority_display }}</span></td>
+              <td>{% for material in o.cut_material_names %}<span class="badge bg-light text-dark border">{{ material }}</span>{% empty %}—{% endfor %}</td>
+              <td class="fw-bold">{{ o.remaining_pieces|default:0 }}</td>
+            </tr>{% empty %}<tr><td colspan="7" class="text-center text-muted py-4">سفارش آزادی با تسک برش باقی‌مانده پیدا نشد. ممکن است سفارش‌ها در برنامه‌های فعال رزرو باشند؛ <a href="{% url 'cutting:plans' %}">بررسی همه برنامه‌ها</a> یا <a href="{% url 'cutting:inventory' %}">رفتن به انبار</a>.</td></tr>{% endfor %}
+            <tr id="client-empty" hidden><td colspan="7" class="text-center text-muted py-4">سفارشی با این فیلتر پیدا نشد.</td></tr>
+          </tbody></table></div>
+        </div>
+      </div>
+      <aside class="col-12 col-xl-4"><div class="card material-preview-card"><div class="card-header d-flex justify-content-between align-items-center"><b>پیش‌نمایش نیاز مواد</b><span id="preview-state" class="small text-muted" aria-live="polite">برای محاسبه سفارش انتخاب کنید</span></div><div class="card-body"><div class="row text-center g-2 mb-3"><div class="col-6"><div class="preview-kpi"><div class="small text-muted">سفارش انتخابی</div><b id="selected-count">۰</b></div></div><div class="col-6"><div class="preview-kpi"><div class="small text-muted">قطعه</div><b id="selected-pieces">۰</b></div></div></div><div id="preview-error" class="alert alert-danger py-2" hidden></div><div id="preview-empty" class="small text-muted">با انتخاب سفارش، متریال‌ها، مساحت، تخمین ورق و موجودی آزاد نمایش داده می‌شود. پیش‌نمایش رزرو یا کسر موجودی انجام نمی‌دهد.</div><div id="preview-materials" class="d-grid gap-2"></div><div id="preview-strategy" class="small text-muted mt-2"></div></div></div></aside>
     </div>
-    <div class="card-body border-top"><div class="row g-3 align-items-end">
-      <div class="col-12 col-md-4"><label class="form-label" for="kerf">ضخامت تیغه / فاصله برش (mm)</label><input id="kerf" class="form-control" name="kerf" type="number" min="0" step="0.1" value="4" required></div>
-      <div class="col-12 col-md-8 d-flex flex-wrap gap-2 justify-content-md-end"><button class="btn btn-success">محاسبه و رزرو موجودی</button></div>
-    </div></div>
   </form>
 
-  {% if active_plans %}<section class="card mb-4"><div class="card-header"><b>برنامه‌های در انتظار برش</b> <span class="text-muted small">رزروهای فعال در موجودی آزاد منظور می‌شوند.</span></div><div class="table-responsive"><table class="table table-sm mb-0"><thead><tr><th>برنامه</th><th>سفارش‌ها</th><th>ورق رزروشده</th><th>ساخته‌شده</th><th></th></tr></thead><tbody>{% for p in active_plans %}<tr><td>#{{ p.pk }}</td><td>{% for order in p.orders.all %}#{{ order.pk }}{% if not forloop.last %}، {% endif %}{% endfor %}</td><td>{{ p.reserved_sheet_count }}</td><td>{{ p.created_at|date:'Y-m-d H:i' }}</td><td><a class="btn btn-sm btn-outline-primary" href="{% url 'cutting:plan_detail' p.pk %}">بازبینی برنامه</a></td></tr>{% endfor %}</tbody></table></div></section>{% endif %}
-
-  <div class="alert alert-warning"><b>اعتبارسنجی دستگاه:</b> فایل `.CUT` فعلی با نمونه‌ی XML موجود در پروژه هم‌تراز شده، اما اجرای آن روی کنترلر دستگاه صنعتی شما در این سامانه تأیید نشده است. قبل از برش تولیدی، فایل را در حالت آزمایشی/بدون برش روی همان دستگاه بررسی کنید. چیدمان فعلی ردیفی است و اپراتور باید نقشه و محدودیت‌های دستگاه را تأیید کند.</div>
+  <div class="card mt-4"><div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2"><b>برنامه‌های در انتظار برش</b><a class="btn btn-sm btn-outline-primary" href="{% url 'cutting:plans' %}">دیدن همه برنامه‌ها</a></div>{% if active_plans %}<div class="table-responsive"><table class="table table-sm align-middle mb-0"><thead><tr><th>برنامه</th><th>سفارش‌ها</th><th>ورق رزروشده</th><th class="d-none d-md-table-cell">ساخته‌شده</th><th></th></tr></thead><tbody>{% for p in active_plans %}<tr><td>#{{ p.pk }}</td><td>{% for order in p.orders.all %}<span class="badge bg-light text-dark border">#{{ order.pk }}</span>{% endfor %}</td><td>{{ p.reserved_sheet_count }}</td><td class="d-none d-md-table-cell">{{ p.created_at|date:'Y-m-d H:i' }}</td><td><a class="btn btn-sm btn-outline-primary" href="{% url 'cutting:plan_detail' p.pk %}">بازبینی</a></td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="card-body text-muted">برنامه‌ی در انتظار برش وجود ندارد.</div>{% endif %}</div>
 </div>
+
+<div class="cutting-sticky-bar"><div class="container-fluid d-flex flex-wrap justify-content-between align-items-center gap-2 py-2"><div><b id="sticky-selection-count">۰ سفارش انتخاب شده</b><div class="small text-muted">پیش‌نمایش زنده؛ موجودی فقط پس از تأیید نتیجه‌ی واقعی کسر می‌شود.</div></div><div class="d-flex align-items-center gap-2"><label for="kerf" class="small mb-0">تیغه mm</label><input id="kerf" form="planning-form" class="form-control form-control-sm" style="width:90px" name="kerf" type="number" min="0" step="0.1" value="4" required><button id="plan-submit" form="planning-form" class="btn btn-success"><span class="submit-label">محاسبه و رزرو</span><span class="spinner-border spinner-border-sm ms-2" role="status" aria-hidden="true" hidden></span></button></div></div></div>
+
+<style>
+.planner-page{padding-bottom:7rem}.cutting-sticky-bar{position:fixed;inset-inline:0;bottom:0;z-index:1030;background:rgba(255,255,255,.97);border-top:1px solid #d8dee8;box-shadow:0 -5px 20px rgba(16,24,40,.10)}.material-preview-card{position:sticky;top:1rem}.preview-kpi{border:1px solid #e1e7ef;border-radius:.5rem;padding:.55rem}.preview-kpi b{font-size:1.3rem}.preview-material{border:1px solid #e2e8f0;border-radius:.55rem;padding:.75rem}.preview-material.good{border-inline-start:4px solid #198754}.preview-material.bad{border-inline-start:4px solid #dc3545}@media(max-width:1199px){.material-preview-card{position:static}}
+</style>
 <script>
-(()=>{const all=document.getElementById('select-all-orders');if(!all)return;const boxes=[...document.querySelectorAll('.order-select')];all.addEventListener('change',()=>boxes.forEach(box=>box.checked=all.checked));boxes.forEach(box=>box.addEventListener('change',()=>{all.checked=boxes.length>0&&boxes.every(item=>item.checked);all.indeterminate=boxes.some(item=>item.checked)&&!all.checked;}));})();
+(()=>{
+ const form=document.getElementById('planning-form'), rows=[...document.querySelectorAll('.order-row')], boxes=[...document.querySelectorAll('.order-select')], all=document.getElementById('select-all-orders'), search=document.getElementById('order-search'), status=document.getElementById('order-status'), kerf=document.getElementById('kerf');
+ const fmt=value=>Number(value||0).toLocaleString('fa-IR'),esc=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));let timer=null,controller=null;
+ function visibleBoxes(){return boxes.filter(box=>!box.closest('tr').hidden)}
+ function filterRows(){const q=(search.value||'').trim().toLocaleLowerCase(),st=status.value;let count=0;rows.forEach(row=>{const show=(!q||(row.dataset.search||'').toLocaleLowerCase().includes(q))&&(!st||row.dataset.status===st);row.hidden=!show;if(show)count++;});document.getElementById('client-empty').hidden=count!==0;all.checked=visibleBoxes().length>0&&visibleBoxes().every(box=>box.checked);all.indeterminate=visibleBoxes().some(box=>box.checked)&&!all.checked;}
+ function selected(){return boxes.filter(box=>box.checked).map(box=>box.value)}
+ function setCounts(data){document.getElementById('selected-count').textContent=fmt(data.selected_order_count);document.getElementById('sticky-selection-count').textContent=`${fmt(data.selected_order_count)} سفارش انتخاب شده`;document.getElementById('selected-pieces').textContent=fmt(data.piece_count);}
+ function paint(data){setCounts(data);const holder=document.getElementById('preview-materials'),empty=document.getElementById('preview-empty'),error=document.getElementById('preview-error');holder.replaceChildren();error.hidden=true;empty.hidden=!!data.materials.length;document.getElementById('preview-strategy').textContent=data.strategy?`سیاست مصرف: ${data.strategy} · تخمین چیدمان ردیفی` :'';
+  for(const item of data.materials){const card=document.createElement('div');card.className=`preview-material ${item.fits?'good':'bad'}`;const badge=item.fits?'<span class="badge text-bg-success">چیدمان شدنی</span>':'<span class="badge text-bg-danger">کمبود/عدم تطبیق</span>';const estimate=item.estimated_sheets===null?'نامشخص':fmt(item.estimated_sheets);const basis=item.estimate_is_exact?'بر پایه چیدمان الگوریتم':'تخمین سطحی، بدون لحاظ پرت و چیدمان';const extra=item.estimated_additional_sheets===null?'—':fmt(item.estimated_additional_sheets);card.innerHTML=`<div class="d-flex justify-content-between gap-2"><b>${esc(item.name)} · ${esc(item.thickness)} mm</b>${badge}</div><div class="small mt-2">${fmt(item.piece_count)} قطعه · ${fmt(item.required_area_m2)} m²</div><div class="small">ورق تخمینی: <b>${estimate}</b> <span class="text-muted">(${basis})</span></div><div class="small">آزاد: ${fmt(item.available_sheets)} (کامل ${fmt(item.available_full_sheets)} · پرت ${fmt(item.available_offcut_sheets)}) · مساحت آزاد ${fmt(item.available_area_m2)} m²</div><div class="small">کسری تخمینی: ${extra} ورق</div>`;holder.appendChild(card);}
+ }
+ function updatePreview(){clearTimeout(timer);timer=setTimeout(async()=>{const ids=selected();document.getElementById('preview-error').hidden=true;if(!ids.length){paint({selected_order_count:0,piece_count:0,materials:[]});document.getElementById('preview-state').textContent='برای محاسبه سفارش انتخاب کنید';return;}if(controller)controller.abort();controller=new AbortController();document.getElementById('preview-state').textContent='در حال محاسبه…';const params=new URLSearchParams();ids.forEach(id=>params.append('order_ids',id));params.set('kerf',kerf.value||'4');try{const response=await fetch(`${form.dataset.previewUrl}?${params}`,{headers:{'X-Requested-With':'XMLHttpRequest'},signal:controller.signal});const data=await response.json();if(!response.ok)throw new Error(data.error||'پیش‌نمایش در دسترس نیست.');paint(data);document.getElementById('preview-state').textContent='به‌روز شد';}catch(error){if(error.name==='AbortError')return;document.getElementById('preview-error').textContent=error.message;document.getElementById('preview-error').hidden=false;document.getElementById('preview-state').textContent='خطا';}},250);}
+ all.addEventListener('change',()=>{visibleBoxes().forEach(box=>box.checked=all.checked);filterRows();updatePreview()});search.addEventListener('input',filterRows);status.addEventListener('change',filterRows);boxes.forEach(box=>box.addEventListener('change',()=>{filterRows();updatePreview()}));kerf.addEventListener('input',updatePreview);document.getElementById('planning-form').addEventListener('submit',()=>{const button=document.getElementById('plan-submit');button.disabled=true;button.querySelector('.spinner-border').hidden=false;button.querySelector('.submit-label').textContent='در حال محاسبه…';});filterRows();updatePreview();
+})();
 </script>
 {% endblock %}

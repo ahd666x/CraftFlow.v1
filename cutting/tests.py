@@ -5,6 +5,7 @@ from django.db.migrations.executor import MigrationExecutor
 from django.test import SimpleTestCase, TestCase, TransactionTestCase
 from django.urls import reverse
 from django.utils import timezone
+import jdatetime
 from product.models import Customer, Material, Order, Part, ProductionTask
 from .models import CuttingSettings, CutPlan, CutPlanSheet, SheetSizeSpec, SheetStock, SheetStockEvent
 from .optimizer import make_autocut, optimize
@@ -107,6 +108,19 @@ class InventoryAndCutFlowTests(TestCase):
         self.assertTrue(offcut.is_offcut)
         self.assertEqual(offcut.quantity, 2)
         self.assertEqual(SheetSizeSpec.objects.filter(material=self.material).count(), 2)
+
+    def test_quick_offcut_capture_returns_to_same_material_form(self):
+        response = self.client.post(reverse('cutting:stock_create'), {
+            'material': self.material.pk, 'stock_type': 'offcut', 'width': '510.5',
+            'height': '420', 'quantity': '1', 'quick_repeat': '1',
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(f'material={self.material.pk}', response.url)
+        self.assertIn('stock_type=offcut', response.url)
+        self.assertTrue(SheetStock.objects.filter(material=self.material, is_offcut=True, width=Decimal('510.5')).exists())
+        form = self.client.get(response.url)
+        self.assertEqual(form.status_code, 200)
+        self.assertContains(form, 'ثبت سریع چند پرت پشت‌سرهم')
 
     def test_plan_reserves_but_does_not_consume_stock_and_full_stays_full(self):
         full = self.add_stock()
@@ -283,10 +297,26 @@ class InventoryAndCutFlowTests(TestCase):
     def test_planner_checkbox_queue_shows_available_task_and_remaining_piece_count(self):
         response = self.client.get(reverse('cutting:planner'), {'q':str(self.order.pk), 'status':'planned'})
         self.assertEqual(response.status_code, 200)
-        order = response.context['orders'].get()
+        order = response.context['orders'][0]
         self.assertEqual((order.cut_task_count, order.remaining_pieces), (1, 1))
         self.assertContains(response, 'name="order_ids"')
-        self.assertContains(response, 'انتخاب همه‌ی نمایش‌داده‌شده‌ها')
+        self.assertContains(response, 'انتخاب موارد نمایان')
+        self.assertContains(response, 'پیش‌نمایش نیاز مواد')
+
+    def test_live_material_preview_uses_optimizer_without_reserving_or_consuming_stock(self):
+        stock = self.add_stock(quantity=2)
+        response = self.client.get(reverse('cutting:planner_preview'), {'order_ids':[self.order.pk], 'kerf':'4'})
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['piece_count'], 1)
+        self.assertEqual(len(data['materials']), 1)
+        material = data['materials'][0]
+        self.assertTrue(material['fits'])
+        self.assertTrue(material['estimate_is_exact'])
+        self.assertEqual((material['available_sheets'], material['available_full_sheets'], material['available_offcut_sheets']), (2, 2, 0))
+        stock.refresh_from_db()
+        self.assertEqual(stock.quantity, 2)
+        self.assertEqual(CutPlan.objects.count(), 0)
 
     def test_history_filters_by_event_type_text_and_date_range(self):
         event = SheetStockEvent.objects.create(
@@ -302,6 +332,20 @@ class InventoryAndCutFlowTests(TestCase):
         self.assertEqual(list(response.context['page'].object_list), [event])
         for param in ('event_type=receive', 'q=', 'material=', 'date_from=', 'date_to='):
             self.assertIn(param, response.context['pagination_query'])
+
+    def test_history_accepts_jalali_dates_and_displays_jalali_timestamp(self):
+        event = SheetStockEvent.objects.create(
+            material=self.material, event_type='receive', quantity_delta=1,
+            width=Decimal('1830.0'), height=Decimal('3660.0'), is_offcut=False,
+            created_by=self.user,
+        )
+        local_event_date = timezone.localtime(event.created_at).date()
+        jalali_today = jdatetime.date.fromgregorian(date=local_event_date).strftime('%Y/%m/%d')
+        response = self.client.get(reverse('cutting:history'), {'date_from': jalali_today, 'date_to': jalali_today})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(list(response.context['page'].object_list), [event])
+        self.assertContains(response, 'زمان شمسی')
+        self.assertContains(response, jdatetime.datetime.fromgregorian(datetime=timezone.localtime(event.created_at)).strftime('%Y/%m/%d'))
 
     def test_stock_management_is_forbidden_to_regular_authenticated_user(self):
         normal = User.objects.create_user(username='no-stock-access', password='test')
@@ -324,9 +368,11 @@ class InventoryAndCutFlowTests(TestCase):
 
     def test_inventory_and_configuration_screens_render(self):
         self.add_stock()
-        for route in ('cutting:planner', 'cutting:inventory', 'cutting:full_sheets', 'cutting:offcuts', 'cutting:stock_create', 'cutting:size_specs', 'cutting:policy', 'cutting:history'):
+        for route in ('cutting:planner', 'cutting:plans', 'cutting:inventory', 'cutting:full_sheets', 'cutting:offcuts', 'cutting:stock_create', 'cutting:size_specs', 'cutting:policy', 'cutting:history'):
             with self.subTest(route=route):
-                self.assertEqual(self.client.get(reverse(route)).status_code, 200)
+                response = self.client.get(reverse(route))
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, 'class="cutting-stepper')
 
     def test_plan_detail_renders_and_downloads_the_cut_file(self):
         self.add_stock()
@@ -334,8 +380,10 @@ class InventoryAndCutFlowTests(TestCase):
         response = self.client.get(reverse('cutting:plan_detail', args=[plan.pk]))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'class="cut-map"')
-        self.assertContains(response, 'پذیرش آن توسط کنترلر دستگاه صنعتی شما تأیید نشده است')
-        self.assertContains(response, 'ثبت نتیجه واقعی هر ورق')
+        self.assertContains(response, 'پذیرش آن روی کنترلر دستگاه شما تأیید نشده است')
+        self.assertContains(response, 'نتیجه واقعی این ورق')
+        self.assertContains(response, 'بهره‌وری سطحی')
+        self.assertContains(response, 'همه ورق‌ها مصرف شدند')
         download = self.client.get(reverse('cutting:download_cut', args=[plan.pk]))
         self.assertEqual(download.status_code, 200)
         import xml.etree.ElementTree as ET
