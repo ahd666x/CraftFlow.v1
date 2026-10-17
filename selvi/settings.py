@@ -71,6 +71,8 @@ INSTALLED_APPS = [
     'accounts',
     'rest_framework',
     'django.contrib.humanize',
+    # ابزار تغییر طول قطعه CNC
+    'cnc_resizer',
 
 ]
 
