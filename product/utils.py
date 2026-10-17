@@ -748,8 +748,15 @@ def apply_size_adjustment(original_length, original_width, original_height, diff
 def update_barcode_size(original_barcode, new_length, new_width, order_item_id=None):
     if not original_barcode:
         return original_barcode
-    new_size = f"{int(new_length)}x{int(new_width)}"
-    pattern = r'\d+x\d+'
+
+    def format_dimension(value):
+        value = Decimal(str(value)).quantize(Decimal('0.1'))
+        if value == value.to_integral_value():
+            return format(value, 'f').split('.')[0]
+        return format(value, 'f')
+
+    new_size = f"{format_dimension(new_length)}x{format_dimension(new_width)}"
+    pattern = r'\d+(?:\.\d+)?x\d+(?:\.\d+)?'
     if re.search(pattern, original_barcode):
         barcode = re.sub(pattern, new_size, original_barcode)
     else:

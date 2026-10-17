@@ -808,6 +808,15 @@ def archive_upload(request):
             for chunk in uploaded_file.chunks():
                 destination.write(chunk)
 
+        if archive_type == 'cnc':
+            from cnc_resizer.services import register_base_file
+            cnc_record = register_base_file(file_path, filename, request.user)
+            if not cnc_record.resizable:
+                messages.warning(
+                    request,
+                    f'فایل {filename} ذخیره شد، اما برای تغییر اندازه قابل استفاده نیست: '
+                    f'{cnc_record.validation_error}',
+                )
         messages.success(request, f'فایل {filename} با موفقیت آپلود شد.')
         return redirect(f"{reverse('archive_upload')}?type={archive_type}")
 
@@ -869,6 +878,15 @@ def _archive_upload_page(request, archive_type):
             for chunk in uploaded_file.chunks():
                 destination.write(chunk)
 
+        if archive_type == 'cnc':
+            from cnc_resizer.services import register_base_file
+            cnc_record = register_base_file(file_path, filename, request.user)
+            if not cnc_record.resizable:
+                messages.warning(
+                    request,
+                    f'فایل {filename} ذخیره شد، اما برای تغییر اندازه قابل استفاده نیست: '
+                    f'{cnc_record.validation_error}',
+                )
         messages.success(request, f'فایل {filename} با موفقیت آپلود شد.')
         return redirect(f"{reverse('archive_upload')}?type={archive_type}")
 
@@ -2083,9 +2101,9 @@ def scan_part_cnc(request):
         file_barcode = re.sub(r'\.item\d+$', '', part.f3)
         filename = f"{file_barcode}{extension}"
         file_path = os.path.join(source_dir, filename)
-        download_url = reverse('download_cnc_file', args=[file_barcode])
-        response_data['download_url'] = download_url
-        if not os.path.exists(file_path):
+        if os.path.exists(file_path):
+            response_data['download_url'] = reverse('download_cnc_file', args=[file_barcode])
+        else:
             response_data['message'] = f"✅  CNC تکمیل شد، اما فایل '{filename}' در سرور یافت نشد."
 
     return JsonResponse(response_data)

@@ -1,0 +1,51 @@
+from django.conf import settings
+from django.db import models
+
+
+class CncFile(models.Model):
+    KIND_BASE = "base"
+    KIND_DERIVED = "derived"
+    KIND_CHOICES = (
+        (KIND_BASE, "فایل پایه"),
+        (KIND_DERIVED, "فایل مشتق"),
+    )
+
+    barcode_key = models.CharField(max_length=200, db_index=True, verbose_name="کلید بارکد")
+    path = models.CharField(max_length=500, verbose_name="مسیر فایل")
+    sha256 = models.CharField(max_length=64, db_index=True, verbose_name="SHA-256")
+    kind = models.CharField(max_length=20, choices=KIND_CHOICES, default=KIND_BASE)
+    source_file = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="derived_files",
+        verbose_name="فایل منبع",
+    )
+    params = models.JSONField(default=dict, blank=True, verbose_name="پارامترهای تولید")
+    length_before = models.DecimalField(max_digits=10, decimal_places=3, null=True, blank=True)
+    length_after = models.DecimalField(max_digits=10, decimal_places=3, null=True, blank=True)
+    resizable = models.BooleanField(default=False, verbose_name="قابل تغییر اندازه")
+    validation_error = models.TextField(blank=True, verbose_name="خطای اعتبارسنجی")
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="created_cnc_files",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "فایل CNC"
+        verbose_name_plural = "فایل‌های CNC"
+        constraints = [
+            models.UniqueConstraint(
+                fields=("barcode_key", "sha256", "kind"),
+                name="unique_cnc_file_revision",
+            ),
+        ]
+        ordering = ("-created_at", "-id")
+
+    def __str__(self):
+        return f"{self.barcode_key} ({self.get_kind_display()})"
