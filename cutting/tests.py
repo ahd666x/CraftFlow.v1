@@ -120,6 +120,22 @@ class InventoryAndCutFlowTests(TestCase):
         self.assertTrue(SheetStock.objects.filter(width=Decimal('1234.5'), height=Decimal('2345.5')).exists())
         self.assertEqual(SheetSizeSpec.objects.get(pk=spec.pk).width, Decimal('1830.0'))
 
+    def test_stock_forms_keep_invalid_posted_dimensions(self):
+        response = self.client.post(reverse('cutting:stock_create'), {
+            'material': self.material.pk, 'stock_type': 'offcut', 'dimension_mode': 'custom',
+            'width': '10.55', 'height': '500', 'quantity': '1', 'priority': '100',
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'value="10.55"')
+
+        stock = self.add_stock()
+        response = self.client.post(reverse('cutting:stock_edit', args=[stock.pk]), {
+            'material': self.material.pk, 'width': '10.55', 'height': '3660', 'quantity': '1',
+            'priority': '100', 'grain': '', 'note': '', 'change_reason': 'اصلاح آزمون',
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'value="10.55"')
+
     def test_multiple_standard_sizes_and_separate_offcut_batch(self):
         SheetSizeSpec.objects.create(material=self.material, name='اندازه الف', width=1800, height=3600, is_default=True)
         SheetSizeSpec.objects.create(material=self.material, name='اندازه ب', width=1220, height=2440)
@@ -406,6 +422,19 @@ class InventoryAndCutFlowTests(TestCase):
         self.assertNotContains(response, reverse('cutting:inventory'))
         self.assertNotContains(response, reverse('cutting:policy'))
 
+    def test_inventory_sort_links_keep_filters_and_reset_page(self):
+        response = self.client.get(reverse('cutting:inventory'), {
+            'q': '1830', 'material': self.material.pk, 'thickness': '16.0',
+            'sort': 'width', 'page': '1',
+        })
+        self.assertEqual(response.status_code, 200)
+        link = response.context['sort_links']['width']
+        self.assertIn('q=1830', link)
+        self.assertIn(f'material={self.material.pk}', link)
+        self.assertIn('thickness=16.0', link)
+        self.assertIn('sort=-width', link)
+        self.assertNotIn('page=', link)
+
     def test_default_kerf_rejects_extra_precision_and_prefills_planner(self):
         response = self.client.post(reverse('cutting:policy'), {'action': 'save_kerf', 'default_kerf': '4.55'})
         self.assertEqual(response.status_code, 302)
@@ -417,6 +446,38 @@ class InventoryAndCutFlowTests(TestCase):
         setting.refresh_from_db()
         self.assertEqual(setting.default_kerf, Decimal('3.5'))
         self.assertContains(self.client.get(reverse('cutting:planner')), 'value="3.5"')
+
+    def test_priority_table_is_conditional_and_bulk_save_is_atomic(self):
+        first = self.add_stock(priority=100)
+        second = self.add_stock(width='500', height='600', offcut=True, priority=200)
+        setting = CuttingSettings.current()
+        setting.strategy = 'offcuts_first'
+        setting.save(update_fields=('strategy',))
+        response = self.client.get(reverse('cutting:policy'))
+        self.assertNotContains(response, f'name="priority_{first.pk}"')
+
+        setting.strategy = 'priority'
+        setting.save(update_fields=('strategy',))
+        response = self.client.get(reverse('cutting:policy'))
+        self.assertContains(response, f'name="priority_{first.pk}"')
+
+        response = self.client.post(reverse('cutting:policy'), {
+            'action': 'save_priorities', f'priority_{first.pk}': '5', f'priority_{second.pk}': 'invalid',
+        })
+        self.assertEqual(response.status_code, 302)
+        first.refresh_from_db()
+        second.refresh_from_db()
+        self.assertEqual((first.priority, second.priority), (100, 200))
+        self.assertFalse(SheetStockEvent.objects.filter(stock__in=(first, second), event_type='adjust').exists())
+
+        response = self.client.post(reverse('cutting:policy'), {
+            'action': 'save_priorities', f'priority_{first.pk}': '5', f'priority_{second.pk}': '10',
+        })
+        self.assertEqual(response.status_code, 302)
+        first.refresh_from_db()
+        second.refresh_from_db()
+        self.assertEqual((first.priority, second.priority), (5, 10))
+        self.assertEqual(SheetStockEvent.objects.filter(stock__in=(first, second), event_type='adjust').count(), 2)
 
     def test_plan_detail_renders_and_downloads_the_cut_file(self):
         self.add_stock()

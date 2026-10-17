@@ -1,6 +1,8 @@
 .cutting-nav .nav-tabs{gap:.25rem}
 .cutting-stepper{flex-wrap:wrap}
 .cutting-stepper .cutting-step{display:flex;align-items:center;gap:.45rem;padding:.45rem .7rem;border:1px solid #cbd5e1;border-radius:999px;color:#334155;text-decoration:none;background:#fff;font-size:.9rem}
+.btn-check:checked+.strategy-option{border-color:#0d6efd;box-shadow:0 0 0 .2rem rgba(13,110,253,.2)}
+.btn-check:focus-visible+.strategy-option{outline:3px solid #93c5fd;outline-offset:2px}
 .cutting-stepper .cutting-step span{display:inline-flex;width:1.55rem;height:1.55rem;align-items:center;justify-content:center;border-radius:50%;background:#e2e8f0;font-weight:700}
 .cutting-stepper .cutting-step.current{border-color:#2563eb;color:#1d4ed8;background:#eff6ff}
 .cutting-stepper .cutting-step.current span{background:#2563eb;color:#fff}

@@ -629,10 +629,16 @@ def _inventory_queryset(request, kind=None):
         qs = qs.filter(material_id=request.GET['material'])
     if request.GET.get('thickness'):
         qs = qs.filter(material__thickness=request.GET['thickness'])
-    sort_map = {'material': ('material__name', 'width', 'height', 'pk'), 'width': ('width', 'height', 'pk'), 'height': ('height', 'width', 'pk'), 'quantity': ('quantity', 'pk'), 'priority': ('priority', 'pk'), 'date': ('-created_at', '-pk')}
+    sort_map = {
+        'material': ('material__name', 'width', 'height', 'pk'),
+        'width': ('width', 'height', 'pk'), '-width': ('-width', 'height', 'pk'),
+        'height': ('height', 'width', 'pk'), '-height': ('-height', 'width', 'pk'),
+        'quantity': ('quantity', 'pk'), '-quantity': ('-quantity', 'pk'),
+        'priority': ('priority', 'pk'), '-priority': ('-priority', 'pk'),
+        'date': ('-created_at', '-pk'),
+    }
     sort = request.GET.get('sort', 'material')
-    if sort == '-quantity': qs = qs.order_by('-quantity', 'pk')
-    else: qs = qs.order_by(*sort_map.get(sort, sort_map['material']))
+    qs = qs.order_by(*sort_map.get(sort, sort_map['material']))
     return qs
 
 
@@ -674,13 +680,21 @@ def inventory(request, kind=None):
     else:
         toggle_params['inactive'] = '1'
     toggle_inactive_query = toggle_params.urlencode()
+    sort_links = {}
+    current_sort = request.GET.get('sort', 'material')
+    for field in ('width', 'height', 'quantity', 'priority'):
+        next_sort = field if current_sort == f'-{field}' else f'-{field}' if current_sort == field else field
+        params = request.GET.copy()
+        params['sort'] = next_sort
+        params.pop('page', None)
+        sort_links[field] = params.urlencode()
     setting = CuttingSettings.current()
     return render(request, 'cutting/inventory.html', {
         'kind': kind or 'all', 'page': page, 'materials': Material.objects.all().order_by('name'),
         'summaries': summaries, 'full_count': full_count, 'offcut_count': offcut_count,
         'total_count': total_count, 'reserved_count': reserved_count, 'available_count': available_count,
         'pagination_query': pagination_query, 'toggle_inactive_query': toggle_inactive_query,
-        'setting': setting, 'query': request.GET.get('q', ''),
+        'setting': setting, 'query': request.GET.get('q', ''), 'sort_links': sort_links,
         'thicknesses': Material.objects.values_list('thickness', flat=True).distinct().order_by('thickness'),
     })
 
@@ -733,11 +747,16 @@ def stock_create(request):
             return redirect('cutting:offcuts' if is_offcut else 'cutting:full_sheets')
         except (ValueError, InvalidOperation) as exc:
             messages.error(request, str(exc))
+    posted = request.POST if request.method == 'POST' else {}
+    stock_type = posted.get('stock_type') or request.GET.get('stock_type', 'full')
+    dimension_mode = posted.get('dimension_mode') or (
+        'custom' if stock_type == 'offcut' or posted.get('width') or posted.get('height') else 'standard'
+    )
     return render(request, 'cutting/stock_form.html', {
-        'materials': materials, 'sizes': sizes, 'stock': None,
-        'selected_material_id': request.GET.get('material', ''),
-        'stock_type': request.GET.get('stock_type', 'full'),
-        'quick_repeat': request.GET.get('quick_repeat') == '1',
+        'materials': materials, 'sizes': sizes, 'stock': None, 'posted': posted,
+        'selected_material_id': posted.get('material') or request.GET.get('material', ''),
+        'stock_type': stock_type, 'dimension_mode': dimension_mode,
+        'quick_repeat': (posted.get('quick_repeat') == '1') if request.method == 'POST' else request.GET.get('quick_repeat') == '1',
     })
 
 
@@ -783,7 +802,12 @@ def stock_edit(request, stock_id):
             return redirect('cutting:offcuts' if stock.is_offcut else 'cutting:full_sheets')
         except (ValueError, InvalidOperation) as exc:
             messages.error(request, str(exc))
-    return render(request, 'cutting/stock_form.html', {'materials': Material.objects.all(), 'sizes': [], 'stock': stock})
+            stock.refresh_from_db()
+    posted = request.POST if request.method == 'POST' else {}
+    return render(request, 'cutting/stock_form.html', {
+        'materials': Material.objects.all(), 'sizes': [], 'stock': stock, 'posted': posted,
+        'selected_material_id': posted.get('material') or str(stock.material_id),
+    })
 
 
 @inventory_operator
@@ -873,6 +897,31 @@ def cutting_policy(request):
                 messages.success(request, 'ضخامت تیغه‌ی پیش‌فرض ذخیره شد.')
             except (InvalidOperation, ValueError):
                 messages.error(request, 'ضخامت تیغه باید عددی نامنفی با حداکثر یک رقم اعشار باشد.')
+            return redirect('cutting:policy')
+        if request.POST.get('action') == 'save_priorities':
+            changed = 0
+            try:
+                with transaction.atomic():
+                    stock_rows = SheetStock.objects.select_for_update().filter(active=True, quantity__gt=0)
+                    for stock in stock_rows:
+                        raw = request.POST.get(f'priority_{stock.pk}')
+                        if raw is None:
+                            continue
+                        try:
+                            new_priority = int(raw)
+                        except (TypeError, ValueError):
+                            raise ValueError('اولویت باید عدد صحیح باشد.')
+                        if new_priority != stock.priority:
+                            old_priority = stock.priority
+                            stock.priority = new_priority
+                            stock.save(update_fields=('priority', 'updated_at'))
+                            _event(stock=stock, event_type='adjust', user=request.user,
+                                   note=f'تغییر اولویت مصرف از {old_priority} به {new_priority}')
+                            changed += 1
+            except ValueError as exc:
+                messages.error(request, str(exc))
+                return redirect('cutting:policy')
+            messages.success(request, f'اولویت {changed} ردیف به‌روزرسانی شد.')
             return redirect('cutting:policy')
         if request.POST.get('stock_id'):
             stock = get_object_or_404(SheetStock, pk=request.POST.get('stock_id'), active=True)
