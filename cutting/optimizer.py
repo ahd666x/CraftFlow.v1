@@ -71,10 +71,10 @@ def expected_offcuts(layout, kerf=4, minimum=200):
         max_bottom = max(max_bottom, shelf_y + row_height)
         rem_width = sheet['width'] - used_width - kerf - 5
         if rem_width >= minimum and row_height >= minimum:
-            remnants.append({'width': rem_width, 'height': row_height})
+            remnants.append({'width': rem_width, 'height': row_height, 'x': used_width + kerf, 'y': shelf_y})
     bottom_height = sheet['height'] - max_bottom - kerf - 5
     if sheet['width'] >= minimum and bottom_height >= minimum:
-        remnants.append({'width': sheet['width'] - 10, 'height': bottom_height})
+        remnants.append({'width': sheet['width'] - 10, 'height': bottom_height, 'x': 0, 'y': max_bottom + kerf})
     return remnants
 
 

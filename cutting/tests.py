@@ -9,7 +9,7 @@ from django.utils import timezone
 import jdatetime
 from product.models import Customer, Material, Order, Part, ProductionTask
 from .models import CuttingSettings, CutPlan, CutPlanSheet, SheetSizeSpec, SheetStock, SheetStockEvent
-from .optimizer import make_autocut, optimize
+from .optimizer import expected_offcuts, make_autocut, optimize
 from .templatetags.cutting_extras import jalali
 
 
@@ -40,6 +40,17 @@ class CuttingOptimizerRegressionTests(SimpleTestCase):
         self.assertEqual(root.find('.//a:Condition/a:Shape', ns).attrib['X'], '900')
         self.assertEqual(root.find('.//a:Layout', ns).attrib['X'], '900')
         self.assertIsNotNone(root.find('.//a:Spares', ns))
+
+    def test_expected_offcuts_include_map_coordinates(self):
+        layout = {
+            'sheet': {'width': 1000, 'height': 1000},
+            'parts': [{'x': 5, 'y': 5, 'width': 400, 'height': 300, 'row': 5}],
+        }
+        remnants = expected_offcuts(layout, kerf=4, minimum=200)
+        self.assertEqual(remnants, [
+            {'width': 586, 'height': 300, 'x': 409, 'y': 5},
+            {'width': 990, 'height': 686, 'x': 0, 'y': 309},
+        ])
 
 
 class JalaliTemplateFilterTests(SimpleTestCase):
@@ -410,11 +421,15 @@ class InventoryAndCutFlowTests(TestCase):
     def test_plan_detail_renders_and_downloads_the_cut_file(self):
         self.add_stock()
         plan = self.make_plan()
+        sheet = plan.planned_sheets.get()
         response = self.client.get(reverse('cutting:plan_detail', args=[plan.pk]))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'class="cut-map"')
         self.assertContains(response, 'پذیرش آن روی کنترلر دستگاه شما تأیید نشده است')
         self.assertContains(response, 'نتیجه واقعی این ورق')
+        self.assertContains(response, f'name="outcome_{sheet.pk}"')
+        self.assertContains(response, 'type="radio"')
+        self.assertContains(response, '>1</text>')
         self.assertContains(response, 'بهره‌وری سطحی')
         self.assertContains(response, 'همه ورق‌ها مصرف شدند')
         download = self.client.get(reverse('cutting:download_cut', args=[plan.pk]))

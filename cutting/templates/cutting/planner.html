@@ -10,8 +10,6 @@
     <div class="d-flex flex-wrap gap-2 align-items-center"><span class="badge text-bg-light border">سیاست مصرف: {{ setting.get_strategy_display }}</span>{% if can_inventory %}<a class="btn btn-outline-secondary" href="{% url 'cutting:inventory' %}">بررسی موجودی ورق</a>{% endif %}</div>
   </div>
   {% include 'cutting/_messages.html' %}
-  <details class="mb-3"><summary class="small text-muted">راهنمای خروجی و سیاست مصرف</summary><div class="alert alert-secondary mt-2 mb-0">سفارش‌های دارای تسک رزروشده در برنامه‌ای دیگر از صف انتخاب پنهان می‌شوند. فایل `.CUT` بر پایه‌ی نمونه‌ی پروژه تولید می‌شود، اما پذیرش آن روی کنترلر دستگاه شما در این سامانه تأیید نشده است؛ پیش از برش تولیدی، در حالت آزمایشی بررسی شود.</div></details>
-
   <div id="order-filters" class="card card-body mb-3">
     <div class="row g-2 align-items-end">
       <div class="col-12 col-md-6"><label class="form-label" for="order-search">جست‌وجوی شماره سفارش یا مشتری</label><input id="order-search" class="form-control" name="q" value="{{ query }}" placeholder="مثلاً 142 یا نام مشتری" autocomplete="off"></div>

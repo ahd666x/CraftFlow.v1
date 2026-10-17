@@ -2,6 +2,7 @@ from collections import Counter, defaultdict
 from decimal import Decimal, InvalidOperation
 from functools import wraps
 from math import ceil
+import json
 import re
 
 from django.contrib import messages
@@ -391,6 +392,10 @@ def plan_detail(request, plan_id):
         row_piece_area = Decimal('0')
         for layout in row['sheets']:
             layout['sheet_record'] = planned_by_id.get(layout['sheet'].get('plan_sheet_id'))
+            longest = max(Decimal(str(layout['sheet']['width'])), Decimal(str(layout['sheet']['height'])))
+            layout['label_font'] = max(14, int(longest / 40))
+            layout['dimension_font'] = max(10, int(layout['label_font'] * 0.3))
+            layout['expected_offcuts_json'] = json.dumps(layout.get('expected_offcuts', []), default=str)
             sheet_area = Decimal(str(layout['sheet']['width'])) * Decimal(str(layout['sheet']['height']))
             piece_area = sum((Decimal(str(part['width'])) * Decimal(str(part['height'])) for part in layout['parts']), Decimal('0'))
             layout['sheet_area_mm2'] = sheet_area
@@ -398,7 +403,11 @@ def plan_detail(request, plan_id):
             layout['utilization_percent'] = (piece_area / sheet_area * 100) if sheet_area else Decimal('0')
             record = layout['sheet_record']
             layout['planned_piece_count'] = sum(snapshot.quantity for snapshot in record.task_counts.all()) if record else len(layout['parts'])
-            for part in layout['parts']:
+            for number, part in enumerate(layout['parts'], 1):
+                part['no'] = number
+                part['label_x'] = Decimal(str(part['x'])) + Decimal(str(part['width'])) / 2
+                part['label_y'] = Decimal(str(part['y'])) + Decimal(str(part['height'])) / 2
+                part['dimension_y'] = part['label_y'] + Decimal(layout['dimension_font']) * Decimal('0.65')
                 task_id = part.get('task_id')
                 part['show_dimensions'] = (
                     Decimal(str(part['width'])) >= Decimal('250')
