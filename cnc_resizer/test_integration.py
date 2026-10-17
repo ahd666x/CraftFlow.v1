@@ -4,9 +4,12 @@ import tempfile
 from django.contrib.auth.models import Group, User
 from django.test import TestCase
 from django.urls import reverse
+from decimal import Decimal
+
+from product.models import Material, Part, Product, ProductBOM, ProductCategory
 
 from .models import CncFile
-from .services import canonical_barcode_key, register_base_file
+from .services import canonical_barcode_key, register_base_file, resolve_cnc_file
 from .tests import SAMPLE
 
 
@@ -48,3 +51,34 @@ class CncIntegrationTests(TestCase):
             canonical_barcode_key("panel.1740.5x500.item12.cnc"),
             "panel.1740.5x500",
         )
+
+    def test_resolver_uses_length_as_cnc_y_and_caches_derived_file(self):
+        category = ProductCategory.objects.create(name="CNC category")
+        product = Product.objects.create(category=category, name="CNC product", base_price=1)
+        material = Material.objects.create(name="MDF", thickness=Decimal("16.0"))
+        base = Part.objects.create(
+            material=material, name="Panel", length=Decimal("100.0"), width=Decimal("50.0"),
+            f3="panel.100x50", pname="CNC product", routing_code="cnc",
+        )
+        ProductBOM.objects.create(product=product, part=base, cnc_axis="length")
+        dynamic = Part.objects.create(
+            material=material, base_part=base, name=base.name,
+            length=Decimal("120.0"), width=Decimal("50.0"),
+            f3="panel.120x50.item1", pname=base.pname, routing_code="cnc",
+        )
+        with tempfile.TemporaryDirectory() as archive:
+            with self.settings(CNC_SOURCE_DIR=archive):
+                with tempfile.NamedTemporaryFile(suffix=".cnc", delete=False) as stream:
+                    with open(SAMPLE, "rb") as sample:
+                        stream.write(sample.read())
+                    source_path = stream.name
+                try:
+                    register_base_file(source_path, base.f3, self.manager)
+                    record = resolve_cnc_file(dynamic, self.manager)
+                    derived_exists = os.path.exists(record.path)
+                finally:
+                    os.unlink(source_path)
+        self.assertEqual(record.kind, CncFile.KIND_DERIVED)
+        self.assertTrue(record.path.endswith(".cnc"))
+        self.assertTrue(derived_exists)
+        self.assertAlmostEqual(float(record.params["delta"]), 20.0, places=3)

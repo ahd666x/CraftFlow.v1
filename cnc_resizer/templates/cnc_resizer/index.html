@@ -143,6 +143,11 @@
         <div class="fname" id="fname"></div>
       </div>
       <input type="file" id="file" accept=".cnc,.nc,.tap,.txt,.gcode,text/plain" hidden>
+      <label class="field" style="display:block;margin-top:10px">یا انتخاب از آرشیو
+        <select id="archiveFile">
+          <option value="">در حال بارگذاری فایل‌های معتبر...</option>
+        </select>
+      </label>
       <div class="row" style="margin-top:10px">
         <label class="field">قطر فرز سوراخ‌ها (mm)
           <input type="number" id="tool" value="8" min="0.1" step="0.1">
@@ -278,7 +283,7 @@
   };
 
   // ------------------------------------------------------------ file input
-  const drop = $('drop'), fileIn = $('file');
+  const drop = $('drop'), fileIn = $('file'), archiveFile = $('archiveFile');
   drop.onclick = () => fileIn.click();
   drop.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileIn.click(); } };
   ['dragenter', 'dragover'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('over'); }));
@@ -298,6 +303,33 @@
     r.onerror = () => showErr('خواندن فایل ممکن نشد');
     r.readAsText(f);   // G-code is plain ASCII
   }
+  async function loadArchiveList() {
+    try {
+      const resp = await fetch('{{ archive_api_url }}', { credentials: 'same-origin' });
+      const data = await resp.json();
+      archiveFile.innerHTML = '<option value="">انتخاب فایل از آرشیو...</option>';
+      (data.files || []).forEach((item) => {
+        const option = document.createElement('option');
+        option.value = item.id;
+        option.textContent = item.name + (item.length ? ' — ' + item.length + ' mm' : '');
+        archiveFile.appendChild(option);
+      });
+    } catch (_) {
+      archiveFile.innerHTML = '<option value="">آرشیو در دسترس نیست</option>';
+    }
+  }
+  archiveFile.onchange = async () => {
+    if (!archiveFile.value) return;
+    try {
+      const resp = await fetch('{{ archive_api_url }}?id=' + encodeURIComponent(archiveFile.value), { credentials: 'same-origin' });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || 'خطا در خواندن فایل آرشیو');
+      window.__cncApp.loadText(data.name + '.cnc', data.content);
+      $('fname').textContent = data.name + '.cnc';
+      $('dropTitle').textContent = 'فایل آرشیو انتخاب شد';
+      $('dropSub').textContent = 'برای تعویض کلیک کنید';
+    } catch (err) { showErr(err.message); }
+  };
 
   // ------------------------------------------------------------ requests
   function schedule() { clearTimeout(S.timer); S.timer = setTimeout(() => run(false), 220); }
@@ -591,6 +623,7 @@
   };
 
   syncModeUI();
+  loadArchiveList();
   window.__cncApp = { S, loadText: (name, text) => { S.name = name; S.text = text; S.res = null; S.enabled = []; S.manual = []; run(true); } };
 })();
 </script>

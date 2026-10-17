@@ -159,6 +159,8 @@ class ProductBOMInline(admin.TabularInline):
         'color_material_map',
         'size_affected',
         'size_adjustment_rule',
+        'cnc_axis',
+        'cnc_resize_profile',
         'get_barcode',
         'get_material',
         'get_name',

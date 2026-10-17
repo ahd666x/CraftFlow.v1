@@ -237,6 +237,7 @@ class Order(models.Model):
         from .models import ProductionTask
 
         tasks_to_create = []
+        cnc_warnings = []
         has_bom = False
         with transaction.atomic():
             # Phase 1: regular station tasks per BOM part (global sequential step_order)
@@ -367,6 +368,14 @@ class Order(models.Model):
 
                     stations = [s.strip() for s in dynamic_part.routing_code.split('.') if s.strip()]
                     stations.insert(0, "cut")
+                    if 'cnc' in {station.lower() for station in stations}:
+                        try:
+                            from cnc_resizer.services import resolve_cnc_file
+                            resolve_cnc_file(dynamic_part, self.user)
+                        except Exception as exc:
+                            cnc_warnings.append(
+                                f"{dynamic_part.f3}: فایل CNC آماده نشد — {exc}"
+                            )
                     for idx, station_name in enumerate(stations):
                         current_step += 1
                         tasks_to_create.append(
@@ -388,7 +397,7 @@ class Order(models.Model):
                 ProductionTask.objects.bulk_create(tasks_to_create)
                 self.status = 'planned'
                 self.save()
-                return {'success': True}
+                return {'success': True, 'cnc_warnings': cnc_warnings}
             elif not has_bom:
                 return {'success': False, 'error': 'محصولات این سفارش فرمول ساخت (BOM) ندارند. ابتدا در ویرایش محصول قطعات را اضافه کنید.'}
             else:
@@ -835,6 +844,19 @@ class ProductBOM(models.Model):
         blank=True,
         verbose_name="قانون تغییر اندازه",
         help_text="مثال: length+length_diff, length+width_diff ; width+width_diff"
+    )
+    cnc_axis = models.CharField(
+        max_length=20,
+        choices=(('length', 'طول قطعه / Y فایل CNC'),),
+        default='length',
+        verbose_name='محور CNC',
+        help_text='در فایل‌های فعلی، Y فایل CNC برابر Part.length است.',
+    )
+    cnc_resize_profile = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name='پروفایل تغییر اندازه CNC',
+        help_text='mode، symmetric، enabled و manual؛ در صورت خالی بودن equal و symmetric استفاده می‌شود.',
     )
 
     def __str__(self):
