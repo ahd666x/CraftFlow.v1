@@ -109,7 +109,7 @@ def planner(request):
     if request.method == 'POST' and request.POST.get('action') == 'plan':
         order_ids = request.POST.getlist('order_ids')
         try:
-            kerf = Decimal(request.POST.get('kerf', '4'))
+            kerf = Decimal(request.POST.get('kerf', str(CuttingSettings.current().default_kerf)))
             if not kerf.is_finite() or kerf < 0 or kerf.quantize(MM) != kerf:
                 raise ValueError('ضخامت تیغه باید صفر یا عدد مثبت با حداکثر یک رقم اعشار باشد.')
         except (InvalidOperation, ValueError):
@@ -242,6 +242,8 @@ def planner(request):
             material_names[material_row['order_id']].append(material_row['part__material__name'])
         for order in orders:
             order.cut_material_names = material_names[order.pk]
+            today_jalali = jdatetime.date.fromgregorian(date=timezone.localdate())
+            order.cut_is_overdue = bool(order.due_date and order.due_date < today_jalali)
     active_plans = CutPlan.objects.filter(status='planned').annotate(
         reserved_sheet_count=Count('planned_sheets', distinct=True),
     ).prefetch_related('orders').order_by('-created_at')[:10]
@@ -262,7 +264,7 @@ def planner_preview(request):
         return JsonResponse({'error': 'حداکثر 100 سفارش را هم‌زمان انتخاب کنید.'}, status=400)
     try:
         order_ids = list(dict.fromkeys(int(value) for value in raw_order_ids))
-        kerf = Decimal(request.GET.get('kerf', '4'))
+        kerf = Decimal(request.GET.get('kerf', str(CuttingSettings.current().default_kerf)))
         if any(value <= 0 for value in order_ids) or not kerf.is_finite() or kerf < 0 or kerf.quantize(MM) != kerf:
             raise ValueError
     except (TypeError, ValueError, InvalidOperation):
@@ -281,7 +283,7 @@ def planner_preview(request):
     invalid_part = next((task.part for task in tasks if task.part.length <= 0 or task.part.width <= 0), None)
     if invalid_part:
         return JsonResponse({'error': f'ابعاد قطعه «{invalid_part.name}» باید مثبت باشند.'}, status=400)
-    if len(tasks) > 2000 or total_pieces > 10000:
+    if len(tasks) > 2000 or total_pieces > 3000:
         return JsonResponse({'error': 'این انتخاب برای پیش‌نمایش خیلی بزرگ است؛ سفارش‌ها را به چند برنامه تقسیم کنید.'}, status=400)
 
     setting = CuttingSettings.current()
@@ -851,6 +853,18 @@ def size_specs(request, spec_id=None):
 def cutting_policy(request):
     setting = CuttingSettings.current()
     if request.method == 'POST':
+        if request.POST.get('action') == 'save_kerf':
+            try:
+                kerf = Decimal(request.POST.get('default_kerf', ''))
+                if not kerf.is_finite() or kerf < 0 or kerf > Decimal('999.9') or kerf.quantize(MM) != kerf:
+                    raise ValueError('ضخامت تیغه باید عددی نامنفی با حداکثر یک رقم اعشار باشد.')
+                setting.default_kerf = kerf.quantize(MM)
+                setting.updated_by = request.user
+                setting.save(update_fields=('default_kerf', 'updated_by', 'updated_at'))
+                messages.success(request, 'ضخامت تیغه‌ی پیش‌فرض ذخیره شد.')
+            except (InvalidOperation, ValueError):
+                messages.error(request, 'ضخامت تیغه باید عددی نامنفی با حداکثر یک رقم اعشار باشد.')
+            return redirect('cutting:policy')
         if request.POST.get('stock_id'):
             stock = get_object_or_404(SheetStock, pk=request.POST.get('stock_id'), active=True)
             try:

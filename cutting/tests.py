@@ -46,6 +46,7 @@ class JalaliTemplateFilterTests(SimpleTestCase):
     def test_jalali_filter_formats_fixed_datetime_with_latin_digits(self):
         value = datetime(2024, 3, 20, 14, 5)
         self.assertEqual(jalali(value), '1403/01/01 14:05')
+        self.assertEqual(jalali(jdatetime.date(1403, 1, 1), '%Y/%m/%d'), '1403/01/01')
 
 
 class OptimizerTests(TestCase):
@@ -393,6 +394,18 @@ class InventoryAndCutFlowTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, reverse('cutting:inventory'))
         self.assertNotContains(response, reverse('cutting:policy'))
+
+    def test_default_kerf_rejects_extra_precision_and_prefills_planner(self):
+        response = self.client.post(reverse('cutting:policy'), {'action': 'save_kerf', 'default_kerf': '4.55'})
+        self.assertEqual(response.status_code, 302)
+        setting = CuttingSettings.objects.get(pk=1)
+        self.assertEqual(setting.default_kerf, Decimal('4.0'))
+
+        response = self.client.post(reverse('cutting:policy'), {'action': 'save_kerf', 'default_kerf': '3.5'})
+        self.assertEqual(response.status_code, 302)
+        setting.refresh_from_db()
+        self.assertEqual(setting.default_kerf, Decimal('3.5'))
+        self.assertContains(self.client.get(reverse('cutting:planner')), 'value="3.5"')
 
     def test_plan_detail_renders_and_downloads_the_cut_file(self):
         self.add_stock()

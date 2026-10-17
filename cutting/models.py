@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.conf import settings
 from django.db import models
 from django.db.models import Q
@@ -60,6 +62,7 @@ class SheetStock(models.Model):
 class CuttingSettings(models.Model):
     STRATEGIES = [('offcuts_first', 'ابتدا پرت، سپس ورق کامل'), ('full_only', 'فقط ورق کامل'), ('priority', 'اولویت دستی موجودی')]
     strategy = models.CharField(max_length=20, choices=STRATEGIES, default='offcuts_first')
+    default_kerf = models.DecimalField(max_digits=4, decimal_places=1, default=Decimal('4.0'), verbose_name='ضخامت تیغه پیش‌فرض (mm)')
     updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
     updated_at = models.DateTimeField(auto_now=True)
     class Meta:
