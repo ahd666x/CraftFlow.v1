@@ -1,3 +1,4 @@
+from datetime import datetime
 from decimal import Decimal
 from django.contrib.auth.models import Group, User
 from django.db import connection
@@ -9,6 +10,7 @@ import jdatetime
 from product.models import Customer, Material, Order, Part, ProductionTask
 from .models import CuttingSettings, CutPlan, CutPlanSheet, SheetSizeSpec, SheetStock, SheetStockEvent
 from .optimizer import make_autocut, optimize
+from .templatetags.cutting_extras import jalali
 
 
 class CuttingOptimizerRegressionTests(SimpleTestCase):
@@ -38,6 +40,12 @@ class CuttingOptimizerRegressionTests(SimpleTestCase):
         self.assertEqual(root.find('.//a:Condition/a:Shape', ns).attrib['X'], '900')
         self.assertEqual(root.find('.//a:Layout', ns).attrib['X'], '900')
         self.assertIsNotNone(root.find('.//a:Spares', ns))
+
+
+class JalaliTemplateFilterTests(SimpleTestCase):
+    def test_jalali_filter_formats_fixed_datetime_with_latin_digits(self):
+        value = datetime(2024, 3, 20, 14, 5)
+        self.assertEqual(jalali(value), '1403/01/01 14:05')
 
 
 class OptimizerTests(TestCase):

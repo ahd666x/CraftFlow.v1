@@ -259,7 +259,7 @@ def planner_preview(request):
     """Read-only estimate for selected orders; it never reserves stock."""
     raw_order_ids = request.GET.getlist('order_ids')
     if len(raw_order_ids) > 100:
-        return JsonResponse({'error': 'حداکثر ۱۰۰ سفارش را هم‌زمان انتخاب کنید.'}, status=400)
+        return JsonResponse({'error': 'حداکثر 100 سفارش را هم‌زمان انتخاب کنید.'}, status=400)
     try:
         order_ids = list(dict.fromkeys(int(value) for value in raw_order_ids))
         kerf = Decimal(request.GET.get('kerf', '4'))
@@ -707,7 +707,7 @@ def stock_create(request):
             else:
                 raise ValueError('روش تعیین اندازه معتبر نیست.')
             quantity = int(request.POST.get('quantity', '1'))
-            if quantity < 1: raise ValueError('تعداد باید دست‌کم ۱ باشد.')
+            if quantity < 1: raise ValueError('تعداد باید دست‌کم 1 باشد.')
             is_offcut = stock_type == 'offcut'
             with transaction.atomic():
                 stock = SheetStock.objects.create(
@@ -750,7 +750,7 @@ def stock_edit(request, stock_id):
                 stock.width = _dimension(request.POST.get('width'), 'عرض')
                 stock.height = _dimension(request.POST.get('height'), 'طول')
                 stock.quantity = int(request.POST.get('quantity'))
-                if stock.quantity < 1: raise ValueError('برای نگهداشتن رکورد، تعداد باید دست‌کم ۱ باشد؛ برای خروج از انبار از غیرفعال‌سازی استفاده کنید.')
+                if stock.quantity < 1: raise ValueError('برای نگهداشتن رکورد، تعداد باید دست‌کم 1 باشد؛ برای خروج از انبار از غیرفعال‌سازی استفاده کنید.')
                 stock.material = material
                 stock.priority = int(request.POST.get('priority', stock.priority))
                 stock.note = request.POST.get('note', '').strip()[:255]
@@ -888,11 +888,11 @@ def stock_history(request):
     if date_from_raw and date_from:
         events = events.filter(created_at__date__gte=date_from)
     elif date_from_raw:
-        messages.error(request, 'تاریخ شروع معتبر نیست؛ تاریخ شمسی ۱۴۰۵/۰۷/۲۵ یا میلادی YYYY-MM-DD وارد کنید.')
+        messages.error(request, 'تاریخ شروع معتبر نیست؛ تاریخ شمسی 1405/07/25 یا میلادی YYYY-MM-DD وارد کنید.')
     if date_to_raw and date_to:
         events = events.filter(created_at__date__lte=date_to)
     elif date_to_raw:
-        messages.error(request, 'تاریخ پایان معتبر نیست؛ تاریخ شمسی ۱۴۰۵/۰۷/۲۵ یا میلادی YYYY-MM-DD وارد کنید.')
+        messages.error(request, 'تاریخ پایان معتبر نیست؛ تاریخ شمسی 1405/07/25 یا میلادی YYYY-MM-DD وارد کنید.')
     if date_from and date_to and date_from > date_to:
         messages.error(request, 'تاریخ شروع نمی‌تواند بعد از تاریخ پایان باشد.')
         events = events.none()
