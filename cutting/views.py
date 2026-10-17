@@ -517,10 +517,26 @@ def plan_detail(request, plan_id):
         'waste_area_m2': max(Decimal('0'), total_sheet_area - total_piece_area) / Decimal('1000000'),
         'utilization_percent': (total_piece_area / total_sheet_area * 100) if total_sheet_area else Decimal('0'),
     }
+    outcome_counts = Counter(
+        sheet.outcome for sheet in plan.planned_sheets.all()
+    )
+    sheet_progress = {
+        'total': sum(outcome_counts.values()),
+        'reserved': outcome_counts.get('reserved', 0),
+        'used': outcome_counts.get('used', 0),
+        'untouched': outcome_counts.get('untouched', 0),
+        'scrapped': outcome_counts.get('scrapped', 0),
+        'completed': sum(outcome_counts.get(key, 0) for key in ('used', 'untouched', 'scrapped')),
+    }
+    sheet_progress['percent'] = (
+        sheet_progress['completed'] * 100 / sheet_progress['total']
+        if sheet_progress['total'] else 0
+    )
     unfinished_tasks = [row for row in plan.planned_tasks.select_related('task', 'task__part') if row.task.status != 'done']
     return render(request, 'cutting/plan_detail.html', {
         'plan': plan, 'summaries': summaries, 'unfinished_tasks': unfinished_tasks,
-        'plan_metrics': plan_metrics, 'color_legend': color_legend,
+        'plan_metrics': plan_metrics, 'sheet_progress': sheet_progress,
+        'color_legend': color_legend,
     })
 
 

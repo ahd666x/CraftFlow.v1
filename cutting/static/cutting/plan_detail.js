@@ -18,7 +18,26 @@
     tabs.filter(tab => tab.dataset.sheetPk === String(sheetId)).forEach(tab => {
       tab.classList.remove('outcome-none', 'outcome-used', 'outcome-untouched', 'outcome-scrapped');
       tab.classList.add(`outcome-${value}`);
+      const status = tab.querySelector('.sheet-tab-status');
+      if (status) status.textContent = ({
+        none: 'ثبت‌نشده', used: 'مصرف‌شده', untouched: 'دست‌نخورده', scrapped: 'اسقاط'
+      })[value] || 'ثبت‌نشده';
     });
+  }
+
+  function updateProgress() {
+    const counts = { reserved: 0, used: 0, untouched: 0, scrapped: 0 };
+    panels.forEach(panel => { counts[storedOutcome(panel)] = (counts[storedOutcome(panel)] || 0) + 1; });
+    const total = panels.length;
+    const completed = counts.used + counts.untouched + counts.scrapped;
+    const percent = total ? Math.round(completed * 100 / total) : 0;
+    const bar = document.getElementById('sheet-progress-bar');
+    const label = document.getElementById('sheet-progress-label');
+    if (bar) { bar.style.width = `${percent}%`; bar.textContent = `${percent}%`; }
+    if (label) label.textContent = `${completed} از ${total} ورق ثبت شده`;
+    document.querySelectorAll('[data-count]').forEach(node => { node.textContent = counts[node.dataset.count] || 0; });
+    const progress = bar?.closest('[role="progressbar"]');
+    if (progress) progress.setAttribute('aria-valuenow', String(percent));
   }
 
   function showPanel(panel) {
@@ -131,6 +150,7 @@
       renumber(container);
     }
     updateTabStatus(sheet);
+    updateProgress();
     updateSummary();
   }
 
@@ -188,6 +208,8 @@
   }
 
   document.querySelectorAll('.remnant-fields').forEach(container => renumber(container));
+  panels.forEach(panel => updateTabStatus(panel.dataset.sheetPk));
+  updateProgress();
   document.querySelectorAll('input.cut-outcome').forEach(radio => {
     radio.addEventListener('change', () => syncOutcome(radio.dataset.sheet));
   });

@@ -37,6 +37,13 @@
 .sheet-tab.outcome-untouched{color:#fff;background:#0d6efd;border-color:#0a58ca}
 .sheet-tab.outcome-scrapped{color:#fff;background:#dc3545;border-color:#b02a37}
 .sheet-tab.active{outline:3px solid #1e293b;outline-offset:2px}
+.sheet-tab-status{display:block;font-size:.68rem;line-height:1.15;margin-top:.15rem;opacity:.9}
+.status-pill{border:1px solid;border-radius:999px;padding:.3rem .65rem;background:#fff;white-space:nowrap}
+.status-pill-pending{color:#475569;border-color:#94a3b8;background:#f1f5f9}
+.status-pill-used{color:#166534;border-color:#86efac;background:#f0fdf4}
+.status-pill-untouched{color:#1d4ed8;border-color:#93c5fd;background:#eff6ff}
+.status-pill-scrapped{color:#991b1b;border-color:#fca5a5;background:#fef2f2}
+.plan-progress-card{scroll-margin-top:1rem}
 .inventory-sheet-visual{display:inline-block;flex:none;border:2px solid #475569;border-radius:3px;background:linear-gradient(135deg,#dbeafe,#bfdbfe)}
 .inventory-sheet-visual.offcut{background:repeating-linear-gradient(135deg,#fef3c7,#fef3c7 5px,#fde68a 5px,#fde68a 10px);border-color:#a16207}
 @media(max-width:1199px){.material-preview-card{position:static}}

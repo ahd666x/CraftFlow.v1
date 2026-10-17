@@ -27,6 +27,21 @@
     <div class="col-6 col-xl-4"><div class="card h-100"><div class="card-body"><div class="small text-muted">قطعات روی نقشه</div><div class="fs-3 fw-bold">{{ plan_metrics.piece_count }}</div></div></div></div>
     <div class="col-12 col-xl-4"><div class="card h-100"><div class="card-body"><div class="small text-muted">بهره‌وری سطحی</div><div class="fs-3 fw-bold">{{ plan_metrics.utilization_percent|floatformat:1 }}%</div><div class="small text-muted">مساحت قطعات / کل سطح ورق</div></div></div></div>
   </div>
+  <section class="card mb-4 plan-progress-card" aria-labelledby="sheet-progress-title">
+    <div class="card-body">
+      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+        <div><h2 class="h5 mb-1" id="sheet-progress-title">پیشرفت ثبت نتیجهٔ ورق‌ها</h2><div class="small text-muted">نتیجهٔ واقعی هر ورق را پس از بررسی دستگاه ثبت کنید.</div></div>
+        <strong id="sheet-progress-label">{{ sheet_progress.completed }} از {{ sheet_progress.total }} ورق ثبت شده</strong>
+      </div>
+      <div class="progress mb-3" role="progressbar" aria-label="پیشرفت ثبت نتیجهٔ ورق‌ها" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ sheet_progress.percent|floatformat:0 }}"><div class="progress-bar bg-success" id="sheet-progress-bar" style="width:{{ sheet_progress.percent|floatformat:0 }}%">{{ sheet_progress.percent|floatformat:0 }}%</div></div>
+      <div class="d-flex flex-wrap gap-2 small" id="sheet-progress-counts">
+        <span class="status-pill status-pill-pending"><b data-count="reserved">{{ sheet_progress.reserved }}</b> ثبت‌نشده</span>
+        <span class="status-pill status-pill-used"><b data-count="used">{{ sheet_progress.used }}</b> مصرف‌شده</span>
+        <span class="status-pill status-pill-untouched"><b data-count="untouched">{{ sheet_progress.untouched }}</b> دست‌نخورده</span>
+        <span class="status-pill status-pill-scrapped"><b data-count="scrapped">{{ sheet_progress.scrapped }}</b> اسقاط‌شده</span>
+      </div>
+    </div>
+  </section>
   {% if color_legend %}<div class="d-flex flex-wrap gap-2 align-items-center mb-3"><span class="small fw-bold">راهنمای رنگ task:</span>{% for item in color_legend %}<span class="badge bg-light text-dark border d-inline-flex align-items-center gap-1"><span class="legend-swatch" style="background:{{ item.color }}"></span>{{ item.label }}</span>{% endfor %}</div>{% endif %}
 
   {% if plan.status == 'planned' %}<form id="cut-results-form" method="post" action="{% url 'cutting:mark_cut' plan.id %}" novalidate>{% csrf_token %}{% endif %}
@@ -35,7 +50,7 @@
     <div class="card-header d-flex flex-wrap justify-content-between gap-2"><b>{{ r.material }}</b><span>ضخامت {{ r.thickness }} mm · {{ r.sheet_count }} ورق · {{ r.part_count }} قطعه</span></div>
     <div class="card-body">
       <div class="sheet-selector d-flex flex-wrap align-items-center gap-2 mb-3" role="tablist" aria-label="انتخاب ورق"><span class="small fw-bold">ورق:</span>
-        {% for s in r.sheets %}{% with rec=s.sheet_record %}<button class="btn btn-sm sheet-tab" type="button" role="tab" aria-selected="false" aria-label="ورق {{ forloop.counter }} - {{ r.material }}" data-sheet-pk="{{ rec.pk }}" data-outcome="{% if rec %}{{ rec.outcome }}{% else %}none{% endif %}">{{ forloop.counter }}{% if s.sheet.is_offcut %} · پرت{% endif %}</button>{% endwith %}{% endfor %}
+        {% for s in r.sheets %}{% with rec=s.sheet_record %}<button class="btn btn-sm sheet-tab" type="button" role="tab" aria-selected="false" aria-label="ورق {{ forloop.counter }} - {{ r.material }}" data-sheet-pk="{{ rec.pk }}" data-outcome="{% if rec %}{{ rec.outcome }}{% else %}none{% endif %}"><span class="sheet-tab-number">{{ forloop.counter }}</span>{% if s.sheet.is_offcut %} · پرت{% endif %}<span class="sheet-tab-status">{% if rec.outcome == 'used' %}مصرف‌شده{% elif rec.outcome == 'untouched' %}دست‌نخورده{% elif rec.outcome == 'scrapped' %}اسقاط{% else %}ثبت‌نشده{% endif %}</span></button>{% endwith %}{% endfor %}
       </div>
       <div class="sheet-panels">
         {% for s in r.sheets %}{% with rec=s.sheet_record %}
