@@ -1,25 +1,29 @@
-<nav class="mb-3" aria-label="ناوبری برش MDF">
-  <ol class="cutting-stepper list-unstyled d-flex flex-wrap gap-2 mb-3" aria-label="مراحل برش MDF">
-    <li><a class="cutting-step {% if request.resolver_match.url_name == 'inventory' or request.resolver_match.url_name == 'full_sheets' or request.resolver_match.url_name == 'offcuts' or request.resolver_match.url_name == 'stock_create' or request.resolver_match.url_name == 'stock_edit' or request.resolver_match.url_name == 'size_specs' or request.resolver_match.url_name == 'size_specs_edit' or request.resolver_match.url_name == 'policy' or request.resolver_match.url_name == 'history' %}current{% endif %}" href="{% url 'cutting:inventory' %}"><span>۱</span> انبار ورق</a></li>
-    <li><a class="cutting-step {% if request.resolver_match.url_name == 'planner' %}current{% endif %}" href="{% url 'cutting:planner' %}"><span>۲</span> انتخاب سفارش</a></li>
-    <li><a class="cutting-step {% if request.resolver_match.url_name == 'plans' or request.resolver_match.url_name == 'plan_detail' %}current{% endif %}" href="{% if plan %}{% url 'cutting:plan_detail' plan.pk %}{% else %}{% url 'cutting:plans' %}{% endif %}"><span>۳</span> بازبینی برنامه</a></li>
-    <li><a class="cutting-step" href="{% if plan and plan.status == 'planned' %}{% url 'cutting:download_cut' plan.pk %}{% else %}{% url 'cutting:plans' %}?status=planned{% endif %}"><span>۴</span> دریافت فایل CUT</a></li>
-    <li><a class="cutting-step" href="{% if plan and plan.status == 'planned' %}#cut-results-form{% else %}{% url 'cutting:plans' %}?status=planned{% endif %}"><span>۵</span> ثبت نتیجه</a></li>
-  </ol>
-  <style>.cutting-stepper .cutting-step{display:flex;align-items:center;gap:.45rem;padding:.45rem .7rem;border:1px solid #cbd5e1;border-radius:999px;color:#334155;text-decoration:none;background:#fff;font-size:.9rem}.cutting-stepper .cutting-step span{display:inline-flex;width:1.55rem;height:1.55rem;align-items:center;justify-content:center;border-radius:50%;background:#e2e8f0;font-weight:700}.cutting-stepper .cutting-step.current{border-color:#2563eb;color:#1d4ed8;background:#eff6ff}.cutting-stepper .cutting-step.current span{background:#2563eb;color:#fff}.cutting-stepper a:focus-visible{outline:3px solid #93c5fd;outline-offset:2px}</style>
-  <div class="d-flex flex-wrap gap-2 mb-3" role="navigation" aria-label="بخش‌های اصلی برش">
-    <a class="btn btn-sm {% if request.resolver_match.url_name == 'planner' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{% url 'cutting:planner' %}">صف سفارش‌ها</a>
-    <a class="btn btn-sm {% if request.resolver_match.url_name == 'plans' or request.resolver_match.url_name == 'plan_detail' or request.resolver_match.url_name == 'download_cut' or request.resolver_match.url_name == 'mark_cut' or request.resolver_match.url_name == 'cancel_plan' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{% url 'cutting:plans' %}">همه برنامه‌ها</a>
-    <a class="btn btn-sm {% if request.resolver_match.url_name == 'inventory' or request.resolver_match.url_name == 'full_sheets' or request.resolver_match.url_name == 'offcuts' or request.resolver_match.url_name == 'stock_create' or request.resolver_match.url_name == 'stock_edit' or request.resolver_match.url_name == 'size_specs' or request.resolver_match.url_name == 'size_specs_edit' or request.resolver_match.url_name == 'policy' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{% url 'cutting:inventory' %}">انبار ورق</a>
-    <a class="btn btn-sm {% if request.resolver_match.url_name == 'history' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{% url 'cutting:history' %}">تاریخچه</a>
+{% load static %}
+<link rel="stylesheet" href="{% static 'cutting/cutting.css' %}">
+<nav class="cutting-nav mb-4" aria-label="بخش‌های برش">
+  <ul class="nav nav-tabs">
+    {% if can_operate %}<li class="nav-item"><a class="nav-link {% if cut_section == 'cut' %}active{% endif %}" href="{% url 'cutting:planner' %}">برش</a></li>{% endif %}
+    {% if can_inventory %}
+      <li class="nav-item"><a class="nav-link {% if cut_section == 'stock' %}active{% endif %}" href="{% url 'cutting:inventory' %}">انبار ورق</a></li>
+      <li class="nav-item"><a class="nav-link {% if cut_section == 'history' %}active{% endif %}" href="{% url 'cutting:history' %}">تاریخچه</a></li>
+      <li class="nav-item"><a class="nav-link {% if cut_section == 'settings' %}active{% endif %}" href="{% url 'cutting:size_specs' %}">تنظیمات</a></li>
+    {% endif %}
+  </ul>
+  {% if cut_section == 'cut' %}
+  <div class="mt-2 d-flex gap-2">
+    <a class="btn btn-sm {% if cut_url_name == 'planner' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{% url 'cutting:planner' %}">صف سفارش‌ها</a>
+    <a class="btn btn-sm {% if cut_url_name == 'plans' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{% url 'cutting:plans' %}">همه برنامه‌ها</a>
   </div>
-  {% if request.resolver_match.url_name == 'inventory' or request.resolver_match.url_name == 'full_sheets' or request.resolver_match.url_name == 'offcuts' or request.resolver_match.url_name == 'stock_create' or request.resolver_match.url_name == 'stock_edit' or request.resolver_match.url_name == 'size_specs' or request.resolver_match.url_name == 'size_specs_edit' or request.resolver_match.url_name == 'policy' %}
-  <div class="d-flex flex-wrap gap-2 mb-4" role="navigation" aria-label="بخش‌های انبار ورق">
-    <a class="btn btn-sm {% if kind == 'all' %}btn-secondary{% else %}btn-outline-secondary{% endif %}" href="{% url 'cutting:inventory' %}">خلاصه موجودی</a>
+  {% elif cut_section == 'stock' %}
+  <div class="mt-2 d-flex flex-wrap gap-2">
+    <a class="btn btn-sm {% if kind == 'all' %}btn-secondary{% else %}btn-outline-secondary{% endif %}" href="{% url 'cutting:inventory' %}">خلاصه</a>
     <a class="btn btn-sm {% if kind == 'full' %}btn-secondary{% else %}btn-outline-secondary{% endif %}" href="{% url 'cutting:full_sheets' %}">ورق‌های کامل</a>
-    <a class="btn btn-sm {% if kind == 'offcuts' %}btn-secondary{% else %}btn-outline-secondary{% endif %}" href="{% url 'cutting:offcuts' %}">پرت‌های قابل‌استفاده</a>
-    <a class="btn btn-sm btn-outline-secondary" href="{% url 'cutting:size_specs' %}">اندازه‌های استاندارد</a>
-    <a class="btn btn-sm btn-outline-secondary" href="{% url 'cutting:policy' %}">سیاست مصرف</a>
+    <a class="btn btn-sm {% if kind == 'offcuts' %}btn-secondary{% else %}btn-outline-secondary{% endif %}" href="{% url 'cutting:offcuts' %}">پرت‌ها</a>
+  </div>
+  {% elif cut_section == 'settings' %}
+  <div class="mt-2 d-flex gap-2">
+    <a class="btn btn-sm {% if cut_url_name|slice:':10' == 'size_specs' %}btn-secondary{% else %}btn-outline-secondary{% endif %}" href="{% url 'cutting:size_specs' %}">اندازه‌های استاندارد</a>
+    {% if can_manage %}<a class="btn btn-sm {% if cut_url_name == 'policy' %}btn-secondary{% else %}btn-outline-secondary{% endif %}" href="{% url 'cutting:policy' %}">سیاست مصرف و تیغه</a>{% endif %}
   </div>
   {% endif %}
 </nav>

@@ -372,7 +372,19 @@ class InventoryAndCutFlowTests(TestCase):
             with self.subTest(route=route):
                 response = self.client.get(reverse(route))
                 self.assertEqual(response.status_code, 200)
-                self.assertContains(response, 'class="cutting-stepper')
+                self.assertContains(response, 'class="cutting-nav')
+        plan = self.make_plan()
+        self.assertContains(self.client.get(reverse('cutting:planner')), 'class="cutting-stepper')
+        self.assertContains(self.client.get(reverse('cutting:plan_detail', args=[plan.pk])), 'class="cutting-stepper')
+
+    def test_nav_hides_links_user_cannot_open(self):
+        user = User.objects.create_user(username='op1', password='x')
+        user.groups.add(Group.objects.get_or_create(name='1')[0])
+        self.client.force_login(user)
+        response = self.client.get(reverse('cutting:planner'))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, reverse('cutting:inventory'))
+        self.assertNotContains(response, reverse('cutting:policy'))
 
     def test_plan_detail_renders_and_downloads_the_cut_file(self):
         self.add_stock()

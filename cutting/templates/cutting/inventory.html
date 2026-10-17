@@ -28,5 +28,4 @@
     <div class="card-footer d-flex justify-content-between align-items-center"><span>صفحه {{ page.number }} از {{ page.paginator.num_pages }} — {{ page.paginator.count }} بچ</span><div class="d-flex gap-2">{% if page.has_previous %}<a class="btn btn-sm btn-outline-secondary" href="?{% if pagination_query %}{{ pagination_query }}&amp;{% endif %}page={{ page.previous_page_number }}">قبلی</a>{% endif %}{% if page.has_next %}<a class="btn btn-sm btn-outline-secondary" href="?{% if pagination_query %}{{ pagination_query }}&amp;{% endif %}page={{ page.next_page_number }}">بعدی</a>{% endif %}</div></div>
   </div>
 </div>
-<style>.inventory-sheet-visual{display:inline-block;flex:none;border:2px solid #475569;border-radius:3px;background:linear-gradient(135deg,#dbeafe,#bfdbfe)}.inventory-sheet-visual.offcut{background:repeating-linear-gradient(135deg,#fef3c7,#fef3c7 5px,#fde68a 5px,#fde68a 10px);border-color:#a16207}</style>
 {% endblock %}

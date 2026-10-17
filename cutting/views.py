@@ -24,21 +24,18 @@ from .models import (
     SheetStock, SheetStockEvent,
 )
 from .optimizer import expected_offcuts, make_autocut, optimize
+from .permissions import can_inventory, can_manage, can_operate
 
 
 MM = Decimal('0.1')
 MAX_REMNANTS_PER_SHEET = 50
 
 
-def _role(user, names):
-    return user.is_superuser or user.is_staff or user.groups.filter(name__in=names).exists()
-
-
 def cutting_operator(view):
     @wraps(view)
     @login_required
     def wrapped(request, *args, **kwargs):
-        if not _role(request.user, ('1', '2', '3', 'انبار')):
+        if not can_operate(request.user):
             raise PermissionDenied
         return view(request, *args, **kwargs)
     return wrapped
@@ -48,7 +45,7 @@ def inventory_operator(view):
     @wraps(view)
     @login_required
     def wrapped(request, *args, **kwargs):
-        if not (request.user.is_superuser or request.user.groups.filter(name__in=('2', '3', 'انبار')).exists()):
+        if not can_inventory(request.user):
             raise PermissionDenied
         return view(request, *args, **kwargs)
     return wrapped
@@ -58,7 +55,7 @@ def manager_only(view):
     @wraps(view)
     @login_required
     def wrapped(request, *args, **kwargs):
-        if not (request.user.is_superuser or request.user.groups.filter(name__in=('2', '3')).exists()):
+        if not can_manage(request.user):
             raise PermissionDenied
         return view(request, *args, **kwargs)
     return wrapped

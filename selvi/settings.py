@@ -102,6 +102,7 @@ TEMPLATES = [
                 'cart.context_processors.cart_totals',
                 'storefront.context_processors.site_settings',
                 'storefront.context_processors.is_home',
+                'cutting.context_processors.cutting_nav',
             ],
         },
     },
