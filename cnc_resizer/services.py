@@ -115,14 +115,19 @@ def resolve_cnc_file(part, created_by=None):
     """
     base = part.base_part or part
     base_record = _base_record_for_part(base, created_by)
+    delta = Decimal(part.length) - Decimal(base.length)
+
+    # A base file can be valid for direct machining even if it is not
+    # compatible with the automatic resize geometry detector. That detector
+    # is needed only when the production part actually changes length.
+    if abs(delta) <= Decimal('0.0005'):
+        return base_record
+
     if not base_record.resizable:
         raise CncResolutionError(
             f"فایل پایه CNC «{base_record.barcode_key}» قابل تغییر اندازه نیست: "
             f"{base_record.validation_error}"
         )
-    delta = Decimal(part.length) - Decimal(base.length)
-    if abs(delta) <= Decimal('0.0005'):
-        return base_record
 
     # A part with the same length as its base part does not need a resize
     # rule. Require an approved profile only when an actual resize is needed.
