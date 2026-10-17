@@ -8,7 +8,7 @@ from decimal import Decimal
 
 from product.models import Material, Part, Product, ProductBOM, ProductCategory
 
-from .models import CncFile
+from .models import CncFile, CncPartProfile
 from .services import canonical_barcode_key, register_base_file, resolve_cnc_file
 from .tests import SAMPLE
 
@@ -25,7 +25,7 @@ class CncIntegrationTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.client.login(username="cnc-user", password="testpass")
         response = self.client.get(reverse("cnc_resizer:index"))
-        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.status_code, 403)
 
     def test_manager_can_open_resizer(self):
         self.client.login(username="cnc-manager", password="testpass")
@@ -60,7 +60,7 @@ class CncIntegrationTests(TestCase):
             material=material, name="Panel", length=Decimal("100.0"), width=Decimal("50.0"),
             f3="panel.100x50", pname="CNC product", routing_code="cnc",
         )
-        ProductBOM.objects.create(product=product, part=base, cnc_axis="length")
+        ProductBOM.objects.create(product=product, part=base)
         dynamic = Part.objects.create(
             material=material, base_part=base, name=base.name,
             length=Decimal("120.0"), width=Decimal("50.0"),
@@ -73,7 +73,12 @@ class CncIntegrationTests(TestCase):
                         stream.write(sample.read())
                     source_path = stream.name
                 try:
-                    register_base_file(source_path, base.f3, self.manager)
+                    source = register_base_file(source_path, base.f3, self.manager)
+                    CncPartProfile.objects.create(
+                        part=base, source_file=source,
+                        params={'mode': 'equal', 'symmetric': True, 'axis': 'length'},
+                        approved=True, approved_by=self.manager,
+                    )
                     record = resolve_cnc_file(dynamic, self.manager)
                     derived_exists = os.path.exists(record.path)
                 finally:

@@ -2096,6 +2096,7 @@ def scan_part_cnc(request):
         'completed_quantity': task.completed_quantity,
         'quantity': task.quantity,
         'item_tasks': get_item_task_progress_for_station(task.order_item_id, 'cnc'),
+        'cnc_config_url': f"{reverse('cnc_resizer:index')}?part_id={part.id}",
     }
 
     if is_first_scan:

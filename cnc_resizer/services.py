@@ -6,7 +6,7 @@ from decimal import Decimal
 from django.conf import settings
 
 from . import core
-from .models import CncFile
+from .models import CncFile, CncPartProfile
 
 
 BARCODE_EXTENSION_RE = re.compile(r"\.cnc$", re.IGNORECASE)
@@ -72,16 +72,22 @@ class CncResolutionError(core.CncError):
 
 
 def _profile_for_part(part):
-    """Read the BOM profile for a dynamic part, with safe defaults."""
-    from product.models import ProductBOM
-
-    base = part.base_part or part
-    bom = ProductBOM.objects.filter(part=base).order_by('id').first()
-    profile = dict((bom.cnc_resize_profile or {}) if bom else {})
-    profile.setdefault('mode', 'equal')
-    profile.setdefault('symmetric', True)
-    profile.setdefault('axis', bom.cnc_axis if bom else 'length')
-    return profile
+    """Read the operator-approved profile for this exact production part."""
+    try:
+        profile = part.cnc_profile
+    except CncPartProfile.DoesNotExist:
+        base = part.base_part
+        if not base:
+            raise CncResolutionError(f"برای قطعهٔ «{part.f3}» هنوز الگوی CNC ثبت نشده است")
+        try:
+            profile = base.cnc_profile
+        except CncPartProfile.DoesNotExist:
+            raise CncResolutionError(f"برای قطعهٔ «{part.f3}» هنوز الگوی CNC ثبت نشده است")
+    if not profile.approved:
+        raise CncResolutionError(f"الگوی CNC قطعهٔ «{part.f3}» هنوز تأیید نشده است")
+    if not profile.source_file.resizable:
+        raise CncResolutionError(f"فایل پایهٔ الگوی CNC معتبر نیست: {profile.source_file.validation_error}")
+    return dict(profile.params or {})
 
 
 def _base_record_for_part(base, created_by=None):
@@ -108,6 +114,7 @@ def resolve_cnc_file(part, created_by=None):
     profile cannot silently reuse an old result.
     """
     base = part.base_part or part
+    profile = _profile_for_part(part)
     base_record = _base_record_for_part(base, created_by)
     if not base_record.resizable:
         raise CncResolutionError(
@@ -118,7 +125,6 @@ def resolve_cnc_file(part, created_by=None):
     if abs(delta) <= Decimal('0.0005'):
         return base_record
 
-    profile = _profile_for_part(part)
     if profile.get('axis', 'length') != 'length':
         raise CncResolutionError('محور CNC انتخاب‌شده پشتیبانی نمی‌شود؛ Y باید به Part.length نگاشت شود')
     params = {

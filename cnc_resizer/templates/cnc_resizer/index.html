@@ -143,6 +143,10 @@
         <div class="fname" id="fname"></div>
       </div>
       <input type="file" id="file" accept=".cnc,.nc,.tap,.txt,.gcode,text/plain" hidden>
+      <div id="partProfileBox" hidden style="margin-top:10px">
+        <button type="button" id="saveProfileBtn" class="primary" style="width:100%">ثبت الگوی این قطعه</button>
+        <p class="hint" id="profileStatus"></p>
+      </div>
       <label class="field" style="display:block;margin-top:10px">یا انتخاب از آرشیو
         <select id="archiveFile">
           <option value="">در حال بارگذاری فایل‌های معتبر...</option>
@@ -238,6 +242,8 @@
   'use strict';
   const $ = (id) => document.getElementById(id);
   const API = document.body.dataset.api || '/api/process/';
+  const PROFILE_API = '{{ profile_api_url }}';
+  const PART_ID = '{{ part_id|escapejs }}';
   const NS = 'http://www.w3.org/2000/svg';
 
   const S = {
@@ -328,6 +334,43 @@
       $('fname').textContent = data.name + '.cnc';
       $('dropTitle').textContent = 'فایل آرشیو انتخاب شد';
       $('dropSub').textContent = 'برای تعویض کلیک کنید';
+    } catch (err) { showErr(err.message); }
+  };
+
+  async function loadPartProfile() {
+    if (!PART_ID) return;
+    $('partProfileBox').hidden = false;
+    try {
+      const resp = await fetch(PROFILE_API + '?part_id=' + encodeURIComponent(PART_ID), { credentials: 'same-origin' });
+      const data = await resp.json();
+      if (!resp.ok || !data.success) throw new Error(data.error || 'الگوی CNC بارگذاری نشد');
+      window.__cncApp.loadText(data.source_name + '.cnc', data.content);
+      archiveFile.value = String(data.source_id || '');
+      const p = data.params || {};
+      S.mode = p.mode || 'equal'; S.symmetric = p.symmetric !== false;
+      S.enabled = Array.isArray(p.enabled) ? p.enabled : [];
+      S.manual = Array.isArray(p.manual) ? p.manual : [];
+      S.tool = Number(p.tool_dia || 8);
+      document.querySelector(`input[name="mode"][value="${S.mode}"]`).checked = true;
+      $('sym').checked = S.symmetric; $('tool').value = S.tool;
+      $('profileStatus').textContent = data.approved ? 'الگوی قبلی بارگذاری شد؛ پس از بازبینی ثبت کنید.' : 'برای این قطعه الگوی تأییدشده وجود ندارد.';
+      syncModeUI();
+      $('delta').value = Number(data.part_length - data.base_length).toFixed(3);
+      schedule();
+    } catch (err) { showErr(err.message); }
+  }
+  $('saveProfileBtn').onclick = async () => {
+    if (!S.res || !PART_ID) return;
+    const params = { mode: S.mode, symmetric: S.symmetric, enabled: S.enabled, manual: S.manual, tool_dia: S.tool, axis: 'length' };
+    try {
+      const resp = await fetch(PROFILE_API + '?part_id=' + encodeURIComponent(PART_ID), {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+        body: JSON.stringify({ part_id: PART_ID, source_id: archiveFile.value || null, params }),
+      });
+      const data = await resp.json();
+      if (!resp.ok || !data.success) throw new Error(data.error || 'ثبت الگو انجام نشد');
+      $('profileStatus').textContent = data.message;
     } catch (err) { showErr(err.message); }
   };
 
@@ -623,8 +666,8 @@
   };
 
   syncModeUI();
-  loadArchiveList();
   window.__cncApp = { S, loadText: (name, text) => { S.name = name; S.text = text; S.res = null; S.enabled = []; S.manual = []; run(true); } };
+  loadArchiveList().then(loadPartProfile);
 })();
 </script>
 </body>

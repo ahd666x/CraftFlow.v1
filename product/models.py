@@ -370,8 +370,19 @@ class Order(models.Model):
                     stations.insert(0, "cut")
                     if 'cnc' in {station.lower() for station in stations}:
                         try:
+                            from cnc_resizer.models import CncPartProfile
                             from cnc_resizer.services import resolve_cnc_file
-                            resolve_cnc_file(dynamic_part, self.user)
+                            profile = CncPartProfile.objects.filter(part=dynamic_part, approved=True).first()
+                            if not profile and dynamic_part.base_part_id:
+                                profile = CncPartProfile.objects.filter(
+                                    part_id=dynamic_part.base_part_id, approved=True
+                                ).first()
+                            if profile:
+                                resolve_cnc_file(dynamic_part, self.user)
+                            else:
+                                cnc_warnings.append(
+                                    f"{dynamic_part.f3}: ابتدا الگوی CNC را از صفحهٔ اسکن ثبت و تأیید کنید"
+                                )
                         except Exception as exc:
                             cnc_warnings.append(
                                 f"{dynamic_part.f3}: فایل CNC آماده نشد — {exc}"
@@ -845,20 +856,6 @@ class ProductBOM(models.Model):
         verbose_name="قانون تغییر اندازه",
         help_text="مثال: length+length_diff, length+width_diff ; width+width_diff"
     )
-    cnc_axis = models.CharField(
-        max_length=20,
-        choices=(('length', 'طول قطعه / Y فایل CNC'),),
-        default='length',
-        verbose_name='محور CNC',
-        help_text='در فایل‌های فعلی، Y فایل CNC برابر Part.length است.',
-    )
-    cnc_resize_profile = models.JSONField(
-        default=dict,
-        blank=True,
-        verbose_name='پروفایل تغییر اندازه CNC',
-        help_text='mode، symmetric، enabled و manual؛ در صورت خالی بودن equal و symmetric استفاده می‌شود.',
-    )
-
     def __str__(self):
         return f"{self.product.name}: {self.quantity}x {self.part.name}"
 

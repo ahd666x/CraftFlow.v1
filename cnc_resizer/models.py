@@ -49,3 +49,29 @@ class CncFile(models.Model):
 
     def __str__(self):
         return f"{self.barcode_key} ({self.get_kind_display()})"
+
+
+class CncPartProfile(models.Model):
+    part = models.OneToOneField(
+        "product.Part", on_delete=models.CASCADE, related_name="cnc_profile",
+        verbose_name="قطعه",
+    )
+    source_file = models.ForeignKey(
+        CncFile, on_delete=models.PROTECT, related_name="part_profiles",
+        verbose_name="فایل پایه",
+    )
+    params = models.JSONField(default=dict, verbose_name="الگوی تغییر اندازه")
+    approved = models.BooleanField(default=False, verbose_name="تأیید شده")
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="approved_cnc_profiles",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "الگوی CNC قطعه"
+        verbose_name_plural = "الگوهای CNC قطعات"
+
+    def __str__(self):
+        return f"الگوی CNC: {self.part.f3}"
