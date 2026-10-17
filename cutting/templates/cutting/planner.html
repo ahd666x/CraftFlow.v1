@@ -46,6 +46,17 @@
     </div>
   </form>
 
+  <section class="card mb-4" aria-labelledby="part-needs-title">
+    <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+      <div><h2 class="h5 mb-1" id="part-needs-title">جدول نیاز قطعات</h2><div class="small text-muted">فقط تسک‌های واقعیِ آمادهٔ ایستگاه برش نمایش داده می‌شوند؛ تعداد انجام‌شده از مدل ProductionTask خوانده می‌شود.</div></div>
+      <span class="badge bg-light text-dark border">{{ needs_page.paginator.count }} ردیف</span>
+    </div>
+    <div class="table-responsive"><table class="table table-hover align-middle mb-0"><thead><tr><th>کد / نام قطعه</th><th>سفارش / تسک</th><th>متریال</th><th>ابعاد (طول × عرض)</th><th>موردنیاز</th><th>انجام‌شده</th><th>باقی‌مانده</th><th>وضعیت</th></tr></thead><tbody>
+      {% for task in needs_page %}<tr><td><b>{{ task.part.f3|default:task.part.name }}</b><div class="small text-muted">{{ task.part.name }}</div></td><td>#{{ task.order_id }}<div class="small text-muted">تسک #{{ task.pk }}</div></td><td>{{ task.part.material.name }}<div class="small text-muted">{{ task.part.material.thickness }} mm</div></td><td class="text-nowrap">{{ task.part.length }} × {{ task.part.width }} mm</td><td>{{ task.quantity }}</td><td>{{ task.completed_quantity }}</td><td class="fw-bold">{{ task.remaining_quantity }}</td><td>{% if task.needs_validation_error %}<span class="badge bg-danger">{{ task.needs_validation_error }}</span>{% elif task.status == 'pending' %}<span class="badge bg-primary">آماده برش</span>{% else %}<span class="badge bg-secondary">{{ task.get_status_display }}</span>{% endif %}</td></tr>{% empty %}<tr><td colspan="8" class="text-center text-muted py-4">برای فیلتر فعلی، نیاز قطعه‌ای در صف برش وجود ندارد.</td></tr>{% endfor %}
+    </tbody></table></div>
+    {% if needs_page.paginator.num_pages > 1 %}<div class="card-footer d-flex justify-content-between align-items-center"><span class="small text-muted">صفحه {{ needs_page.number }} از {{ needs_page.paginator.num_pages }}</span><div class="d-flex gap-2">{% if needs_page.has_previous %}<a class="btn btn-sm btn-outline-secondary" href="?{% if needs_pagination_query %}{{ needs_pagination_query }}&amp;{% endif %}needs_page={{ needs_page.previous_page_number }}">قبلی</a>{% endif %}{% if needs_page.has_next %}<a class="btn btn-sm btn-outline-secondary" href="?{% if needs_pagination_query %}{{ needs_pagination_query }}&amp;{% endif %}needs_page={{ needs_page.next_page_number }}">بعدی</a>{% endif %}</div></div>{% endif %}
+  </section>
+
   <div class="card mt-4"><div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2"><b>برنامه‌های در انتظار برش</b><a class="btn btn-sm btn-outline-primary" href="{% url 'cutting:plans' %}">دیدن همه برنامه‌ها</a></div>{% if active_plans %}<div class="table-responsive"><table class="table table-sm align-middle mb-0"><thead><tr><th>برنامه</th><th>سفارش‌ها</th><th>ورق رزروشده</th><th class="d-none d-md-table-cell">ساخته‌شده</th><th></th></tr></thead><tbody>{% for p in active_plans %}<tr><td>#{{ p.pk }}</td><td>{% for order in p.orders.all %}<span class="badge bg-light text-dark border">#{{ order.pk }}</span>{% endfor %}</td><td>{{ p.reserved_sheet_count }}</td><td class="d-none d-md-table-cell">{{ p.created_at|jalali }}</td><td><a class="btn btn-sm btn-outline-primary" href="{% url 'cutting:plan_detail' p.pk %}">بازبینی</a></td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="card-body text-muted">برنامه‌ی در انتظار برش وجود ندارد.</div>{% endif %}</div>
 </div>
 

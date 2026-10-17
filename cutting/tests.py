@@ -11,6 +11,7 @@ from product.models import Customer, Material, Order, Part, ProductionTask
 from .models import CuttingSettings, CutPlan, CutPlanSheet, SheetSizeSpec, SheetStock, SheetStockEvent
 from .optimizer import expected_offcuts, make_autocut, optimize
 from .templatetags.cutting_extras import jalali
+from cnc_resizer.models import CncSheetPlan
 
 
 class CuttingOptimizerRegressionTests(SimpleTestCase):
@@ -167,6 +168,23 @@ class InventoryAndCutFlowTests(TestCase):
         self.assertEqual(plan.planned_sheets.count(), 1)
         self.assertEqual(plan.planned_tasks.get().task_id, self.task.pk)
         self.assertTrue(SheetStockEvent.objects.filter(event_type='reserve', plan=plan).exists())
+
+    def test_cnc_reservation_is_visible_and_locks_stock_operations(self):
+        stock = self.add_stock()
+        CncSheetPlan.objects.create(
+            material=self.material, source_stock=stock, sheet_index=0,
+            width=stock.width, height=stock.height, kerf=Decimal('4.0'),
+            layout={'parts': []}, gcode='G-code', created_by=self.user,
+        )
+        response = self.client.get(reverse('cutting:inventory'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'شامل برنامه‌های CUT و CNC')
+        self.assertContains(response, 'رزرو شده؛ قفل')
+        self.assertEqual(response.context['reserved_count'], 1)
+        blocked = self.client.post(reverse('cutting:stock_deactivate', args=[stock.pk]), {'reason': 'تست'})
+        self.assertEqual(blocked.status_code, 302)
+        stock.refresh_from_db()
+        self.assertTrue(stock.active)
 
     def test_offcuts_first_and_full_only_do_not_delete_offcut_inventory(self):
         full = self.add_stock()
