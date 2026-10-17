@@ -16,8 +16,10 @@ def _fits_on_stock(part, stock):
     usable_h = Decimal(stock.height) - EDGE_MARGIN_MM
     length = Decimal(part.length)
     width = Decimal(part.width)
-    return (length <= usable_w and width <= usable_h) or (
-        bool(part.turn) and width <= usable_w and length <= usable_h
+    # Sheet width is X and sheet height is Y; Part.width is X and
+    # Part.length is Y throughout the CUT/CNC pipeline.
+    return (width <= usable_w and length <= usable_h) or (
+        bool(part.turn) and length <= usable_w and width <= usable_h
     )
 
 
