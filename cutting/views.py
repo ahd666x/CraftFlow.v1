@@ -185,13 +185,17 @@ def planner(request):
                             'grain': stock.grain, 'label': f'{stock.material.name} {stock.width}×{stock.height}',
                         })
                 grouped = defaultdict(list)
-                planned_quantities = {}
                 for task in tasks:
                     part = task.part
                     if part.length <= 0 or part.width <= 0:
-                        raise ValueError(f'ابعاد قطعه «{part.name}» باید مثبت باشند.')
+                        from cnc_resizer.models import CncPlanningIssue
+                        CncPlanningIssue.objects.create(
+                            task=task, order=task.order, part=part, mode='standard',
+                            reason=f'ابعاد قطعه «{part.name or part.f3}» باید مثبت باشند.',
+                            details={'stage': 'dimensions'}, created_by=request.user,
+                        )
+                        continue
                     remaining_quantity = task.quantity - task.completed_quantity
-                    planned_quantities[task.pk] = remaining_quantity
                     for _ in range(remaining_quantity):
                         grouped[part.material_id].append({
                             # CNC/CUT convention: X = Part.width, Y = Part.length.
@@ -203,25 +207,58 @@ def planner(request):
                             'uid': len(grouped[part.material_id]), 'task_id': task.pk,
                         })
                 rows = []
-                try:
-                    for material_id, parts in grouped.items():
-                        material = next(task.part.material for task in tasks if task.part.material_id == material_id)
-                        material_stock = [item for item in available if stock_by_id[item['stock_id']].material_id == material_id]
-                        if not material_stock:
-                            raise ValueError(f'برای «{material.name}» موجودی آزاد ثبت نشده است؛ یا تمام موجودی رزرو شده است.')
-                        layouts = optimize(parts, material_stock, kerf, policy=settings_row.strategy)
-                        for layout in layouts:
-                            layout['expected_offcuts'] = expected_offcuts(layout, kerf)
+                from cnc_resizer.models import CncPlanningIssue
+                for material_id, parts in grouped.items():
+                    material = next(task.part.material for task in tasks if task.part.material_id == material_id)
+                    material_stock = [item for item in available if stock_by_id[item['stock_id']].material_id == material_id]
+                    if not material_stock:
+                        for task_id in {piece['task_id'] for piece in parts}:
+                            task = next(task for task in tasks if task.id == task_id)
+                            CncPlanningIssue.objects.create(
+                                task=task, order=task.order, part=task.part, mode='standard',
+                                reason=f'برای متریال «{material.name}» ورق آزاد موجود نیست.',
+                                details={'stage': 'stock'}, created_by=request.user,
+                            )
+                        continue
+                    remaining = list(parts)
+                    layouts = []
+                    while remaining:
+                        try:
+                            layouts = optimize(remaining, material_stock, kerf, policy=settings_row.strategy)
+                            break
+                        except (ValueError, TypeError) as exc:
+                            candidate = next(
+                                (piece for piece in remaining if piece.get('label', '') in str(exc)),
+                                remaining[-1],
+                            )
+                            bad_task_id = candidate['task_id']
+                            removed = [piece for piece in remaining if piece['task_id'] == bad_task_id]
+                            remaining = [piece for piece in remaining if piece['task_id'] != bad_task_id]
+                            task = next(task for task in tasks if task.id == bad_task_id)
+                            CncPlanningIssue.objects.create(
+                                task=task, order=task.order, part=task.part, mode='standard',
+                                reason=str(exc), details={'stage': 'nesting', 'quantity': len(removed)},
+                                created_by=request.user,
+                            )
+                    for layout in layouts:
+                        layout['expected_offcuts'] = expected_offcuts(layout, kerf)
+                    if layouts:
                         rows.append({
                             'type': material.name.replace(' ', '-'), 'thickness': str(material.thickness),
-                            'sheets': layouts, 'shapes': parts, 'material_id': material_id,
+                            'sheets': layouts, 'shapes': remaining, 'material_id': material_id,
                         })
-                except ValueError:
-                    raise
+                planned_quantities = Counter()
+                for row in rows:
+                    for layout in row['sheets']:
+                        for piece in layout['parts']:
+                            if piece.get('task_id') is not None:
+                                planned_quantities[int(piece['task_id'])] += 1
                 orders = list(Order.objects.filter(pk__in=order_ids))
                 plan = CutPlan.objects.create(created_by=request.user, plan_data={'rows': [], 'kerf': str(kerf), 'policy': settings_row.strategy})
                 plan.orders.set(orders)
                 for task in tasks:
+                    if not planned_quantities[task.pk]:
+                        continue
                     CutPlanTask.objects.create(
                         plan=plan, task=task, quantity=planned_quantities[task.pk],
                         task_quantity=task.quantity, completed_before=task.completed_quantity,
