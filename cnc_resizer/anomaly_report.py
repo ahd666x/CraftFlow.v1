@@ -16,10 +16,11 @@ def _fits_on_stock(part, stock):
     usable_h = Decimal(stock.height) - EDGE_MARGIN_MM
     length = Decimal(part.length)
     width = Decimal(part.width)
-    # Sheet width is X and sheet height is Y; Part.width is X and
-    # Part.length is Y throughout the CUT/CNC pipeline.
-    return (width <= usable_w and length <= usable_h) or (
-        bool(part.turn) and length <= usable_w and width <= usable_h
+    # CUT sheet files use X = Part.length and Y = Part.width. The CNC
+    # G-code generator has its own convention: X = geometry width, Y = CNC
+    # length. This report checks CUT placement, so use the CUT convention.
+    return (length <= usable_w and width <= usable_h) or (
+        bool(part.turn) and width <= usable_w and length <= usable_h
     )
 
 

@@ -198,9 +198,10 @@ def planner(request):
                     remaining_quantity = task.quantity - task.completed_quantity
                     for _ in range(remaining_quantity):
                         grouped[part.material_id].append({
-                            # CNC/CUT convention: X = Part.width, Y = Part.length.
-                            'width': part.width, 'height': part.length,
-                            'orig_width': part.width, 'orig_height': part.length,
+                            # CUT convention: X = Part.length, Y = Part.width.
+                            # The CNC G-code generator uses a separate Y=length convention.
+                            'width': part.length, 'height': part.width,
+                            'orig_width': part.length, 'orig_height': part.width,
                             'turn': part.turn, 'grain': part.grain, 'f2': part.f2 or part.name,
                             'f3': part.f3, 'routing': part.routing_code, 'order': str(task.order_id),
                             'customer': str(task.order.customer), 'label': f'{part.name} / سفارش {task.order_id}',
@@ -389,9 +390,9 @@ def planner_preview(request):
         part = task.part
         for _ in range(task.quantity - task.completed_quantity):
             grouped[part.material_id].append({
-                # CNC/CUT convention: X = Part.width, Y = Part.length.
-                'width': part.width, 'height': part.length, 'orig_width': part.width,
-                'orig_height': part.length, 'turn': part.turn, 'grain': part.grain,
+                # CUT convention: X = Part.length, Y = Part.width.
+                'width': part.length, 'height': part.width, 'orig_width': part.length,
+                'orig_height': part.width, 'turn': part.turn, 'grain': part.grain,
                 'label': f'{part.name} / سفارش {task.order_id}', 'uid': len(grouped[part.material_id]),
                 'task_id': task.pk,
             })
