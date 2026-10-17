@@ -18,7 +18,7 @@
         <h2>📌 مدیریت مراحل نقاشی {% if process %}<small class="text-muted">- {{ process.name }}</small>{% endif %}</h2>
         <div>
             <a href="{% url 'painting_processes' %}" class="btn btn-outline-secondary me-2"><i class="bi bi-arrow-right"></i> روندها</a>
-            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#stageModal">
+            <button class="btn btn-primary" id="newStageBtn" data-bs-toggle="modal" data-bs-target="#stageModal">
                 <i class="bi bi-plus-circle"></i> مرحله جدید
             </button>
         </div>
@@ -165,6 +165,14 @@ $(function () {
             error: function () { alert('خطای ارتباط با سرور'); },
             complete: hideLoading
         });
+    });
+
+// ریست فرم برای «جدید»
+    $('#newStageBtn').on('click', function () {
+        $('#stageModalTitle').text('مرحله جدید');
+        $('#stageAction').val('create');
+        $('#stageId').val('');
+        $('#stageForm')[0].reset();
     });
 
     // ویرایش

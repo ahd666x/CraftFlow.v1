@@ -2027,7 +2027,7 @@ def _create_and_schedule_items_for_date(item_ids, target_date=None):
         _sync_queue_for_task_ids(scheduled_task_ids)
         return {
             'scheduled_count': cnt,
-            'scheduled_date': last_date or target_date,
+            'scheduled_date': target_date,
             'created_items': created_items,
             'skipped': skipped
         }

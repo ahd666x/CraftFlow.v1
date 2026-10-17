@@ -763,12 +763,16 @@ $(function () {
                         data: postData,
                         success: function (data, status, xhr) {
                             if (!data || !data.success) {
-                                if (data && data.requires_overtime_confirmation) {
-                                    if (confirm(data.error || 'این تغییر باعث خروج از ساعت کاری می‌شود. آیا ادامه می‌دهید؟')) {
-                                        doAssign(true);
-                                    }
-                                    return;
-                                }
+if (data && data.requires_overtime_confirmation) {
+                                     if (confirm(data.error || 'این تغییر باعث خروج از ساعت کاری می‌شود. آیا ادامه می‌دهید؟')) {
+                                         doAssign(true);
+                                     } else {
+                                         moveCardToColumn(dragged, originalCol);
+                                         updateAllBadgeCounts();
+                                         applyHiddenState();
+                                     }
+                                     return;
+                                 }
                                 moveCardToColumn(dragged, originalCol);
                                 updateAllBadgeCounts();
                                 applyHiddenState();
@@ -778,9 +782,10 @@ $(function () {
                                     if (resp && resp.error) msg = 'خطا: ' + resp.error;
                                 } catch (err) {}
                                 alert(msg);
-                            } else {
-                                updateCardTimeInfo(dragged, false, data.scheduled_start, data.scheduled_end);
-                            }
+} else {
+                                 updateCardTimeInfo(dragged, false, data.scheduled_start, data.scheduled_end);
+                                 if (data.shifted_tasks_count) { window.location.reload(); }
+                             }
                         },
                         error: function (xhr) {
                             moveCardToColumn(dragged, originalCol);
@@ -876,18 +881,17 @@ $(function () {
                 'task_ids[]': taskId,
             },
             success: function (data) {
-                if (data.success) {
+if (data.success) {
                     var card = btn.closest('.kanban-card');
+                    var col = card.closest('.kanban-col');
                     card.fadeOut(300, function() {
                         card.remove();
-                        var col = card.closest('.kanban-col');
                         var badge = col.querySelector('.badge-count');
                         if (badge) {
                             var count = col.querySelectorAll('.kanban-card').length;
                             badge.textContent = count;
                         }
                     });
-                    
                 } else {
                     alert(data.error || 'خطا در حذف مرحله.');
                     btn.prop('disabled', false).html('✕');
