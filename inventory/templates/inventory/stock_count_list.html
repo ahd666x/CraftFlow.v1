@@ -1,0 +1,16 @@
+{% extends 'inventory/base.html' %}
+{% load product_filters %}
+{% load i18n humanize %}
+
+{% block title %}سندهای شمارش انبار{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="h5 mb-0">سندهای شمارش انبار</h2>
+  <a href="{% url 'inventory:stock_count_create' %}" class="btn btn-primary btn-sm">
+    <i class="bi bi-plus-circle"></i> شمارش جدید
+  </a>
+</div>
+
+<div class="inventory-card-list">{% for count in counts %}<article class="inventory-item-card {% if count.status == 'draft' %}is-warning{% else %}is-success{% endif %}"><div class="d-flex justify-content-between gap-2"><strong>شمارش {{ count.date|persian_date }}</strong><span class="badge {% if count.status == 'approved' %}text-bg-success{% else %}text-bg-warning{% endif %}">{{ count.get_status_display }}</span></div><div class="inventory-item-meta">شمارشگر: {{ count.created_by.get_full_name|default:count.created_by.username }}</div>{% if count.approved_by %}<div class="inventory-item-meta">تأیید: {{ count.approved_by.get_full_name|default:count.approved_by.username }} · {{ count.approved_at|persian_datetime }}</div>{% endif %}{% if count.note %}<div class="inventory-item-meta">{{ count.note }}</div>{% endif %}<div class="inventory-item-actions"><a href="{% url 'inventory:stock_count_detail' count.pk %}" class="btn btn-sm btn-outline-primary">نمایش</a>{% if count.can_edit %}<form method="post" action="{% url 'inventory:stock_count_approve' count.pk %}" class="d-inline">{% csrf_token %}<button type="submit" class="btn btn-sm btn-success" onclick="return confirm('این سند شمارش تأیید شود؟');">تأیید</button></form>{% endif %}</div></article>{% empty %}<div class="empty-day">سند شمارشی ثبت نشده است.</div>{% endfor %}</div>
+{% endblock %}

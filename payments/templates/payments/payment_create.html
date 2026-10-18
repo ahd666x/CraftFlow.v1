@@ -1,0 +1,82 @@
+{% extends 'storefront/layouts/store.html' %}
+{% load storefront_filters %}
+
+{% block title %}پرداخت — فروشگاه{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-2xl px-4 py-8">
+
+    {# Stepper #}
+    <nav class="mb-8" aria-label="مراحل تسویه">
+        <ol class="flex items-center" role="list">
+            <li class="flex items-center">
+                <span class="flex items-center justify-center w-10 h-10 rounded-full bg-primary-600 text-white text-sm font-medium">۱</span>
+                <span class="ml-2 hidden sm:inline font-medium text-stone-900">اطلاعات</span>
+            </li>
+            <li class="relative flex-1 flex items-center">
+                <span class="absolute inset-y-0 left-1/2 w-full h-0.5 bg-stone-200" aria-hidden="true"></span>
+                <span class="relative flex items-center justify-center w-10 h-10 rounded-full bg-primary-600 text-white text-sm font-medium" aria-current="step">۲</span>
+                <span class="ml-2 hidden sm:inline font-medium text-primary-800">پرداخت</span>
+            </li>
+            <li class="relative flex-1 flex items-center">
+                <span class="absolute inset-y-0 left-1/2 w-full h-0.5 bg-stone-200" aria-hidden="true"></span>
+                <span class="relative flex items-center justify-center w-10 h-10 rounded-full border-2 border-stone-200 bg-white text-stone-400 text-sm font-medium">۳</span>
+                <span class="ml-2 hidden sm:inline text-stone-500">تایید</span>
+            </li>
+        </ol>
+    </nav>
+
+    <h1 class="mb-6 text-2xl font-bold">پرداخت سفارش</h1>
+
+    <div class="card p-5">
+        <div class="mb-6 text-center">
+            <p class="text-sm text-stone-500">مبلغ قابل پرداخت</p>
+            <p class="text-2xl font-bold text-primary-800">{{ order.final_amount|fa_price }} تومان</p>
+        </div>
+
+        <form method="post" class="space-y-4" x-data="{ submitting: false }" @submit="submitting = true">
+            {% csrf_token %}
+
+            <div class="space-y-3">
+                <div class="relative">
+                    <input type="radio" id="gateway-zarinpal" name="gateway" value="zarinpal" checked
+                           class="peer sr-only">
+                    <label for="gateway-zarinpal"
+                           class="flex cursor-pointer items-center gap-3 rounded-xl border-2 border-stone-200 p-4 transition-colors peer-checked:border-primary-600 peer-checked:bg-primary-50">
+                        <div>
+                            <p class="font-semibold">پرداخت</p>
+                            <p class="text-sm text-stone-500">پرداخت آنلاین با کارت بانکی</p>
+                        </div>
+                    </label>
+                </div>
+
+                <div class="relative">
+                    <input type="radio" id="gateway-cod" name="gateway" value="cash_on_delivery"
+                           class="peer sr-only">
+                    {% comment %} <label for="gateway-cod"
+                           class="flex cursor-pointer items-center gap-3 rounded-xl border-2 border-stone-200 p-4 transition-colors peer-checked:border-primary-600 peer-checked:bg-primary-50">
+                        <div>
+                            <p class="font-semibold">پرداخت درب منزل</p>
+                            <p class="text-sm text-stone-500">پرداخت نقدی هنگام تحویل</p>
+                        </div>
+                    </label> {% endcomment %}
+                </div>
+            </div>
+
+            <button type="submit" class="btn-primary w-full py-3 text-base" :disabled="submitting" :class="{'opacity-50 cursor-wait': submitting}">
+                <span x-show="!submitting">ادامه به پرداخت</span>
+                <span x-show="submitting" class="flex items-center justify-center gap-2">
+                    <svg class="animate-spin h-5 w-5" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/></svg>
+                    در حال پردازش...
+                </span>
+            </button>
+        </form>
+
+        <div class="mt-6 text-center">
+            <a href="{% url 'storefront:order_detail' order.id %}" class="text-sm text-primary-600 hover:underline">
+                بازگشت به جزئیات سفارش
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

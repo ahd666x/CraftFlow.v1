@@ -12,9 +12,7 @@ from django.db.models import Case, Count, DecimalField, F, Q, Sum, Value, When
 from django.utils import timezone
 
 from inventory.models import (
-    MaterialCustody,
-    MaterialIssue,
-    MaterialLeftover,
+    DailyMaterialQueue,
     RawMaterial,
 )
 from product.models import (
@@ -203,13 +201,16 @@ def order_details(order_id):
         .values('status')
         .annotate(count=Count('id'))
     )
-    open_issues = list(
-        MaterialIssue.objects
+    open_queue_rows = list(
+        DailyMaterialQueue.objects
         .filter(
-            Q(task__order_id=order.id) | Q(order_item__order_id=order.id)
+            Q(sources__production_task__order__id=order.id)
+            | Q(sources__production_task__order_item__order_id=order.id)
+            | Q(sources__defect__order_id=order.id)
         )
         .exclude(status='cancelled')
-        .values('id', 'status', 'purpose', 'raw_material_id')
+        .distinct()
+        .values('id', 'status', 'raw_material_id', 'work_date')
     )
 
     return {
@@ -237,7 +238,7 @@ def order_details(order_id):
         'waiting_task_count': waiting_count,
         'packaging': order.packaging_summary,
         'defects': {row['status']: row['count'] for row in defects},
-        'open_material_issues': len(open_issues),
+        'open_material_issues': len(open_queue_rows),
         'has_tasks': total > 0,
     }
 
@@ -672,23 +673,16 @@ def inventory_status(limit=200):
         elif entry['status'] == 'low':
             low.append(entry)
 
-    open_issues = list(
-        MaterialIssue.objects
-        .filter(status__in=['requested', 'partial'])
+    pending_rows = list(
+        DailyMaterialQueue.objects
+        .filter(status='pending')
         .values('status')
         .annotate(count=Count('id'))
     )
-    issue_map = {row['status']: row['count'] for row in open_issues}
+    queue_map = {row['status']: row['count'] for row in pending_rows}
 
-    custody_total = (
-        MaterialCustody.objects
-        .filter(quantity__gt=0)
-        .aggregate(total=Sum('quantity'))['total'] or Decimal('0')
-    )
-    floor_leftover = (
-        MaterialLeftover.objects
-        .aggregate(total=Sum('quantity'))['total'] or Decimal('0')
-    )
+    # در Engine B چیزی نزد کارگر «باقی‌نمی‌ماند»: هر تحویل در پایان روز با
+    # بازگشت بسته می‌شود و مصرف واقعی از صف محاسبه می‌گردد.
 
     return {
         'total_materials': total_materials,
@@ -704,27 +698,32 @@ def inventory_status(limit=200):
         ),
         'materials': items,
         'open_material_issues': {
-            'requested': issue_map.get('requested', 0),
-            'partial': issue_map.get('partial', 0),
-            'total': issue_map.get('requested', 0) + issue_map.get('partial', 0),
+            'requested': queue_map.get('pending', 0),
+            'partial': 0,
+            'total': queue_map.get('pending', 0),
         },
         'floor_leftovers': {
-            'custody_total': money(custody_total),
-            'production_floor_total': money(floor_leftover),
+            'custody_total': money(0),
+            'production_floor_total': money(0),
         },
-        'stock_rule': 'stock = مجموع گردش‌ها؛ فقط movement_type=consumption کم می‌کند.',
+        'stock_rule': (
+            'stock = مجموع گردش‌ها؛ فقط movement_typeهای کاهنده '
+            '(consumption و adjust_out) کم می‌کنند.'
+        ),
     }
 
 
 def order_material_requirements(order_id):
     """
-    مواد مورد نیاز یک سفارش، از دو منبع واقعی:
+    مواد مورد نیاز یک سفارش.
 
-    1. ``MaterialIssue`` — درخواست‌های واقعی ثبت‌شده در انبار (دقیق‌ترین منبع)
-    2. ``_task_material_requirements`` — نیاز محاسبه‌شده از BOM هر تسک باز
-       (همان تابعی که صف تحویل انبار از آن استفاده می‌کند)
+    Engine B فقط یک منبع واقعی دارد و آن «ردیف صف روزانه» است؛ سهم این سفارش
+    از هر ردیف با نسبت منابعِ متعلق به همان سفارش حساب می‌شود (همان ریاضیاتی
+    که ``inventory.reports.order_material_traceability`` دارد). برای دیدن نیازِ
+    هنوز محاسبه‌نشدهٔ تسک‌های باز هم BOM همان تسک‌ها خوانده می‌شود.
     """
-    from inventory.views import _task_material_requirements
+    from inventory.reports import order_material_traceability
+    from inventory.services import task_material_requirements
 
     try:
         order = Order.objects.prefetch_related(
@@ -736,32 +735,21 @@ def order_material_requirements(order_id):
     except (ValueError, TypeError):
         return None
 
-    issues = list(
-        MaterialIssue.objects
-        .filter(Q(task__order_id=order.id) | Q(order_item__order_id=order.id))
-        .select_related('raw_material', 'raw_material__category', 'task', 'painting_process')
-        .order_by('status', '-created_at')
-    )
+    trace = order_material_traceability(order)
 
-    issue_rows = [{
-        'issue_id': i.id,
-        'raw_material_id': i.raw_material_id,
-        'raw_material': i.raw_material.name,
-        'category': (
-            i.raw_material.category.name if i.raw_material.category_id else None
-        ),
-        'requested_quantity': money(i.requested_quantity),
-        'issued_quantity': money(i.issued_quantity),
-        'remaining_quantity': money(
-            (i.requested_quantity or Decimal('0')) - (i.issued_quantity or Decimal('0'))
-        ),
-        'status': i.status,
-        'status_label': i.get_status_display(),
-        'purpose': i.purpose,
-        'color_part': i.color_part or None,
-        'task_id': i.task_id,
-        'order_item_id': i.order_item_id,
-    } for i in issues]
+    queue_rows = [{
+        'queue_id': None,
+        'raw_material_id': row['raw_material_id'],
+        'raw_material': row['raw_material'],
+        'category': None,
+        'planned_quantity': money(row['planned']),
+        'delivered_quantity': money(row['delivered']),
+        'actual_consumption': money(row['actual']),
+        'remaining_quantity': money(Decimal(row['planned'] or 0) - Decimal(row['delivered'] or 0)),
+        'status': row['status'],
+        'task_count': row['task_count'],
+        'worker_count': len(row['workers']),
+    } for row in trace['rows']]
 
     # نیاز محاسبه‌شده از BOM برای تسک‌های هنوز انجام‌نشده
     computed = {}
@@ -772,7 +760,7 @@ def order_material_requirements(order_id):
     )
     for task in tasks:
         try:
-            rows = _task_material_requirements(task)
+            rows = task_material_requirements(task)
         except Exception:
             continue
         for raw, qty in rows:
@@ -794,19 +782,19 @@ def order_material_requirements(order_id):
         )
     ]
 
-    open_issues = [r for r in issue_rows if r['status'] in ('requested', 'partial')]
+    open_rows = [r for r in queue_rows if r['status'] in ('pending', 'delivered')]
 
     return {
         'order_id': order.id,
         'order_number': order.number or None,
         'order_status': order.status,
         'customer': order.customer.name if order.customer_id else None,
-        'material_issues': issue_rows,
-        'open_issue_count': len(open_issues),
+        'material_issues': queue_rows,
+        'open_issue_count': len(open_rows),
         'requested_from_bom': computed_rows,
-        'has_data': bool(issue_rows or computed_rows),
+        'has_data': bool(queue_rows or computed_rows),
         'source_note': (
-            'material_issues از درخواست‌های واقعی انبار؛ '
+            'material_issues از سهم این سفارش در صف مواد روزانه؛ '
             'requested_from_bom از فرمول ساخت (BOM) تسک‌های انجام‌نشده محاسبه شده است.'
         ),
     }
@@ -814,48 +802,57 @@ def order_material_requirements(order_id):
 
 def material_shortages(limit=50):
     """
-    کمبود مواد — با همان ریاضیات واقعی ``inventory.services.build_plans``
-    (باقی‌ماندهٔ سالن + گِرد کردن به بسته)، نه یک محاسبهٔ ساده و ناقص.
-    """
-    from inventory.services import build_plans
+    کمبود مواد برای ردیف‌های «در انتظار تحویل» صف روزانه.
 
-    issues = list(
-        MaterialIssue.objects
-        .filter(status__in=['requested', 'partial'])
+    ریاضیات عیناً همان چیزی است که تحویل انجام می‌دهد: نیاز به تعداد بستهٔ کامل
+    گِرد می‌شود و با موجودی فعلی مقایسه می‌گردد
+    (``inventory.services._physical_for``)، پس این گزارش هیچ قاعدهٔ دومی
+    اختراع نمی‌کند.
+    """
+    from inventory.services import _physical_for
+
+    pending = list(
+        DailyMaterialQueue.objects
+        .filter(status='pending')
         .select_related('raw_material')
         .order_by('raw_material_id', 'id')
     )
-    if not issues:
+    if not pending:
         return {
-            'shortages': [],
-            'checked_issues': 0,
-            'shortage_count': 0,
-            'plan_logic': 'inventory.services.build_plans',
+            'shortages': [], 'checked_issues': 0, 'shortage_count': 0,
+            'plan_logic': 'inventory.services._physical_for',
         }
 
-    issues_qty = []
-    for issue in issues:
-        remaining = (issue.requested_quantity or Decimal('0')) - (
-            issue.issued_quantity or Decimal('0')
-        )
-        if remaining > 0:
-            issues_qty.append((issue, remaining))
+    per_material = {}
+    for queue in pending:
+        bucket = per_material.setdefault(queue.raw_material_id, {
+            'raw_material': queue.raw_material,
+            'need': Decimal('0'),
+            'queue_ids': [],
+        })
+        bucket['need'] += queue.planned_quantity or Decimal('0')
+        bucket['queue_ids'].append(queue.id)
 
-    if not issues_qty:
-        return {
-            'shortages': [], 'checked_issues': len(issues),
-            'shortage_count': 0, 'plan_logic': 'inventory.services.build_plans',
-        }
+    short = []
+    for raw_id, bucket in per_material.items():
+        raw = bucket['raw_material']
+        need = Decimal(bucket['need'])
+        if need <= 0:
+            continue
+        packs, physical = _physical_for(need, raw.pack_size or 0)
+        stock = Decimal(raw.current_stock or Decimal('0'))
+        if physical <= stock:
+            continue
+        short.append({
+            'raw_material_id': raw_id,
+            'raw': raw,
+            'need': need,
+            'packs': packs,
+            'physical': physical,
+            'stock': stock,
+            'queue_ids': bucket['queue_ids'],
+        })
 
-    raw_ids = {issue.raw_material_id for issue, _ in issues_qty}
-    leftovers = {
-        row.raw_material_id: row.quantity
-        for row in MaterialLeftover.objects.filter(raw_material_id__in=raw_ids)
-    }
-
-    plans = build_plans(issues_qty, leftovers)
-
-    short = [p for p in plans if not p['enough']]
     short.sort(key=lambda p: (p['stock'] - p['physical']))
     limit = max(1, min(int(limit or 50), 200))
 
@@ -864,14 +861,14 @@ def material_shortages(limit=50):
         'raw_material': p['raw'].name,
         'unit': p['raw'].get_unit_display(),
         'needed': money(p['need']),
-        'from_leftover': money(p['from_leftover']),
-        'from_stock': money(p['from_stock']),
+        'from_leftover': money(0),
+        'from_stock': money(min(p['stock'], p['physical'])),
         'physical_required': money(p['physical']),
         'packs': p['packs'],
-        'pack_size': money(p['pack_size']),
+        'pack_size': money(p['raw'].pack_size or 0),
         'current_stock': money(p['stock']),
         'shortage_amount': money(p['physical'] - p['stock']),
-        'issue_ids': p['issue_ids'],
+        'issue_ids': p['queue_ids'],
         'reason': (
             f"نیاز فیزیکی {p['physical']} {p['raw'].get_unit_display()} "
             f"و موجودی انبار {p['stock']}"
@@ -880,12 +877,12 @@ def material_shortages(limit=50):
 
     return {
         'shortages': rows,
-        'checked_issues': len(issues_qty),
+        'checked_issues': len(pending),
         'shortage_count': len(short),
         'returned': len(rows),
         'truncated': len(short) > len(rows),
-        'plan_logic': 'inventory.services.build_plans (باقی‌ماندهٔ سالن + گِرد کردن به بسته)',
-        'note': 'موجودی کسرشده از باقی‌ماندهٔ سالن تولید است، نه امانت کارگران.',
+        'plan_logic': 'inventory.services._physical_for (گِرد کردن به بستهٔ کامل)',
+        'note': 'کمبود نسبت به ردیف‌های «در انتظار تحویل» صف روزانه سنجیده می‌شود.',
     }
 
 

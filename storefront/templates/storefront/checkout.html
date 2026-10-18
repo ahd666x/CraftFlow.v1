@@ -1,0 +1,214 @@
+{% extends 'storefront/layouts/store.html' %}
+{% load storefront_filters %}
+
+{% block title %}تسویه‌ی سفارش — {{ site_settings.site_name }}{% endblock %}
+{% block meta_description %}تسویه سفارش در {{ site_settings.site_name }}{% endblock %}
+{% block og_title %}تسویه سفارش{% endblock %}
+{% block og_description %}تکمیل خرید در {{ site_settings.site_name }}{% endblock %}
+
+{% block content %}
+{% if addresses %}{{ addresses_data|json_script:"saved-addresses" }}{% endif %}
+<div class="mx-auto max-w-6xl px-4 py-8">
+
+    {# Stepper #}
+    {% include 'storefront/partials/stepper.html' with step=1 %}
+
+    <h1 class="mb-6 text-2xl font-bold">تسویه‌ی سفارش</h1>
+
+    <div class="grid gap-8 lg:grid-cols-[1fr_22rem]">
+
+        <form method="post" action="{% url 'storefront:checkout' %}" class="space-y-6" x-data="{ submitting: false, valid: true }" @submit="submitting = true">
+            {% csrf_token %}
+
+            <section class="card p-5">
+                <h2 class="mb-4 font-semibold">اطلاعات تماس</h2>
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <div>
+                        <label class="label" for="name">نام و نام خانوادگی</label>
+                        <input id="name" name="name" type="text" class="input"
+                               value="{% if customer.name %}{{ customer.name }}{% elif user.is_authenticated %}{{ user.get_full_name }}{% endif %}" required>
+                    </div>
+        <div>
+                        <label class="label" for="phone">شماره موبایل</label>
+                        <input id="phone" name="phone" type="tel" class="input"
+                               value="{{ customer.phone }}" required
+                               pattern="^09\d{9}$"
+                               title="شماره موبایل باید با ۰۹ شروع شود و ۱۱ رقم باشد"
+                               inputmode="numeric"
+                               @input="
+                                    var value = $event.target.value;
+                                    // Convert Persian/Arabic digits to Latin
+                                    var persianMap = { '۰': '0', '۱': '1', '۲': '2', '۳': '3', '۴': '4', '۵': '5', '۶': '6', '۷': '7', '۸': '8', '۹': '9' };
+                                    var arabicMap = { '٠': '0', '١': '1', '٢': '2', '٣': '3', '٤': '4', '٥': '5', '٦': '6', '٧': '7', '٨': '8', '٩': '9' };
+                                    value = value.replace(/[۰-۹]/g, d => persianMap[d]);
+                                    value = value.replace(/[٠-٩]/g, d => arabicMap[d]);
+                                    // Strip non-digits
+                                    value = value.replace(/\D/g, '');
+                                    // Format as 09XXXXXXXXX
+                                    if (value.length > 0) {
+                                        if (value[0] === '9' && value.length >= 2) {
+                                            value = '0' + value;
+                                        } else if (value[0] !== '0' && value.length === 10) {
+                                            value = '0' + value;
+                                        }
+                                        if (value.length > 11) value = value.slice(0, 11);
+                                    }
+                                    $event.target.value = value;
+                                    valid = /^09\d{9}$/.test(value);
+                                    $event.target.setCustomValidity(valid ? '' : 'شماره موبایل باید با ۰۹ شروع شود و ۱۱ رقم باشد');
+                                "
+                               @paste="
+                                    var pasted = $event.clipboardData.getData('text/plain');
+                                    var persianMap = { '۰': '0', '۱': '1', '۲': '2', '۳': '3', '۴': '4', '۵': '5', '۶': '6', '۷': '7', '۸': '8', '۹': '9' };
+                                    var arabicMap = { '٠': '0', '١': '1', '٢': '2', '٣': '3', '٤': '4', '٥': '5', '٦': '6', '٧': '7', '٨': '8', '٩': '9' };
+                                    pasted = pasted.replace(/[۰-۹]/g, d => persianMap[d]);
+                                    pasted = pasted.replace(/[٠-٩]/g, d => arabicMap[d]);
+                                    pasted = pasted.replace(/\D/g, '');
+                                    if (pasted.length > 11) pasted = pasted.slice(0, 11);
+                                    $event.target.value = pasted;
+                                    valid = /^09\d{9}$/.test(pasted);
+                                    $event.target.setCustomValidity(valid ? '' : 'شماره موبایل باید با ۰۹ شروع شود و ۱۱ رقم باشد');
+                                    $event.preventDefault();
+                                ">
+                        <p class="mt-1 text-xs text-red-600" x-show="!valid" x-cloak>شماره موبایل باید با ۰۹ شروع شود و ۱۱ رقم باشد</p>
+                    </div>
+                </div>
+            </section>
+
+            <section class="card p-5">
+                <h2 class="mb-4 font-semibold">آدرس ارسال</h2>
+
+                {% if addresses %}
+                <div class="mb-4">
+                    <label class="label" for="address_id">آدرس‌های ذخیره‌شده</label>
+                    <select id="address_id" name="address_id" class="select">
+                        <option value="">— انتخاب کنید —</option>
+                        {% for address in addresses %}
+                        <option value="{{ address.pk }}">{{ address }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% endif %}
+
+                <div>
+                    <label class="label" for="shipping_address">آدرس کامل ارسال</label>
+                    <textarea id="shipping_address" name="shipping_address" rows="3"
+                              class="input" required></textarea>
+                </div>
+
+                <div class="mt-4">
+                    <label class="label" for="notes">توضیحات سفارش (اختیاری)</label>
+                    <textarea id="notes" name="notes" rows="2" class="input"></textarea>
+                </div>
+            </section>
+
+            <button type="submit" class="btn-primary w-full py-3 text-base" :disabled="submitting" :class="{'opacity-50 cursor-wait': submitting}">
+                <span x-show="!submitting">ثبت نهایی سفارش</span>
+                <span x-show="submitting" class="flex items-center justify-center gap-2">
+                    <svg class="animate-spin h-5 w-5" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/></svg>
+                    در حال ثبت...
+                </span>
+            </button>
+        </form>
+
+        <aside class="card h-fit p-5 lg:sticky lg:top-20">
+            <h2 class="mb-4 font-semibold">خلاصه‌ی سفارش</h2>
+
+            <ul class="space-y-3">
+                {% for item in items %}
+                <li class="flex items-start justify-between gap-3 text-sm">
+                    <div>
+                        <span class="block">{{ item.product.name }}</span>
+                        <span class="text-xs text-stone-500">
+                            {% if item.has_custom_dimensions %}
+                                {% if item.custom_length %}طول {{ item.custom_length }}{% endif %}
+                                {% if item.custom_width %} / عرض {{ item.custom_width }}{% endif %}
+                                {% if item.custom_height %} / ارتفاع {{ item.custom_height }}{% endif %}
+                                سانتی‌متر
+                            {% else %}
+                                ابعاد پیش‌فرض
+                            {% endif %}
+                            × {{ item.quantity }}
+                        </span>
+                        {% if item.resolved_colors %}
+                        <span class="mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5 text-xs text-stone-500">
+                            {% for part, code in item.resolved_colors.items %}
+                            <span class="flex items-center gap-1">
+                                <span class="inline-block h-3 w-3 rounded-full border border-stone-300"
+                                      style="background: {{ code|color_hex }}" aria-hidden="true"></span>
+                                {{ part }}: کد {{ code }}
+                            </span>
+                            {% endfor %}
+                        </span>
+                        {% endif %}
+                    </div>
+                    {% if can_see_prices %}
+                    <span class="whitespace-nowrap">{{ item.total_price|fa_price }}</span>
+                    {% else %}
+                    <span class="whitespace-nowrap">—</span>
+                    {% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+
+            <div class="mt-4 border-t border-stone-200 pt-4 space-y-2">
+                <div class="flex items-center justify-between text-sm text-stone-600">
+                    <span>جمع اقلام</span>
+                    {% if can_see_prices %}
+                    <span>{{ cart.total_price|fa_price }}</span>
+                    {% else %}
+                    <span>—</span>
+                    {% endif %}
+                </div>
+                {% if cart.discount %}
+                <div class="flex items-center justify-between text-emerald-700 text-sm">
+                    <span>تخفیف ({{ cart.discount.code }})</span>
+                    {% if can_see_prices %}
+                    <span>-{{ cart.discount_amount|fa_price }}</span>
+                    {% else %}
+                    <span>—</span>
+                    {% endif %}
+                </div>
+                {% endif %}
+                
+                {# Shipping #}
+                <div class="flex items-center justify-between text-sm text-stone-600">
+                    <span>هزینه ارسال</span>
+                    <span>{% if cart.shipping_cost == 0 %}رایگان{% else %}{{ cart.shipping_cost|fa_price }} تومان{% endif %}</span>
+                </div>
+
+                {# Tax #}
+                {% if cart.tax_amount > 0 %}
+                <div class="flex items-center justify-between text-sm text-stone-600">
+                    <span>مالیات ({{ site_settings.tax_percent }}%)</span>
+                    <span>{{ cart.tax_amount|fa_price }} تومان</span>
+                </div>
+                {% endif %}
+
+                <div class="flex items-center justify-between border-t border-stone-200 pt-2">
+                    <span class="font-semibold">مبلغ قابل پرداخت</span>
+                    {% if can_see_prices %}
+                    <span class="text-lg font-bold text-primary-800">{{ cart.final_price|fa_price }}</span>
+                    {% else %}
+                    <span class="text-lg font-bold text-primary-800">—</span>
+                    {% endif %}
+                </div>
+                <p class="text-xs text-stone-500">تومان</p>
+            </div>
+
+            {# Estimated delivery #}
+            <div class="mt-4 p-3 rounded-lg bg-primary-50 border border-primary-100">
+                <div class="flex items-center gap-2 text-sm text-primary-800">
+                    <svg class="h-5 w-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                    <span>زمان تحویل تقریبی: {{ cart.estimated_delivery_min }} تا {{ cart.estimated_delivery_max }} روز کاری</span>
+                </div>
+                {% if cart.shipping_cost > 0 %}
+                <p class="mt-1 text-xs text-primary-700">سفارش‌های بالای {{ site_settings.free_shipping_threshold|fa_price }} تومان، ارسال رایگان دارند.</p>
+                {% endif %}
+            </div>
+        </aside>
+    </div>
+</div>
+{% endblock %}

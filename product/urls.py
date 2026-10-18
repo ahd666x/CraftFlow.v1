@@ -43,7 +43,7 @@ urlpatterns = [
     path('archive/upload/dr/', views.archive_upload_dr, name='archive_upload_dr'),
     path('archive/delete-file/', views.archive_delete_file, name='archive_delete_file'),
     path('archive/download/<str:archive_type>/<str:filename>/', views.archive_download, name='archive_download'),
-    path('', views.dashboard, name='dashboard'),
+    path('', views.root_view, name='dashboard'),
     path('orders/', views.order_list, name='order_list'),
     path('orders/<int:order_id>/items-expand/', views.order_items_expand_ajax, name='order_items_expand_ajax'),
     path('orderlist/', views.order_item_list, name='order_item_list'),
@@ -89,6 +89,7 @@ urlpatterns = [
     path('orders/create/', views.create_order, name='create_order'),
     path('orders/create/step2/<int:order_id>/', views.create_order_step2, name='create_order_step2'),
     path('ajax/load-products/', views.ajax_load_products, name='ajax_load_products'),
+    path('ajax/load-product-dimensions/', views.ajax_load_product_dimensions, name='ajax_load_product_dimensions'),
     path('ajax/load-customers/', views.ajax_load_customers, name='ajax_load_customers'),
 
     path('orders/<int:order_id>/', views.order_detail, name='order_detail'),

@@ -3,7 +3,7 @@
 
 مسیری که *واقعاً* در دادهٔ فعلی CraftFlow وجود دارد:
 
-    RawMaterial → current_stock → MaterialIssue / StockMovement → سفارش‌های درگیر
+    RawMaterial → current_stock → صف روزانه → سفارش‌های درگیر
 
 مسیری که *وجود ندارد* و صریحاً ``insufficient_data`` برمی‌گرداند:
 
@@ -51,8 +51,7 @@ from craftflow_ai.analysis.limits import (
 from craftflow_ai.analysis.production import OPEN_STATUSES
 
 from inventory.models import (
-    MaterialIssue,
-    MaterialLeftover,
+    DailyMaterialQueue,
     RawMaterial,
     StockMovement,
 )
@@ -66,7 +65,7 @@ from product.models import (
 MONEY_FIELD = DecimalField(max_digits=12, decimal_places=2)
 ZERO = Decimal('0.00')
 
-OPEN_ISSUE_STATUSES = ('requested', 'partial')
+OPEN_ISSUE_STATUSES = ('pending', 'delivered')
 OPEN_DEFECT_STATUSES = ('reported', 'material_requested')
 
 MAX_ORDER_IDS = 50
@@ -275,23 +274,23 @@ def warehouse_impact(raw_material_id=None, limit=25):
                         threshold=f'min_stock_alert = {money(row.min_stock_alert)}',
                     ),
                     Evidence(
-                        metric='open_issue_count',
+                        metric='pending_queue_rows',
                         value=issue_map.get('count', 0),
-                        unit='request',
-                        source='inventory.MaterialIssue',
+                        unit='queue row',
+                        source='inventory.DailyMaterialQueue',
                         query=(
-                            f"open material issues for raw_material_id = {row.id} "
-                            f"where status in {list(OPEN_ISSUE_STATUSES)}"
+                            f"pending daily queue rows for raw_material_id = {row.id} "
+                            "where status = 'pending'"
                         ),
                     ),
                     Evidence(
                         metric='affected_open_orders',
                         value=issue_map.get('order_count', 0),
                         unit='order',
-                        source='inventory.MaterialIssue via task/order_item',
+                        source='inventory.DailyMaterialQueue via task/order item/defect',
                         query=(
-                            'distinct orders referenced by open material issues '
-                            '(task.order_id or order_item.order_id)'
+                            'distinct orders referenced by pending daily queue rows '
+                            '(source task, order item or rework defect)'
                         ),
                     ),
                 )
@@ -308,7 +307,7 @@ def warehouse_impact(raw_material_id=None, limit=25):
         value=len(results),
         unit='raw_material',
         source='inventory.RawMaterial',
-        query='raw materials with computed stock, open issues and consumption link',
+        query='raw materials with computed stock, pending queue rows and consumption link',
     )]
 
     report_status = 'insufficient_data' if not results else 'complete'
@@ -342,29 +341,43 @@ def warehouse_impact(raw_material_id=None, limit=25):
 
 
 def _open_issue_index(raw_ids):
-    """اندیس درخواست‌های باز به تفکیک ماده — یک کوئری، گروه‌بندی در حافظه."""
+    """
+    اندیس ردیف‌های «در انتظار تحویل» صف روزانه به تفکیک ماده.
+
+    Engine B به‌جای «درخواست مواد» یک ردیف صف دارد، پس این اندیس همان شمارش را
+    از جدول ``DailyMaterialQueue`` می‌سازد: نیاز برنامه‌ریزی‌شده در برابر مصرف
+    واقعی، به تفکیک ماده و سفارش.
+    """
     index = {}
     if not raw_ids:
         return index
 
     rows = (
-        MaterialIssue.objects
-        .filter(raw_material_id__in=raw_ids, status__in=OPEN_ISSUE_STATUSES)
-        .values('raw_material_id', 'task__order_id', 'order_item__order_id',
-                'requested_quantity', 'issued_quantity')
+        DailyMaterialQueue.objects
+        .filter(raw_material_id__in=raw_ids, status='pending')
+        .values(
+            'raw_material_id',
+            'sources__production_task__order_id',
+            'sources__production_task__order_item__order_id',
+            'sources__defect__order_id',
+            'planned_quantity', 'delivered_quantity', 'returned_quantity',
+        )
     )
     for row in rows:
         entry = index.setdefault(row['raw_material_id'], {
             'count': 0, 'requested': ZERO, 'issued': ZERO, 'remaining': ZERO,
             'order_ids': set(),
         })
-        requested = row['requested_quantity'] or ZERO
-        issued = row['issued_quantity'] or ZERO
         entry['count'] += 1
-        entry['requested'] += requested
-        entry['issued'] += issued
-        entry['remaining'] += (requested - issued)
-        order_id = row['task__order_id'] or row['order_item__order_id']
+        entry['requested'] += row['planned_quantity'] or ZERO
+        entry['issued'] += row['delivered_quantity'] or ZERO
+        entry['remaining'] += (row['planned_quantity'] or ZERO) - (row['delivered_quantity'] or ZERO)
+        entry['remaining'] = max(ZERO, entry['remaining'])
+        order_id = (
+            row['sources__production_task__order_id']
+            or row['sources__production_task__order_item__order_id']
+            or row['sources__defect__order_id']
+        )
         if order_id:
             entry['order_ids'].add(order_id)
 
@@ -440,16 +453,21 @@ def order_material_impact(order_id):
         return None
 
     coverage = bom_mapping_coverage(order)
-    issues = list(
-        MaterialIssue.objects
-        .filter(Q(task__order_id=order.id) | Q(order_item__order_id=order.id))
+    pending_queues = list(
+        DailyMaterialQueue.objects
+        .filter(
+            Q(sources__production_task__order_id=order.id)
+            | Q(sources__production_task__order_item__order_id=order.id)
+            | Q(sources__defect__order_id=order.id)
+        )
         .exclude(status='cancelled')
+        .distinct()
         .select_related('raw_material')
         .order_by('raw_material_id', 'id')
     )
-    open_issues = [i for i in issues if i.status in OPEN_ISSUE_STATUSES]
+    open_queues = [q for q in pending_queues if q.status == 'pending']
 
-    shortage_rows, plan_logic = _shortages_for(open_issues)
+    shortage_rows, plan_logic = _shortages_for(open_queues)
 
     limitations = []
     if not coverage['mapping_complete']:
@@ -463,9 +481,9 @@ def order_material_impact(order_id):
             'منبع تصمیم «product.Material.raw_material» در دادهٔ فعلی وجود ندارد.'
         ]
     else:
-        confidence = CONFIDENCE_MEDIUM if open_issues else CONFIDENCE_HIGH
+        confidence = CONFIDENCE_MEDIUM if open_queues else CONFIDENCE_HIGH
         confidence_reasons = [
-            'درخواست‌های انبار و موجودی مستقیماً از دیتابیس آمده‌اند.'
+            'صف مواد روزانه و موجودی مستقیماً از دیتابیس آمده‌اند.'
         ]
 
     findings = []
@@ -482,7 +500,7 @@ def order_material_impact(order_id):
                 value=len(shortage_rows),
                 unit='raw_material',
                 source='inventory.services.build_plans',
-                query='open issues of this order evaluated with the real handover plan',
+                query='pending queue rows of this order evaluated with the real delivery rule',
             ),),
             confidence=confidence,
             limitations=tuple(limitations),
@@ -495,8 +513,8 @@ def order_material_impact(order_id):
         'report_status': 'insufficient_data' if limitations else 'complete',
         'status': 'insufficient_data' if limitations else 'healthy',
         'reason': 'missing_material_mapping' if not coverage['mapping_complete'] else None,
-        'open_issue_count': len(open_issues),
-        'total_issue_count': len(issues),
+        'open_issue_count': len(open_queues),
+        'total_issue_count': len(pending_queues),
         'shortages': shortage_rows,
         'shortage_count': len(shortage_rows),
         'plan_logic': plan_logic,
@@ -507,13 +525,13 @@ def order_material_impact(order_id):
         'confidence': confidence,
         'confidence_reasons': confidence_reasons,
         'evidence': [Evidence(
-            metric='open_material_issues',
-            value=len(open_issues),
-            unit='request',
-            source='inventory.MaterialIssue',
+            metric='open_queue_rows',
+            value=len(open_queues),
+            unit='queue row',
+            source='inventory.DailyMaterialQueue',
             query=(
-                'material issues of this order via task.order_id or order_item.order_id '
-                f"where status in {list(OPEN_ISSUE_STATUSES)}"
+                'daily queue rows of this order via source task/order item/defect '
+                "where status = 'pending'"
             ),
         ).to_dict(), Evidence(
             metric='material_rows_unmapped',
@@ -526,33 +544,68 @@ def order_material_impact(order_id):
     }
 
 
-def _shortages_for(open_issues):
+def _shortages_for(pending_queues):
     """
-    کمبود با همان ریاضیات ``inventory.services.build_plans``.
+    کمبود با همان ریاضیات تحویل واقعی: ``inventory.services._physical_for``.
 
-    هیچ ریاضیات جدیدی اختراع نمی‌شود: باقی‌ماندهٔ سالن + گِرد کردن به بسته.
+    هیچ ریاضیات جدیدی اختراع نمی‌شود؛ فقط گِرد کردن نیاز به بستهٔ کامل و مقایسه
+    با موجودی فعلی، دقیقاً همان کاری که انباردار هنگام تحویل انجام می‌دهد.
     """
-    from inventory.services import build_plans
+    from inventory.services import _physical_for
 
-    if not open_issues:
-        return [], 'inventory.services.build_plans'
+    logic = 'inventory.services._physical_for'
+    if not pending_queues:
+        return [], logic
 
-    issues_qty = []
-    for issue in open_issues:
-        remaining = (issue.requested_quantity or ZERO) - (issue.issued_quantity or ZERO)
-        if remaining > 0:
-            issues_qty.append((issue, remaining))
-    if not issues_qty:
-        return [], 'inventory.services.build_plans'
+    per_material = {}
+    for queue in pending_queues:
+        bucket = per_material.setdefault(queue.raw_material_id, {
+            'raw': queue.raw_material, 'need': ZERO, 'queue_ids': [],
+        })
+        bucket['need'] += queue.planned_quantity or ZERO
+        bucket['queue_ids'].append(queue.id)
 
-    raw_ids = {issue.raw_material_id for issue, _ in issues_qty}
-    leftovers = {
-        row.raw_material_id: row.quantity
-        for row in MaterialLeftover.objects.filter(raw_material_id__in=raw_ids)
-    }
-    plans = build_plans(issues_qty, leftovers)
-    short = [p for p in plans if not p['enough']]
-    short.sort(key=lambda p: (p['physical'] - p['stock']))
+    # Leftover (return StockMovements) per material — Engine B: returns add to
+    # current_stock, so we separate them from base (purchase) stock for reporting.
+    leftover_map = {}
+    if per_material:
+        leftover_map = dict(
+            StockMovement.objects
+            .filter(raw_material_id__in=per_material.keys(), movement_type='return')
+            .values_list('raw_material_id')
+            .annotate(total=Sum('quantity'))
+        )
+        leftover_map = {k: (v or ZERO) for k, v in leftover_map.items()}
+
+    short = []
+    for raw_id, bucket in per_material.items():
+        raw = bucket['raw']
+        need = bucket['need']
+        if need <= 0:
+            continue
+        packs, physical = _physical_for(need, raw.pack_size or 0)
+        leftover = leftover_map.get(raw_id, ZERO)
+        base_stock = (raw.current_stock or ZERO) - leftover
+        cover = base_stock + leftover
+        if physical <= cover:
+            continue
+        from_leftover = min(leftover, physical)
+        from_stock = min(base_stock, max(ZERO, physical - from_leftover))
+        short.append({
+            'raw_material_id': raw_id,
+            'raw': raw,
+            'need': need,
+            'packs': packs,
+            'pack_size': raw.pack_size or ZERO,
+            'physical': physical,
+            'stock': base_stock,
+            'leftover': leftover,
+            'from_leftover': from_leftover,
+            'from_stock': from_stock,
+            'queue_ids': bucket['queue_ids'],
+        })
+
+    short.sort(key=lambda p: (p['physical'] - p['stock'] - p['leftover']))
 
     return [{
         'raw_material_id': p['raw_material_id'],
@@ -563,10 +616,10 @@ def _shortages_for(open_issues):
         'physical_required': money(p['physical']),
         'packs': p['packs'],
         'pack_size': money(p['pack_size']),
-        'current_stock': money(p['stock']),
-        'shortage_amount': money(p['physical'] - p['stock']),
-        'issue_ids': list(p['issue_ids']),
-    } for p in short], 'inventory.services.build_plans'
+        'current_stock': money(p['stock'] + p['leftover']),
+        'shortage_amount': money(p['physical'] - p['stock'] - p['leftover']),
+        'issue_ids': list(p['queue_ids']),
+    } for p in short], logic
 
 
 __all__ = [

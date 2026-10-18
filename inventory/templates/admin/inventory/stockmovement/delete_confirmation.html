@@ -1,0 +1,30 @@
+{% extends "admin/delete_confirmation.html" %}
+{% load i18n %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+  &rsaquo; <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
+  &rsaquo; <a href="{% url opts.admin_urlname 'changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a>
+  &rsaquo; {% blocktrans with opts.verbose_name_plural as verbose %}{{ verbose }} delete{% endblock %}
+</div>
+{% endblock %}
+
+{% block delete_warnings %}{{ block.super }}
+  <div class="alert alert-warning" role="alert">
+    <h4 class="alert-heading">{% trans "هشدار" %}</h4>
+    <p>
+      {% blocktrans with obj.raw_material.name as name %}
+        حذف این رکورد گردش، موجودی «{{ name }}» را تغییر می‌دهد.
+        ``RawMaterial.current_stock`` خودکار دوباره محاسبه می‌شود و به گردش
+        واقعی باز می‌گردد.
+      {% endblocktrans %}
+    </p>
+    <p>
+      {% blocktrans %}
+        فقط رکورد هایی را حذف کنید که واقعاً اشتباه ثبت شده‌اند
+        (مثلاً اسکن اشتباه دریافت یا اصلاحیهٔ تکراری).
+      {% endblocktrans %}
+    </p>
+  </div>
+{% endblock %}

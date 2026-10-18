@@ -1,0 +1,54 @@
+{% extends 'storefront/layouts/store.html' %}
+{% load storefront_filters %}
+
+{% block title %}درخواست‌های مرجوعی — فروشگاه{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-4xl px-4 py-8">
+    <h1 class="mb-6 text-2xl font-bold">درخواست‌های مرجوعی</h1>
+
+    {% if requests %}
+    <div class="card overflow-hidden">
+        <table class="w-full text-sm">
+            <thead class="bg-stone-50 text-stone-600">
+                <tr>
+                    <th class="px-5 py-3 text-right">آیتم سفارش</th>
+                    <th class="px-5 py-3 text-right">کاربر</th>
+                    <th class="px-5 py-3 text-right">دلیل</th>
+                    <th class="px-5 py-3 text-right">وضعیت</th>
+                    <th class="px-5 py-3 text-right">تاریخ</th>
+                    <th class="px-5 py-3 text-right">عملیات</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-stone-100">
+                {% for req in requests %}
+                <tr>
+                    <td class="px-5 py-3 font-medium">#{{ req.order_item.id }}</td>
+                    <td class="px-5 py-3">@{{ req.user.username }}</td>
+                    <td class="px-5 py-3 text-stone-600">{{ req.reason|truncatechars:60 }}</td>
+                    <td class="px-5 py-3">
+                        <span class="inline-flex rounded-full px-2 py-0.5 text-xs font-medium
+                            {% if req.status == 'pending' %}bg-amber-100 text-amber-700
+                            {% elif req.status == 'approved' %}bg-emerald-100 text-emerald-700
+                            {% elif req.status == 'rejected' %}bg-red-100 text-red-700
+                            {% else %}bg-stone-100 text-stone-700{% endif %}">
+                            {{ req.get_status_display }}
+                        </span>
+                    </td>
+                    <td class="px-5 py-3 text-stone-500">{{ req.created_at|date:"Y/m/d" }}</td>
+                    <td class="px-5 py-3">
+                        <a href="{% url 'storefront:return_detail' req.pk %}" class="text-sm text-primary-600 hover:underline">جزئیات</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="card p-10 text-center">
+        <p class="text-stone-500">درخواست مرجوعی‌ای یافت نشد.</p>
+        <a href="{% url 'storefront:order_list' %}" class="btn-primary mt-4 inline-block">بازگشت به سفارش‌ها</a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

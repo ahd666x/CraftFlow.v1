@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+{% block title %}اندازه‌های استاندارد ورق{% endblock %}
+{% block content %}
+<div class="container-fluid py-4" dir="rtl">
+  <h1 class="mb-3">اندازه‌های استاندارد ورق</h1>
+  {% include 'cutting/_inventory_nav.html' %}
+  {% include 'cutting/_messages.html' %}
+  <div class="row g-4">
+    <div class="col-lg-5">
+      <section class="card" aria-labelledby="spec-form-title">
+        <div class="card-header"><h2 class="h5 mb-0" id="spec-form-title">{% if editing %}ویرایش اندازه{% else %}افزودن اندازه{% endif %}</h2></div>
+        <div class="card-body">
+          <form method="post">{% csrf_token %}
+            <div class="mb-3"><label class="form-label" for="spec-material">متریال</label><select name="material" id="spec-material" class="form-select" required>{% for m in materials %}<option value="{{ m.id }}" {% if editing.material_id == m.id %}selected{% endif %}>{{ m.name }} — {{ m.thickness }} mm</option>{% endfor %}</select></div>
+            <div class="mb-3"><label class="form-label" for="spec-name">عنوان</label><input class="form-control" id="spec-name" name="name" maxlength="100" value="{{ editing.name|default:'' }}" required placeholder="مثلاً استاندارد 183×366"></div>
+            <div class="row g-3"><div class="col-sm-6"><label class="form-label" for="spec-width">عرض (mm)</label><input class="form-control" id="spec-width" name="width" type="number" step="0.1" min="0.1" value="{{ editing.width|default:'' }}" required></div><div class="col-sm-6"><label class="form-label" for="spec-height">طول (mm)</label><input class="form-control" id="spec-height" name="height" type="number" step="0.1" min="0.1" value="{{ editing.height|default:'' }}" required></div></div>
+            <div class="form-check my-3"><input class="form-check-input" name="is_default" type="checkbox" id="spec-default" {% if editing.is_default %}checked{% endif %}><label for="spec-default" class="form-check-label">اندازه پیش‌فرض برای ورود ورق کامل این متریال</label></div>
+            <div class="d-flex flex-wrap gap-2"><button class="btn btn-primary">ذخیره اندازه</button>{% if editing %}<a class="btn btn-outline-secondary" href="{% url 'cutting:size_specs' %}">انصراف</a>{% endif %}</div>
+          </form>
+        </div>
+      </section>
+    </div>
+    <div class="col-lg-7">
+      <section class="card" aria-labelledby="spec-list-title">
+        <div class="card-header"><h2 class="h5 mb-0" id="spec-list-title">اندازه‌های تعریف‌شده</h2></div>
+        <div class="table-responsive"><table class="table align-middle mb-0"><thead><tr><th>متریال</th><th>عنوان و ابعاد</th><th>وضعیت</th><th>عملیات</th></tr></thead><tbody>
+          {% for s in specs %}<tr class="{% if not s.active %}text-muted{% endif %}"><td>{{ s.material.name }}<div class="small">ضخامت {{ s.material.thickness }} mm</div></td><td>{{ s.name }} — {{ s.width }}×{{ s.height }} mm</td><td>{% if not s.active %}<span class="badge bg-secondary">غیرفعال</span>{% elif s.is_default %}<span class="badge bg-success">پیش‌فرض</span>{% else %}<span class="badge bg-light text-dark">فعال</span>{% endif %}</td><td><div class="d-flex flex-wrap gap-1"><a class="btn btn-sm btn-outline-primary" href="{% url 'cutting:size_specs_edit' s.pk %}">ویرایش</a>{% if s.active %}<form method="post" action="{% url 'cutting:size_specs_edit' s.pk %}">{% csrf_token %}<input type="hidden" name="action" value="deactivate"><button class="btn btn-sm btn-outline-danger" onclick="return confirm('این قالب اندازه غیرفعال شود؟ ورق‌های ثبت‌شده تغییر نمی‌کنند.')">غیرفعال‌سازی</button></form>{% endif %}</div></td></tr>
+          {% empty %}<tr><td colspan="4">اندازه‌ای ثبت نشده است.</td></tr>{% endfor %}
+        </tbody></table></div>
+      </section>
+    </div>
+  </div>
+  <p class="text-muted mt-3">تغییر این مشخصات فقط روی ثبت‌های جدید اثر دارد؛ ابعاد موجودی قبلی مستقل ذخیره شده است.</p>
+</div>
+{% endblock %}

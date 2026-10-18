@@ -48,50 +48,6 @@ SCENARIO_ORDER_PRIORITY = 'order_priority'
 
 
 # ----------------------------------------------------------------------
-# آداپتور خواندنی برای build_plans
-# ----------------------------------------------------------------------
-
-class _PlanRaw:
-    """
-    نمای فقط‌خواندنی یک ماده برای ``build_plans``.
-
-    عمداً یک کلاس ساده است، نه مدل Django: شبیه‌سازی نباید حتی بتواند
-    موجودی واقعی را از طریق property دیتابیسی بخواند یا تغییر دهد.
-    """
-
-    __slots__ = ('pk', 'name', 'unit', 'pack_size', '_current_stock')
-
-    def __init__(self, raw, current_stock=None):
-        self.pk = raw.pk
-        self.name = raw.name
-        self.unit = raw.unit
-        self.pack_size = raw.pack_size
-        self._current_stock = q2(
-            raw.current_stock if current_stock is None else current_stock
-        )
-
-    @property
-    def current_stock(self):
-        return self._current_stock
-
-    def with_stock(self, extra):
-        return _PlanRaw(self, q2(self._current_stock + Decimal(extra)))
-
-    def get_unit_display(self):
-        return self.unit
-
-
-class _PlanIssue:
-    """نمای فقط‌خواندنی یک درخواست مواد برای ``build_plans``."""
-
-    __slots__ = ('pk', 'raw_material')
-
-    def __init__(self, pk, raw):
-        self.pk = pk
-        self.raw_material = raw
-
-
-# ----------------------------------------------------------------------
 # سناریو: در دسترس بودن مواد
 # ----------------------------------------------------------------------
 
@@ -133,11 +89,11 @@ def material_availability(snapshot: Snapshot, scenario: Scenario) -> SimulationR
         )
 
     baseline = _plan_for(material, q2(material.raw.current_stock))
-    projected_raw = _PlanRaw(material.raw).with_stock(additional)
-    projected = _plan_for(material, projected_raw.current_stock)
+    projected_stock = q2(material.raw.current_stock + additional)
+    projected = _plan_for(material, projected_stock)
 
     base_projection = _to_projection(material, baseline, material.raw.current_stock)
-    new_projection = _to_projection(material, projected, projected_raw.current_stock)
+    new_projection = _to_projection(material, projected, projected_stock)
 
     shortage_before = _shortage(base_projection)
     shortage_after = _shortage(new_projection)
@@ -171,18 +127,18 @@ def material_availability(snapshot: Snapshot, scenario: Scenario) -> SimulationR
         ),
         Evidence(
             metric='projected_stock',
-            value=money(projected_raw.current_stock),
+            value=money(projected_stock),
             unit=material.raw.unit,
             source='snapshot stock + scenario additional_quantity',
             query='arithmetic on captured values only; no database write',
             derived=True,
         ),
         Evidence(
-            metric='open_request_count',
+            metric='pending_queue_rows',
             value=len(material.issues),
-            unit='request',
-            source='inventory.MaterialIssue (captured in snapshot)',
-            query='open material issues of this raw material at snapshot time',
+            unit='queue row',
+            source='inventory.DailyMaterialQueue (captured in snapshot)',
+            query="pending daily queue rows of this raw material at snapshot time",
         ),
     ]
 
@@ -202,7 +158,7 @@ def material_availability(snapshot: Snapshot, scenario: Scenario) -> SimulationR
             'unit': material.raw.unit,
             'current_stock': money(material.raw.current_stock),
             'additional_quantity': money(additional),
-            'projected_stock': money(projected_raw.current_stock),
+            'projected_stock': money(projected_stock),
             'baseline': base_projection.to_dict(),
             'projected': new_projection.to_dict(),
             'sufficient_before': base_projection.enough,
@@ -210,7 +166,7 @@ def material_availability(snapshot: Snapshot, scenario: Scenario) -> SimulationR
             'shortage_before': money(shortage_before),
             'shortage_after': money(shortage_after),
             'open_request_count': len(material.issues),
-            'plan_logic': 'inventory.services.build_plans (reused, not reimplemented)',
+            'plan_logic': 'inventory.services._physical_for (reused, not reimplemented)',
             'write_performed': False,
         },
         diff=diff,
@@ -229,20 +185,47 @@ def _plan_for(material, stock):
     """
     اجرای همان ریاضیات واقعی تحویل انبار روی دادهٔ snapshot.
 
-    از ``inventory.services.build_plans`` استفاده می‌شود تا بسته‌بندی و
+    از ``inventory.services._physical_for`` استفاده می‌شود تا بسته‌بندی و
     باقی‌ماندهٔ سالن دقیقاً همان چیزی باشد که انبار محاسبه می‌کند.
     """
-    from inventory.services import build_plans
+    from inventory.services import _physical_for
 
-    raw = _PlanRaw(material.raw, current_stock=stock)
-    issues = [
-        (_PlanIssue(issue.pk, raw), issue.remaining())
-        for issue in material.issues
-    ]
-    if not issues:
+    if not material.issues:
         return None
-    plans = build_plans(issues, {material.raw.pk: material.leftover})
-    return plans[0] if plans else None
+
+    # Sum up total need from all pending queue rows
+    total_need = sum(issue.remaining() for issue in material.issues)
+    
+    # Calculate packs and physical quantity needed
+    packs, physical = _physical_for(total_need, material.raw.pack_size or 0)
+    
+    # Available stock includes current stock + leftover
+    available = stock + material.leftover
+    
+    if physical <= available:
+        enough = True
+        shortage = 0
+    else:
+        enough = False
+        shortage = physical - available
+    
+    # from_leftover is the amount covered by leftover (up to available)
+    from_leftover = min(material.leftover, physical)
+    from_stock = min(stock, physical - from_leftover)
+    new_leftover = material.leftover - from_leftover
+    
+    return {
+        'raw_material_id': material.raw.pk,
+        'need': total_need,
+        'from_leftover': from_leftover,
+        'from_stock': from_stock,
+        'packs': packs,
+        'pack_size': material.raw.pack_size or 0,
+        'physical': physical,
+        'stock': stock,
+        'new_leftover': new_leftover,
+        'enough': enough,
+    }
 
 
 def _to_projection(material, plan, projected_stock) -> Projection:

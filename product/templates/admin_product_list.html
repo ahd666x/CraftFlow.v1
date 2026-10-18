@@ -102,7 +102,13 @@
                             </a>
                         </td>
                         <td>{{ product.category.name }}</td>
-                        <td>{{ product.default_size|default:"-" }}</td>
+                        <td>
+                            {% if product.length or product.width or product.height %}
+                                {{ product.length|default:'?' }}x{{ product.width|default:'?' }}x{{ product.height|default:'?' }} سانتی‌متر
+                            {% else %}
+                                {{ product.default_size|default:"-" }}
+                            {% endif %}
+                        </td>
                         <td>
                             <div class="color-list">
                                 {% if product.default_colors %}

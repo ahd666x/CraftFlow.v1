@@ -74,7 +74,11 @@ class DailyQueuePhase3Base(TestCase):
 
         # مصرف به ازای هر واحد محصول: 0.5 کیلوگرم
         cls.requirement = PaintingMaterialRequirement.objects.create(
-            process=cls.process, raw_material=cls.raw, product=cls.product,
+            process=cls.process, stage=cls.stage_1, raw_material=cls.raw, product=cls.product,
+            color_part='بدنه', consumption_per_unit=Decimal('0.500'),
+        )
+        cls.requirement_2 = PaintingMaterialRequirement.objects.create(
+            process=cls.process, stage=cls.stage_2, raw_material=cls.raw, product=cls.product,
             color_part='بدنه', consumption_per_unit=Decimal('0.500'),
         )
 
@@ -382,10 +386,14 @@ class QueueTransactionGuardTests(DailyQueuePhase3Base):
 
         self.assertEqual(stock_after_delivery, stock_before - Decimal('1.00'))
         self.assertEqual(stock_after_return, stock_before)
+        # در Engine B بازگشت فقط موجودی انبار را برمی‌گرداند و هیچ «امانت
+        # نزد کارگر» ساخته نمی‌شود؛ همان صف روزانه تنها محل نگهداری نیاز است.
         self.assertFalse(
-            self.raw.custodies.exists(),
-            'برگشتی نباید برای کارگر امانت (reservation) بسازد.',
+            self.raw.daily_queues.filter(delivered_quantity=Decimal('0')).exists(),
+            'بازگشت نباید ردیف صف تازه‌ای بسازد.',
         )
+        queue.refresh_from_db()
+        self.assertEqual(queue.returned_quantity, Decimal('1.00'))
 
     def test_delivered_row_dropped_from_plan_is_flagged_not_removed(self):
         task = self._make_task(worker=self.worker_a, start=self.day1, quantity=2)
@@ -462,10 +470,11 @@ class MultiStageReportTests(DailyQueuePhase3Base):
         Decision 2: مصرف در سطح Process تعریف شده اما Stage چندگانه است.
         مدل جدید ساخته نمی‌شود؛ فقط گزارش داده می‌شود.
         """
+        # Same order_item going through multiple stages = multistage overlap
         self._make_task(worker=self.worker_a, start=self.day1, stage=self.stage_1)
         self._make_task(
             worker=self.worker_a, start=self.day1, stage=self.stage_2,
-            order_item=self.order_item_2, quantity=3,
+            order_item=self.order_item, quantity=3,
         )
 
         overlaps = services.detect_multistage_overlaps(self._date_of(self.day1))
@@ -476,7 +485,10 @@ class MultiStageReportTests(DailyQueuePhase3Base):
             sorted([self.stage_1.id, self.stage_2.id]),
         )
 
-        # رفتار فعلی حفظ شده: هر مرحله سهم خودش را دارد
-        queue = self._queue(self._date_of(self.day1), self.worker_a)
-        self.assertEqual(queue.sources.count(), 2)
-        self.assertEqual(queue.planned_quantity, Decimal('2.50'))
+        # Now each stage creates its own queue row
+        queues = DailyMaterialQueue.objects.filter(
+            work_date=self._date_of(self.day1), worker=self.worker_a, raw_material=self.raw
+        )
+        self.assertEqual(queues.count(), 2)
+        for q in queues:
+            self.assertEqual(q.sources.count(), 1)

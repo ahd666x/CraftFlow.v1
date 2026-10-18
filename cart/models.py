@@ -1,0 +1,169 @@
+from django.conf import settings
+from django.db import models
+from django.utils.functional import cached_property
+
+from storefront.base import TimeStampedModel
+from storefront.models import SiteSettings
+
+
+class Cart(TimeStampedModel):
+    """
+    سبد خرید برای کاربر واردشده یا مهمان.
+    """
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='cart', null=True, blank=True, verbose_name="کاربر",
+    )
+    session_key = models.CharField(max_length=40, null=True, blank=True, db_index=True, verbose_name="کلید جلسه")
+    discount = models.ForeignKey(
+        'discounts.Discount', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='carts', verbose_name="تخفیف",
+    )
+
+    class Meta:
+        verbose_name = "سبد خرید"
+        verbose_name_plural = "سبدهای خرید"
+
+    def __str__(self):
+        if self.user:
+            return f"سبد خرید {self.user.username}"
+        return f"سبد خرید مهمان ({self.session_key})"
+
+    def _get_items(self):
+        """Cache items queryset to avoid repeated queries."""
+        if not hasattr(self, '_cached_items'):
+            self._cached_items = list(self.items.select_related('product').all())
+        return self._cached_items
+
+    @cached_property
+    def total_items(self):
+        return sum(item.quantity for item in self._get_items())
+
+    @cached_property
+    def total_price(self):
+        return sum(item.total_price for item in self._get_items())
+
+    @cached_property
+    def _site_settings(self):
+        return SiteSettings.get_settings()
+
+    @cached_property
+    def discount_amount(self):
+        """مبلغ تخفیف محاسبه‌شده بر اساس کد فعلی سبد."""
+        if not self.discount or not self.discount.is_valid:
+            return 0
+        total = self.total_price
+        if self.discount.discount_type == 'percent':
+            return int(total * self.discount.value / 100)
+        return min(self.discount.value, total)
+
+    @cached_property
+    def shipping_cost(self):
+        """هزینه ارسال - رایگان اگر بیش از آستانه باشد.
+        
+        اگر free_shipping_threshold برابر 0 باشد، یعنی ارسال رایگان غیرفعال است.
+        """
+        settings = self._site_settings
+        if settings.free_shipping_threshold > 0 and self.total_price >= settings.free_shipping_threshold:
+            return 0
+        return settings.shipping_cost
+
+    @cached_property
+    def tax_amount(self):
+        """مبلغ مالیات بر اساس نرخ تنظیمات."""
+        settings = self._site_settings
+        return int(self.total_price * settings.tax_rate)
+
+    @cached_property
+    def final_price(self):
+        return max(self.total_price - self.discount_amount + self.shipping_cost + self.tax_amount, 0)
+
+    @cached_property
+    def estimated_delivery_min(self):
+        return self._site_settings.estimated_delivery_min
+
+    @cached_property
+    def estimated_delivery_max(self):
+        return self._site_settings.estimated_delivery_max
+
+    def _clear_cached_properties(self):
+        """Clear cached properties when cart items change."""
+        for attr in ['total_items', 'total_price', 'discount_amount', 'shipping_cost',
+                     'tax_amount', 'final_price', 'estimated_delivery_min',
+                     'estimated_delivery_max', '_site_settings', '_cached_items']:
+            if hasattr(self, attr):
+                delattr(self, attr)
+
+
+class CartItem(TimeStampedModel):
+    cart = models.ForeignKey(Cart, on_delete=models.CASCADE, related_name='items', verbose_name="سبد خرید")
+    product = models.ForeignKey('product.Product', on_delete=models.CASCADE, verbose_name="محصول")
+    quantity = models.PositiveIntegerField(default=1, verbose_name="تعداد")
+
+    # ابعاد سفارشی انتخاب‌شده توسط مشتری در صفحه جزئیات محصول.
+    # اگر خالی باشند یعنی مشتری ابعاد پیش‌فرض محصول را پذیرفته است.
+    custom_length = models.PositiveIntegerField(null=True, blank=True, verbose_name="طول سفارشی (سانتی‌متر)")
+    custom_width = models.PositiveIntegerField(null=True, blank=True, verbose_name="عرض سفارشی (سانتی‌متر)")
+    custom_height = models.PositiveIntegerField(null=True, blank=True, verbose_name="ارتفاع سفارشی (سانتی‌متر)")
+
+    # قیمت واحد محاسبه‌شده بر اساس ابعاد سفارشی، در لحظه افزودن/ویرایش
+    # ذخیره می‌شود تا اگر قیمت پایه محصول بعداً تغییر کرد، قیمت داخل سبد
+    # کاربر همان چیزی بماند که در لحظه انتخاب دیده است.
+    unit_price = models.DecimalField(max_digits=12, decimal_places=0, default=0, verbose_name="قیمت واحد")
+
+    # کدهای رنگی که مشتری برای بخش‌های رنگی محصول انتخاب کرده است
+    # (نگاشت «بخش → کد رنگ»). خالی یعنی رنگ‌های پیش‌فرض محصول.
+    selected_colors = models.JSONField(
+        default=dict, blank=True, verbose_name="کدهای رنگ انتخاب‌شده",
+    )
+
+    class Meta:
+        verbose_name = "آیتم سبد خرید"
+        verbose_name_plural = "آیتم‌های سبد خرید"
+        constraints = [
+            models.UniqueConstraint(
+                fields=['cart', 'product', 'custom_length', 'custom_width', 'custom_height', 'selected_colors'],
+                name='unique_cart_item_per_dimensions_and_colors'
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.product.name} - {self.quantity}"
+
+    @property
+    def resolved_colors(self):
+        """رنگ‌های نهایی آیتم: انتخاب مشتری، و در نبود آن پیش‌فرض محصول.
+
+        همیشه یک dict برمی‌گرداند (حتی اگر default_colors محصول به‌صورت
+        رشته‌ی JSON ذخیره شده باشد)."""
+        if isinstance(self.selected_colors, dict) and self.selected_colors:
+            return self.selected_colors
+        from product.utils import _parse_default_colors
+        return _parse_default_colors(self.product)
+
+    def recalculate_price(self):
+        """قیمت واحد را بر اساس ابعاد سفارشی فعلی دوباره محاسبه می‌کند."""
+        from storefront.pricing import calculate_dimension_price
+        self.unit_price = calculate_dimension_price(
+            base_price=self.product.base_price,
+            default_length=self.product.length,
+            default_width=self.product.width,
+            default_height=self.product.height,
+            length_percent=self.product.length_price_percent,
+            width_percent=self.product.width_price_percent,
+            height_percent=self.product.height_price_percent,
+            length_editable=self.product.length_editable,
+            width_editable=self.product.width_editable,
+            height_editable=self.product.height_editable,
+            length=self.custom_length,
+            width=self.custom_width,
+            height=self.custom_height,
+        )
+
+    @property
+    def total_price(self):
+        return (self.unit_price or 0) * self.quantity
+
+    @property
+    def has_custom_dimensions(self):
+        return any([self.custom_length, self.custom_width, self.custom_height])

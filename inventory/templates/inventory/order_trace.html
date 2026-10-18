@@ -1,0 +1,40 @@
+{% extends "inventory/base.html" %}
+{% load product_filters %}
+{% block title %}ردیابی مواد سفارش{% endblock %}
+
+{% block inventory_content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+  <div>
+    <h1 class="h3 mb-1">ردیابی مواد سفارش #{{ order.id }}</h1>
+    <div class="small text-muted">
+      {{ order.customer }} — {{ order.created_at|persian_date }}
+    </div>
+  </div>
+  <a href="{% url 'inventory:reports' %}" class="btn btn-sm btn-outline-primary">
+    <i class="bi bi-journal-text"></i> گزارش‌ها
+  </a>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-6 col-lg-3"><div class="card-modern h-100"><div class="card-body py-3">
+    <div class="text-muted small">نیاز برنامه‌ریزی‌شده</div>
+    <div class="h5 mb-0">{{ trace.totals.planned|floatformat:2 }}</div>
+  </div></div></div>
+  <div class="col-6 col-lg-3"><div class="card-modern h-100"><div class="card-body py-3">
+    <div class="text-muted small">تحویل‌شده</div>
+    <div class="h5 mb-0">{{ trace.totals.delivered|floatformat:2 }}</div>
+  </div></div></div>
+  <div class="col-6 col-lg-3"><div class="card-modern h-100"><div class="card-body py-3">
+    <div class="text-muted small">برگشتی</div>
+    <div class="h5 mb-0">{{ trace.totals.returned|floatformat:2 }}</div>
+  </div></div></div>
+  <div class="col-6 col-lg-3"><div class="card-modern h-100"><div class="card-body py-3">
+    <div class="text-muted small">مصرف واقعی</div>
+    <div class="h5 mb-0">{{ trace.totals.actual|floatformat:2 }}</div>
+    <div class="small text-muted">{{ trace.totals.movement_count }} حرکت انبار</div>
+  </div></div></div>
+</div>
+
+<section class="mb-4"><h2 class="h6 mb-2">مواد هذا الطلب</h2><div class="inventory-card-list">{% for row in trace.rows %}<article class="inventory-item-card {% if row.status == 'conflict' %}is-warning{% endif %}"><div class="d-flex justify-content-between gap-2"><strong>{{ row.raw_material }}</strong><span class="badge {% if row.status == 'conflict' %}text-bg-warning{% else %}text-bg-secondary{% endif %}">{% if row.status == 'conflict' %}مغایرت{% else %}{{ row.status }}{% endif %}</span></div><div class="inventory-item-meta">سهم سفارش {{ row.planned|floatformat:2 }} {{ row.unit }} · مصرف {{ row.actual|floatformat:2 }}</div><div class="inventory-item-meta">تحویل {{ row.delivered|floatformat:2 }} · برگشتی {{ row.returned|floatformat:2 }} · {{ row.workers|length }} نفر · {{ row.task_count }} کار</div></article>{% empty %}<div class="empty-day">برای این سفارش ماده‌ای ثبت نشده است.</div>{% endfor %}</div></section>
+<section><h2 class="h6 mb-2">گردش مواد این سفارش</h2><div class="d-flex flex-column gap-2">{% for movement in trace.movements %}<article class="inventory-item-card"><div class="d-flex justify-content-between gap-2"><strong>{{ movement.raw_material.name }}</strong><strong>{{ movement.quantity|floatformat:2 }} {{ movement.raw_material.get_unit_display }}</strong></div><div class="inventory-item-meta">{{ movement.created_at|persian_datetime }} · {{ movement.get_movement_type_display }}</div>{% if movement.note %}<div class="inventory-item-meta">{{ movement.note }}</div>{% endif %}</article>{% empty %}<div class="empty-day">گردشی ثبت نشده است.</div>{% endfor %}</div></section>
+{% endblock %}

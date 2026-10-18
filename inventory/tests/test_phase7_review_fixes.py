@@ -48,7 +48,8 @@ from product.models import (
     ProductionTask,
 )
 
-TEMPLATE = Path('inventory/templates/inventory/daily_material_queue.html')
+REPO_ROOT = Path(__file__).resolve().parents[2]
+TEMPLATE = REPO_ROOT / 'inventory' / 'templates' / 'inventory' / 'queue.html'
 
 
 class ReviewBase(TestCase):
@@ -100,16 +101,16 @@ class ReviewBase(TestCase):
 
         # planned = 6 × 0.5 = 3 kg  →  با پک ۴ باید ۴ کیلو تحویل شود
         PaintingMaterialRequirement.objects.create(
-            process=cls.process, raw_material=cls.raw_pack4, product=cls.product,
+            process=cls.process, stage=cls.stage, raw_material=cls.raw_pack4, product=cls.product,
             color_part='بدنه', consumption_per_unit=Decimal('0.500'),
         )
         # نیاز بسیار کوچک برای آزمون دقت
         PaintingMaterialRequirement.objects.create(
-            process=cls.process, raw_material=cls.raw_tiny, product=cls.product,
+            process=cls.process, stage=cls.stage, raw_material=cls.raw_tiny, product=cls.product,
             color_part='بدنه', consumption_per_unit=Decimal('0.004'),
         )
 
-        for raw, qty in ((cls.raw, '100'), (cls.raw_pack4, '50'), (cls.raw_tiny, '10')):
+        for raw, qty in ((cls.raw, '100'), (cls.raw_pack4, '48'), (cls.raw_tiny, '10')):
             StockMovement.objects.create(
                 raw_material=raw, movement_type='purchase',
                 quantity=Decimal(qty), created_by=cls.superuser,
@@ -158,13 +159,13 @@ class DeliveryAccountingTests(ReviewBase):
         services.execute_daily_delivery(queue_id=queue.pk, delivered_by=self.superuser)
         queue.refresh_from_db()
 
-        # ۳ نیاز، پک ۴ ⇒ مقدار فیزیکی ۴
-        self.assertEqual(queue.delivered_quantity, Decimal('4.00'))
+        # در نبود باقیماندهٔ بستهٔ باز، تحویل دقیقاً برابر نیاز است.
+        self.assertEqual(queue.delivered_quantity, Decimal('3.00'))
 
         movement = StockMovement.objects.filter(
             raw_material=self.raw_pack4, movement_type='consumption',
         ).order_by('-id').first()
-        self.assertEqual(movement.quantity, Decimal('4.00'))
+        self.assertEqual(movement.quantity, Decimal('3.00'))
 
     def test_02_planned_quantity_never_changes_on_delivery(self):
         self._task(quantity=6)
@@ -200,9 +201,8 @@ class DeliveryAccountingTests(ReviewBase):
         services.execute_daily_delivery(queue_id=queue.pk, delivered_by=self.superuser)
         queue.refresh_from_db()
 
-        self.assertEqual(queue.actual_consumption, Decimal('4.00'))
-        # پک اضافه به‌صورت مصرف اضافه گزارش می‌شود
-        self.assertEqual(queue.excess_consumption, Decimal('1.00'))
+        self.assertEqual(queue.actual_consumption, Decimal('3.00'))
+        self.assertEqual(queue.excess_consumption, Decimal('0.00'))
 
     def test_05_full_pack_can_be_returned_and_stock_is_fully_restored(self):
         self._task(quantity=6)
@@ -211,11 +211,11 @@ class DeliveryAccountingTests(ReviewBase):
 
         services.execute_daily_delivery(queue_id=queue.pk, delivered_by=self.superuser)
         services.execute_daily_return(
-            queue_id=queue.pk, returned_by=self.superuser, returned_quantity='4.00',
+            queue_id=queue.pk, returned_by=self.superuser, returned_quantity='3.00',
         )
         queue.refresh_from_db()
 
-        self.assertEqual(queue.returned_quantity, Decimal('4.00'))
+        self.assertEqual(queue.returned_quantity, Decimal('3.00'))
         self.assertEqual(queue.actual_consumption, Decimal('0.00'))
         self.assertEqual(queue.status, 'returned')
         # نه کیلو بدون حساب نمانده است
@@ -224,7 +224,7 @@ class DeliveryAccountingTests(ReviewBase):
     def test_06_surplus_pack_return_leaves_actual_equal_to_planned(self):
         self._task(quantity=6)
         queue = self._queue(raw=self.raw_pack4)
-        services.execute_daily_delivery(queue_id=queue.pk, delivered_by=self.superuser)
+        services.execute_daily_delivery(queue_id=queue.pk, delivered_by=self.superuser, quantity='4.00')
         services.execute_daily_return(
             queue_id=queue.pk, returned_by=self.superuser, returned_quantity='1.00',
         )
@@ -236,7 +236,7 @@ class DeliveryAccountingTests(ReviewBase):
 
     def test_07_no_pack_size_delivers_planned_exactly(self):
         PaintingMaterialRequirement.objects.create(
-            process=self.process, raw_material=self.raw, product=self.product,
+            process=self.process, stage=self.stage, raw_material=self.raw, product=self.product,
             color_part='بدنه', consumption_per_unit=Decimal('0.500'),
         )
         self._task(quantity=6)
@@ -253,7 +253,7 @@ class DeliveryAccountingTests(ReviewBase):
         queue = self._queue(raw=self.raw_pack4)
 
         preview = services.preview_daily_delivery(queue.pk)
-        self.assertEqual(preview['physical'], Decimal('4.00'))
+        self.assertEqual(preview['physical'], Decimal('3.00'))
         self.assertEqual(preview['packs'], 1)
         self.assertTrue(preview['can_deliver'])
         self.assertEqual(preview['status'], 'pending')
@@ -267,7 +267,7 @@ class DeliveryAccountingTests(ReviewBase):
     def test_09_report_shows_physical_delivered_and_correct_actual(self):
         self._task(quantity=6)
         queue = self._queue(raw=self.raw_pack4)
-        services.execute_daily_delivery(queue_id=queue.pk, delivered_by=self.superuser)
+        services.execute_daily_delivery(queue_id=queue.pk, delivered_by=self.superuser, quantity='4.00')
         services.execute_daily_return(
             queue_id=queue.pk, returned_by=self.superuser, returned_quantity='1.00',
         )
@@ -349,7 +349,7 @@ class DateFilterTests(ReviewBase):
             self.assertNotIn('type="date"', line)
 
     def test_15_view_uses_shared_jalali_parser(self):
-        source = Path('inventory/views.py').read_text(encoding='utf-8')
+        source = (REPO_ROOT / 'inventory' / 'views.py').read_text(encoding='utf-8')
         self.assertIn('parse_jalali_date', source)
         # تفسیر دستی میلادی/شمسی با strptime نباید باقی بماند
         self.assertNotIn("jdatetime.datetime.strptime(date_str", source)
@@ -373,6 +373,13 @@ class SourcesXssTests(ReviewBase):
         )
 
     def _queue_with_payload(self, payload):
+        # نیاز مصرف برای همین بخش رنگی هم باید وجود داشته باشد، وگرنه تسک از
+        # برنامهٔ روز خارج می‌شود و صف لغو می‌شود (و منابعش پاک می‌شود).
+        PaintingMaterialRequirement.objects.create(
+            process=self.process, stage=self.stage, raw_material=self.raw_pack4,
+            product=self.product, color_part=payload,
+            consumption_per_unit=Decimal('0.500'),
+        )
         task = self._task(quantity=6)
         task.color_part = payload
         task.save()
@@ -423,13 +430,19 @@ class CancelledFilterTests(ReviewBase):
     """D) فیلتر «لغو شده» باید کار کند."""
 
     def _cancelled_row(self):
-        """همهٔ ردیف‌های آن روز لغو می‌شوند (هر تسک دو ماده دارد)."""
-        self._task(quantity=6)
+        """ردیف صف برای تسکی که از برنامه حذف شده (لغو شده)."""
+        # ابتدا تسک و صف می‌سازیم
+        task = self._task(quantity=6)
         rows = list(DailyMaterialQueue.objects.filter(work_date=self.today))
         self.assertTrue(rows)
+        # حالا تسک را از برنامه حذف می‌کنیم (یا منتقل می‌کنیم)
+        task.delete()
+        # Sync مجدد صف - ردیف‌های بدون تسک باید لغو شوند
+        services.sync_queue_for_date(self.today)
+        # حالا ردیف‌ها باید cancelled باشند
+        rows = list(DailyMaterialQueue.objects.filter(work_date=self.today))
         for row in rows:
-            row.status = 'cancelled'
-            row.save(update_fields=['status'])
+            self.assertEqual(row.status, 'cancelled')
         return rows
 
     def test_21_cancelled_rows_are_hidden_by_default(self):
@@ -517,7 +530,7 @@ class SignalStationTests(ReviewBase):
         self.assertEqual(queue.planned_quantity, Decimal('3.00'))
 
     def test_28_previous_state_query_reads_station_name(self):
-        source = Path('inventory/signals.py').read_text(encoding='utf-8')
+        source = (REPO_ROOT / 'inventory' / 'signals.py').read_text(encoding='utf-8')
         pre_save = source[:source.index('@receiver(post_save')]
         self.assertIn("'station_name'", pre_save)
         # قبل و بعد نباید از یک منبع بخوانند
@@ -558,12 +571,15 @@ class QuantityPrecisionTests(ReviewBase):
         self.assertEqual(queue.sources.count(), 1)
 
     def test_31_two_tiny_requirements_accumulate_before_rounding(self):
-        # ۲ تاکسک × ۰٫۰۰۴ = ۰٫۰۰۸ →  گرد یک‌بار در انتها ⇒ ۰٫۰۱
-        # (گرد کردن هر منبع جداگانه هر دو را صفر می‌کرد)
+        # دو واحد کار مستقل × ۰٫۰۰۴ = ۰٫۰۰۸ → گرد یک‌بار در انتها ⇒ ۰٫۰۱
+        # (گرد کردن هر منبع جداگانه هر دو را صفر می‌کرد).
+        # دو آیتم جدا لازم است: مراحل یک آیتم یک واحد کار واحد هستند و نباید
+        # دوباره شمرده شوند.
         item_b = OrderItem.objects.create(order=self.order, product=self.product, quantity=2)
         Color.objects.create(part='بدنه', code='8', orderitem=item_b)
         self._task(quantity=1, start=self.day_start)
-        self._task(quantity=1, start=self.day_start + timezone.timedelta(hours=2))
+        self._task(quantity=1, start=self.day_start + timezone.timedelta(hours=2),
+                   item=item_b)
 
         queue = self._queue(raw=self.raw_tiny)
         self.assertEqual(queue.sources.count(), 2)
@@ -579,7 +595,7 @@ class QuantityPrecisionTests(ReviewBase):
 
     def test_33_three_decimal_consumption_rounds_once(self):
         PaintingMaterialRequirement.objects.create(
-            process=self.process, raw_material=self.raw, product=self.product,
+            process=self.process, stage=self.stage, raw_material=self.raw, product=self.product,
             color_part='بدنه', consumption_per_unit=Decimal('0.125'),
         )
         item = OrderItem.objects.create(order=self.order, product=self.product, quantity=3)
@@ -592,7 +608,7 @@ class QuantityPrecisionTests(ReviewBase):
 
     def test_34_zero_consumption_is_still_ignored(self):
         PaintingMaterialRequirement.objects.create(
-            process=self.process, raw_material=self.raw, product=self.product,
+            process=self.process, stage=self.stage, raw_material=self.raw, product=self.product,
             color_part='بدنه', consumption_per_unit=Decimal('0'),
         )
         item = OrderItem.objects.create(order=self.order, product=self.product, quantity=5)
@@ -627,14 +643,14 @@ class ActionStateTests(ReviewBase):
         state = services.daily_queue_action_state(queue)
         self.assertFalse(state['can_deliver'])
         self.assertTrue(state['can_return'])
-        self.assertEqual(state['max_returnable'], '4.00')
+        self.assertEqual(state['max_returnable'], '3.00')
 
     def test_37_fully_returned_row_cannot_return_again(self):
         self._task(quantity=6)
         queue = self._queue(raw=self.raw_pack4)
         services.execute_daily_delivery(queue_id=queue.pk, delivered_by=self.superuser)
         services.execute_daily_return(
-            queue_id=queue.pk, returned_by=self.superuser, returned_quantity='4.00',
+            queue_id=queue.pk, returned_by=self.superuser, returned_quantity='3.00',
         )
         queue.refresh_from_db()
 
@@ -717,8 +733,12 @@ class RemovedDryRunTests(ReviewBase):
             )
 
     def test_42_no_dry_run_callers_remain(self):
-        for path in ('inventory/services.py', 'inventory/signals.py', 'product/utils.py'):
-            source = Path(path).read_text(encoding='utf-8')
+        for path in (
+            'inventory/services.py',
+            'inventory/signals.py',
+            'product/utils.py',
+        ):
+            source = (REPO_ROOT / path).read_text(encoding='utf-8')
             self.assertNotIn('dry_run', source, f'{path} هنوز dry_run دارد.')
 
 
@@ -726,8 +746,15 @@ class SummaryQueryTests(ReviewBase):
     """I) جمع روزانه با یک aggregate."""
 
     def test_43_summary_runs_exactly_one_query(self):
+        # سه واحد کار مستقل (سه آیتم جدا): هر کدام برای دو ماده ردیف می‌سازد،
+        # اما چون کارگر و تاریخ یکسان است در ۲ ردیف صف ادغام می‌شوند:
+        # ۹٫۰۰ برای پک‌دار + ۰٫۰۷ برای مادهٔ کوچک.
         for _ in range(3):
-            self._task(quantity=6)
+            item = OrderItem.objects.create(
+                order=self.order, product=self.product, quantity=2,
+            )
+            Color.objects.create(part='بدنه', code='8', orderitem=item)
+            self._task(quantity=6, item=item)
 
         qs = services.daily_queue_filtered_queryset(self.today)
         with CaptureQueriesContext(connection) as captured:

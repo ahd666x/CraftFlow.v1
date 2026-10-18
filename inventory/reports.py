@@ -12,7 +12,7 @@
 """
 from decimal import Decimal
 
-from django.db.models import Case, Count, DecimalField, F, Q, Sum, When
+from django.db.models import Case, Count, DecimalField, ExpressionWrapper, F, Q, Sum, Value, When
 from django.utils import timezone
 
 from .models import (
@@ -23,13 +23,14 @@ from .models import (
     StockMovement,
 )
 
-# انبارداری: حرکت مصرف موجودی را کم می‌کند، بقیه زیاد می‌کنند.
-# همان علامتی که ``RawMaterial.current_stock`` استفاده می‌کند.
+# علامت موجودی از تنها تعریف موجود در مدل می‌آید تا هیچ گزارشی علامت خودش را
+# نسازد و یک حرکت در دو جا با دو علامت شمرده نشود.
 def _signed(prefix=''):
     """جمع علامت‌دار مقدار حرکت‌ها با پیشوند رابطه (مثلاً ``movements__``)."""
     quantity = F(f'{prefix}quantity')
     return Case(
-        When(**{f'{prefix}movement_type': 'consumption'}, then=-quantity),
+        When(**{f'{prefix}movement_type__in': RawMaterial.STOCK_DECREASING_TYPES},
+             then=-quantity),
         default=quantity,
         output_field=DecimalField(),
     )
@@ -83,11 +84,12 @@ def material_ledger(*, date_from=None, date_to=None, material_id=None,
     انبار ← تحویل ← کارگر ← برگشت ← مصرف واقعی ← انبار.
 
     فیلترها: تاریخ (از/تا)، ماده، کارگر، نوع حرکت و سفارش.
-    کارگر از رابطهٔ موجود ``reference_task__assigned_worker`` فیلتر می‌شود
-    (StockMovement فیلد کارگر ندارد).
+    کارگر از رابطهٔ ``daily_queue__worker`` فیلتر می‌شود، چون هر حرکتِ تحویل و
+    بازگشت به ردیف صف روزانه‌اش وصل است.
     """
     qs = StockMovement.objects.select_related(
-        'raw_material', 'reference_task', 'reference_order_item', 'created_by',
+        'raw_material', 'daily_queue', 'daily_queue__worker',
+        'reference_task', 'reference_order_item', 'created_by',
     ).all()
 
     if date_from:
@@ -99,7 +101,7 @@ def material_ledger(*, date_from=None, date_to=None, material_id=None,
     if movement_type:
         qs = qs.filter(movement_type=movement_type)
     if worker_id:
-        qs = qs.filter(reference_task__assigned_worker_id=worker_id)
+        qs = qs.filter(daily_queue__worker_id=worker_id)
     if order_id:
         qs = qs.filter(reference_order_item__order_id=order_id)
 
@@ -123,9 +125,10 @@ def material_ledger(*, date_from=None, date_to=None, material_id=None,
 
     running = dict(opening)
     lines = []
+    decreasing = RawMaterial.STOCK_DECREASING_TYPES
     for movement in rows:
         amount = _q(movement.quantity)
-        signed = -amount if movement.movement_type == 'consumption' else amount
+        signed = -amount if movement.movement_type in decreasing else amount
         running[movement.raw_material_id] = _q(
             running.get(movement.raw_material_id, Decimal('0.00')) + signed
         )
@@ -151,8 +154,14 @@ def _movement_reference(movement):
         return f"سفارش #{movement.reference_order_item.order_id} / آیتم #{movement.reference_order_item_id}"
     if movement.reference_task_id:
         return f"تسک #{movement.reference_task_id}"
-    if movement.fulfilled_issue_id:
-        return f"درخواست #{movement.fulfilled_issue_id}"
+    if movement.daily_queue_id:
+        queue = movement.daily_queue
+        if queue is not None:
+            return (
+                f"صف #{queue.pk} — {queue.work_date} / "
+                f"{queue.raw_material.name}"
+            )
+        return f"صف #{movement.daily_queue_id}"
     return movement.note or '—'
 
 
@@ -165,11 +174,12 @@ def consumption_report(*, date=None, date_from=None, date_to=None,
     """
     Planned / Delivered / Returned / Actual / Variance برای ماده و کارگر.
 
-    هیچ مصرفی دوباره محاسبه نمی‌شود: ``actual_consumption`` از همان فیلد
-    ذخیره‌شدهٔ صف خوانده می‌شود. ``variance`` صرفاً اختلاف عددی
-    ``actual - planned`` است، نه قاعدهٔ مصرف تازه.
+    مقدارها از ردیف صف گرفته می‌شوند. برای سازگاری با ردیف‌های تاریخی که
+    هنگام اضافه‌شدن ستون ``actual_consumption`` مقدار پیش‌فرض صفر گرفته‌اند،
+    مصرف با فرمول رسمی مدل ``delivered_quantity - returned_quantity`` ساخته
+    می‌شود؛ اضافه نیز ``max(0, actual - planned)`` است.
     """
-    qs = DailyMaterialQueue.objects.filter(status__in=('pending', 'delivered', 'returned'))
+    qs = DailyMaterialQueue.objects.filter(status__in=('pending', 'partial', 'delivered', 'returned', 'closed'))
     if date:
         qs = qs.filter(work_date=date)
     if date_from:
@@ -181,14 +191,31 @@ def consumption_report(*, date=None, date_from=None, date_to=None,
     if worker_id:
         qs = qs.filter(worker_id=worker_id)
 
+    decimal_output = DecimalField(max_digits=12, decimal_places=2)
+    actual_expression = ExpressionWrapper(
+        F('delivered_quantity') - F('returned_quantity'),
+        output_field=decimal_output,
+    )
+    excess_expression = Case(
+        When(
+            delivered_quantity__gt=F('planned_quantity') + F('returned_quantity'),
+            then=ExpressionWrapper(
+                F('delivered_quantity') - F('returned_quantity') - F('planned_quantity'),
+                output_field=decimal_output,
+            ),
+        ),
+        default=Value(Decimal('0.00')),
+        output_field=decimal_output,
+    )
+
     grouped = (
         qs.values('raw_material_id', 'raw_material__name', 'raw_material__unit')
         .annotate(
             planned=Sum('planned_quantity'),
             delivered=Sum('delivered_quantity'),
             returned=Sum('returned_quantity'),
-            actual=Sum('actual_consumption'),
-            excess=Sum('excess_consumption'),
+            actual=Sum(actual_expression),
+            excess=Sum(excess_expression),
             conflicts=Count('id', filter=Q(has_plan_conflict=True)),
         )
         .order_by('raw_material__name')
@@ -220,7 +247,129 @@ def consumption_report(*, date=None, date_from=None, date_to=None,
         totals['conflicts'] += row['conflicts']
 
     totals['variance'] = _q(totals['actual'] - totals['planned'])
-    return {'rows': rows, 'totals': totals}
+    worker_grouped = qs.values(
+        'worker_id', 'worker__first_name', 'worker__last_name', 'worker__username',
+        'raw_material_id', 'raw_material__name', 'raw_material__unit',
+    ).annotate(
+        planned=Sum('planned_quantity'), actual=Sum(actual_expression),
+        excess=Sum(excess_expression),
+    ).order_by('worker__first_name', 'worker__last_name', 'raw_material__name')
+    by_worker = {}
+    for item in worker_grouped:
+        name = ' '.join(filter(None, (item['worker__first_name'], item['worker__last_name']))) or item['worker__username'] or '—'
+        worker = by_worker.setdefault(item['worker_id'], {'name': name, 'planned': Decimal('0'), 'actual': Decimal('0'), 'excess': Decimal('0'), 'materials': []})
+        planned, actual, excess = _q(item['planned']), _q(item['actual']), _q(item['excess'])
+        worker['planned'] += planned
+        worker['actual'] += actual
+        worker['excess'] += excess
+        worker['materials'].append({
+            'material_id': item['raw_material_id'],
+            'name': item['raw_material__name'],
+            'unit': item['raw_material__unit'],
+            'planned': planned, 'actual': actual, 'excess': excess,
+            'details': [],
+        })
+
+    # Drill-down records stay at the daily queue/source level so the operator
+    # can see which orders contributed to each worker/material total.
+    worker_materials = {
+        (worker_id, material['material_id']): material
+        for worker_id, worker in by_worker.items()
+        for material in worker['materials']
+    }
+    material_rows = {row['raw_material_id']: row for row in rows}
+    detail_rows = qs.select_related(
+        'worker', 'raw_material', 'painting_stage',
+    ).prefetch_related(
+        'sources__production_task__order_item__order__customer',
+        'sources__production_task__order_item__order__user',
+        'sources__production_task__order_item__product',
+        'sources__production_task__painting_stage',
+        'sources__painting_stage',
+        'sources__defect__order__customer',
+        'sources__defect__order__user',
+        'sources__defect__order_item__product',
+        'sources__defect__task__order_item__order__customer',
+        'sources__defect__task__order_item__order__user',
+        'sources__defect__task__order_item__product',
+        'movements__reference_task__order__customer',
+        'movements__reference_task__order__user',
+        'movements__reference_order_item__order__customer',
+        'movements__reference_order_item__order__user',
+        'movements__reference_order_item__product',
+    ).order_by('work_date', 'worker__first_name', 'worker__last_name', 'id')
+
+    for queue in detail_rows:
+        actual = _q(queue.delivered_quantity - queue.returned_quantity)
+        excess = _q(max(actual - queue.planned_quantity, Decimal('0.00')))
+        sources = list(queue.sources.all())
+        if not sources:
+            # Manual/out-of-plan handouts may have no planning source. Their
+            # movement can still identify a reference order.
+            sources = [None]
+        shares = [max(_q(source.quantity), Decimal('0.00')) if source else Decimal('0.00')
+                  for source in sources]
+        share_total = sum(shares, Decimal('0.00'))
+        remaining_actual, remaining_excess = actual, excess
+
+        for index, source in enumerate(sources):
+            if source and share_total > 0:
+                if index == len(sources) - 1:
+                    allocated_actual, allocated_excess = remaining_actual, remaining_excess
+                else:
+                    allocated_actual = _q(actual * shares[index] / share_total)
+                    allocated_excess = _q(excess * shares[index] / share_total)
+                    remaining_actual -= allocated_actual
+                    remaining_excess -= allocated_excess
+                planned_part = shares[index]
+                task = source.production_task
+                defect = source.defect
+                if defect and not task:
+                    task = defect.task
+                order_item = (task.order_item if task else None) or (defect.order_item if defect else None)
+                order = (order_item.order if order_item else None) or (task.order if task else None) or (defect.order if defect else None)
+                kind_label = source.get_kind_display()
+                stage = source.painting_stage or (task.painting_stage if task else None)
+            else:
+                movement = next((m for m in queue.movements.all()
+                                 if m.movement_type == 'consumption'), None)
+                task = movement.reference_task if movement else None
+                order_item = (movement.reference_order_item if movement else None)
+                order = (order_item.order if order_item else None) or (task.order if task else None)
+                allocated_actual, allocated_excess = actual, excess
+                planned_part = _q(queue.planned_quantity)
+                kind_label = 'تحویل خارج از برنامه' if not source else source.get_kind_display()
+                stage = queue.painting_stage or (task.painting_stage if task else None)
+
+            if source and share_total <= 0:
+                planned_part = _q(queue.planned_quantity)
+            customer = getattr(order, 'customer', None) if order else None
+            representative = getattr(order, 'user', None) if order else None
+            product = order_item.product if order_item else None
+            record = {
+                'work_date': queue.work_date,
+                'worker': queue.worker.get_full_name() or queue.worker.username,
+                'order_number': (getattr(order, 'number', '') or f'#{order.pk}') if order else 'بدون سفارش',
+                'customer': getattr(customer, 'name', '') if customer else '',
+                'representative': (representative.get_full_name() or representative.username) if representative else '',
+                'product': getattr(product, 'name', '') if product else '',
+                'kind': kind_label,
+                'stage': getattr(stage, 'name', '') if stage else '',
+                'color_part': getattr(task, 'color_part', '') if task else '',
+                'task_id': getattr(task, 'pk', None),
+                'planned': planned_part,
+                'actual': allocated_actual,
+                'excess': allocated_excess,
+                'unit': queue.raw_material.get_unit_display(),
+            }
+            worker_material = worker_materials.get((queue.worker_id, queue.raw_material_id))
+            if worker_material is not None:
+                worker_material['details'].append(record)
+            material_row = material_rows.get(queue.raw_material_id)
+            if material_row is not None:
+                material_row.setdefault('details', []).append(record)
+
+    return {'rows': rows, 'totals': totals, 'by_worker': list(by_worker.values())}
 
 
 # ===================================================================
@@ -247,23 +396,25 @@ def order_material_traceability(order):
     queues = list(
         DailyMaterialQueue.objects
         .filter(sources__production_task__order_item_id__in=task_ids)
-        .select_related('worker', 'raw_material')
+        .select_related('worker', 'raw_material', 'painting_stage')
         .prefetch_related(
             'sources__production_task',
         )
         .distinct()
     )
 
-    per_material = {}
+    per_material_stage = {}
     for queue in queues:
         planned = _q(queue.planned_quantity)
-        key = queue.raw_material_id
-        entry = per_material.get(key)
+        key = (queue.raw_material_id, queue.painting_stage_id)
+        entry = per_material_stage.get(key)
         if entry is None:
-            entry = per_material[key] = {
-                'raw_material_id': key,
+            entry = per_material_stage[key] = {
+                'raw_material_id': queue.raw_material_id,
                 'raw_material': queue.raw_material.name,
                 'unit': queue.raw_material.get_unit_display(),
+                'stage_id': queue.painting_stage_id,
+                'stage_name': queue.painting_stage.name if queue.painting_stage else '—',
                 'planned': Decimal('0.00'),
                 'delivered': Decimal('0.00'),
                 'returned': Decimal('0.00'),
@@ -274,10 +425,13 @@ def order_material_traceability(order):
                 'workers': set(),
             }
 
-        # سهم همین سفارش از نیاز آن ردیف صف (یک بار برای هر ردیف)
+        # سهم همین سفارش از نیاز آن ردیف صف (یک بار برای هر ردیف).
+        # منابعِ جبران خرابی به تسک وصل نیستند و سفارششان از راه خرابی معلوم
+        # است، پس اینجا شمرده نمی‌شوند تا نیاز سفارش دو بار حساب نشود.
         mine = [
             source for source in queue.sources.all()
-            if source.production_task.order_item_id in task_id_set
+            if source.production_task_id
+            and source.production_task.order_item_id in task_id_set
         ]
         share = _q(sum((source.quantity for source in mine), Decimal('0.00')))
         entry['planned'] += share
@@ -297,7 +451,7 @@ def order_material_traceability(order):
             entry['workers'].add(queue.worker_id)
 
     rows = []
-    for entry in sorted(per_material.values(), key=lambda e: e['raw_material']):
+    for entry in sorted(per_material_stage.values(), key=lambda e: (e['raw_material'], e['stage_name'])):
         rows.append({
             **entry,
             'status': 'conflict' if entry['conflicts'] else _merge_status(entry['statuses']),
@@ -334,9 +488,76 @@ def _merge_status(statuses):
     return sorted(statuses)[0]
 
 
+def low_stock_rows():
+    """
+    موادی که موجودی‌شان به حداقل هشدار رسیده یا از آن کمتر است — فقط خواندنی.
+
+    موجودی در همان کوئری با ``_signed`` حساب می‌شود تا برای هر ماده یک کوئری
+    جدا نرود و علامتش با ``RawMaterial.current_stock`` یکی بماند.
+    """
+    rows = (
+        RawMaterial.objects
+        .filter(is_active=True)
+        .annotate(stock=Sum(_signed('movements__')))
+        .order_by('stock', 'name')
+    )
+    out = []
+    for material in rows:
+        stock = _q(material.stock)
+        threshold = _q(material.min_stock_alert)
+        if stock > threshold:
+            continue
+        out.append({
+            'id': material.id,
+            'name': material.name,
+            'code': material.code,
+            'category': material.category.name if material.category_id else '',
+            'unit': material.get_unit_display(),
+            'stock': stock,
+            'min_stock_alert': threshold,
+            'shortage': _q(threshold - stock),
+        })
+    return out
+
+
 # ===================================================================
 #  Phase 13 — داشبورد برنامه‌ریزی مواد
 # ===================================================================
+
+def material_stock_forecast(*, today=None, days=60):
+    """پیش‌بینی موجودی پس از نیاز برنامه‌ریزی‌شده در روزهای پیش رو."""
+    from datetime import timedelta
+    today = today or timezone.localdate()
+    end = today + timedelta(days=days)
+    stock = dict(RawMaterial.objects.filter(is_active=True).annotate(
+        balance=Sum(_signed('movements__'))).values_list('id', 'balance'))
+    queues = DailyMaterialQueue.objects.filter(
+        work_date__gte=today, work_date__lte=end,
+        status__in=('pending', 'partial'),
+    ).select_related('raw_material', 'worker').prefetch_related(
+        'sources__production_task__order_item__order', 'sources__production_task')
+    rows = []
+    for queue in queues.order_by('work_date', 'raw_material__name', 'worker__first_name'):
+        remaining = _q(max(queue.planned_quantity - queue.delivered_quantity, Decimal('0')))
+        stock[queue.raw_material_id] = _q((stock.get(queue.raw_material_id) or 0) - remaining)
+        details = []
+        for source in queue.sources.all():
+            task = source.production_task
+            order = getattr(getattr(task, 'order_item', None), 'order', None) if task else None
+            details.append({'worker': queue.worker.get_full_name() or queue.worker.username,
+                'quantity': _q(source.quantity), 'order': f'سفارش #{order.pk}' if order else '—',
+                'task': f'تسک #{task.pk}' if task else '—'})
+        if not details:
+            details.append({'worker': queue.worker.get_full_name() or queue.worker.username,
+                'quantity': remaining, 'order': '—', 'task': '—'})
+        rows.append({'queue_id': queue.pk, 'date': queue.work_date,
+            'url': _queue_url(queue.work_date),
+            'material_url': _queue_url(queue.work_date) + f'&material={queue.raw_material_id}',
+            'material': queue.raw_material, 'needed': remaining,
+            'balance': stock[queue.raw_material_id], 'details': details,
+            'short': stock[queue.raw_material_id] < 0})
+    return rows
+
 
 def material_planning_dashboard(date=None):
     """داشبورد مدیریتی + بخش انبار برای یک روز (فقط خواندنی)."""
@@ -362,15 +583,14 @@ def material_planning_dashboard(date=None):
     incomplete = queues.filter(status='pending')
 
     # --- بخش انبار ---
-    needed_rows = (
-        consumption_report(date=date)['rows']
-    )
+    needed_rows = summary['rows']
     needed_material_ids = {row['raw_material_id'] for row in needed_rows}
 
     # موجودی در همان کوئری محاسبه می‌شود تا برای هر ماده یک کوئری جدا نرود
     stock_rows = (
         RawMaterial.objects
         .filter(is_active=True)
+        .select_related('category')
         .annotate(stock=Sum(_signed('movements__')))
         .order_by('name')
     )
@@ -380,6 +600,7 @@ def material_planning_dashboard(date=None):
         materials.append({
             'id': material.id,
             'name': material.name,
+            'category': material.category.name if material.category else '—',
             'unit': material.get_unit_display(),
             'stock': stock,
             'min_stock_alert': _q(material.min_stock_alert),
@@ -505,15 +726,14 @@ def inventory_alerts(date=None, *, limit=100):
         )
 
     # 4) تحویل انجام شده ولی برگشتی/وضعیت نهایی مشخص نیست
-    for queue in queues.filter(status='delivered'):
-        if _q(queue.returned_quantity) <= 0:
-            add(
-                'unreturned', 'warning', 'تحویل بدون برگشت نهایی',
-                f'{queue.worker} / {queue.raw_material.name}: '
-                f'{_q(queue.delivered_quantity)} {queue.raw_material.get_unit_display()} '
-                'تحویل شده و هنوز برگشتی ثبت نشده.',
-                url=_queue_url(queue.work_date),
-            )
+    for queue in queues.filter(status='delivered', return_settled=False, returned_quantity__lte=0):
+        add(
+            'unreturned', 'warning', 'تحویل بدون برگشت نهایی',
+            f'{queue.worker} / {queue.raw_material.name}: '
+            f'{_q(queue.delivered_quantity)} {queue.raw_material.get_unit_display()} '
+            'تحویل شده و هنوز وضعیت برگشت ثبت نشده.',
+            url=_queue_url(queue.work_date),
+        )
 
     # 5) روز هنوز بررسی و تأیید نشده
     if not DailyMaterialClosing.objects.filter(work_date=date).exists():
@@ -750,39 +970,62 @@ def data_integrity_audit():
         if queue.worker_id is None:
             add('invalid_worker', 'warning', label, reference, 'کارگر معتبر نیست.')
 
-    # منبع یتیم
+    # منبع یتیم / ناسازگار با نوعش
     valid_queue_ids = set(DailyMaterialQueue.objects.values_list('id', flat=True))
     for source in DailyMaterialQueueSource.objects.select_related('queue').all():
         if source.queue_id not in valid_queue_ids:
             add('orphan_source', 'critical', f'منبع #{source.pk}',
                 f'queue={source.queue_id}',
                 'منبع به هیچ صفی وصل نیست.')
-        if source.production_task_id is None or source.painting_stage_id is None:
-            add('orphan_source', 'warning', f'منبع #{source.pk}', '',
-                'منبع بدون تسک یا بدون مرحلهٔ نقاشی است.')
+            continue
+        # هر نوع منبع دقیقاً یک شکل دارد؛ نبودِ فیلدِ لازم یعنی ردیف ناقص.
+        if source.kind == 'rework':
+            if source.defect_id is None:
+                add('incomplete_source', 'warning', f'منبع #{source.pk}',
+                    f'queue={source.queue_id}',
+                    'منبع جبران خرابی بدون خرابی است.')
+        elif source.kind == 'painting':
+            if source.production_task_id is None or source.painting_stage_id is None:
+                add('incomplete_source', 'warning', f'منبع #{source.pk}',
+                    f'queue={source.queue_id}',
+                    'منبع نقاشی بدون تسک یا بدون مرحلهٔ نقاشی است.')
+        elif source.production_task_id is None:
+            add('incomplete_source', 'warning', f'منبع #{source.pk}',
+                f'queue={source.queue_id}',
+                'منبع ایستگاه بدون تسک تولید است.')
+
+    # مصرف بدون ردیف صف: تنها راه مجاز برای ثبت مصرف، صف روزانه است.
+    for movement in (
+        StockMovement.objects.filter(movement_type='consumption', daily_queue__isnull=True)
+        .select_related('raw_material')[:50]
+    ):
+        add('orphan_consumption', 'critical', 'StockMovement',
+            f'#{movement.pk} — {movement.raw_material.name} ({movement.quantity})',
+            'حرکت مصرف به هیچ ردیف صف وصل نیست؛ تحویل باید فقط از صف '
+            'مواد روزانه ثبت شود تا موجودی دوبار کم نشود.')
 
     # حرکات تکراری مشکوک
     duplicates = (
         StockMovement.objects.filter(movement_type='consumption')
-        .values('raw_material_id', 'reference_task_id', 'quantity', 'created_at__date')
+        .values('raw_material_id', 'daily_queue_id', 'quantity', 'created_at__date')
         .annotate(n=Count('id'))
         .filter(n__gt=1)
     )
     for dup in duplicates:
         add('duplicate_delivery', 'warning', 'StockMovement',
-            f'raw={dup["raw_material_id"]} task={dup["reference_task_id"]} '
+            f'raw={dup["raw_material_id"]} صف={dup["daily_queue_id"]} '
             f'qty={dup["quantity"]} تاریخ={dup["created_at__date"]}',
             f'{dup["n"]} حرکت مصرف یکسان در یک روز ثبت شده است.')
 
     duplicates_return = (
         StockMovement.objects.filter(movement_type='return')
-        .values('raw_material_id', 'reference_task_id', 'quantity', 'created_at__date')
+        .values('raw_material_id', 'daily_queue_id', 'quantity', 'created_at__date')
         .annotate(n=Count('id'))
         .filter(n__gt=1)
     )
     for dup in duplicates_return:
         add('duplicate_return', 'warning', 'StockMovement',
-            f'raw={dup["raw_material_id"]} task={dup["reference_task_id"]} '
+            f'raw={dup["raw_material_id"]} صف={dup["daily_queue_id"]} '
             f'qty={dup["quantity"]} تاریخ={dup["created_at__date"]}',
             f'{dup["n"]} حرکت برگشت یکسان در یک روز ثبت شده است.')
 

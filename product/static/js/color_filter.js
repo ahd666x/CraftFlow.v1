@@ -33,6 +33,30 @@
         });
     }
 
+    var AXES = ['length', 'width', 'height'];
+
+    function applyDimensions($product, opts) {
+        var $o = $product.find('option:selected');
+        var hasSelection = !!$o.val();
+
+        AXES.forEach(function (axis) {
+            var $f = $('#id_' + axis);
+            if (!$f.length) return;
+            var def = hasSelection ? ($o.data(axis) || '') : '';
+            var prevAuto = $f.data('auto');                 // previous default we set
+            var cur = $f.val();
+            // Only overwrite when the field is empty or still holds the
+            // previous auto-filled default — manual edits are preserved.
+            if (cur === '' || String(cur) === String(prevAuto || '')) {
+                $f.val(def);
+            }
+            $f.data('auto', def);
+            var editable = $o.data(axis + 'Editable') !== false;
+            $f.prop('readonly', !!def && !editable);
+            $f.closest('.dim-field').toggle(!!def || hasSelection);
+        });
+    }
+
     window.initCategoryProductColorFilter = function (opts) {
         var $category = $(opts.categorySelector);
         var $product = $(opts.productSelector);
@@ -45,6 +69,14 @@
             if (!categoryId) {
                 $product.html('<option value="">---------</option>');
                 resetColorFields(sel);
+                AXES.forEach(function (axis) {
+                    var $f = $('#id_' + axis);
+                    if ($f.length) {
+                        $f.val('');
+                        $f.data('auto', '');
+                        $f.closest('.dim-field').show();
+                    }
+                });
                 return;
             }
             $.ajax({
@@ -53,11 +85,22 @@
                 success: function (data) {
                     var html = '<option value="">---------</option>';
                     (data || []).forEach(function (p) {
-                        html += '<option value="' + escapeHtml(p.id) + '">' + escapeHtml(p.name) + '</option>';
+                        var opt = '<option value="' + escapeHtml(p.id) + '"';
+                        AXES.forEach(function (axis) {
+                            if (p[axis] !== null && p[axis] !== undefined) {
+                                opt += ' data-' + axis + '="' + escapeHtml(p[axis]) + '"';
+                            }
+                        });
+                        opt += ' data-' + 'length' + '-editable="' + escapeHtml(p.length_editable) + '"';
+                        opt += ' data-' + 'width' + '-editable="' + escapeHtml(p.width_editable) + '"';
+                        opt += ' data-' + 'height' + '-editable="' + escapeHtml(p.height_editable) + '"';
+                        opt += '>' + escapeHtml(p.name) + '</option>';
+                        html += opt;
                     });
                     $product.html(html);
                     if (selectedId) {
                         $product.val(selectedId);
+                        $product.trigger('change', [{ initial: true }]);
                     }
                 }
             });
@@ -67,7 +110,10 @@
             loadProducts($(this).val());
         });
 
-        $product.on('change', function () {
+        $product.on('change', function (e, extra) {
+            var isInitial = extra && extra.initial;
+            var overwriteColors = isInitial ? overwriteOnInitialLoad : true;
+            applyDimensions($product, opts);
             var pid = $(this).val();
             if (!pid) {
                 resetColorFields(sel);
@@ -78,11 +124,11 @@
                     if (!r.ok) throw new Error('HTTP ' + r.status);
                     return r.json();
                 })
-                .then(function (data) {
-                    applyColorFields(sel, data.defaults || {}, true);
+                .then(function (d) {
+                    applyColorFields(sel, d.defaults || {}, overwriteColors);
                 })
                 .catch(function (err) {
-                    console.error('Error loading product colors:', err);
+                    console.error(err);
                     resetColorFields(sel);
                 });
         });
@@ -99,17 +145,6 @@
             if (initialCategory) {
                 loadProducts(initialCategory, initialSelectedId);
             }
-            fetch(loadColorsUrlBase + initialProduct + '/')
-                .then(function (r) {
-                    if (!r.ok) throw new Error('HTTP ' + r.status);
-                    return r.json();
-                })
-                .then(function (data) {
-                    applyColorFields(sel, data.defaults || {}, overwriteOnInitialLoad);
-                })
-                .catch(function (err) {
-                    console.error('Error loading initial product colors:', err);
-                });
         }
     };
 })(jQuery);

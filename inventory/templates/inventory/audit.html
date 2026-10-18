@@ -1,0 +1,24 @@
+{% extends "inventory/base.html" %}
+{% block title %}بررسی سلامت داده{% endblock %}
+{% block inventory_content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+  <div><h1 class="h3 mb-1">بررسی سلامت داده</h1><div class="small text-muted">فقط‌خواندنی؛ چیزی را خودکار اصلاح نمی‌کند.</div></div>
+  <a href="{% url 'inventory:reports' %}" class="btn btn-sm btn-outline-primary"><i class="bi bi-journal-text"></i> گزارش‌ها</a>
+</div>
+<div class="row g-2 mb-3">
+  <div class="col-4"><div class="card-modern"><div class="card-body py-3"><div class="text-muted small">همهٔ موارد</div><div class="h4 mb-0">{{ total }}</div></div></div></div>
+  <div class="col-4"><div class="card-modern"><div class="card-body py-3"><div class="text-muted small">بحرانی</div><div class="h4 mb-0 {% if critical %}text-danger{% endif %}">{{ critical }}</div></div></div></div>
+  <div class="col-4"><div class="card-modern"><div class="card-body py-3"><div class="text-muted small">هشدار</div><div class="h4 mb-0 {% if warning %}text-warning{% endif %}">{{ warning }}</div></div></div></div>
+</div>
+{% if issues %}
+<div class="d-flex flex-column gap-2">
+  {% for issue in issues %}
+  <article class="inventory-item-card {% if issue.severity == 'critical' %}is-danger{% else %}is-warning{% endif %}">
+    <div class="d-flex justify-content-between gap-2"><strong>{{ issue.problem }}</strong><span class="badge {% if issue.severity == 'critical' %}text-bg-danger{% else %}text-bg-warning{% endif %}">{% if issue.severity == 'critical' %}بحرانی{% else %}هشدار{% endif %}</span></div>
+    <div class="inventory-item-meta">{{ issue.description }}</div>
+    <details class="mt-2"><summary class="small text-secondary">نمایش مرجع</summary><div class="inventory-item-meta">{{ issue.object|default:"—" }} · {{ issue.reference|default:"—" }}</div></details>
+  </article>
+  {% endfor %}
+</div>
+{% else %}<div class="alert alert-success"><i class="bi bi-check-circle-fill"></i> ناسازگاری‌ای پیدا نشد.</div>{% endif %}
+{% endblock %}

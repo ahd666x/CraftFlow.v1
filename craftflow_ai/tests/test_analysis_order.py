@@ -12,6 +12,7 @@
 """
 import jdatetime
 from datetime import timedelta
+from decimal import Decimal
 
 from django.test import TestCase
 from django.utils import timezone
@@ -409,17 +410,13 @@ class OrderDelayTests(TestCase):
         self.assertIn('missing_nonpaint_schedule', report['limitations'])
 
     def test_blocked_material_is_high_severity(self):
-        from inventory.models import MaterialIssue
-        from .factories import make_raw_material
+        from inventory.models import DailyMaterialQueue
+        from .factories import make_raw_material, make_open_issue
 
         order = make_order(status='producing')
         tasks = make_tasks(order, stations=('cut',), statuses=('pending',))
         raw = make_raw_material(name='رنگ تست', stock=0)
-        MaterialIssue.objects.create(
-            task=tasks[0], raw_material=raw,
-            requested_quantity=8, issued_quantity=0,
-            purpose='production', status='requested',
-        )
+        make_open_issue(raw, order, quantity=Decimal('8'))
         report = order_delay(order.id)
         self.assertEqual(report['cause_code'], 'blocked_material')
         self.assertEqual(report['severity'], 'high')

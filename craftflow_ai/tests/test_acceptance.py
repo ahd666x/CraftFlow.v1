@@ -40,7 +40,7 @@ from craftflow_ai.providers.local import FakeAIProvider, LocalProvider, get_prov
 from craftflow_ai.tools import get_registry
 from craftflow_ai.tools.registry import READ_ONLY_PHASE, Tool, ToolRegistry
 
-from inventory.models import MaterialIssue, MaterialLeftover, RawMaterial
+from inventory.models import DailyMaterialQueue, RawMaterial
 from product.models import STATION_CHOICES, Order, ProductionTask
 
 from .factories import (

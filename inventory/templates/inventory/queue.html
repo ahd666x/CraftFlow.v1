@@ -1,0 +1,447 @@
+{% extends "inventory/base.html" %}
+{% load static product_filters %}
+{% block title %}تحویل روزانه انبار{% endblock %}
+{% block extra_css %}
+<style>
+  .top-bar{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.8rem;margin-bottom:1rem}
+  .day-title{font-size:1.2rem;font-weight:700;color:#0f172a;margin:0}
+  .day-subtitle{font-size:.78rem;color:#64748b;margin-top:.2rem}
+  .top-bar .date-nav{display:flex;align-items:center;gap:.65rem}
+  .date-display{min-width:110px;text-align:center;font-size:1rem;font-weight:700;color:#0f172a}
+  .kanban-wrap{display:flex;gap:1.1rem;overflow-x:auto;padding-bottom:1rem;align-items:flex-start}
+  .kanban-col{min-width:290px;max-width:320px;flex:0 0 310px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:16px;padding:.85rem;box-shadow:0 2px 8px rgba(0,0,0,.04)}
+  .kanban-col-header{display:flex;justify-content:space-between;align-items:center;font-weight:650;font-size:.9rem;margin-bottom:.65rem;padding-bottom:.55rem;border-bottom:2px solid #e2e8f0;color:#0f172a}
+  .badge-count{background:#e2e8f0;color:#1e293b;padding:.15rem .65rem;border-radius:20px;font-size:.75rem}
+  .kanban-card{background:#fff;border-radius:12px;padding:.7rem .85rem;margin-bottom:.6rem;box-shadow:0 1px 3px rgba(0,0,0,.06);font-size:.78rem;border-right:4px solid #94a3b8;position:relative}
+  .kanban-card.status-pending{border-right-color:#3b82f6}.kanban-card.status-delivered{border-right-color:#22a06b}.kanban-card.status-partial{border-right-color:#f59e0b}.kanban-card.status-problem{border-right-color:#e11d48;background:#fff5f5}
+  .product-name{font-weight:650;font-size:.86rem;color:#0f172a;margin-bottom:.3rem;display:flex;justify-content:space-between;align-items:flex-start;gap:.4rem}
+  .prod-text{display:flex;align-items:center;gap:.3rem;flex-wrap:wrap}.prod-text .cat{font-weight:400;color:#475569;font-size:.75rem}.prod-text .name{font-weight:650;color:#0f172a}
+  .order-ref{font-size:.68rem;color:#475569;background:#f1f5f9;padding:.1rem .45rem;border-radius:6px;white-space:nowrap}
+  .info-row{display:flex;flex-wrap:wrap;align-items:center;gap:.25rem .5rem;margin-top:.28rem;font-size:.72rem;color:#475569}.info-row .label{font-weight:500;color:#64748b}.info-row .value{color:#1e293b}
+  .stage-tag{background:#e0f2fe;color:#0369a1;padding:.05rem .55rem;border-radius:12px;font-size:.65rem}.color-tag{background:#fef3c7;color:#92400e;padding:.05rem .55rem;border-radius:12px;font-size:.65rem}.material-code{color:#64748b;font-size:.68rem;direction:ltr;unicode-bidi:plaintext}
+  .status-label{font-size:.67rem;padding:.15rem .48rem;border-radius:999px;background:#f1f5f9;color:#526174;white-space:nowrap}.status-label.status-pending{background:#eff6ff;color:#1d4ed8}.status-label.status-delivered{background:#ecfdf5;color:#047857}.status-label.status-partial{background:#fffbeb;color:#a16207}.status-label.status-problem{background:#fef2f2;color:#b91c1c}
+  .card-quantities{display:flex;gap:.35rem;align-items:center;flex-wrap:wrap;margin:.55rem 0;color:#475569;font-size:.75rem}.quantity-chip{border-radius:7px;background:#f8fafc;padding:.2rem .45rem}.card-actions{display:flex;gap:.35rem;align-items:center}.card-actions .btn{font-size:.73rem;padding:.24rem .5rem;border-radius:8px}
+  .worker-skills{font-size:.7rem;color:#64748b;margin-bottom:.55rem;display:flex;flex-wrap:wrap;gap:.3rem}.worker-skills span{background:#eef2f6;padding:.05rem .55rem;border-radius:12px;font-size:.65rem;color:#334155}
+  .empty-day,.kanban-empty{font-size:.75rem;color:#94a3b8;text-align:center;padding:1.2rem 0;font-style:italic}.extra-details{border:1px solid #e2e8f0;border-radius:12px;background:#fff;margin-top:1rem}.extra-details summary{padding:.7rem .9rem;cursor:pointer;font-weight:600;color:#475569;list-style:none}.extra-form{padding:.9rem;border-top:1px solid #eef2f7}
+  .modal-content{border:0;border-radius:16px;overflow:hidden;box-shadow:0 18px 55px rgba(15,23,42,.2)}.modal-header{background:#f8fafc!important;color:#172033!important;border-bottom:1px solid #e8edf3;padding:1rem 1.1rem}.modal-header .btn-close{filter:none!important}.modal-title{font-weight:750}.modal-body{padding:1.1rem}.modal-footer{background:#fbfcfe;border-top:1px solid #eef2f7;padding:.8rem 1.1rem}.modal-summary{background:#f8fafc;border:1px solid #e8edf3;border-radius:12px;padding:.8rem}.modal-number{font-size:1.2rem;font-weight:750;color:#172033}.modal-label{font-size:.72rem;color:#64748b}
+  @media(max-width:700px){.top-bar{align-items:flex-start}.kanban-col{min-width:270px;flex-basis:270px}}
+</style>
+{% endblock %}
+{% block inventory_content %}
+<div class="top-bar">
+  {% comment %} <div>
+    <h1 class="day-title">تحویل روزانه انبار</h1>
+    <div class="day-subtitle">ستون‌بندی بر پایهٔ دریافت‌کننده؛ جابه‌جایی کارت‌ها غیرفعال است.</div>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="{% url 'inventory:raw_material_receive_scan' %}" class="btn btn-sm btn-outline-success"><i class="bi bi-upc-scan"></i> دریافت کالا</a>
+    <a href="{% url 'inventory:daily_closing' %}?date={{ date_str }}" class="btn btn-sm btn-primary"><i class="bi bi-check2-circle"></i> بستن روز</a>
+  </div> {% endcomment %}
+  <div class="date-nav">
+    <a href="?date={{ previous_date }}" class="btn btn-sm btn-outline-secondary" aria-label="روز قبل"><i class="bi bi-chevron-right"></i> روز قبل</a>
+    <span class="date-display">{{ selected_gregorian|persian_date }}</span>
+    <a href="?date={{ next_date }}" class="btn btn-sm btn-outline-secondary">روز بعد <i class="bi bi-chevron-left"></i></a>
+  </div>
+</div>
+<div class="summary-strip d-flex gap-2 flex-wrap mb-3"><span class="badge rounded-pill text-bg-light">در انتظار {{ summary.pending_count }}</span><span class="badge rounded-pill text-bg-light">تحویل‌شده {{ summary.delivered_count }}</span><span class="badge rounded-pill text-bg-light">نیاز امروز {{ summary.total_planned|floatformat:2 }}</span></div>
+{% comment %} <details class="filter-disclosure mb-3 no-print"><summary><i class="bi bi-search me-1"></i>فیلتر</summary><form method="get" class="d-flex gap-2 flex-wrap align-items-center mt-2">
+  <label class="form-label small mb-0" for="dateFilter">تاریخ</label><input type="text" name="date" id="dateFilter" class="form-control form-control-sm text-center" value="{{ date_str }}" inputmode="numeric" pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}" maxlength="10" dir="ltr" style="max-width:125px">
+  <select name="worker" class="form-select form-select-sm" style="max-width:180px"><option value="">همهٔ افراد</option>{% for w in paint_workers %}<option value="{{ w.id }}" {% if worker_filter == w.id|stringformat:"s" %}selected{% endif %}>{{ w.get_full_name|default:w.username }}</option>{% endfor %}</select>
+  <select name="material" class="form-select form-select-sm" style="max-width:210px"><option value="">همهٔ مواد</option>{% for m in materials %}<option value="{{ m.id }}" {% if material_filter == m.id|stringformat:"s" %}selected{% endif %}>{{ m.name }}</option>{% endfor %}</select>
+  <select name="status" class="form-select form-select-sm" style="max-width:155px"><option value="">همهٔ وضعیت‌ها</option>{% for value,label in status_choices %}<option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+  <button class="btn btn-sm btn-primary" type="submit">فیلتر</button><a href="{% url 'inventory:daily_material_queue' %}" class="btn btn-sm btn-outline-secondary">پاک‌کردن</a>
+</form></details> {% endcomment %}
+{% if summary.conflict_count %}<div class="alert alert-warning py-2 small"><i class="bi bi-exclamation-triangle me-1"></i>{{ summary.conflict_count }} مورد نیاز بررسی دارد.</div>{% endif %}
+<div id="dailyQueueTable" class="kanban-wrap">
+{% for col in worker_columns %}<section class="kanban-col worker-section">
+  <header class="kanban-col-header"><span class="worker-name"><i class="bi bi-person-circle me-1"></i>{{ col.label }}</span><span class="badge-count">{{ col.queues|length }}</span></header>
+  <div class="kanban-cards">
+  {% for queue in col.queues %}<article class="kanban-card material-card {% if queue.has_plan_conflict %}status-problem{% elif queue.status == 'delivered' or queue.status == 'returned' or queue.status == 'closed' %}status-delivered{% elif queue.status == 'partial' %}status-partial{% elif queue.status == 'pending' %}status-pending{% endif %}" data-queue="{{ queue.id }}">
+    <div class="product-name"><span class="prod-text"><span class="name">{{ queue.raw_material.name }}</span><span class="material-code">{% if queue.raw_material.code %}کد {{ queue.raw_material.code }}{% else %}بدون کد{% endif %}</span></span><span class="status-label {% if queue.has_plan_conflict %}status-problem{% elif queue.status == 'delivered' or queue.status == 'returned' or queue.status == 'closed' %}status-delivered{% elif queue.status == 'partial' %}status-partial{% elif queue.status == 'pending' %}status-pending{% endif %}">{% if queue.has_plan_conflict %}نیازمند بررسی{% else %}{{ queue.get_status_display }}{% endif %}</span></div>
+    {% for source in queue.ui_sources %}{% if source.production_task %}<div class="info-row"><span class="prod-text">{% if source.production_task.order_item.product.category %}<span class="cat">{{ source.production_task.order_item.product.category.name }}</span><span aria-hidden="true">·</span>{% endif %}<span class="name">{{ source.production_task.order_item.product.name|default:source.production_task.custom_title|default:"کار سفارشی" }}</span></span>{% if source.production_task.order_item.order %}<span class="order-ref">سفارش #{{ source.production_task.order_item.order_id }}</span>{% endif %}</div>
+      <div class="info-row"><span class="label">نماینده</span><span class="value">{{ source.production_task.order_item.order.user.get_full_name|default:source.production_task.order_item.order.user.username|default:"—" }}</span>{% if source.painting_stage %}<span class="stage-tag">{{ source.painting_stage.name }}</span>{% endif %}{% if source.production_task.color_part %}<span class="color-tag">{{ source.production_task.color_part }} · {{ source.production_task|task_color_code }}</span>{% endif %}</div>
+    {% elif source.kind == 'rework' %}<div class="info-row"><span class="stage-tag">اصلاح / دوباره‌کاری</span></div>{% endif %}{% empty %}{% if queue.painting_stage or queue.color_part %}<div class="info-row">{% if queue.painting_stage %}<span class="stage-tag">{{ queue.painting_stage.name }}</span>{% endif %}{% if queue.color_part %}<span class="color-tag">{{ queue.color_part }}</span>{% endif %}</div>{% endif %}{% endfor %}
+    <div class="card-quantities"><span class="quantity-chip">نیاز <strong>{{ queue.planned_quantity|floatformat:2 }}</strong> {{ queue.raw_material.get_unit_display }}</span><span class="quantity-chip">تحویل <strong>{{ queue.delivered_quantity|floatformat:2 }}</strong></span>{% if queue.returned_quantity > 0 %}<span class="quantity-chip">برگشت <strong>{{ queue.returned_quantity|floatformat:2 }}</strong></span>{% endif %}</div>
+    <div class="card-actions">
+      {% if queue.action.can_deliver %}
+      <button type="button" class="btn btn-sm btn-primary btn-preview-delivery">
+        <i class="bi bi-box-arrow-in-down"></i> تحویل</button>
+        {% endif %}
+        {% if queue.action.can_return %}
+        <button type="button" class="btn btn-sm btn-outline-secondary btn-return">ثبت برگشت</button>
+        {% endif %}
+      {% comment %} <button type="button" class="btn btn-sm btn-link text-secondary btn-sources" aria-label="جزئیات">جزئیات</button> {% endcomment %}
+    </div>
+  </article>{% empty %}<div class="kanban-empty">بدون مورد برنامه‌ریزی‌شده</div>{% endfor %}
+  </div>
+</section>{% empty %}<div class="empty-day"><i class="bi bi-check2-circle fs-4 d-block mb-2"></i>برای این روز موردی ثبت نشده است.</div>{% endfor %}
+</div>
+{% if queues.has_other_pages %}<nav aria-label="صفحه‌بندی" class="mt-3"><ul class="pagination pagination-sm justify-content-center">{% if queues.has_previous %}<li class="page-item"><a class="page-link" href="?date={{ date_str }}&page={{ queues.previous_page_number }}">قبلی</a></li>{% endif %}<li class="page-item active"><span class="page-link">{{ queues.number }} / {{ queues.paginator.num_pages }}</span></li>{% if queues.has_next %}<li class="page-item"><a class="page-link" href="?date={{ date_str }}&page={{ queues.next_page_number }}">بعدی</a></li>{% endif %}</ul></nav>{% endif %}
+<details class="extra-details no-print"><summary><i class="bi bi-plus-circle me-1"></i> تحویل ماده خارج از برنامه</summary><form method="post" action="{% url 'inventory:daily_unplanned_delivery' %}" class="extra-form row g-2 align-items-end">{% csrf_token %}<input type="hidden" name="date" value="{{ date_str }}">
+  <div class="col-12 col-md-4"><label class="form-label small">دریافت‌کننده</label><select name="worker" class="form-select form-select-sm" required><option value="">انتخاب کنید</option>{% for w in paint_workers %}<option value="{{ w.id }}">{{ w.get_full_name|default:w.username }}</option>{% endfor %}</select></div>
+  <div class="col-12 col-md-4"><label class="form-label small">ماده</label><select name="material" class="form-select form-select-sm" required><option value="">انتخاب کنید</option>{% for m in materials %}<option value="{{ m.id }}">{{ m.name }}</option>{% endfor %}</select></div>
+  <div class="col-6 col-md-2"><label class="form-label small">مقدار</label><input name="quantity" type="number" min="0.01" step="0.01" class="form-control form-control-sm" required></div><div class="col-6 col-md-2"><button type="submit" class="btn btn-sm btn-outline-primary w-100">ثبت</button></div>
+</form></details>
+<!-- پیش‌نمایش و ثبت تحویل -->
+<div class="modal fade" id="deliveryPreviewModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-box-arrow-in-down text-primary me-2"></i>تحویل ماده</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="بستن"></button>
+      </div>
+      <div class="modal-body">
+        <div id="deliveryAlert" class="alert alert-danger d-none" role="alert"></div>
+        <div class="modal-summary d-flex justify-content-between align-items-center gap-3 mb-3">
+          <div><div class="fw-bold" id="deliveryMaterialName">—</div><div class="small text-muted" id="deliveryWorkerName">—</div></div>
+          <div class="text-end"><div class="modal-label">مقدارِ باقی‌مانده</div><div class="modal-number" id="deliveryPlanned">—</div></div>
+        </div>
+        <div id="deliveryFormArea">
+          <label class="form-label fw-bold" for="deliveryQuantityInput">مقدار تحویل <span class="text-danger">*</span></label>
+          <div class="input-group">
+            <input type="number" class="form-control" id="deliveryQuantityInput" step="0.01" min="0.01" inputmode="decimal">
+            <span class="input-group-text" id="deliveryUnit"></span>
+          </div>
+          <div class="form-text" id="deliveryHint"></div>
+          <div class="small text-muted mt-1" id="deliveryDetails"></div>
+          <input type="text" class="form-control form-control-sm mt-3" id="deliveryNoteInput" maxlength="255" placeholder="یادداشت (اختیاری)">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+        <button type="button" class="btn btn-primary" id="confirmDeliveryBtn" disabled>
+          <i class="bi bi-check-lg"></i> ثبت تحویل
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- بازگشت -->
+<div class="modal fade" id="returnModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-arrow-return-left text-warning me-2"></i>ثبت برگشت ماده</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="بستن"></button>
+      </div>
+      <div class="modal-body">
+        <div id="returnAlert" class="alert alert-danger d-none" role="alert"></div>
+        <div class="row g-2 mb-3 modal-summary">
+          <div class="col-6"><label class="form-label fw-bold">ماده اولیه</label><div class="form-control-plaintext" id="returnMaterialName">—</div></div>
+          <div class="col-6"><label class="form-label fw-bold">کارگر</label><div class="form-control-plaintext" id="returnWorkerName">—</div></div>
+          <div class="col-4"><label class="form-label">تحویل‌شده</label><div class="form-control-plaintext fw-bold" id="returnDelivered">—</div></div>
+          <div class="col-4"><label class="form-label">برگشتی قبلی</label><div class="form-control-plaintext" id="returnAlready">—</div></div>
+          <div class="col-4"><label class="form-label">مصرف واقعی</label><div class="form-control-plaintext" id="returnActual">—</div></div>
+          <div class="col-6"><label class="form-label">قابل بازگشت (حداکثر)</label><div class="form-control-plaintext fw-bold text-primary" id="returnMaxReturnable">—</div></div>
+        </div>
+        <label class="form-label fw-bold" for="returnQuantityInput">مقدار برگشتی <span class="text-danger">*</span></label>
+        <input type="number" class="form-control form-control-sm" id="returnQuantityInput" min="0" step="0.01" required>
+        <div class="form-text" id="returnHint">اگر همهٔ ماده مصرف شده، صفر ثبت کنید تا این ردیف تسویه شود.</div>
+        <label class="form-label mt-2" for="returnNoteInput">یادداشت</label>
+        <input type="text" class="form-control form-control-sm" id="returnNoteInput" maxlength="255">
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">انصراف</button>
+        <button type="button" class="btn btn-warning" id="confirmReturnBtn" disabled>
+          <i class="bi bi-check-lg"></i> ثبت بازگشت
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- منابع نیاز -->
+<div class="modal fade" id="sourcesModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-diagram-3 text-primary me-2"></i>جزئیات</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="بستن"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-2 mb-3">
+          <div class="col-4"><label class="form-label fw-bold">کارگر</label><div class="form-control-plaintext" id="sourcesWorkerName">—</div></div>
+          <div class="col-4"><label class="form-label fw-bold">ماده اولیه</label><div class="form-control-plaintext" id="sourcesMaterialName">—</div></div>
+          <div class="col-4"><label class="form-label fw-bold">مجموع نیاز</label><div class="form-control-plaintext fw-bold" id="sourcesPlanned">—</div></div>
+        </div>
+        <div id="sourcesTableBody" class="d-grid gap-2"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">بستن</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block inventory_js %}
+<script>
+(function() {
+  'use strict';
+
+  const csrfToken = '{{ csrf_token }}';
+  const urls = {
+    delivery: "{% url 'inventory:daily_queue_delivery' 0 %}".replace('/0/', '/{id}/'),
+    returns: "{% url 'inventory:daily_queue_return' 0 %}".replace('/0/', '/{id}/'),
+    preview: "{% url 'inventory:daily_queue_preview_delivery' 0 %}".replace('/0/', '/{id}/'),
+    sources: "{% url 'inventory:daily_queue_sources' 0 %}".replace('/0/', '/{id}/')
+  };
+
+  function el(id) { return document.getElementById(id); }
+  function setAlert(node, message) {
+    node.textContent = message;
+    node.classList.remove('d-none');
+  }
+  function clearAlert(node) {
+    node.classList.add('d-none');
+    node.textContent = '';
+  }
+
+  async function getJSON(url) {
+    const response = await fetch(url, {
+      headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    });
+    const data = await response.json();
+    if (!response.ok || !data.success) {
+      throw new Error(data.error || 'خطای نامشخص از سرور');
+    }
+    return data;
+  }
+
+  async function postForm(url, body) {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'X-CSRFToken': csrfToken,
+        'X-Requested-With': 'XMLHttpRequest'
+      },
+      body: new URLSearchParams(body)
+    });
+    const data = await response.json();
+    if (!response.ok || !data.success) {
+      throw new Error(data.error || 'خطای نامشخص از سرور');
+    }
+    return data;
+  }
+
+  function busy(button, isBusy, idleText) {
+    button.disabled = isBusy;
+    button.innerHTML = isBusy
+      ? '<span class="spinner-border spinner-border-sm"></span> در حال ثبت...'
+      : idleText;
+  }
+
+  // ---------- تحویل ----------
+  const deliveryModalEl = el('deliveryPreviewModal');
+  const deliveryModal = deliveryModalEl ? bootstrap.Modal.getOrCreateInstance(deliveryModalEl) : null;
+  const deliveryAlert = el('deliveryAlert');
+  const confirmDeliveryBtn = el('confirmDeliveryBtn');
+  let activeDeliveryId = null;
+  let previewData = null;
+
+  function refreshDeliveryHint() {
+    const hint = el('deliveryHint');
+    const qty = parseFloat(el('deliveryQuantityInput').value);
+    const remaining = parseFloat(previewData?.remaining);
+    const stock = parseFloat(previewData?.stock);
+    hint.className = 'form-text';
+    if (!qty || qty <= 0) { hint.textContent = ''; busy(confirmDeliveryBtn, true); return; }
+    if (qty > stock + 0.001) {
+      hint.textContent = 'موجودی انبار کافی نیست.';
+      hint.classList.add('text-danger');
+      busy(confirmDeliveryBtn, true); return;
+    }
+    if (qty < remaining - 0.001) hint.textContent = 'تحویل ناقص؛ کسری به روز کاری بعد منتقل می‌شود.';
+    else if (qty > remaining + 0.001) hint.textContent = 'مازاد بر نیاز؛ در پایان روز قابل برگشت است.';
+    else hint.textContent = '';
+    busy(confirmDeliveryBtn, false, '<i class="bi bi-check-lg"></i> ثبت تحویل');
+  }
+
+  async function loadDeliveryPreview(queueId) {
+    clearAlert(deliveryAlert);
+    busy(confirmDeliveryBtn, true);
+    try {
+      const data = await getJSON(urls.preview.replace('{id}', queueId));
+      activeDeliveryId = queueId;
+      previewData = data;
+      const row = document.querySelector('.material-card[data-queue="' + queueId + '"]');
+      el('deliveryWorkerName').textContent = row?.closest('.worker-section')?.querySelector('.worker-name')?.textContent?.trim() || '—';
+      el('deliveryMaterialName').textContent = data.name;
+      el('deliveryPlanned').textContent = data.remaining + ' ' + data.unit;
+      el('deliveryUnit').textContent = data.unit;
+      el('deliveryQuantityInput').value = data.physical;
+      el('deliveryNoteInput').value = '';
+      el('deliveryDetails').textContent = 'موجودی انبار: ' + data.stock + ' ' + data.unit +
+        (parseFloat(data.pack_size) > 0 ? ' · اندازه بسته: ' + data.pack_size : '') +
+        (parseFloat(data.from_open) > 0 ? ' · از بسته باز: ' + data.from_open : '');
+
+      // وضعیت قابل‌تحویل بودن از سرویس می‌آید، نه از متن Badge.
+      if (!data.can_deliver) {
+        el('deliveryFormArea').style.display = 'none';
+        setAlert(deliveryAlert,
+          'این ردیف در وضعیت فعلی قابل تحویل نیست: ' + (data.status_display || data.status || ''));
+      } else {
+        el('deliveryFormArea').style.display = '';
+        busy(confirmDeliveryBtn, false, '<i class="bi bi-check-lg"></i> ثبت تحویل');
+      }
+      // Initialize hint after setting default value
+      refreshDeliveryHint();
+    } catch (err) {
+      setAlert(deliveryAlert, err.message);
+      busy(confirmDeliveryBtn, true);
+    }
+  }
+
+  el('deliveryQuantityInput')?.addEventListener('input', refreshDeliveryHint);
+
+  confirmDeliveryBtn?.addEventListener('click', async () => {
+    if (!activeDeliveryId) return;
+    busy(confirmDeliveryBtn, true);
+    try {
+      await postForm(urls.delivery.replace('{id}', activeDeliveryId), {
+        quantity: el('deliveryQuantityInput').value || '',
+        note: el('deliveryNoteInput').value || ''
+      });
+      window.location.reload();
+    } catch (err) {
+      setAlert(deliveryAlert, err.message);
+      busy(confirmDeliveryBtn, false, '<i class="bi bi-check-lg"></i> ثبت تحویل');
+    }
+  });
+
+  // ---------- بازگشت ----------
+  const returnModalEl = el('returnModal');
+  const returnModal = returnModalEl ? bootstrap.Modal.getOrCreateInstance(returnModalEl) : null;
+  const returnAlert = el('returnAlert');
+  const confirmReturnBtn = el('confirmReturnBtn');
+  let activeReturnId = null;
+
+  async function loadReturnData(queueId) {
+    clearAlert(returnAlert);
+    busy(confirmReturnBtn, true);
+    try {
+      // قاعده «حداکثر قابل بازگشت» از سرویس می‌آید و در جاوااسکریپت تکرار نمی‌شود.
+      const data = await getJSON(urls.sources.replace('{id}', queueId));
+      activeReturnId = queueId;
+      el('returnMaterialName').textContent = data.material;
+      el('returnWorkerName').textContent = data.worker;
+      el('returnDelivered').textContent = data.delivered_quantity;
+      el('returnAlready').textContent = data.returned_quantity;
+      el('returnActual').textContent = data.actual_consumption;
+      el('returnMaxReturnable').textContent = data.max_returnable;
+
+      if (!data.can_return) {
+        setAlert(returnAlert, 'این ردیف در حال حاضر امکان ثبت برگشت ندارد یا قبلاً تعیین تکلیف شده است.');
+        el('returnQuantityInput').max = '0';
+        el('returnQuantityInput').value = '0';
+        return;
+      }
+      el('returnQuantityInput').max = data.max_returnable;
+      el('returnQuantityInput').value = data.max_returnable;
+      el('returnQuantityInput').min = '0';
+      el('returnNoteInput').value = '';
+      el('returnHint').textContent = 'اگر کل مقدار تحویل‌شده مصرف شده، صفر ثبت کنید تا روز قابل بستن باشد.';
+      busy(confirmReturnBtn, false, '<i class="bi bi-check-lg"></i> ثبت بازگشت');
+    } catch (err) {
+      setAlert(returnAlert, err.message);
+      busy(confirmReturnBtn, true);
+    }
+  }
+
+  confirmReturnBtn?.addEventListener('click', async () => {
+    if (!activeReturnId) return;
+    const quantity = parseFloat(el('returnQuantityInput').value);
+    const maxReturn = parseFloat(el('returnMaxReturnable').textContent) || 0;
+    clearAlert(returnAlert);
+    if (Number.isNaN(quantity) || quantity < 0) {
+      setAlert(returnAlert, 'مقدار برگشتی نمی‌تواند منفی باشد. صفر یعنی همهٔ مقدار تحویل‌شده مصرف شده است.');
+      return;
+    }
+    if (quantity > maxReturn + 0.001) {
+      setAlert(returnAlert, 'مقدار برگشتی نمی‌تواند بیشتر از حداکثر قابل بازگشت باشد.');
+      return;
+    }
+    busy(confirmReturnBtn, true);
+    try {
+      await postForm(urls.returns.replace('{id}', activeReturnId), {
+        returned_quantity: quantity,
+        note: el('returnNoteInput').value || ''
+      });
+      window.location.reload();
+    } catch (err) {
+      setAlert(returnAlert, err.message);
+      busy(confirmReturnBtn, false, '<i class="bi bi-check-lg"></i> ثبت بازگشت');
+    }
+  });
+
+  // ---------- منابع ----------
+  const sourcesModalEl = el('sourcesModal');
+  const sourcesModal = sourcesModalEl ? bootstrap.Modal.getOrCreateInstance(sourcesModalEl) : null;
+
+  async function loadSources(queueId) {
+    const body = el('sourcesTableBody');
+    try {
+      const data = await getJSON(urls.sources.replace('{id}', queueId));
+      el('sourcesWorkerName').textContent = data.worker;
+      el('sourcesMaterialName').textContent = data.material;
+      el('sourcesPlanned').textContent = data.planned_quantity;
+
+      // ردیف‌ها با DOM ساخته می‌شوند نه innerHTML: برچسب‌ها متن آزاد هستند.
+      body.textContent = '';
+      (data.rows || []).forEach(row => {
+        const card = document.createElement('div');
+        card.className = 'd-flex justify-content-between align-items-start gap-3 rounded-3 border p-2';
+        const description = document.createElement('div');
+        const title = document.createElement('div');
+        title.className = 'fw-semibold';
+        title.textContent = [row.kind_display, row.label].filter(Boolean).join(' · ') || 'منبع';
+        description.appendChild(title);
+        if (row.detail) {
+          const detail = document.createElement('div');
+          detail.className = 'small text-muted mt-1';
+          detail.textContent = row.detail;
+          description.appendChild(detail);
+        }
+        const quantity = document.createElement('strong');
+        quantity.className = 'text-nowrap';
+        quantity.textContent = row.quantity == null ? '' : String(row.quantity);
+        card.append(description, quantity);
+        body.appendChild(card);
+      });
+      sourcesModal.show();
+    } catch (err) {
+      setAlert(el('deliveryAlert'), err.message);
+    }
+  }
+
+  el('dailyQueueTable')?.addEventListener('click', event => {
+    const row = event.target.closest('.material-card[data-queue]');
+    if (!row) return;
+    const queueId = row.dataset.queue;
+
+    if (event.target.closest('.btn-preview-delivery')) {
+      activeDeliveryId = queueId;
+      loadDeliveryPreview(queueId);
+      deliveryModal.show();
+    } else if (event.target.closest('.btn-return')) {
+      loadReturnData(queueId);
+      returnModal.show();
+    } else if (event.target.closest('.btn-sources')) {
+      loadSources(queueId);
+    }
+  });
+
+  deliveryModalEl?.addEventListener('hidden.bs.modal', () => {
+    activeDeliveryId = null;
+    previewData = null;
+    clearAlert(deliveryAlert);
+  });
+  returnModalEl?.addEventListener('hidden.bs.modal', () => {
+    activeReturnId = null;
+    clearAlert(returnAlert);
+  });
+})();
+</script>
+{% endblock %}

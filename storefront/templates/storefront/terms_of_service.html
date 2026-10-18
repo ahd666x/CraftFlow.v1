@@ -1,0 +1,99 @@
+{% extends 'storefront/layouts/store.html' %}
+{% load static %}
+
+{% block title %}شرایط و قوانین استفاده — {{ site_settings.site_name }}{% endblock %}
+{% block meta_description %}شرایط و قوانین استفاده از سایت {{ site_settings.site_name }}{% endblock %}
+{% block og_title %}شرایط و قوانین استفاده{% endblock %}
+{% block og_description %}شرایط و قوانین استفاده از سایت {{ site_settings.site_name }}{% endblock %}
+{% block og_image %}{% if site_settings.cover_image %}{{ site_settings.cover_image.url }}{% endif %}{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-3xl px-4 py-12">
+    <h1 class="text-3xl font-bold text-stone-900 mb-6">شرایط و قوانین استفاده</h1>
+    
+    <div class="prose prose-stone max-w-none">
+        <p class="lead text-stone-600">
+            با استفاده از سایت {{ site_settings.site_name }}، شما با شرایط و قوانین زیر موافقت می‌کنید. لطفاً این متن را با دقت بخوانید.
+        </p>
+        
+        <h2 class="text-2xl font-bold text-stone-900 mt-8 mb-4">۱. تعریف‌ها</h2>
+        <p class="mt-4 text-stone-600">
+            در این متن، «ما»، «ما» و «{{ site_settings.site_name }}» به فروشگاه آنلاین مرجع دارد. «شما» و «کاربر» به هر بازدیدکننده یا خریدار سایت اشاره دارد. «کالا» به هر محصولی که در سایت عرضه می‌شود اشاره دارد.
+        </p>
+        
+        <h2 class="text-2xl font-bold text-stone-900 mt-8 mb-4">۲. ثبت‌نام و حساب کاربری</h2>
+        <ul class="list-disc list-inside space-y-2 mt-4 text-stone-600">
+            <li>برای خرید، باید حساب کاربری معتبر داشته باشید.</li>
+            <li>شما مسئول حفظ محرمانه بودن رمز عبور و تمام فعالیت‌های انجام شده تحت حساب خود هستید.</li>
+            <li>اطلاعات ثبت‌نام باید دقیق، کامل و به‌روز باشد.</li>
+            <li>ما حق داریم حساب‌های جعلی یا مشکوک را بدون اخطار پیشین مسدود کنیم.</li>
+        </ul>
+        
+        <h2 class="text-2xl font-bold text-stone-900 mt-8 mb-4">۳. سفارش و پرداخت</h2>
+        <ul class="list-disc list-inside space-y-2 mt-4 text-stone-600">
+            <li>ثبت سفارش به معنای پیشنهاد خرید از طرف شما است؛ قرارداد نهایی پس از تایید ما (ارسال ایمیل/پیامک تایید) برقرار می‌شود.</li>
+            <li>قیمت‌ها بر حسب تومان و شامل مالیات بر ارزش افزوده است. هزینه ارسال جداگانه محاسبه و نمایش داده می‌شود.</li>
+            <li>ما تلاش می‌کنیم قیمت‌ها و موجودی دقیق باشند، اما در صورت خطای سیستم، حق انصراف از سفارش را داریم.</li>
+            <li>پرداخت از طریق درگاه‌های معتبر بانکی (زرین‌پال) یا پرداخت در محل (در صورت فعال بودن) انجام می‌شود.</li>
+        </ul>
+        
+        <h2 class="text-2xl font-bold text-stone-900 mt-8 mb-4">۴. تولید و ارسال</h2>
+        <ul class="list-disc list-inside space-y-2 mt-4 text-stone-600">
+            <li>زمان تولید: {{ site_settings.production_days_min }} تا {{ site_settings.production_days_max }} روز کاری.</li>
+            <li>زمان ارسال: {{ site_settings.shipping_days_min }} تا {{ site_settings.shipping_days_max }} روز کاری.</li>
+            <li>کالاهای سفارشی (ابعاد دلخواه) پس از تایید سفارش قابل تغییر/لغو نیستند.</li>
+            <li>ریسک انتقال کالا پس از تحویل به شرکت پستی/پیک بر عهده خریدار است.</li>
+        </ul>
+        
+        <h2 class="text-2xl font-bold text-stone-900 mt-8 mb-4">۵. مرجوعی و ضمانت</h2>
+        <ul class="list-disc list-inside space-y-2 mt-4 text-stone-600">
+            <li>شرایط مرجوعی در <a href="{% url 'storefront:return_policy' %}" class="text-primary-600 underline underline-offset-2 hover:text-primary-800">صفحه قوانین مرجوعی</a> تشریح شده است.</li>
+            <li>{% if site_settings.warranty_years %}گارانتی {{ site_settings.warranty_years }} ساله بر ضد عیب ساخت شامل می‌شود.{% else %}گارانتی تجاری برای عیب‌های ساخت در بازه قانونی لحاظ شده است.{% endif %}</li>
+            <li>ضمانت شامل آسیب‌های ناشی از سوءاستفاده، رطوبت بیش از حد، ضربه، یا تعمیرات غیرمجاز نمی‌شود.</li>
+        </ul>
+        
+        <h2 class="text-2xl font-bold text-stone-900 mt-8 mb-4">۶. حریم خصوصی و داده‌ها</h2>
+        <ul class="list-disc list-inside space-y-2 mt-4 text-stone-600">
+            <li>اطلاعات شما تنها برای پردازش سفارش، ارسال و پشتیبانی استفاده می‌شود.</li>
+            <li>ما اطلاعات شما را به هیچ شخص ثالثی (به جز درگاه پرداخت و شرکت پستی) نمی‌فروشیم.</li>
+            <li>می‌توانید درخواست حذف حساب و داده‌ها را از پنل کاربری یا از طریق ایمیل ارسال کنید.</li>
+        </ul>
+        
+        <h2 class="text-2xl font-bold text-stone-900 mt-8 mb-4">۷. مالکیت فکری</h2>
+        <p class="mt-4 text-stone-600">
+            تمام محتوای سایت (متن، تصویر، لوگو، کد، طراحی) متعلق به {{ site_settings.site_name }} است. کپی‌برداری، بازتولید یا توزیع بدون اجازه کتبی ممنوع است.
+        </p>
+        
+        <h2 class="text-2xl font-bold text-stone-900 mt-8 mb-4">۸. محدودیت مسئولیت</h2>
+        <ul class="list-disc list-inside space-y-2 mt-4 text-stone-600">
+            <li>ما در قبال خسارت‌های غیرمستقیم، خاص یا تبعی (از دست دادن سود، داده‌ها، فرصت) مسئول نیستیم.</li>
+            <li>محدودیت کلی مسئولیت ما، مبلغ سفارش مربوطه است.</li>
+            <li>ما سعی می‌کنیم سایت همیشه در دسترس باشد، اما تضمین عدم قطعی ارائه نمی‌دهیم.</li>
+        </ul>
+        
+        <h2 class="text-2xl font-bold text-stone-900 mt-8 mb-4">۹. قانون حاکم و مرجع دعوی</h2>
+        <p class="mt-4 text-stone-600">
+            این شرایط تحت قوانین جمهوری اسلامی ایران تفسیر و اجرا می‌شود. هرگونه اختلاف، در مراجع قضایی تهران رسیدگی می‌شود.
+        </p>
+        
+        <h2 class="text-2xl font-bold text-stone-900 mt-8 mb-4">۱۰. تغییرات</h2>
+        <p class="mt-4 text-stone-600">
+            ما می‌توانیم این شرایط را هر وقت لازم باشد به‌روزرسانی کنیم. نسخه جدید از تاریخ انتشار در سایت اثر می‌کند. ادامه استفاده از سایت به معنای پذیرش تغییرات است.
+        </p>
+        
+        <div class="mt-10 p-4 bg-primary-50 border border-primary-100 rounded-lg">
+            <p class="text-sm text-primary-800">
+                تاریخ آخرین به‌روزرسانی: {{ site_settings.updated_at|default:"مهر ۱۴۰۳"|date:"j F Y" }}<br>
+                برای هر سوالی با ما تماس بگیرید:
+                {% if site_settings.contact_email %}
+                <a href="mailto:{{ site_settings.contact_email }}" class="font-medium underline underline-offset-2">{{ site_settings.contact_email }}</a>
+                {% endif %}
+                {% if site_settings.contact_phone %}
+                <a href="tel:{{ site_settings.contact_phone }}" class="font-medium underline underline-offset-2 ml-2">{{ site_settings.contact_phone }}</a>
+                {% endif %}
+            </p>
+        </div>
+    </div>
+</div>
+</div>
+{% endblock %}

@@ -84,36 +84,16 @@ def log_production_event(task, event_type, user=None, old_status='', new_status=
 
 def consume_material_for_task(task):
     """
-    برای یک تسک تکمیل‌شده که part و material آن به یک RawMaterial متصل است،
-    یک StockMovement مصرفی ثبت می‌کند. Idempotent است: اگر قبلاً برای همین
-    تسک ثبت شده باشد، دوباره ثبت نمی‌کند.
+    در Engine B هیچ مصرف خودکاری هنگام تکمیل تسک رخ نمی‌دهد.
+
+    کسر بابت تولید فقط از یک مسیر انجام می‌شود:
+    ``DailyMaterialQueue → execute_daily_delivery``.
+
+    اگر این تابع کاری می‌کرد، بسته‌ای که انبار از صف روزانه بیرون داده دوباره کم
+    می‌شد. برای همین عمداً بی‌اثر است؛ نقطهٔ تماس باقی مانده تا فراخوانی‌های
+    قدیمی (مثل ``ProductionTask.save``) نشکنند.
     """
-    if not task.part or not task.part.material:
-        return None
-    material = task.part.material
-    if not material.raw_material_id:
-        return None
-
-    try:
-        from inventory.models import StockMovement
-        if StockMovement.objects.filter(reference_task=task, movement_type='consumption').exists():
-            return None
-
-        qty = Decimal(task.completed_quantity or 0) * Decimal(material.consumption_per_unit or 1)
-        if qty <= 0:
-            return None
-
-        return StockMovement.objects.create(
-            raw_material=material.raw_material,
-            movement_type='consumption',
-            quantity=qty,
-            reference_task=task,
-            note=f'مصرف خودکار - تسک #{task.id} ({task.get_station_name_display()})',
-            created_by=task.scanned_by,
-        )
-    except Exception:
-        logger.exception("خطا در مصرف خودکار مواد اولیه برای تسک %s", task.pk)
-        return None
+    return None
 
 
 def _get_task_actual_color_code(task):
@@ -129,74 +109,299 @@ def _get_task_actual_color_code(task):
     return str(code) if code and code != 'nan' else None
 
 
-def _resolve_variant_requirements(process_id, requirements, actual_code):
-    """requirements را به ماده واقعی کد رنگ تبدیل می‌کند؛ اسلات‌های color-variant حل‌نشده حذف و لاگ می‌شوند."""
-    from .models import PaintingProcessMaterial, PaintingColorMaterialVariant
-    variant_slots = set(PaintingProcessMaterial.objects.filter(
-        process_id=process_id, is_color_variant=True
-    ).values_list('raw_material_id', flat=True))
-    variant_map = {}
-    if actual_code:
-        variant_map = {
-            v.process_material.raw_material_id: v.raw_material
-            for v in PaintingColorMaterialVariant.objects.filter(
-                process_material__process_id=process_id,
-                process_material__is_color_variant=True,
-                color_code=actual_code,
-            ).select_related('raw_material', 'process_material')
+class PaintingMaterialResolutionError(Exception):
+    """
+    یک ``PaintingMaterialRequirement`` نتوانست به یک ``RawMaterial`` واقعی و
+    یکتا تبدیل شود.
+
+    عمداً silent fallback ندارد: نه به اسلات، نه به ماده دیگری و نه به NULL.
+    """
+
+    def __init__(self, *, requirement, process, color_code, reason):
+        self.requirement = requirement
+        self.process = process
+        self.color_code = color_code
+        self.reason = reason
+        super().__init__(str(self))
+
+    def __str__(self):
+        return (
+            f'نیاز نقاشی #{self.requirement.pk} قابل نگاشت به ماده اولیه واقعی '
+            f'نیست (process={self.process_id} color_code={self.color_code!r}): '
+            f'{REASON_LABELS.get(self.reason, self.reason)}'
+        )
+
+    @property
+    def process_id(self):
+        return self.process.pk if self.process is not None else None
+
+    @property
+    def slot_raw_material_id(self):
+        return self.requirement.raw_material_id if self.requirement is not None else None
+
+    def as_dict(self):
+        return {
+            'requirement_id': self.requirement.pk if self.requirement is not None else None,
+            'process_id': self.process_id,
+            'slot_raw_material_id': self.slot_raw_material_id,
+            'color_code': self.color_code,
+            'reason': self.reason,
+            'label': REASON_LABELS.get(self.reason, self.reason),
         }
-    resolved = []
-    for req in requirements:
-        if req.raw_material_id in variant_slots:
-            real = variant_map.get(req.raw_material_id)
-            if not real:
-                logger.warning('اسلات رنگ‌وابسته بدون mapping: process=%s material=%s code=%s',
-                               process_id, req.raw_material_id, actual_code)
-                continue
-            req.raw_material = real
-        resolved.append(req)
-    return resolved
+
+
+class PaintingMaterialNote:
+    """هشدار غیرمسدودکننده دربارهٔ کیفیت دادهٔ نگاشت (نه دربارهٔ خود ماده)."""
+
+    def __init__(self, *, requirement, process, color_code, reason):
+        self.requirement = requirement
+        self.process = process
+        self.color_code = color_code
+        self.reason = reason
+
+    def __str__(self):
+        return (
+            f'نیاز نقاشی #{self.requirement.pk}: '
+            f'{NOTE_LABELS.get(self.reason, self.reason)}'
+        )
+
+    def as_dict(self):
+        return {
+            'requirement_id': self.requirement.pk if self.requirement is not None else None,
+            'process_id': self.process.pk if self.process is not None else None,
+            'slot_raw_material_id': (
+                self.requirement.raw_material_id
+                if self.requirement is not None else None
+            ),
+            'color_code': self.color_code,
+            'reason': self.reason,
+            'label': NOTE_LABELS.get(self.reason, self.reason),
+        }
+
+
+REASON_LABELS = {
+    'missing_color_variant': 'برای این کد رنگ در PaintingColorMaterialVariant نگاشتی ثبت نشده است.',
+    'missing_color_code': 'کد رنگ واقعی سفارش قابل تشخیص نیست، پس اسلات رنگ‌وابسته resolve نمی‌شود.',
+}
+
+NOTE_LABELS = {
+    'material_outside_process_catalog': (
+        'ماده اولیه در کاتالوگ PaintingProcessMaterial این روند تعریف نشده است؛ '
+        'نیاز به همان مادهٔ FK حل شد اما داده کاتالوگ ناقص است.'
+    ),
+}
+
+
+def _load_process_material_state(process_id):
+    """
+    وضعیت کاتالوگ مواد یک روند، یک‌بار برای کل batch.
+
+    Returns (variant_slots, catalog_ids, variant_map_for_code) as a loader
+    that only queries the variant table when a colour code is actually needed.
+    """
+    from .models import PaintingProcessMaterial
+
+    catalog_ids = set(
+        PaintingProcessMaterial.objects.filter(process_id=process_id)
+        .values_list('raw_material_id', flat=True)
+    )
+    variant_slots = set(
+        PaintingProcessMaterial.objects.filter(
+            process_id=process_id, is_color_variant=True
+        ).values_list('raw_material_id', flat=True)
+    )
+    return variant_slots, catalog_ids
+
+
+def _load_variant_map(process_id, color_code):
+    """{slot_raw_material_id: RawMaterial واقعی} برای یک کد رنگ مشخص."""
+    from .models import PaintingColorMaterialVariant
+
+    if not color_code:
+        return {}
+    return {
+        v.process_material.raw_material_id: v.raw_material
+        for v in PaintingColorMaterialVariant.objects.filter(
+            process_material__process_id=process_id,
+            process_material__is_color_variant=True,
+            color_code=color_code,
+        ).select_related('raw_material', 'process_material')
+    }
+
+
+def resolve_painting_raw_material(requirement, *, process, color_code, state=None):
+    """
+    تنها مسیر canonical برای تبدیل یک ``PaintingMaterialRequirement`` به
+    ``RawMaterial`` واقعی.
+
+    قاعده:
+      * اسلات رنگ‌وابسته → فقط از ``PaintingColorMaterialVariant`` همان کد رنگ.
+      * هر مادهٔ دیگر → خودِ FK ذخیره‌شده ماده واقعی است (بدون تغییر).
+
+    اگر ماده در کاتالوگ روند ثبت نشده باشد resolve متوقف نمی‌شود، ولی یک
+    ``PaintingMaterialNote`` برگردانده می‌شود تا نقص داده قابل گزارش باشد؛
+    در آن حالت هیچ ماده حدسی ساخته نمی‌شود.
+
+    این تابع هیچ چیز را در حافظه mutate نمی‌کند و چیزی ذخیره نمی‌کند؛
+    ``requirement.raw_material`` همیشه همان FK ذخیره‌شده در DB می‌ماند و
+    ماده واقعی جداگانه برگردانده می‌شود.
+
+    ``state`` فقط برای batch است تا کاتالوگ روند یک‌بار خوانده شود.
+    """
+    raw_material, _note = resolve_painting_raw_material_with_note(
+        requirement, process=process, color_code=color_code, state=state,
+    )
+    return raw_material
+
+
+def resolve_painting_raw_material_with_note(requirement, *, process, color_code,
+                                            state=None, variant_map=None):
+    """
+    همان ``resolve_painting_raw_material`` ولی با گزارش ``(raw, note)``.
+
+    ``note`` فقط برای نقص دادهٔ کاتالوگ است و هرگز باعث حذف نیاز نمی‌شود.
+    """
+    if requirement is None or requirement.raw_material_id is None:
+        raise PaintingMaterialResolutionError(
+            requirement=requirement, process=process, color_code=color_code,
+            reason='material_not_in_process_catalog',
+        )
+
+    if state is None:
+        state = _load_process_material_state(process.pk)
+    variant_slots, catalog_ids = state
+    raw_id = requirement.raw_material_id
+
+    note = None
+    if raw_id not in catalog_ids:
+        # داده کاتالوگ ناقص است، ولی FK موجود هنوز یک ماده واقعی یکتاست؛
+        # بنابراین نیاز حذف نمی‌شود و فقط گزارش می‌شود.
+        note = PaintingMaterialNote(
+            requirement=requirement, process=process,
+            color_code=color_code, reason='material_outside_process_catalog',
+        )
+
+    if raw_id not in variant_slots:
+        return requirement.raw_material, note
+
+    if not color_code:
+        raise PaintingMaterialResolutionError(
+            requirement=requirement, process=process, color_code=color_code,
+            reason='missing_color_code',
+        )
+
+    if variant_map is None:
+        variant_map = _load_variant_map(process.pk, color_code)
+    real = variant_map.get(raw_id)
+    if real is None:
+        raise PaintingMaterialResolutionError(
+            requirement=requirement, process=process, color_code=color_code,
+            reason='missing_color_variant',
+        )
+    return real, note
+
+
+def resolve_painting_requirements(process, requirements, color_code, *, strict=False):
+    """
+    لیست requirementها را با تنها resolver بالا به ماده واقعی نگاشت می‌کند.
+
+    Returns ``(resolved, errors)`` که هر عضو ``resolved`` یک dict با کلیدهای
+    ``requirement``، ``raw_material`` و ``note`` است. requirementهای
+    resolve‌نشده فقط در ``errors`` گزارش می‌شوند (بدون ساخت ماده اشتباه)؛
+    در حالت ``strict=True`` اولین خطا raise می‌شود.
+    """
+    resolved, errors = [], []
+    requirements = list(requirements)
+    state = _load_process_material_state(process.pk) if requirements else None
+    variant_map = None
+    for requirement in requirements:
+        try:
+            if variant_map is None:
+                variant_map = _load_variant_map(process.pk, color_code)
+            raw, note = resolve_painting_raw_material_with_note(
+                requirement, process=process, color_code=color_code,
+                state=state, variant_map=variant_map,
+            )
+        except PaintingMaterialResolutionError as exc:
+            if strict:
+                raise
+            errors.append(exc)
+            continue
+        resolved.append({
+            'requirement': requirement, 'raw_material': raw, 'note': note,
+        })
+    return resolved, errors
+
+
+def get_resolved_painting_requirements_for_task(task):
+    """
+    تنها نقطهٔ ورودِ صف روزانه به نیاز نقاشی.
+
+    Returns ``(resolved, errors, context)``:
+        resolved: [{'requirement': ..., 'raw_material': ...}] — ماده واقعی
+        errors:   [PaintingMaterialResolutionError] — قابل ردیابی
+        context:  {'process_id', 'stage_id', 'product_id', 'color_part', 'color_code'}
+
+    هیچ requirementای در صورت resolve نشدن به مادهٔ اشتباه تبدیل نمی‌شود.
+    """
+    context = {
+        'process_id': None, 'stage_id': None, 'product_id': None,
+        'color_part': task.color_part, 'color_code': None,
+    }
+    if task.station_name != 'paint' or not task.painting_stage_id:
+        return [], [], context
+    if not task.order_item_id or not task.order_item.product_id:
+        return [], [], context
+    if not task.color_part:
+        return [], [], context
+
+    process = task.painting_stage.process
+    context['process_id'] = process.pk
+    context['stage_id'] = task.painting_stage_id
+    context['product_id'] = task.order_item.product_id
+
+    from .models import PaintingMaterialRequirement
+
+    requirements = list(
+        PaintingMaterialRequirement.objects.filter(
+            process_id=process.pk,
+            product_id=context['product_id'],
+            color_part=task.color_part,
+        ).filter(
+            Q(stage_id=task.painting_stage_id) | Q(stage__isnull=True)
+        ).select_related('raw_material')
+    )
+
+    color_code = _get_task_actual_color_code(task)
+    context['color_code'] = color_code
+    resolved, errors = resolve_painting_requirements(
+        process, requirements, color_code,
+    )
+    return resolved, errors, context
 
 
 def get_painting_material_requirements_for_task(task):
     """
-    فرمول مصرف مواد یک تسک نقاشی: دقیقاً بر اساس (روندِ مرحلهٔ تسک،
-    محصول آیتم سفارش، بخش رنگی تسک) از PaintingMaterialRequirement خوانده
-    می‌شود. اسلات‌های وابسته به رنگ در این مرحله فقط در حافظه به مادهٔ واقعی
-    کد رنگ سفارش تبدیل می‌شوند و مقدار مصرف بدون تغییر باقی می‌ماند.
+    سازگاری با مصرف‌کننده‌های قدیمی: لیست requirementها با
+    ``raw_material`` موقتاً روی مادهٔ واقعی تنظیم‌شده.
+
+    این mutation فقط روی instance در حافظه است و هرگز ``save`` نمی‌شود؛
+    مسیر canonical همان ``resolve_painting_raw_material`` است.
     """
-    from .models import PaintingMaterialRequirement, PaintingColorMaterialVariant
-
-    if task.station_name != 'paint' or not task.painting_stage_id:
-        return []
-    if not task.order_item_id or not task.order_item.product_id:
-        return []
-    if not task.color_part:
-        return []
-
-    process_id = task.painting_stage.process_id
-    product_id = task.order_item.product_id
-
-    requirements = list(
-        PaintingMaterialRequirement.objects.filter(
-            process_id=process_id,
-            product_id=product_id,
-            color_part=task.color_part,
-        ).select_related('raw_material')
-    )
-
-    actual_code = _get_task_actual_color_code(task)
-    return _resolve_variant_requirements(process_id, requirements, actual_code)
+    resolved, _errors, _context = get_resolved_painting_requirements_for_task(task)
+    out = []
+    for entry in resolved:
+        requirement = entry['requirement']
+        requirement.raw_material = entry['raw_material']
+        out.append(requirement)
+    return out
 
 
 def get_painting_material_requirements_for_item_colorpart(order_item, color_part):
     """
     فرمول مصرف مواد برای (آیتم سفارش + بخش رنگی)، مستقل از اینکه چند Task/مرحله
-    دارد. روند نقاشی از روی کد رنگ واقعی این بخش تعیین می‌شود (با همان منطق
-    _get_task_actual_color_code ولی بدون نیاز به task).
+    دارد. روند نقاشی از روی کد رنگ واقعی این بخش تعیین می‌شود.
     """
-    from .models import PaintingMaterialRequirement, PaintingColorMaterialVariant
-
     if not order_item or not color_part:
         return None, []
 
@@ -217,18 +422,28 @@ def get_painting_material_requirements_for_item_colorpart(order_item, color_part
         return None, []
 
     # 3. فرمول‌های ثبت‌شده برای (روند، محصول، بخش رنگی)
+    from .models import PaintingMaterialRequirement
+
     requirements = list(
         PaintingMaterialRequirement.objects.filter(
-            process_id=process.id,
+            process_id=process.pk,
             product_id=order_item.product_id,
             color_part=color_part,
         ).select_related('raw_material')
     )
 
-    # 4. اسلات‌های وابسته به رنگ را به ماده‌ی واقعی تبدیل کن (in-memory، مثل نسخه‌ی task)
-    requirements = _resolve_variant_requirements(process.id, requirements, actual_code)
+    # 4. نگاشت به مادهٔ واقعی از همان resolver مشترک استفاده می‌کند
+    resolved, _errors = resolve_painting_requirements(
+        process, requirements, actual_code,
+    )
 
-    return process, requirements
+    out = []
+    for entry in resolved:
+        requirement = entry['requirement']
+        requirement.raw_material = entry['raw_material']
+        out.append(requirement)
+
+    return process, out
 
 
 # ===================================================================
@@ -297,21 +512,15 @@ def invalidate_caches():
 
 
 def cancel_unissued_paint_material_requests(pairs):
-    """pairs: iterable of (order_item_id, color_part). If no paint task remains for that item/color, cancel unissued requested material issues."""
-    from inventory.models import MaterialIssue
-    for item_id, color_part in set(pairs):
-        if not item_id:
-            continue
-        if ProductionTask.objects.filter(station_name='paint', order_item_id=item_id, color_part=color_part or '').exists():
-            continue
-        MaterialIssue.objects.filter(
-            order_item_id=item_id,
-            color_part=color_part or '',
-            task__isnull=True,
-            purpose='production',
-            status='requested',
-            issued_quantity=0,
-        ).update(status='cancelled')
+    """
+    Engine A حذف شده است: دیگر «درخواست پیش‌نویس مواد» وجود ندارد.
+
+    کاری که این تابع قبلاً می‌کرد — لغو درخواست‌های تحویل‌نشده — در Engine B
+    معنا ندارد، چون صف روزانه از برنامه *مشتق* می‌شود و با حذف یا تغییر تسک
+    خودش به‌روز می‌شود (سیگنال‌های ``inventory.signals``). بنابراین این تابع فقط
+    یک نقطهٔ تماسِ بی‌اثر است تا فراخوانی‌های قدیمی نشکنند.
+    """
+    return None
 
 
 def _get_process_cache():
@@ -458,33 +667,82 @@ def get_material_for_color(color_code, mapping=None):
 
 
 def parse_size_string(size_str):
+    """Parse a size string like '50', '50x30' or '50x30x40' into a dict.
+
+    A single number is treated as length only (legacy 1D format).
+    Two numbers → {'length', 'width'} (2D legacy format).
+    Three numbers → {'length', 'width', 'height'} (3D format).
+    """
     if not size_str:
         return {}
     nums = re.findall(r'\d+', size_str)
     if len(nums) == 1:
-        return {'length': int(nums[0]), 'width': int(nums[0])}
+        return {'length': int(nums[0])}
     if len(nums) >= 2:
-        return {'length': int(nums[0]), 'width': int(nums[1])}
+        result = {'length': int(nums[0]), 'width': int(nums[1])}
+        if len(nums) >= 3:
+            result['height'] = int(nums[2])
+        return result
     return {}
 
 
-def apply_size_adjustment(original_length, original_width, diff_dict, rule):
-    if not rule or not diff_dict:
-        return float(original_length), float(original_width)
-    rule = rule.replace('length_diff', str(diff_dict.get('length_diff', 0)))
-    rule = rule.replace('width_diff', str(diff_dict.get('width_diff', 0)))
-    allowed = {
-        "length": float(original_length),
-        "width": float(original_width),
-        "length_diff": float(diff_dict.get('length_diff', 0)),
-        "width_diff": float(diff_dict.get('width_diff', 0)),
+_RULE_TARGET_RE = re.compile(r'^\s*(length|width|height)\s*:\s*(.+)$')
+# Match the first standalone axis name (not part of a *_diff variable).
+_STANDALONE_AXIS_RE = re.compile(r'\b(length|width|height)(?![a-zA-Z_])')
+
+
+def apply_size_adjustment(original_length, original_width, original_height, diff_dict, rule):
+    """Apply a size-adjustment rule to a part's dimensions.
+
+    The rule is a simple arithmetic expression evaluated with `simpleeval`
+    (or a safe AST fallback). Allowed names:
+        length, width, height, length_diff, width_diff, height_diff
+
+    Multi-axis rules are supported. A rule chunk prefixed with
+    ``length:``, ``width:`` or ``height:`` explicitly targets that axis.
+    Without a prefix the target is inferred from the first standalone axis
+    name appearing in the expression (e.g. ``width + width_diff`` targets
+    ``width``), defaulting to ``length`` when no axis name is found.
+
+    Multiple chunks may be separated by ``;`` or newlines, e.g.::
+
+        length + length_diff ; width + width_diff
+
+    Each chunk is evaluated against the *original* dimensions and the
+    provided diff dict; later chunks see the results of earlier ones.
+    """
+    dims = {
+        'length': float(original_length or 0),
+        'width': float(original_width or 0),
+        'height': float(original_height or 0),
     }
-    try:
-        new_length = _safe_eval(rule, allowed)
-        return float(new_length), float(original_width)
-    except Exception as e:
-        logger.error(f"خطا در اعمال قانون اندازه '{rule}': {e}")
-        return float(original_length), float(original_width)
+    if not rule or not diff_dict:
+        return dims['length'], dims['width'], dims['height']
+
+    names = dict(dims)
+    for axis in ('length', 'width', 'height'):
+        names[f'{axis}_diff'] = float(diff_dict.get(f'{axis}_diff', 0))
+
+    for chunk in re.split(r'[;\n]', rule):
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+        m = _RULE_TARGET_RE.match(chunk)
+        if m:
+            target, expr = m.group(1), m.group(2)
+        else:
+            expr = chunk
+            # Infer the target axis from the first standalone axis name in
+            # the expression so ``width + width_diff`` targets width, not
+            # length. ``length_diff`` is skipped because it is followed by
+            # ``_`` which fails the negative lookahead.
+            axis_match = _STANDALONE_AXIS_RE.search(expr)
+            target = axis_match.group(1) if axis_match else 'length'
+        try:
+            dims[target] = float(_safe_eval(expr, names))
+        except Exception as e:
+            logger.error(f"خطا در قانون اندازه '{chunk}': {e}")
+    return dims['length'], dims['width'], dims['height']
 
 
 def update_barcode_size(original_barcode, new_length, new_width, order_item_id=None):
@@ -2194,100 +2452,56 @@ post_delete.connect(_invalidate_on_change, sender=ColorCode)
 
 
 # ===================================================================
-#   خودکارسازی درخواست مواد اولیه از BOM
-#   وقتی تسک‌های نقاشی برنامه‌ریزی می‌شوند، درخواست مواد انباری
-#   به‌صورت خودکار ساخته می‌شود تا کارگران انبار بتوانند تحویل دهند.
+#   نیاز مواد از برنامه (Engine B)
 # ===================================================================
+#
+#   در Engine B هیچ «درخواست مواد»ی ساخته نمی‌شود. نیاز هر روز از خودِ برنامهٔ
+#   تولید مشتق می‌شود:
+#
+#       ProductionTask / ProductionDefect
+#              -> inventory.services.aggregate_queue_requirements
+#              -> DailyMaterialQueue
+#              -> انباردار تحویل و بازگشت را ثبت می‌کند
+#
+#   یعنی نه ردیف پیش‌نویسی برای لغو کردن مانده و نه شمارش تکراری ممکن است: هر
+#   واحد کار فقط یک‌بار شمرده می‌شود.
+#
+#   تابع‌های پایین فقط نقطه‌های تماس سازگار برای فراخوانی‌های قدیمی‌اند.
+
+
+def sync_queue_for_tasks(tasks):
+    """
+    صف روزانهٔ تسک‌های داده‌شده را Sync می‌کند.
+
+    در حالت عادی سیگنال‌های ``inventory.signals`` همین کار را خودکار انجام
+    می‌دهند؛ این تابع برای جایی است که تسک‌ها با ``bulk_create`` ساخته
+    می‌شوند و سیگنال ``post_save`` روی آن‌ها اجرا نشده است.
+    """
+    task_ids = [task.pk for task in tasks if getattr(task, 'pk', None)]
+    if not task_ids:
+        return 0
+    try:
+        from inventory.services import sync_queue_for_tasks as _sync
+        _sync(task_ids)
+    except Exception:
+        logger.exception(
+            'sync_queue_for_tasks: queue sync failed for %s tasks', len(task_ids))
+        return 0
+    return len(task_ids)
+
 
 def auto_create_material_issues(tasks, requested_by=None, purpose='production'):
     """
-    برای تسک‌های غیرنقاشی: مثل قبل، per-task.
-    برای تسک‌های نقاشی: به‌جای per-task، به ازای هر (order_item, color_part)
-    یکتا در لیست ورودی، فقط یک‌بار درخواست ساخته می‌شود (اگر از قبل نبوده).
+    سازگاری با فراخوانی‌های قدیمی: هیچ درخواستی نمی‌سازد، فقط صف را Sync می‌کند.
+
+    خروجی همان کلیدهای قبلی را نگه می‌دارد تا فراخوانی‌ها نشکنند، ولی
+    ``created`` همیشه صفر است چون دیگر چیزی ساخته نمی‌شود.
     """
-    from inventory.models import MaterialIssue
-    from decimal import Decimal
-
-    created_count = 0
-    skipped_count = 0
-
-    paint_tasks = [t for t in tasks if t.station_name == 'paint' and t.order_item_id]
-    other_tasks = [t for t in tasks if t.station_name != 'paint']
-
-    # ---------- شاخه‌ی غیرنقاشی: بدون تغییر (per-task) ----------
-    existing_task_based = set(
-        MaterialIssue.objects.exclude(status='cancelled')
-        .filter(task__isnull=False)
-        .values_list('task_id', 'raw_material_id')
-    )
-    for task in other_tasks:
-        try:
-            from inventory.views import _task_material_requirements
-            rows = _task_material_requirements(task)
-        except Exception:
-            rows = []
-        for raw_material, quantity in rows:
-            if not raw_material or not quantity or quantity <= 0:
-                continue
-            key = (task.id, raw_material.id)
-            if key in existing_task_based:
-                skipped_count += 1
-                continue
-            MaterialIssue.objects.create(
-                task=task, raw_material=raw_material,
-                requested_quantity=quantity, purpose=purpose, status='requested',
-                requested_by=requested_by,
-                note='درخواست خودکار از برنامه تولید',
-            )
-            existing_task_based.add(key)
-            created_count += 1
-
-    # ---------- شاخه‌ی نقاشی: به سطح (order_item, color_part) تقلیل بده ----------
-    seen_item_colorparts = set()
-    existing_paint = set(
-        MaterialIssue.objects.exclude(status='cancelled')
-        .filter(order_item__isnull=False, task__isnull=True)
-        .values_list('order_item_id', 'color_part', 'raw_material_id')
-    )
-
-    for task in paint_tasks:
-        key = (task.order_item_id, task.color_part or '')
-        if key in seen_item_colorparts:
-            continue
-        seen_item_colorparts.add(key)
-
-        item = task.order_item
-        process, requirements = get_painting_material_requirements_for_item_colorpart(
-            item, task.color_part
-        )
-        if not process or not requirements:
-            continue
-
-        for req in requirements:
-            quantity = Decimal(item.quantity) * req.consumption_per_unit
-            if quantity <= 0:
-                continue
-            dedup_key = (item.id, task.color_part or '', req.raw_material.id)
-            if dedup_key in existing_paint:
-                skipped_count += 1
-                continue
-
-            MaterialIssue.objects.create(
-                task=None,
-                order_item=item,
-                color_part=task.color_part or '',
-                painting_process=process,
-                raw_material=req.raw_material,
-                requested_quantity=quantity,
-                purpose=purpose,
-                status='requested',
-                requested_by=requested_by,
-                note=(
-                    f'نیاز نقاشی: سفارش {item.order_id} / آیتم {item.id} / '
-                    f'{item.product.name} / {task.color_part} / روند {process.name}'
-                ),
-            )
-            existing_paint.add(dedup_key)
-            created_count += 1
-
-    return {'created': created_count, 'skipped': skipped_count, 'total_raw': None}
+    task_list = list(tasks or [])
+    sync_queue_for_tasks(task_list)
+    return {
+        'created': 0,
+        'skipped': len(task_list),
+        'deferred_to_daily_queue': len(task_list),
+        'total_raw': None,
+    }

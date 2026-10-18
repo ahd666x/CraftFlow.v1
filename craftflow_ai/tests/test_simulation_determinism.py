@@ -9,7 +9,7 @@
 
 مبدأ: گزارش‌های تحلیل و شبیه‌سازی قرار است در حافظهٔ کاربر و در گفتگو
 دوباره خوانده شوند؛ اگر دو اجرای یکسان روی یک دیتابیس یکسان دو متن متفاوت
-بدهند، هم اعتماد کاربر می‌ریزد و هم تست‌های پذیرش ناپایدار می‌شوند.
+دهند، هم اعتماد کاربر می‌ریزد و هم تست‌های پذیرش ناپایدار می‌شوند.
 """
 import copy
 import json
@@ -27,8 +27,7 @@ from craftflow_ai.simulation import (
     simulate_order_priority,
 )
 from inventory.models import (
-    MaterialIssue,
-    MaterialLeftover,
+    DailyMaterialQueue,
     StockMovement,
     RawMaterial,
 )
@@ -104,8 +103,8 @@ class SimulationDeterminismTests(TestCase):
 
     def test_scenario_writes_nothing_to_the_database(self):
         baseline = {
-            'issues': MaterialIssue.objects.count(),
-            'leftovers': MaterialLeftover.objects.count(),
+            'issues': DailyMaterialQueue.objects.count(),
+            'leftovers': StockMovement.objects.filter(movement_type='return').count(),
             'movements': StockMovement.objects.count(),
             'orders': Order.objects.count(),
             'tasks': ProductionTask.objects.count(),
@@ -116,8 +115,8 @@ class SimulationDeterminismTests(TestCase):
         simulate_order_priority(self.order.id, 1)
 
         after = {
-            'issues': MaterialIssue.objects.count(),
-            'leftovers': MaterialLeftover.objects.count(),
+            'issues': DailyMaterialQueue.objects.count(),
+            'leftovers': StockMovement.objects.filter(movement_type='return').count(),
             'movements': StockMovement.objects.count(),
             'orders': Order.objects.count(),
             'tasks': ProductionTask.objects.count(),
@@ -268,4 +267,4 @@ class ToolCallOrderDoesNotAffectResultsTests(TestCase):
         backward = self._run(list(reversed(specs)))
         self.assertEqual(forward, backward)
         self.assertEqual(RawMaterial.objects.count(), 1)
-        self.assertEqual(MaterialIssue.objects.count(), 1)
+        self.assertEqual(DailyMaterialQueue.objects.count(), 1)

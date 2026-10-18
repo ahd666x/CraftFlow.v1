@@ -1,0 +1,69 @@
+{% extends 'storefront/layouts/store.html' %}
+{% load static %}
+
+{% block title %}قوانین مرجوعی — {{ site_settings.site_name }}{% endblock %}
+{% block meta_description %}شرایط و قوانین مرجوعی کالا در {{ site_settings.site_name }}{% endblock %}
+{% block og_title %}قوانین مرجوعی{% endblock %}
+{% block og_description %}شرایط و قوانین مرجوعی کالا در {{ site_settings.site_name }}{% endblock %}
+{% block og_image %}{% if site_settings.cover_image %}{{ site_settings.cover_image.url }}{% endif %}{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-3xl px-4 py-12">
+    <h1 class="text-3xl font-bold text-stone-900 mb-6">قوانین مرجوعی و استبدال کالا</h1>
+    
+    <div class="prose prose-stone max-w-none">
+        <p class="lead text-stone-600">
+            رضایت شما اولویت ماست. اگر با خرید خود راضی نیستید، می‌توانید کالا را در بازه‌ی قانونی مرجوع یا جایگزین کنید.
+        </p>
+        
+        <h2 class="text-2xl font-bold text-stone-900 mt-8 mb-4">شرایط مرجوعی</h2>
+        <ul class="list-disc list-inside space-y-3 mt-4 text-stone-600">
+            <li>مرجوعی تنها برای کالاهایی که <strong>سفارش‌های استاندارد</strong> (بدون ابعاد دلخواه/سفارشی) باشند امکان‌پذیر است. کالاهای تولید به سفارش (با ابعاد دلخواه) قابل مرجوعی نیستند مگر در صورت عیب ساخت.</li>
+            <li>مدت زمان مرجوعی: <strong>۷ روز</strong> از تاریخ تحویل کالا (مطابق قانون حمایت مصرف‌کننده).</li>
+            <li>کالا باید <strong>بدون استفاده</strong>، در بسته‌بندی اصلی، با تمام لوازم جانبی و برچسب‌ها باشد.</li>
+            <li>هزینه ارسال مرجوعی بر عهده خریدار است، مگر در صورت عیب ساخت یا اشتباه در ارسال.</li>
+        </ul>
+        
+        <h2 class="text-2xl font-bold text-stone-900 mt-8 mb-4">شرایط استبدال</h2>
+        <ul class="list-disc list-inside space-y-3 mt-4 text-stone-600">
+            <li>استبدال با کالاهای هم‌ارزش یا با پرداخت/دریافت تفاوت قیمت امکان‌پذیر است.</li>
+            <li>مدت زمان استبدال: <strong>۷ روز</strong> از تاریخ تحویل.</li>
+            <li>شرایط فیزیکی کالا همانند مرجوعی است (بدون استفاده، در بسته‌بندی اصلی).</li>
+        </ul>
+        
+        <h2 class="text-2xl font-bold text-stone-900 mt-8 mb-4">فرآیند مرجوعی</h2>
+        <ol class="list-decimal list-inside space-y-3 mt-4 text-stone-600">
+            <li>در پنل کاربری به بخش <strong>سفارش‌ها</strong> بروید و روی سفارش مورد نظر کلیک کنید.</li>
+            <li>دکمه <strong>درخواست مرجوعی</strong> را بزنید و دلیل را وارد کنید.</li>
+            <li>تیم پشتیبانی در کمتر از ۲۴ ساعت درخواست را بررسی و نتیجه را اعلام می‌کند.</li>
+            <li>بعد از تایید، کالا را با بسته‌بندی اصلی به آدرس انبار ما ارسال کنید.</li>
+            <li>پس از دریافت و بررسی کالا، مبلغ در طول ۷ روز کاری به حساب شما واریز می‌شود.</li>
+        </ol>
+        
+        <h2 class="text-2xl font-bold text-stone-900 mt-8 mb-4">عیب ساخت</h2>
+        <p class="mt-4 text-stone-600">
+            در صورت مشاهده عیب ساخت (شکاف چوب، کفسد، ناسازی ابعاد برخلاف سفارش، خرابی قطعات فنری)، لطفاً در طول ۷ روز اول با عکس/فیلم از ما تماس بگیرید. هزینه‌های ارسال و جایگزینی در این صورت تماماً بر عهده {{ site_settings.site_name }} است.
+        </p>
+        
+        <h2 class="text-2xl font-bold text-stone-900 mt-8 mb-4">استثناها</h2>
+        <ul class="list-disc list-inside space-y-2 mt-4 text-stone-600">
+            <li>کالاهای سفارشی/تولید به سفارش (ابعاد دلخواه، رنگ خاص، تغییرات ساختاری)</li>
+            <li>کالاهای استفاده شده، نصب شده یا آسیب‌دیده به دلیل سوءاستفاده</li>
+            <li>کالاهایی که بسته‌بندی اصلی یا برچسب‌های آن جدا شده باشد</li>
+        </ul>
+        
+        <div class="mt-10 p-4 bg-primary-50 border border-primary-100 rounded-lg">
+            <p class="text-sm text-primary-800">
+                برای اطلاعات بیشتر یا ثبت درخواست مرجوعی، با پشتیبانی تماس بگیرید:
+                {% if site_settings.contact_phone %}
+                <a href="tel:{{ site_settings.contact_phone }}" class="font-medium underline underline-offset-2">{{ site_settings.contact_phone }}</a>
+                {% endif %}
+                {% if site_settings.contact_email %}
+                یا ایمیل
+                <a href="mailto:{{ site_settings.contact_email }}" class="font-medium underline underline-offset-2">{{ site_settings.contact_email }}</a>
+                {% endif %}
+            </p>
+        </div>
+    </div>
+</div>
+{% endblock %}

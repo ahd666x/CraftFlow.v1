@@ -92,10 +92,33 @@ def _safe_next(request, default='dashboard'):
     return default
 
 
+def _user_from_post(request, field):
+    """کاربر انتخابی از فرم، یا None."""
+    user_id = request.POST.get(field) or None
+    if not user_id:
+        return None
+    return get_object_or_404(User, pk=user_id)
+
+
+def _work_date_from_post(request, field):
+    """تاریخ کاری شمسی از فرم به تاریخ میلادی، یا None."""
+    raw = (request.POST.get(field) or '').strip()
+    if not raw:
+        return None
+    parsed = _parse_default_jalali(raw)
+    return parsed
+
+
+def _parse_default_jalali(value):
+    """تاریخ شمسی «۱۴۰۵-۰۷-۱۰» یا میلادی را به ``date`` تبدیل می‌کند."""
+    from product.utils import parse_jalali_date
+    return parse_jalali_date(value)
+
+
 @login_required
 @admin_or_manager_required
 def production_defects(request):
-    from inventory.models import RawMaterial, MaterialIssue
+    from inventory.models import RawMaterial
 
     if request.method == 'POST':
         order = get_object_or_404(Order, pk=request.POST.get('order_id'))
@@ -134,14 +157,26 @@ def production_defects(request):
                 try:
                     replacement_quantity = Decimal(replacement_quantity)
                     if replacement_quantity > 0:
-                        MaterialIssue.objects.create(
-                            task=related_task, defect=defect, packaging_unit=unit, raw_material_id=raw_id,
-                            order_item=item, color_part=color_part,
-                            requested_quantity=replacement_quantity, purpose='rework',
-                            requested_by=request.user, note='ساخت مagain برای خرابی #{}'.format(defect.id)
+                        # Engine B: نیاز جبران مستقیم روی خودِ خرابی ثبت
+                        # می‌شود و سیگنال inventory.signals صف روزانهٔ آن روز را
+                        # می‌سازد؛ هیچ «درخواست مواد» جداگانه‌ای وجود ندارد.
+                        defect.material_raw_material_id = raw_id
+                        defect.material_quantity = replacement_quantity
+                        defect.material_worker = (
+                            related_task.assigned_worker
+                            if related_task and related_task.assigned_worker_id
+                            else _user_from_post(request, 'material_worker_id')
+                        )
+                        defect.material_work_date = (
+                            _work_date_from_post(request, 'material_work_date')
+                            or (defect.reported_at.date() if defect.reported_at else None)
+                            or timezone.localdate()
                         )
                         defect.status = 'material_requested'
-                        defect.save(update_fields=['status'])
+                        defect.save(update_fields=[
+                            'material_raw_material', 'material_quantity',
+                            'material_worker', 'material_work_date', 'status',
+                        ])
                 except (ValueError, ArithmeticError):
                     messages.warning(request, 'خرابی ثبت شد، اما مقدار مواد جایگزین معتبر نبود.')
             messages.success(request, 'خرابی ثبت شد.')
@@ -150,8 +185,9 @@ def production_defects(request):
     orders = Order.objects.filter(status__in=['planned', 'producing']).select_related('customer').order_by('-id')[:200]
     defects = ProductionDefect.objects.select_related(
         'order', 'order_item__product', 'packaging_unit__order_item__product',
-        'reported_by', 'task__painting_stage__process'
-    ).prefetch_related('material_issues__raw_material')
+        'reported_by', 'task__painting_stage__process',
+        'material_raw_material', 'material_worker',
+    )
 
     return render(request, 'production_defects.html', {
         'orders': orders,
@@ -481,6 +517,11 @@ def admin_edit_order_item(request, item_id):
         item_form = AdminEditOrderItemForm(request.POST, instance=item)
         color_form = ColorSelectionForm(request.POST)
 
+        # Capture original dimension values BEFORE form validation modifies the instance
+        original_length = item.length
+        original_width = item.width
+        original_height = item.height
+
         if item_form.is_valid() and color_form.is_valid():
             with transaction.atomic():
                 updated_item = item_form.save(commit=False)
@@ -488,14 +529,29 @@ def admin_edit_order_item(request, item_id):
                 product_changed = updated_item.product_id != new_product.id
                 if product_changed:
                     updated_item.product = new_product
+                
+                # Build size string from dimensions for legacy pricing compatibility
+                new_length = item_form.cleaned_data.get('length')
+                new_width = item_form.cleaned_data.get('width')
+                new_height = item_form.cleaned_data.get('height')
+                size_parts = [str(v) for v in (new_length, new_width, new_height) if v]
+                updated_item.size = 'x'.join(size_parts)
+                
                 manual_price = item_form.cleaned_data.get('unit_price')
                 if 'unit_price' in item_form.changed_data and manual_price not in (None, ''):
                     updated_item.unit_price = manual_price
                     updated_item._skip_price_calc = True
-                elif product_changed or 'size' in item_form.changed_data:
-                    pass
                 else:
-                    updated_item._skip_price_calc = True
+                    # Check if dimensions actually changed from original values
+                    dimensions_changed = (
+                        new_length != original_length or
+                        new_width != original_width or
+                        new_height != original_height
+                    )
+                    if product_changed or dimensions_changed:
+                        pass  # Allow price recalculation
+                    else:
+                        updated_item._skip_price_calc = True
                 updated_item.save()
                 updated_item.sync_packaging_units()
 
@@ -1066,6 +1122,22 @@ def order_generate_tasks(request, order_id):
     return JsonResponse({'success': False, 'error': result.get('error', 'تسک‌ها قبلاً ایجاد شده‌اند.')})
 
 
+def root_view(request):
+    """
+    Root view: redirect to dashboard for admin/manager, shop for others.
+    """
+    from .decorators import is_representative_user
+    from django.shortcuts import redirect
+
+    if is_representative_user(request.user):
+        return redirect('customer_order_list')  # /customer/orders/
+
+    if request.user.is_authenticated:
+        if request.user.is_superuser:
+            return dashboard(request)
+        if request.user.groups.filter(name__in=['2', '3']).exists():
+            return dashboard(request)
+    return redirect('storefront:home')
 
 
 @login_required
@@ -2600,10 +2672,223 @@ def delayed_orders(request):
     return render(request, 'reports/delayed.html', {'orders': orders})
 
 
+def _allocate_actual_consumption(actual, shares):
+    """
+    تقسیم مصرف واقعی بین منابع یک صف — قرارداد P3.5.
+
+    ``shares`` لیستی از ``(منبع، مقدار)`` است. سهم هر منبع:
+        actual × quantity / Σ quantity
+    و باقی‌ماندهٔ rounding با Largest Remainder به بزرگ‌ترین سهم اضافه
+    می‌شود تا جمع سهم‌ها دقیقاً برابر ``actual`` شود.
+
+    این تابع محض محاسبات است: هیچ داده‌ای نمی‌خواند و نمی‌نویسد و
+    هر دو مصرف‌کنندهٔ آن (گزارش P3.5 و traceability P5) دقیقاً همان
+    فرمول را اجرا می‌کنند.
+    """
+    from decimal import ROUND_HALF_UP
+
+    cent = Decimal('0.01')
+    actual = Decimal(actual or 0)
+    total_share = Decimal('0')
+    for _source, quantity in shares:
+        total_share += Decimal(quantity or 0)
+    if actual == 0 or total_share <= 0:
+        return []
+
+    # بزرگ‌ترین باقی‌مانده: جمع سهم‌ها دقیقاً برابر مصرف واقعی می‌شود.
+    allocations = []
+    allocated = Decimal('0')
+    for source, quantity in shares:
+        value = (actual * Decimal(quantity or 0) / total_share).quantize(
+            cent, rounding=ROUND_HALF_UP)
+        allocations.append([source, value])
+        allocated += value
+    remainder = (actual - allocated).quantize(cent, rounding=ROUND_HALF_UP)
+    if remainder:
+        largest = max(range(len(allocations)), key=lambda i: allocations[i][1])
+        allocations[largest][1] += remainder
+    return allocations
+
+
+def _daily_queue_consumption_lines(date_from=None, date_to=None):
+    """
+    مصرف واقعی Engine B (``DailyMaterialQueue``) به تفکیک منبع برنامه‌ریزی.
+
+    ``date_from``/``date_to`` تاریخ میلادی هستند (تقویم شمسی باید قبلاً
+    تبدیل شده باشد) و روی ``work_date`` فیلتر می‌شوند.
+
+    چرا از خود صف خوانده می‌شود و نه از ``StockMovement``:
+        حرکت انبارِ Engine B یک حرکت **aggregate** است (یک ردیف صف = یک حرکت)
+        و عمداً هیچ ``reference_task``/``reference_order_item`` ندارد؛ چون یک صف
+        می‌تواند چند تسک و چند آیتم داشته باشد و نسبت‌دادن کل مقدار به یکی از
+        آن‌ها انتساب جعلی می‌شد. منبع حقیقت traceability خودِ صف است:
+        ``DailyMaterialQueueSource → ProductionTask → order_item/painting_stage``.
+
+    چرا ``actual_consumption`` و نه ``delivered_quantity``:
+        مصرف واقعی تعریف خودِ صف است (``delivered - returned``). اگر مقدار
+        برگشتی به‌عنوان مصرف شمرده شود، گزارش عددی می‌دهد که هرگز مصرف نشده.
+
+    سهم هر منبع:
+        نسبت به مجموع سهم همهٔ منابع همان صف. اگر صف هیچ منبعی نداشته باشد
+        هیچ انتسابی ساخته نمی‌شود (به‌جای رد کردن مصرف، ردیف ساخته نمی‌شود).
+
+    Returns: iterable of dicts with ``item``, ``process``, ``color_part``,
+    ``raw_material``, ``quantity``.
+    """
+    from inventory.models import DailyMaterialQueue
+
+    queues = DailyMaterialQueue.objects.exclude(actual_consumption=0)
+    if date_from:
+        queues = queues.filter(work_date__gte=date_from)
+    if date_to:
+        queues = queues.filter(work_date__lte=date_to)
+    queues = queues.select_related('raw_material').prefetch_related(
+        'sources__painting_stage__process',
+        'sources__production_task__order_item__order',
+        'sources__production_task__order_item__product__category',
+    )
+
+    for queue in queues:
+        actual = Decimal(queue.actual_consumption or 0)
+        if actual == 0:
+            continue
+
+        shares = []
+        for source in queue.sources.all():
+            quantity = Decimal(source.quantity or 0)
+            if quantity <= 0:
+                continue
+            shares.append([source, quantity])
+
+        for source, value in _allocate_actual_consumption(actual, shares):
+            task = source.production_task
+            if task is None or task.order_item_id is None:
+                continue
+            item = task.order_item
+            if item is None:
+                continue
+            yield {
+                'item': item,
+                'process': source.painting_stage.process,
+                'color_part': task.color_part,
+                'raw_material': source.raw_material,
+                'quantity': value,
+            }
+
+
+# ارجاع صف در note حرکات Engine B: خدمات تحویل/برگشت روزانه id صف
+# را در note حرکت ثبت می‌کنند («تحویل روزانه — صف #<id>»). این تنها
+# پیوند موجود بین حرکت aggregate و صف است؛ در schema FK نیست.
+_QUEUE_NOTE_RE = re.compile(r'صف\s*#(\d+)')
+
+
+def _engine_b_movements_for_queue(queue):
+    """
+    حرکات انبارِ Engine B که در ``note`` خود به این صف ارجاع داده‌اند.
+
+    حرکتی که note سفارشی دارد و این ارجاع را نمی‌خواند، منتسب نمی‌شود:
+    هیچ گمانه‌زنی تاریخی/مقداری انجام نمی‌شود تا انتساب جعلی ساخته نشود.
+    """
+    from inventory.models import StockMovement
+
+    linked = []
+    movements = StockMovement.objects.filter(
+        raw_material=queue.raw_material,
+        movement_type__in=('consumption', 'return'),
+    ).order_by('id')
+    for movement in movements:
+        match = _QUEUE_NOTE_RE.search(movement.note or '')
+        if match is not None and int(match.group(1)) == queue.pk:
+            linked.append(movement)
+    return linked
+
+
+def daily_queue_consumption_trace(queue):
+    """
+    P5 — traceability خواندنی برای مصرف واقعی یک صف روزانه (Engine B).
+
+    زنجیرهٔ بازگردانی:
+
+        StockMovement(consumption)
+          → DailyMaterialQueue        (پیوند از طریق ارجاع ``note``)
+          → DailyMaterialQueueSource  (FK — چند source؛ هیچ‌وقت به یکی نسبت
+                                       داده نمی‌شود)
+          → ProductionTask → PaintingStage → PaintingProcess
+          → OrderItem → Order / Product
+          → color_part (مقدار موجودِ CharField — FK نیست)
+
+    خواندنی‌است: هیچ نوشتنی انجام نمی‌دهد و مسیر عملیاتی را دستکاری
+    نمی‌کند. ``movement`` حرکت مصرفِ تحویل روزانه است؛ اگر هیچ حرکتی
+    به این صف ارجاع نکرده باشد (مثلاً تحویل با note سفارشی) ``None``
+    برمی‌گردد. اتصال قطعی رویه‌ای (FK از ``StockMovement`` به صف)
+    نیازمند migration است و در P5 ساخته نمی‌شود.
+
+    ``sources`` همهٔ منابع صف را برمی‌گرداند و ``allocated_quantity``
+    هر منبع با قرارداد P3.5 (سهم نسبی + Largest Remainder) محاسبه
+    می‌شود؛ جمع سهم‌ها دقیقاً برابر ``actual_consumption`` است. صفی
+    بدون منبع، لیست خالی برمی‌گرداند — هیچ trace جعلی ساخته نمی‌شود
+    و مصرف واقعی گزارش‌شده حذف نمی‌شود.
+    """
+    from inventory.models import DailyMaterialQueue
+
+    # همیشه یک کپی تازه از داده‌خوان می‌خوانیم تا نمونهٔ متوقفی که
+    # ممکن است پیش از تحویل/برگشت گرفته شده باشد، مصرف واقعی را پاک
+    # گزارش نکند.
+    pk = queue.pk if isinstance(queue, DailyMaterialQueue) else queue
+    row = DailyMaterialQueue.objects.get(pk=pk)
+
+    actual = Decimal(row.actual_consumption or 0)
+
+    movements = _engine_b_movements_for_queue(row)
+    consumption_movement = next(
+        (m for m in movements if m.movement_type == 'consumption'), None)
+    return_movements = [m for m in movements if m.movement_type == 'return']
+
+    sources = list(row.sources.all())
+    shares = []
+    for source in sources:
+        quantity = Decimal(source.quantity or 0)
+        if quantity > 0:
+            shares.append([source, quantity])
+    allocated_by_pk = {
+        source.pk: value
+        for source, value in _allocate_actual_consumption(actual, shares)
+    }
+
+    sources_out = []
+    for source in sources:
+        task = source.production_task
+        item = task.order_item if task is not None else None
+        stage = source.painting_stage
+        sources_out.append({
+            'source': source,
+            'production_task': task,
+            'painting_stage': stage,
+            'painting_process': stage.process if stage is not None else None,
+            'order_item': item,
+            'order': item.order if item is not None else None,
+            'product': item.product if item is not None else None,
+            'color_part': task.color_part if task is not None else '',
+            'source_quantity': Decimal(source.quantity or 0),
+            'allocated_quantity': allocated_by_pk.get(
+                source.pk, Decimal('0.00')),
+        })
+
+    return {
+        'queue': row,
+        'raw_material': row.raw_material,
+        'actual_consumption': actual,
+        'work_date': row.work_date,
+        'worker': row.worker,
+        'movement': consumption_movement,
+        'return_movements': return_movements,
+        'sources': sources_out,
+    }
+
+
 @login_required
 @admin_or_manager_required
 def report_material_consumption(request):
-    from inventory.models import StockMovement, MaterialIssue
     from .models import ProductionDefect, PaintingProcess
     from django.db.models import Q
     from .utils import get_painting_process_for_color
@@ -2616,32 +2901,6 @@ def report_material_consumption(request):
     rokeshi_filter = request.GET.get('rokeshi')
 
     ROKESHI_CODES = {'8', '9', '10', '11'}
-
-    movements = StockMovement.objects.filter(
-        movement_type='consumption',
-    ).filter(
-        Q(reference_task__isnull=False) | Q(reference_order_item__isnull=False)
-    ).exclude(
-        fulfilled_issue__purpose='rework'
-    ).select_related(
-        'raw_material',
-        'reference_task__painting_stage__process',
-        'reference_task__order_item__product__category',
-        'reference_task__order_item',
-        'reference_order_item__product__category',
-        'reference_order_item__order',
-        'reference_order_item',
-    )
-
-    if date_from:
-        movements = movements.filter(created_at__date__gte=date_from.togregorian())
-    if date_to:
-        movements = movements.filter(created_at__date__lte=date_to.togregorian())
-    if process_id:
-        movements = movements.filter(
-            Q(reference_task__painting_stage__process_id=process_id) |
-            Q(reference_order_item__isnull=False, reference_order_item__product__isnull=False)  # will filter below
-        )
 
     rows = {}
 
@@ -2670,53 +2929,37 @@ def report_material_consumption(request):
             code = _parse_default_colors(item.product).get(color_part)
         return str(code) in ROKESHI_CODES
 
-    for mv in movements:
-        if mv.reference_task_id:
-            task = mv.reference_task
-            item = task.order_item
-            if not item:
-                continue
-            stage = task.painting_stage
-            process = stage.process if stage else None
+    # ---- صف مواد روزانه (تنها مسیر مصرف در Engine B) ----------------
+    # مصرف از روی خودِ ردیف صف خوانده می‌شود، نه از روی حرکت انبار، تا هیچ
+    # حرکتی دو بار وارد گزارش نشود.
+    # فیلتر تاریخ صف‌ها روی تقویم میلادی است.
+    queue_date_from = date_from.togregorian() if date_from else None
+    queue_date_to = date_to.togregorian() if date_to else None
+    for line in _daily_queue_consumption_lines(queue_date_from, queue_date_to):
+        item = line['item']
+        process = line['process']
 
-            if task.station_name == 'paint' and rokeshi_filter:
-                is_rok = _is_rokeshi(item, task.color_part)
-                if rokeshi_filter == 'rokeshi' and not is_rok:
-                    continue
-                if rokeshi_filter == 'poshshi' and is_rok:
-                    continue
-        else:
-            item = mv.reference_order_item
-            if not item:
-                continue
-            # For paint materials, get process from color code
-            color_part = mv.reference_color_part
-            color_obj = item.ordercolor.filter(part=color_part).first()
-            code = color_obj.code if color_obj and color_obj.code and color_obj.code != 'nan' else None
-            if not code:
-                from .utils import _parse_default_colors
-                code = _parse_default_colors(item.product).get(color_part)
-            process = get_painting_process_for_color(code) if code else None
-            
-            if process_id and (not process or str(process.id) != str(process_id)):
-                continue
+        if process_id and (not process or str(process.id) != str(process_id)):
+            continue
 
-            if rokeshi_filter:
-                is_rok = _is_rokeshi(item, color_part)
-                if rokeshi_filter == 'rokeshi' and not is_rok:
-                    continue
-                if rokeshi_filter == 'poshshi' and is_rok:
-                    continue
+        if rokeshi_filter:
+            is_rok = _is_rokeshi(item, line['color_part'])
+            if rokeshi_filter == 'rokeshi' and not is_rok:
+                continue
+            if rokeshi_filter == 'poshshi' and is_rok:
+                continue
 
         row = _get_row(item, process)
         m = row['materials'].setdefault(
-            mv.raw_material_id, {'raw_material': mv.raw_material, 'qty': Decimal('0')}
+            line['raw_material'].id,
+            {'raw_material': line['raw_material'], 'qty': Decimal('0')},
         )
-        m['qty'] += mv.quantity
+        m['qty'] += line['quantity']
 
     defects = ProductionDefect.objects.select_related(
-        'order_item__product', 'packaging_unit__order_item__product', 'task__painting_stage__process'
-    ).prefetch_related('material_issues__raw_material')
+        'order_item__product', 'packaging_unit__order_item__product',
+        'task__painting_stage__process', 'material_raw_material',
+    )
     if date_from:
         defects = defects.filter(created_at__date__gte=date_from.togregorian())
     if date_to:
@@ -2755,13 +2998,14 @@ def report_material_consumption(request):
 
         row = _get_row(item, process, d.packaging_unit)
         row['defect_count'] += d.quantity
-        for issue in d.material_issues.all():
-            if issue.issued_quantity <= 0:
-                continue
+        # Engine B: مادهٔ جبرانی مستقیم روی خود خرابی است و مقدارش از صف روزانه
+        # می‌آید، نه از یک «درخواست مواد» جداگانه.
+        if d.material_raw_material_id and d.material_quantity and d.material_quantity > 0:
             dm = row['defect_materials'].setdefault(
-                issue.raw_material_id, {'raw_material': issue.raw_material, 'qty': Decimal('0')}
+                d.material_raw_material_id,
+                {'raw_material': d.material_raw_material, 'qty': Decimal('0')},
             )
-            dm['qty'] += issue.issued_quantity
+            dm['qty'] += d.material_quantity
 
     report_rows = sorted(rows.values(), key=lambda r: (
         r['product_category'].name if r['product_category'] else '',
@@ -2958,8 +3202,42 @@ def ajax_load_products(request):
         products = Product.objects.filter(category_id=category_id, is_active=True).order_by('name')
     else:
         products = Product.objects.none()
-    data = [{'id': p.id, 'name': str(p)} for p in products]
+    data = []
+    for p in products:
+        data.append({
+            'id': p.id,
+            'name': str(p),
+            'length': p.length,
+            'width': p.width,
+            'height': p.height,
+            'length_editable': p.length_editable,
+            'width_editable': p.width_editable,
+            'height_editable': p.height_editable,
+            'default_size': p.default_size_display,
+        })
     return JsonResponse(data, safe=False)
+
+
+@login_required
+def ajax_load_product_dimensions(request):
+    """Return the default dimensions of a single product.
+
+    The storefront uses this to pre-fill the dimension fields when the user
+    picks a product, so the default size is always shown and never lost.
+    """
+    product_id = request.GET.get('product_id')
+    if not product_id:
+        return JsonResponse({'default_size': ''})
+    product = get_object_or_404(Product, pk=product_id, is_active=True)
+    return JsonResponse({
+        'default_size': product.default_size_display,
+        'length': product.length,
+        'width': product.width,
+        'height': product.height,
+        'length_editable': product.length_editable,
+        'width_editable': product.width_editable,
+        'height_editable': product.height_editable,
+    })
 
 
 @login_required
@@ -3344,7 +3622,7 @@ def scan_packaging_unit(request, pk):
         })
 
     if worker_stage == 'paint' and not request.user.groups.filter(name='انبار').exists():
-        from inventory.models import MaterialIssue, RawMaterial
+        from inventory.models import RawMaterial
 
         reported_defects = list(
             ProductionDefect.objects.filter(
@@ -3441,80 +3719,42 @@ def scan_packaging_unit(request, pk):
                         pk__in=defect_ids, packaging_unit=unit, status='reported'
                     )
                 }
-                duplicate_request = False
+                # Engine B: نیاز جبران روی خودِ خرابی ثبت می‌شود، پس «تکراری بودن»
+                # یعنی همان خرابی از قبل ماده و تاریخ کاری دارد.
                 for defect in defects:
                     locked_defect = locked_defects.get(str(defect.id))
                     if locked_defect is None:
                         messages.error(request, 'وضعیت یکی از خرابی‌ها تغییر کرده است؛ درخواست ثبت نشد.')
                         return render(request, 'scan_material_request_for_defect.html', context)
-                    raw_material = raw_materials_by_id[str(raw_ids_by_defect[str(defect.id)])]
-                    if MaterialIssue.objects.filter(
-                        defect=locked_defect,
-                        raw_material=raw_material,
-                        purpose='rework',
-                        status__in=['requested', 'partial'],
-                    ).exists():
-                        duplicate_request = True
+                    if locked_defect.material_raw_material_id:
+                        messages.error(request, 'برای یکی از خرابی‌ها قبلاً مادهٔ جایگزین ثبت شده است.')
+                        return render(request, 'scan_material_request_for_defect.html', context)
 
-                if duplicate_request:
-                    messages.error(request, 'برای یکی از خرابی‌ها قبلاً درخواست مواد ثبت شده است.')
-                    return render(request, 'scan_material_request_for_defect.html', context)
-
+                work_date = timezone.localdate()
                 for defect in defects:
                     locked_defect = locked_defects[str(defect.id)]
-                    raw_material = raw_materials_by_id[str(raw_ids_by_defect[str(defect.id)])]
-                    MaterialIssue.objects.create(
-                        task=locked_defect.task,
-                        defect=locked_defect,
-                        packaging_unit=unit,
-                        order_item=unit.order_item,
-                        color_part=locked_defect.color_part,
-                        raw_material=raw_material,
-                        requested_quantity=quantities_by_defect[str(defect.id)],
-                        purpose='rework',
-                        status='requested',
-                        requested_by=request.user,
-                        note=f'درخواست جبران خرابی #{locked_defect.id} — {locked_defect.get_color_part_display()}',
-                    )
+                    locked_defect.material_raw_material = raw_materials_by_id[
+                        str(raw_ids_by_defect[str(defect.id)])]
+                    locked_defect.material_quantity = quantities_by_defect[str(defect.id)]
+                    locked_defect.material_worker = request.user
+                    locked_defect.material_work_date = work_date
                     locked_defect.status = 'material_requested'
-                    locked_defect.save(update_fields=['status'])
+                    locked_defect.save(update_fields=[
+                        'material_raw_material', 'material_quantity',
+                        'material_worker', 'material_work_date', 'status',
+                    ])
 
-            messages.success(request, 'درخواست مواد ثبت شد و به صف تحویل انبار ارسال شد.')
+            messages.success(
+                request,
+                'نیاز جبران ثبت شد و به صف مواد روزانهٔ امروز اضافه گردید.',
+            )
             return redirect('item_detail', pk=item.id)
 
         return render(request, 'scan_material_request_for_defect.html', context)
 
-    # ---------- شاخه ۲: گروه «انبار» -> ثبت تحویل ماده اولیه ----------
-    if is_warehouse_user(request.user):
-        from inventory.models import RawMaterial, StockMovement
-        pending_tasks = ProductionTask.objects.filter(
-            order_item=item
-        ).exclude(status='done').select_related('painting_stage', 'part').order_by('step_order')
-
-        if request.method == 'POST':
-            raw = get_object_or_404(RawMaterial, pk=request.POST.get('raw_material_id'))
-            qty_str = request.POST.get('quantity', '0')
-            task_id = request.POST.get('task_id') or None
-            try:
-                qty = Decimal(qty_str)
-            except Exception:
-                qty = Decimal('0')
-
-            if qty <= 0:
-                messages.error(request, 'مقدار تحویل باید بزرگ‌تر از صفر باشد.')
-            else:
-                StockMovement.objects.create(
-                    raw_material=raw, movement_type='consumption', quantity=qty,
-                    reference_task_id=task_id, created_by=request.user,
-                    note=f'تحویل دستی هنگام اسکن بسته‌بندی — آیتم {item.id} (سفارش {item.order_id})',
-                )
-                messages.success(request, f'تحویل {qty} {raw.get_unit_display()} از «{raw.name}» ثبت شد.')
-                return redirect('item_detail', pk=item.id)
-
-        return render(request, 'scan_material_issue.html', {
-            'unit': unit, 'item': item, 'tasks': pending_tasks,
-            'raw_materials': RawMaterial.objects.filter(is_active=True).order_by('category__name', 'name'),
-        })
+    # شاخهٔ «تحویل دستی ماده» حذف شده است. در Engine B تنها راه کسر بابت تولید،
+    # صف مواد روزانه است (انبار ← صف روزانه ← تحویل/بازگشت). اسکن این صفحه فقط
+    # بسته‌بندی و ارسال را انجام می‌دهد.
 
     # ---------- شاخه سوم (پیش‌فرض/موجود): بسته‌بندی و ارسال ----------
     if request.method == 'POST':
@@ -5133,11 +5373,16 @@ def painting_process_materials_api(request, process_id):
     process = get_object_or_404(PaintingProcess, pk=process_id)
 
     if request.method == 'GET':
-        entries = PaintingProcessMaterial.objects.select_related('raw_material').prefetch_related('color_variants__raw_material').filter(process=process)
+        entries = PaintingProcessMaterial.objects.select_related('raw_material', 'stage').prefetch_related('color_variants__raw_material').filter(process=process)
+        stages = [
+            {'id': s.id, 'name': s.name, 'order': s.order}
+            for s in process.stages.all().order_by('order')
+        ]
         return JsonResponse({
             'success': True,
             'process_id': process.id,
             'process_name': process.name,
+            'stages': stages,
             'materials': [
                 {
                     'id': e.id,
@@ -5146,6 +5391,8 @@ def painting_process_materials_api(request, process_id):
                     'unit': e.raw_material.get_unit_display(),
                     'is_color_variant': e.is_color_variant,
                     'color_variant_count': e.color_variants.count(),
+                    'stage_id': e.stage_id,
+                    'stage_name': e.stage.name if e.stage else None,
                 }
                 for e in entries
             ],
@@ -5159,13 +5406,19 @@ def painting_process_materials_api(request, process_id):
         raw_material_id = data.get('raw_material_id')
         if not raw_material_id:
             return JsonResponse({'success': False, 'error': 'ماده اولیه انتخاب نشده'})
+        stage_id = data.get('stage_id')
+        # get_or_create now uses stage in unique_together
         entry, created = PaintingProcessMaterial.objects.get_or_create(
-            process=process, raw_material_id=raw_material_id
+            process=process, raw_material_id=raw_material_id,
+            stage_id=stage_id if stage_id else None
         )
         if 'is_color_variant' in data:
             value = data.get('is_color_variant')
             entry.is_color_variant = value if isinstance(value, bool) else str(value).lower() in ('1', 'true', 'yes', 'on')
             entry.save(update_fields=['is_color_variant'])
+        if stage_id and stage_id != entry.stage_id:
+            entry.stage_id = stage_id
+            entry.save(update_fields=['stage'])
         return JsonResponse({
             'success': True,
             'created': created,
@@ -5173,6 +5426,8 @@ def painting_process_materials_api(request, process_id):
             'raw_material_id': entry.raw_material_id,
             'raw_material_name': str(entry.raw_material),
             'is_color_variant': entry.is_color_variant,
+            'stage_id': entry.stage_id,
+            'stage_name': entry.stage.name if entry.stage else None,
         })
 
     if request.method in ('PUT', 'PATCH'):
@@ -5187,6 +5442,8 @@ def painting_process_materials_api(request, process_id):
         if 'is_color_variant' in data:
             value = data.get('is_color_variant')
             entry.is_color_variant = value if isinstance(value, bool) else str(value).lower() in ('1', 'true', 'yes', 'on')
+        if 'stage_id' in data:
+            entry.stage_id = data.get('stage_id')
         entry.save()
         return JsonResponse({
             'success': True,
@@ -5194,6 +5451,8 @@ def painting_process_materials_api(request, process_id):
             'raw_material_id': entry.raw_material_id,
             'raw_material_name': str(entry.raw_material),
             'is_color_variant': entry.is_color_variant,
+            'stage_id': entry.stage_id,
+            'stage_name': entry.stage.name if entry.stage else None,
         })
 
     if request.method == 'DELETE':

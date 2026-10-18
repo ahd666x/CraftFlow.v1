@@ -1,0 +1,33 @@
+{% extends 'storefront/layouts/store.html' %}
+
+{% block title %}ویرایش پروفایل — فروشگاه{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-2xl px-4 py-8">
+    <h1 class="mb-6 text-2xl font-bold">ویرایش پروفایل</h1>
+
+    <div class="card p-6">
+        <form method="post" class="space-y-5">
+            {% csrf_token %}
+            {% if form.non_field_errors %}
+            <div class="rounded-lg bg-red-50 p-3 text-sm text-red-700">{{ form.non_field_errors }}</div>
+            {% endif %}
+
+            <div>
+                <label for="{{ form.phone.id_for_label }}" class="label">شماره موبایل</label>
+                {{ form.phone }}
+            </div>
+
+            <div>
+                <label for="{{ form.bio.id_for_label }}" class="label">درباره</label>
+                {{ form.bio }}
+            </div>
+
+            <div class="flex gap-3 pt-4">
+                <button type="submit" class="btn-primary">ذخیره تغییرات</button>
+                <a href="{% url 'accounts:profile' %}" class="btn-secondary">انصراف</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

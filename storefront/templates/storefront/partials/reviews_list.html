@@ -1,0 +1,25 @@
+{% if reviews %}
+<div class="space-y-4">
+    {% for review in reviews %}
+    <div class="card p-4">
+        <div class="flex items-center justify-between gap-3 mb-2">
+            <span class="text-sm font-medium">{{ review.user.get_full_name|default:review.user.username }}</span>
+            <span class="text-xs text-primary-600" aria-label="امتیاز {{ review.rating }} از ۵">
+                <span aria-hidden="true">★</span> {{ review.rating }}
+            </span>
+        </div>
+        {% if review.comment %}
+        <p class="text-sm leading-relaxed text-stone-600">{{ review.comment }}</p>
+        {% endif %}
+        {% if review.image %}
+        <div class="mt-2">
+            <img src="{{ review.image.url }}" alt="تصویر نظر" class="h-24 w-24 object-cover rounded">
+        </div>
+        {% endif %}
+        <p class="mt-2 text-xs text-stone-500">{{ review.created_at|date:"j F Y" }}</p>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<p class="text-stone-500 text-center py-8">هنوز نظراتی برای این محصول ثبت نشده است.</p>
+{% endif %}

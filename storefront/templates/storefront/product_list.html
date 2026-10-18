@@ -1,0 +1,285 @@
+{% extends 'storefront/layouts/store.html' %}
+{% load storefront_filters %}
+
+{% block title %}
+{% if current_category %}{{ current_category.name }}{% else %}محصولات{% endif %} — {{ site_settings.site_name }}
+{% endblock %}
+
+{% block meta_description %}
+{% if current_category %}محصولات دسته {{ current_category.name }}{% else %}همه محصولات فروشگاه{% endif %}
+{% endblock %}
+
+{% block og_title %}
+{% if current_category %}محصولات {{ current_category.name }}{% else %}همه محصولات{% endif %} — {{ site_settings.site_name }}
+{% endblock %}
+
+{% block og_description %}
+{% if current_category %}محصولات دسته {{ current_category.name }}{% else %}همه محصولات فروشگاه{% endif %} در {{ site_settings.site_name }}
+{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-6xl px-4 py-8">
+
+    <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <h1 class="text-2xl font-bold">
+            {% if current_category %}{{ current_category.name }}{% else %}همه محصولات{% endif %}
+        </h1>
+        
+        {% comment %} {% if page_obj %}
+        <p class="text-sm text-stone-500">
+            {{ page_obj.paginator.count }} محصول یافت شد
+        </p>
+        {% endif %} {% endcomment %}
+
+        <form method="get" class="flex items-center gap-2">
+            {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
+            {% if selected_category %}<input type="hidden" name="category" value="{{ selected_category }}">{% endif %}
+            {% if min_price %}<input type="hidden" name="min_price" value="{{ min_price }}">{% endif %}
+            {% if max_price %}<input type="hidden" name="max_price" value="{{ max_price }}">{% endif %}
+            <label for="sort" class="text-sm text-stone-600">مرتب‌سازی:</label>
+            <select name="sort" id="sort" onchange="this.form.submit()" class="select w-auto py-1.5">
+                <option value="" {% if not sort %}selected{% endif %}>جدیدترین</option>
+                {% if can_see_prices %}
+                <option value="price_asc" {% if sort == 'price_asc' %}selected{% endif %}>ارزان‌ترین</option>
+                <option value="price_desc" {% if sort == 'price_desc' %}selected{% endif %}>گران‌ترین</option>
+                {% endif %}
+                <option value="name" {% if sort == 'name' %}selected{% endif %}>نام</option>
+            </select>
+        </form>
+    </div>
+
+    {# Active Filter Chips #}
+    {% if q or selected_category or min_price or max_price %}
+    <div class="mb-4 flex flex-wrap gap-2" id="active-filters">
+        {% if q %}
+        <span class="inline-flex items-center gap-1 px-3 py-1 text-sm bg-primary-100 text-primary-800 rounded-full">
+            جستجو: {{ q }}
+            <a href="?{% if selected_category %}category={{ selected_category }}&{% endif %}{% if sort %}sort={{ sort }}&{% endif %}{% if min_price %}min_price={{ min_price }}&{% endif %}{% if max_price %}max_price={{ max_price }}&{% endif %}" class="text-primary-600 hover:text-primary-800" aria-label="حذف فیلتر جستجو">×</a>
+        </span>
+        {% endif %}
+        {% if selected_category %}
+        <span class="inline-flex items-center gap-1 px-3 py-1 text-sm bg-primary-100 text-primary-800 rounded-full">
+            دسته: {{ current_category.name }}
+            <a href="?{% if q %}q={{ q }}&{% endif %}{% if sort %}sort={{ sort }}&{% endif %}{% if min_price %}min_price={{ min_price }}&{% endif %}{% if max_price %}max_price={{ max_price }}&{% endif %}" class="text-primary-600 hover:text-primary-800" aria-label="حذف فیلتر دسته‌بندی">×</a>
+        </span>
+        {% endif %}
+        {% if can_see_prices %}
+        {% if min_price or max_price %}
+        <span class="inline-flex items-center gap-1 px-3 py-1 text-sm bg-primary-100 text-primary-800 rounded-full">
+            قیمت: {% if min_price %}{{ min_price|fa_price }}{% else %}۰{% endif %} - {% if max_price %}{{ max_price|fa_price }}{% else %}∞{% endif %} تومان
+            <a href="?{% if q %}q={{ q }}&{% endif %}{% if selected_category %}category={{ selected_category }}&{% endif %}{% if sort %}sort={{ sort }}&{% endif %}" class="text-primary-600 hover:text-primary-800" aria-label="حذف فیلتر قیمت">×</a>
+        </span>
+        {% endif %}
+        {% endif %}
+        <a href="{% url 'storefront:product_list' %}" class="inline-flex items-center px-3 py-1 text-sm text-stone-500 hover:text-stone-700">پاک کردن همه</a>
+    </div>
+    {% endif %}
+
+    <div class="grid gap-8 lg:grid-cols-[16rem_1fr]">
+
+        {# Desktop Sidebar #}
+        <aside class="hidden lg:block lg:sticky lg:top-20 lg:self-start">
+            <div class="card p-4">
+                <h2 class="mb-3 font-semibold">دسته‌بندی</h2>
+                <ul class="space-y-1 text-sm">
+                    <li>
+                        <a href="{% url 'storefront:product_list' %}"
+                           class="block rounded px-2 py-1.5 hover:bg-stone-100
+                                  {% if not selected_category %}bg-stone-100 font-medium{% endif %}">
+                            همه
+                        </a>
+                    </li>
+                    {% for category in categories %}
+                    <li>
+                        <a href="{% url 'storefront:category_detail' category.slug %}"
+                           class="block rounded px-2 py-1.5 hover:bg-stone-100
+                                  {% if selected_category == category.slug %}bg-stone-100 font-medium{% endif %}">
+                            {{ category.name }}
+                        </a>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+
+            {% if can_see_prices %}
+            <div class="mt-4 card p-4">
+                <h2 class="mb-3 font-semibold">محدوده قیمت</h2>
+                <form method="get" class="space-y-3">
+                    {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
+                    {% if selected_category %}<input type="hidden" name="category" value="{{ selected_category }}">{% endif %}
+                    {% if sort %}<input type="hidden" name="sort" value="{{ sort }}">{% endif %}
+                    <div class="grid gap-2 grid-cols-2">
+                        <div>
+                            <label for="min_price" class="label">حداقل</label>
+                            <input type="number" name="min_price" id="min_price" value="{{ min_price|default:'' }}"
+                                   placeholder="۰" class="input" min="0" step="100000">
+                        </div>
+                        <div>
+                            <label for="max_price" class="label">حداکثر</label>
+                            <input type="number" name="max_price" id="max_price" value="{{ max_price|default:'' }}"
+                                   placeholder="۰" class="input" min="0" step="100000">
+                        </div>
+                    </div>
+                    <button type="submit" class="btn-primary w-full py-2 text-sm">اعمال</button>
+                    {% if min_price or max_price %}
+                    <a href="?{% if q %}q={{ q }}&{% endif %}{% if selected_category %}category={{ selected_category }}&{% endif %}{% if sort %}sort={{ sort }}&{% endif %}"
+                       class="btn-outline w-full py-2 text-sm text-center">پاک کردن</a>
+                    {% endif %}
+                </form>
+            </div>
+            {% endif %}
+        </aside>
+
+        {# Mobile Filter Button & Drawer #}
+        <div x-data="{ filterOpen: false }" class="lg:hidden">
+            <button type="button"
+                    @click="filterOpen = true"
+                    class="btn-primary w-full flex items-center justify-center gap-2"
+                    aria-label="فیلترها">
+                <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/></svg>
+                <span>فیلترها</span>
+                {% if q or selected_category or min_price or max_price %}
+                <span class="h-5 w-5 flex items-center justify-center bg-primary-600 text-white text-xs rounded-full">{% active_filter_count q selected_category min_price max_price %}</span>
+                {% endif %}
+            </button>
+
+            <div x-show="filterOpen"
+                 x-transition:enter="transition-opacity ease-linear duration-300"
+                 x-transition:enter-start="opacity-0"
+                 x-transition:enter-end="opacity-100"
+                 x-transition:leave="transition-opacity ease-linear duration-300"
+                 x-transition:leave-start="opacity-100"
+                 x-transition:leave-end="opacity-0"
+                 class="fixed inset-0 z-overlay bg-black/50"
+                 @click.outside="filterOpen = false"
+                 @keydown.escape.window="filterOpen = false"
+                 aria-hidden="true"></div>
+
+            <div x-show="filterOpen"
+                 x-cloak
+                 x-transition:enter="transition transform ease-out duration-300"
+                 x-transition:enter-start="opacity-0 translate-y-full"
+                 x-transition:enter-end="opacity-100 translate-y-0"
+                 x-transition:leave="transition transform ease-in duration-200"
+                 x-transition:leave-start="opacity-100 translate-y-0"
+                 x-transition:leave-end="opacity-0 translate-y-full"
+                 class="fixed bottom-0 left-0 right-0 z-popover max-h-[80vh] bg-white rounded-t-2xl shadow-elevation-3 flex flex-col"
+                 role="dialog"
+                 aria-label="فیلترها"
+                 aria-modal="true"
+                 @keydown.escape.window="filterOpen = false">
+                <div class="flex items-center justify-between p-4 border-b border-stone-100 sticky top-0 bg-white rounded-t-2xl">
+                    <h2 class="text-lg font-semibold">فیلترها</h2>
+                    <button type="button" @click="filterOpen = false" class="text-stone-400 hover:text-stone-600" aria-label="بستن فیلترها">
+                        <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                    </button>
+                </div>
+                <div class="flex-1 overflow-y-auto p-4 space-y-6">
+                    <div>
+                        <h3 class="font-semibold mb-3">دسته‌بندی</h3>
+                        <ul class="space-y-2">
+                            <li>
+                                <a href="{% url 'storefront:product_list' %}{% if q %}?q={{ q }}{% endif %}" class="block px-4 py-2 rounded-lg {% if not selected_category %}bg-primary-100 text-primary-800{% else %}hover:bg-stone-100{% endif %}">
+                                    همه دسته‌ها
+                                </a>
+                            </li>
+                            {% for category in categories %}
+                            <li>
+                                <a href="{% url 'storefront:category_detail' category.slug %}{% if q %}?q={{ q }}{% endif %}" class="block px-4 py-2 rounded-lg {% if selected_category == category.slug %}bg-primary-100 text-primary-800{% else %}hover:bg-stone-100{% endif %}">
+                                    {{ category.name }} <span class="text-xs text-stone-400 ml-2">({{ category.product_count }})</span>
+                                </a>
+                            </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                    {% if can_see_prices %}
+                    <div>
+                        <h3 class="font-semibold mb-3">محدوده قیمت</h3>
+                        <form method="get" class="space-y-3" id="mobile-price-form">
+                            {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
+                            {% if selected_category %}<input type="hidden" name="category" value="{{ selected_category }}">{% endif %}
+                            {% if sort %}<input type="hidden" name="sort" value="{{ sort }}">{% endif %}
+                            <div class="grid gap-2 grid-cols-2">
+                                <div>
+                                    <label for="mobile_min_price" class="label">حداقل</label>
+                                    <input type="number" name="min_price" id="mobile_min_price" value="{{ min_price|default:'' }}"
+                                           placeholder="۰" class="input" min="0" step="100000">
+                                </div>
+                                <div>
+                                    <label for="mobile_max_price" class="label">حداکثر</label>
+                                    <input type="number" name="max_price" id="mobile_max_price" value="{{ max_price|default:'' }}"
+                                           placeholder="۰" class="input" min="0" step="100000">
+                                </div>
+                            </div>
+                            <div class="flex gap-2">
+                                <button type="submit" class="btn-primary flex-1 py-2">اعمال</button>
+                                {% if min_price or max_price %}
+                                <a href="?{% if q %}q={{ q }}&{% endif %}{% if selected_category %}category={{ selected_category }}&{% endif %}{% if sort %}sort={{ sort }}&{% endif %}" class="btn-outline flex-1 py-2 text-center">پاک کردن</a>
+                                {% endif %}
+                            </div>
+                        </form>
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="p-4 border-t border-stone-100 sticky bottom-0 bg-white rounded-b-2xl">
+                    <button type="button" @click="filterOpen = false; document.getElementById('mobile-price-form').dispatchEvent(new Event('submit'))" class="btn-primary w-full py-3">اعمال و بستن</button>
+                </div>
+            </div>
+    </div>
+
+        <div>
+            {% if page_obj %}
+            <div class="grid grid-cols-2 gap-4 md:grid-cols-3">
+                {% for product in page_obj %}
+                    {% include 'storefront/components/product_card.html' with product=product %}
+                {% endfor %}
+            </div>
+
+            {% if page_obj.paginator.num_pages > 1 %}
+            <nav class="mt-8 flex items-center justify-center gap-2" aria-label="صفحه‌بندی">
+                {% if page_obj.has_previous %}
+                <a href="?{% if q %}q={{ q }}&{% endif %}{% if selected_category %}category={{ selected_category }}&{% endif %}{% if sort %}sort={{ sort }}&{% endif %}{% if min_price %}min_price={{ min_price }}&{% endif %}{% if max_price %}max_price={{ max_price }}&{% endif %}page={{ page_obj.previous_page_number }}"
+                   class="btn-outline px-4 py-2">قبلی</a>
+                {% endif %}
+
+                {% for num in page_obj.paginator.page_range %}
+                    {% if page_obj.number == num %}
+                    <span class="btn-primary px-4 py-2" aria-current="page">{{ num }}</span>
+                    {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+                    <a href="?{% if q %}q={{ q }}&{% endif %}{% if selected_category %}category={{ selected_category }}&{% endif %}{% if sort %}sort={{ sort }}&{% endif %}{% if min_price %}min_price={{ min_price }}&{% endif %}{% if max_price %}max_price={{ max_price }}&{% endif %}page={{ num }}"
+                       class="btn-outline px-4 py-2">{{ num }}</a>
+                    {% endif %}
+                {% endfor %}
+
+                {% if page_obj.has_next %}
+                <a href="?{% if q %}q={{ q }}&{% endif %}{% if selected_category %}category={{ selected_category }}&{% endif %}{% if sort %}sort={{ sort }}&{% endif %}{% if min_price %}min_price={{ min_price }}&{% endif %}{% if max_price %}max_price={{ max_price }}&{% endif %}page={{ page_obj.next_page_number }}"
+                   class="btn-outline px-4 py-2">بعدی</a>
+                {% endif %}
+            </nav>
+            {% endif %}
+            {% else %}
+            <div class="rounded-default border border-dashed border-stone-300 p-10 text-center">
+                <svg class="mx-auto h-16 w-16 text-stone-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                          d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/>
+                </svg>
+                <p class="mt-4 text-stone-500">محصولی با این فیلتر پیدا نشد.</p>
+                {% if q or selected_category or min_price or max_price %}
+                <a href="{% url 'storefront:product_list' %}" class="btn-primary mt-4 inline-block">پاک کردن فیلترها</a>
+                {% endif %}
+                <div class="mt-8">
+                    <h3 class="font-medium text-stone-900">پربازدیدترین محصولات</h3>
+                    <div class="mt-4 grid grid-cols-2 gap-4 md:grid-cols-3">
+                        {% for product in popular_products %}
+                            {% include 'storefront/components/product_card.html' with product=product %}
+                        {% empty %}
+                            <p class="col-span-full text-stone-500 text-center">محصولی برای نمایش وجود ندارد.</p>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

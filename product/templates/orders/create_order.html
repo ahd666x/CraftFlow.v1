@@ -57,11 +57,19 @@
                                 <label class="form-label">{{ item_form.quantity.label }}</label>
                                 {{ item_form.quantity }}
                             </div>
-                            <div class="col-md-4">
-                                <label class="form-label">{{ item_form.size.label }}</label>
-                                {{ item_form.size }}
+                            <div class="col-md-2 dim-field">
+                                <label class="form-label">{{ item_form.length.label }}</label>
+                                {{ item_form.length }}
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md-2 dim-field">
+                                <label class="form-label">{{ item_form.width.label }}</label>
+                                {{ item_form.width }}
+                            </div>
+                            <div class="col-md-2 dim-field">
+                                <label class="form-label">{{ item_form.height.label }}</label>
+                                {{ item_form.height }}
+                            </div>
+                            <div class="col-md-2">
                             </div>
                         </div>
                         <div class="mb-3">
@@ -143,6 +151,7 @@ $(function () {
         categorySelector: '#id_category',
         productSelector: '#id_product',
         loadProductsUrl: "{% url 'ajax_load_products' %}",
+        loadProductDimensionsUrl: "{% url 'ajax_load_product_dimensions' %}",
         loadColorsUrlBase: '/ajax/load-product-colors/',
         overwriteOnInitialLoad: true
     });

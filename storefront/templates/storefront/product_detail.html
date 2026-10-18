@@ -1,0 +1,479 @@
+{% extends 'storefront/layouts/store.html' %}
+{% load storefront_filters %}
+
+{% block title %}{{ product.name }} — {{ site_settings.site_name }}{% endblock %}
+{% block meta_description %}{{ product.description|truncatewords:25 }}{% endblock %}
+{% block og_title %}{{ product.name }}{% endblock %}
+{% block og_description %}{{ product.description|truncatewords:25 }}{% endblock %}
+{% block og_image %}{% if gallery %}{{ gallery.0.image.url }}{% elif product.image %}{{ product.image.url }}{% endif %}{% endblock %}
+
+{% block extra_head %}
+<link rel="canonical" href="{{ request.build_absolute_uri }}">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org/",
+  "@type": "Product",
+  "name": "{{ product.name|escapejs }}",
+  "image": [
+    {% if gallery %}"{{ gallery.0.image.url }}"{% elif product.image %}"{{ product.image.url }}"{% else %}""{% endif %}
+  ],
+  "description": "{{ product.description|truncatewords:25|escapejs }}",
+  "sku": "{{ product.slug }}",
+  "brand": {
+    "@type": "Brand",
+    "name": "{{ site_settings.site_name|escapejs }}"
+  }
+  {% if can_see_prices %}
+  ,"offers": {
+    "@type": "Offer",
+    "url": "{{ request.build_absolute_uri }}",
+    "priceCurrency": "IRR",
+    "price": "{% widthratio product.base_price 1 10 %}",
+    "availability": "https://schema.org/InStock"
+  }
+  {% endif %}
+  {% if product.review_count|default:0 > 0 %}
+  ,
+  "aggregateRating": {
+    "@type": "AggregateRating",
+    "ratingValue": "{{ product.average_rating|default:0 }}",
+    "reviewCount": "{{ product.review_count|default:0 }}"
+  }
+  {% endif %}
+}
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-6xl px-4 py-8 pb-24 md:pb-8">
+
+    <nav class="mb-6 text-sm text-stone-500">
+        <a href="{% url 'storefront:home' %}" class="hover:text-stone-800">خانه</a>
+        <span class="mx-1">/</span>
+        <a href="{% url 'storefront:category_detail' product.category.slug %}"
+           class="hover:text-stone-800">{{ product.category.name }}</a>
+        <span class="mx-1">/</span>
+        <span class="text-stone-800">{{ product.name }}</span>
+    </nav>
+
+    <div class="grid gap-8 lg:grid-cols-[1fr_320px]">
+
+        {# ---------- Left Column: Gallery + Info + Tabs ---------- #}
+        <div class="lg:order-1">
+
+            {# ---------- گالری ---------- #}
+            <div x-data="productGallery({ thumbnails: {{ gallery|length }}, mainIndex: 0 })"
+                 class="mb-6">
+                <div class="aspect-square overflow-hidden rounded-xl bg-stone-100 relative">
+                    {% if gallery %}
+                    {% for img in gallery %}
+                    <img src="{{ img.image.url }}" alt="{{ img.alt_text|default:product.name }}"
+                         width="800" height="800"
+                         x-show="mainIndex === {{ forloop.counter0 }}"
+                         x-cloak
+                         x-transition:enter="transition-opacity duration-300"
+                         x-transition:enter-start="opacity-0"
+                         x-transition:enter-end="opacity-100"
+                         class="absolute inset-0 h-full w-full object-cover transition-opacity duration-300 cursor-zoom-in"
+                         @click="openLightbox()">
+                    {% endfor %}
+                    {% elif product.image %}
+                    <img src="{{ product.image.url }}" alt="{{ product.name }}"
+                         width="800" height="800"
+                         class="h-full w-full object-cover cursor-zoom-in"
+                         @click="openLightbox()">
+                    {% else %}
+                    <div class="grid h-full w-full place-items-center text-stone-500">
+                        <span>تصویری موجود نیست</span>
+                    </div>
+                    {% endif %}
+                    
+                    {# Navigation arrows #}
+                    {% if gallery|length > 1 %}
+                    <button type="button" 
+                            @click="prev()"
+                            class="absolute left-3 top-1/2 -translate-y-1/2 p-2 rounded-full bg-white/90 hover:bg-white text-stone-700 shadow-lg transition-colors"
+                            aria-label="تصویر قبلی">
+                        <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                    </button>
+                    <button type="button" 
+                            @click="next()"
+                            class="absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-full bg-white/90 hover:bg-white text-stone-700 shadow-lg transition-colors"
+                            aria-label="تصویر بعدی">
+                        <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                    </button>
+                    {% endif %}
+                </div>
+
+                {% if gallery|length > 1 %}
+                <div class="mt-3 flex gap-2 overflow-x-auto pb-2">
+                    {% for img in gallery %}
+                    <button type="button"
+                            @click="go({{ forloop.counter0 }})"
+                            class="h-20 w-20 shrink-0 overflow-hidden rounded-default border-2 transition-all duration-200"
+                            :class="mainIndex === {{ forloop.counter0 }} ? 'border-primary-500' : 'border-stone-200'">
+                        <img src="{{ img.image.url }}" alt="{{ img.alt_text|default:product.name }}"
+                             width="160" height="160"
+                             class="h-full w-full object-cover" loading="lazy">
+                    </button>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+                {# Lightbox Modal - inside productGallery scope #}
+                {% if gallery %}
+                <div x-show="lightboxOpen"
+                     x-cloak
+                     @keydown.escape.window="closeLightbox()"
+                     class="fixed inset-0 z-[100] flex items-center justify-center bg-black/90"
+                     @click.self="closeLightbox()"
+                     role="dialog"
+                     aria-modal="true"
+                     aria-label="نمایش بزرگ تصویر">
+                    <button type="button" @click="closeLightbox()" class="absolute top-4 right-4 text-white/70 hover:text-white text-3xl" aria-label="بستن">×</button>
+                    <button type="button" @click="lightboxNext()" class="absolute left-4 text-white/70 hover:text-white text-4xl" aria-label="بعدی">›</button>
+                    <button type="button" @click="lightboxPrev()" class="absolute right-4 text-white/70 hover:text-white text-4xl" aria-label="قبلی">‹</button>
+                    {% for img in gallery %}
+                    <img x-show="lightboxIndex === {{ forloop.counter0 }}"
+                         x-cloak
+                         src="{{ img.image.url }}" alt="{{ img.alt_text|default:product.name }}"
+                         class="max-h-[85vh] max-w-[90vw] object-contain">
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+
+            {# ---------- Tabs: Description, Specs, Reviews ---------- #}
+            <div x-data="{ activeTab: 'description' }" class="border-t border-stone-100 pt-6">
+                <div class="flex border-b border-stone-100 mb-6" role="tablist">
+                    <button type="button" 
+                            @click="activeTab = 'description'"
+                            :class="activeTab === 'description' ? 'border-primary-600 text-primary-700' : 'border-transparent text-stone-500 hover:text-stone-700'"
+                            class="flex-1 py-3 px-4 text-sm font-medium border-b-2 transition-colors"
+                            role="tab"
+                            :aria-selected="activeTab === 'description'"
+                            aria-controls="tab-description">
+                        توضیحات
+                    </button>
+                    <button type="button" 
+                            @click="activeTab = 'specs'"
+                            :class="activeTab === 'specs' ? 'border-primary-600 text-primary-700' : 'border-transparent text-stone-500 hover:text-stone-700'"
+                            class="flex-1 py-3 px-4 text-sm font-medium border-b-2 transition-colors"
+                            role="tab"
+                            :aria-selected="activeTab === 'specs'"
+                            aria-controls="tab-specs">
+                        مشخصات
+                    </button>
+                    <button type="button" 
+                            @click="activeTab = 'reviews'"
+                            :class="activeTab === 'reviews' ? 'border-primary-600 text-primary-700' : 'border-transparent text-stone-500 hover:text-stone-700'"
+                            class="flex-1 py-3 px-4 text-sm font-medium border-b-2 transition-colors"
+                            role="tab"
+                            :aria-selected="activeTab === 'reviews'"
+                            aria-controls="tab-reviews">
+                        نظرات ({{ product.review_count|default:0 }})
+                    </button>
+                </div>
+
+                {# Tab: Description #}
+                <div x-show="activeTab === 'description'" x-transition class="prose prose-stone max-w-none" role="tabpanel" id="tab-description">
+                    {% if product.description %}
+                    <p class="whitespace-pre-line text-stone-600">{{ product.description }}</p>
+                    {% else %}
+                    <p class="text-stone-500">توضیحات‌ای برای این محصول ثبت نشده است.</p>
+                    {% endif %}
+                </div>
+
+                {# Tab: Specs #}
+                <div x-show="activeTab === 'specs'" x-transition class="mt-4" role="tabpanel" id="tab-specs">
+                    <dl class="grid grid-cols-2 gap-4 text-sm">
+                        <div class="font-medium text-stone-500">دسته‌بندی</div>
+                        <div class="text-stone-900">{{ product.category.name }}</div>
+                        {% if can_see_prices %}
+                        <div class="font-medium text-stone-500">قیمت پایه</div>
+                        <div class="text-stone-900">{{ product.base_price|fa_price }} تومان</div>
+                        {% endif %}
+                        
+                        {% if product.length or product.width or product.height %}
+                        <div class="font-medium text-stone-500">ابعاد</div>
+                        <div class="text-stone-900">
+                            <div class="grid grid-cols-3 gap-2">
+                                {% if product.length %}
+                                <div class="text-center p-2 bg-stone-50 rounded">
+                                    <div class="text-xs text-stone-500">طول</div>
+                                    <div class="font-medium">{{ product.length }} سانتی‌متر</div>
+                                </div>
+                                {% endif %}
+                                {% if product.width %}
+                                <div class="text-center p-2 bg-stone-50 rounded">
+                                    <div class="text-xs text-stone-500">عرض</div>
+                                    <div class="font-medium">{{ product.width }} سانتی‌متر</div>
+                                </div>
+                                {% endif %}
+                                {% if product.height %}
+                                <div class="text-center p-2 bg-stone-50 rounded">
+                                    <div class="text-xs text-stone-500">ارتفاع</div>
+                                    <div class="font-medium">{{ product.height }} سانتی‌متر</div>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endif %}
+                        
+                        {% comment %} {% if product.length_editable %}
+                        <div class="font-medium text-stone-500">طول قابل تنظیم</div>
+                        <div class="text-stone-900">بله (هر سانتی‌متر {{ product.length_price_percent }}٪ افزایش)</div>
+                        {% endif %}
+                        {% if product.width_editable %}
+                        <div class="font-medium text-stone-500">عرض قابل تنظیم</div>
+                        <div class="text-stone-900">بله (هر سانتی‌متر {{ product.width_price_percent }}٪ افزایش)</div>
+                        {% endif %}
+                        {% if product.height_editable %}
+                        <div class="font-medium text-stone-500">ارتفاع قابل تنظیم</div>
+                        <div class="text-stone-900">بله (هر سانتی‌متر {{ product.height_price_percent }}٪ افزایش)</div>
+                        {% endif %} {% endcomment %}
+                        {% if default_colors %}
+                        <div class="font-medium text-stone-500">رنگ‌های پیش‌فرض</div>
+                        <div class="text-stone-900">
+                            <ul class="flex flex-wrap gap-2 text-xs">
+                                {% for part, code in default_colors.items %}
+                                <li class="flex items-center gap-1.5 rounded bg-stone-100 px-2 py-0.5">
+                                    <span class="inline-block h-3 w-3 rounded-full border border-stone-300"
+                                          style="background: {{ code|color_hex }}" aria-hidden="true"></span>
+                                    {{ part }}: {{ code|color_description }}
+                                </li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                        {% endif %}
+                    </dl>
+                </div>
+
+                {# Tab: Reviews #}
+                <div x-show="activeTab === 'reviews'" x-transition class="mt-4" role="tabpanel" id="tab-reviews">
+                    <div id="reviews-list">
+                        {% if reviews %}
+                        <div class="space-y-4">
+                            {% for review in reviews %}
+                            <div class="card p-4">
+                                <div class="flex items-center justify-between gap-3 mb-2">
+                                    <span class="text-sm font-medium">{{ review.user.get_full_name|default:review.user.username }}</span>
+                                    <span class="text-xs text-primary-600" aria-label="امتیاز {{ review.rating }} از ۵">
+                                        <span aria-hidden="true">★</span> {{ review.rating }}
+                                    </span>
+                                </div>
+                                {% if review.comment %}
+                                <p class="text-sm leading-relaxed text-stone-600">{{ review.comment }}</p>
+                                {% endif %}
+                                {% if review.image %}
+                                <div class="mt-2">
+                                    <img src="{{ review.image.url }}" alt="تصویر نظر" class="h-24 w-24 object-cover rounded">
+                                </div>
+                                {% endif %}
+                                <p class="mt-2 text-xs text-stone-500">{{ review.created_at|date:"j F Y" }}</p>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% else %}
+                        <p class="text-stone-500 text-center py-8">هنوز نظراتی برای این محصول ثبت نشده است.</p>
+                        {% endif %}
+                    </div>
+
+                    {# Review Submission Form - outside reviews-list so it's not replaced #}
+                    {% if user.is_authenticated %}
+                    <div class="mt-8 pt-6 border-t border-stone-100">
+                        <h3 class="font-semibold mb-4">ثبت نظر شما</h3>
+                        <form method="post" action="{% url 'storefront:review_create' product.slug %}"
+                              hx-post="{% url 'storefront:review_create' product.slug %}"
+                              hx-target="#reviews-list"
+                              hx-swap="innerHTML"
+                              hx-encoding="multipart/form-data"
+                              class="space-y-4"
+                              @htmx:after-request="if (event.detail.successful) { $el.reset(); }"
+                              @htmx:responseError="alert(event.detail.xhr.responseText)">
+                            {% csrf_token %}
+                            <input type="hidden" name="product_slug" value="{{ product.slug }}">
+                            <div>
+                                <label class="label">امتیاز</label>
+                                <div class="flex gap-2" role="radiogroup" aria-label="انتخاب امتیاز">
+                                    {% for i in "54321"|make_list %}
+                                    <label class="cursor-pointer">
+                                        <input type="radio" name="rating" value="{{ i }}" required class="sr-only peer">
+                                        <span class="text-2xl text-stone-300 peer-checked:text-amber-500 transition-colors">★</span>
+                                    </label>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                            <div>
+                                <label for="review_comment" class="label">متن نظر</label>
+                                <textarea id="review_comment" name="comment" rows="3" class="input" ></textarea>
+                            </div>
+                            {% comment %} <div>
+                                <label for="review_image" class="label">تصویر </label>
+                                <input type="file" id="review_image" name="image" accept="image/*" class="input">
+                            </div> {% endcomment %}
+                            <button type="submit" class="btn-primary w-full py-2">ارسال نظر</button>
+                        </form>
+                    </div>
+                    {% else %}
+                    <div class="mt-8 pt-6 border-t border-stone-100 text-center">
+                        <p class="text-stone-600">برای ثبت نظر باید <a href="{% url 'accounts:login' %}?next={{ request.path }}" class="text-primary-600 hover:underline font-medium">وارد شوید</a>.</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        {# ---------- Right Column: Sticky Price Card + Add to Cart ---------- #}
+        <div x-data="dimensionPrice({
+                basePrice: {% if can_see_prices %}{{ product.base_price|js_number }}{% else %}0{% endif %},
+                dims: {
+                    length: {def: {% if can_see_prices %}{{ product.length|js_number }}{% else %}0{% endif %}, editable: {{ product.length_editable|yesno:'true,false' }}, percent: {% if can_see_prices %}{{ product.length_price_percent|js_number }}{% else %}0{% endif %} },
+                    width:  {def: {% if can_see_prices %}{{ product.width|js_number }}{% else %}0{% endif %},  editable: {{ product.width_editable|yesno:'true,false' }},  percent: {% if can_see_prices %}{{ product.width_price_percent|js_number }}{% else %}0{% endif %} },
+                    height: {def: {% if can_see_prices %}{{ product.height|js_number }}{% else %}0{% endif %}, editable: {{ product.height_editable|yesno:'true,false' }}, percent: {% if can_see_prices %}{{ product.height_price_percent|js_number }}{% else %}0{% endif %} }
+                }
+            })"
+            class="lg:order-2 lg:sticky lg:top-20 lg:self-start">
+
+            <div class="card p-5 space-y-4">
+                {% comment %} <h2 class="font-semibold text-lg">قیمت و خرید</h2>
+
+                <div class="space-y-2 text-sm">
+                    <div class="flex justify-between text-stone-600">
+                        <span>قیمت پایه</span>
+                        <span>{{ product.base_price|fa_price }} تومان</span>
+                    </div>
+                    <div x-show="unitPrice() !== basePrice" x-cloak class="flex justify-between text-primary-700">
+                        <span>تغییر ابعاد (<span x-text="increasePercent()"></span>٪)</span>
+                        <span dir="ltr" x-text="(unitPrice() - basePrice).toLocaleString('fa-IR') + ' تومان'"></span>
+                    </div>
+                    <div class="flex justify-between border-t border-stone-100 pt-2">
+                        <span class="font-semibold">قیمت واحد</span>
+                        <span class="font-bold" x-text="unitPrice().toLocaleString('fa-IR') + ' تومان'"></span>
+                    </div>
+                </div> {% endcomment %}
+
+                <form method="post" action="{% url 'cart:cart_add' product.id %}"
+                      hx-post="{% url 'cart:cart_add' product.id %}"
+                      hx-target="#cart-count" hx-swap="innerHTML"
+                      @submit="adding = true"
+                      @htmx:after-request="adding = false; if (event.detail.successful && event.detail.xhr.status !== 204) { window.dispatchEvent(new Event('open-mini-cart')); }"
+                      @htmx:responseError="adding = false; alert(event.detail.xhr.responseText)"
+                      class="space-y-4 border-t border-stone-100 pt-4">
+                    {% csrf_token %}
+
+                    <h3 class="font-medium">ابعاد (سانتی‌متر)</h3>
+                    <div class="grid grid-cols-3 gap-2">
+                        <div>
+                            <label class="label" for="dim-length">طول</label>
+                            <input id="dim-length" name="length" type="number" inputmode="numeric" min="1" max="1000"
+                                   x-model.number="dims.length.value"
+                                   :disabled="!dims.length.editable"
+                                   :placeholder="dims.length.def ?? '—'"
+                                   class="input text-center px-1">
+                        </div>
+                        <div>
+                            <label class="label" for="dim-width">عرض</label>
+                            <input id="dim-width" name="width" type="number" inputmode="numeric" min="1" max="1000"
+                                   x-model.number="dims.width.value"
+                                   :disabled="!dims.width.editable"
+                                   :placeholder="dims.width.def ?? '—'"
+                                   class="input text-center px-1">
+                        </div>
+                        <div>
+                            <label class="label" for="dim-height">ارتفاع</label>
+                            <input id="dim-height" name="height" type="number" inputmode="numeric" min="1" max="1000"
+                                   x-model.number="dims.height.value"
+                                   :disabled="!dims.height.editable"
+                                   :placeholder="dims.height.def ?? '—'"
+                                   class="input text-center px-1">
+                        </div>
+                    </div>
+
+                    {# پیام خطا برای هر محور #}
+                    <template x-for="axis in ['length','width','height']" :key="axis">
+                        <p class="text-xs text-red-600" x-show="errorFor(axis)" x-text="errorFor(axis)"></p>
+                    </template>
+                    <p class="text-xs text-stone-500" x-show="!dims.length.editable && !dims.width.editable && !dims.height.editable">
+                        ابعاد این محصول قابل تغییر نیست.
+                    </p>
+
+                    {# فیلدهای غیرفعال ارسال نمی‌شوند؛ سرور مقدار پیش‌فرض را خودش می‌گذارد #}
+
+                    {# ---------- انتخاب کد رنگ بخش‌های رنگی (مانند ثبت سفارش پنل مدیریت) ---------- #}
+                    {% if color_parts %}
+                    <div class="border-t border-stone-100 pt-4">
+                        <h3 class="font-medium mb-2">انتخاب رنگ قطعات</h3>
+                        {{ color_hex_map|json_script:"color-hex-map" }}
+                        <div class="space-y-2" x-data="{ hexMap: JSON.parse(document.getElementById('color-hex-map').textContent) }">
+                            {% for cp in color_parts %}
+                            <div class="flex items-center justify-between gap-3">
+                                <label class="text-sm text-stone-600" for="color-part-{{ forloop.counter }}">{{ cp.part }}</label>
+                                <div class="flex items-center gap-2">
+                                    <select id="color-part-{{ forloop.counter }}" name="color_{{ cp.part }}"
+                                            class="select w-28 text-center"
+                                            @change="$el.nextElementSibling.style.background = (hexMap[$el.value] || 'transparent')">
+                                        {% for code in color_code_choices %}
+                                        <option value="{{ code }}"{% if code == cp.default_code %} selected{% endif %}>{{ code|color_description }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <span class="h-6 w-6 shrink-0 rounded-full border border-stone-300"
+                                          style="background: {{ cp.default_code|color_hex }}" aria-hidden="true"></span>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% comment %} <p class="mt-2 text-xs text-stone-500">کد رنگ هر بخش قابل تغییر است؛ پیش‌فرض همان رنگ استاندارد محصول است.</p> {% endcomment %}
+                    </div>
+                    {% endif %}
+
+                    <div class="flex items-end justify-between gap-3 border-t border-stone-100 pt-4">
+                        <div>
+                            <label class="label" for="qty">تعداد</label>
+                            <input id="qty" name="quantity" type="number" min="1" x-model.number="quantity" class="input w-20 text-center">
+                        </div>
+                        {% if can_see_prices %}
+                        <div class="text-left">
+                            <span class="block text-xs text-stone-500">قیمت کل</span>
+                            <span class="text-xl font-bold" x-text="total().toLocaleString('fa-IR') + ' تومان'"></span>
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    {% if can_see_prices %}
+                    <button type="submit" class="btn-primary w-full py-3"
+                            :disabled="adding || !isValid()" :class="{'opacity-50 cursor-not-allowed': adding || !isValid()}">
+                        <span x-show="!adding">افزودن به سبد خرید</span>
+                        <span x-show="adding" x-cloak>در حال افزودن...</span>
+                    </button>
+                    {% else %}
+                    <div class="text-center text-sm text-stone-500 py-2">
+                        برای ثبت سفارش با ما تماس بگیرید.
+                    </div>
+                    {% endif %}
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if related_products %}
+<section class="mx-auto max-w-6xl px-4 py-12">
+    <div class="mb-6 flex items-end justify-between gap-4">
+        {% if related_by_name %}
+        <h2 class="section-title">محصولات پیشنهادی از این سری ({{ product.name }})</h2>
+        <a href="{% url 'storefront:product_list' %}?q={{ product.name|urlencode }}" class="link-muted">مشاهده‌ی همه ←</a>
+        {% else %}
+        <h2 class="section-title">محصولات مرتبط</h2>
+        <a href="{% url 'storefront:category_detail' product.category.slug %}" class="link-muted">مشاهده‌ی همه ←</a>
+        {% endif %}
+    </div>
+    <div class="grid grid-cols-2 gap-x-4 gap-y-8 md:grid-cols-3">
+        {% for related in related_products %}
+            {% include 'storefront/components/product_card.html' with product=related %}
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
+
+{% endblock %}

@@ -218,11 +218,21 @@
                 <div style="font-size:8px;color:#6b665a;line-height:1.6;margin-bottom:6px;">{{ product.description|truncatechars:100 }}</div>
                 {% endif %}
 
-                <div style="font-size:10px;font-weight:800;margin-bottom:8px;">قیمت: {{ product.base_price|intcomma }} ریال</div>
+                <div style="font-size:10px;font-weight:800;margin-bottom:8px;">قیمت: {{ product.base_price|intcomma }} تومان</div>
 
                 <!-- Specs as inline blocks (avoid table nesting issues in xhtml2pdf) -->
                 <div style="font-size:7px;">
-                    {% if product.default_size %}
+                    {% if product.length or product.width or product.height %}
+                    <div style="margin-bottom:4px;">
+                        <span style="font-size:6px;color:#8a8378;letter-spacing:1px;">ابعاد: </span>
+                        <span style="color:#1f1c17;font-weight:600;">
+                            {% if product.length %}{{ product.length }}{% endif %}
+                            {% if product.width %}x{{ product.width }}{% endif %}
+                            {% if product.height %}x{{ product.height }}{% endif %}
+                            سانتی‌متر
+                        </span>
+                    </div>
+                    {% elif product.default_size %}
                     <div style="margin-bottom:4px;">
                         <span style="font-size:6px;color:#8a8378;letter-spacing:1px;">ابعاد: </span>
                         <span style="color:#1f1c17;font-weight:600;">{{ product.default_size }}</span>

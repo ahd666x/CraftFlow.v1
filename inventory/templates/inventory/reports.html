@@ -1,0 +1,125 @@
+{% extends "inventory/base.html" %}
+{% load product_filters %}
+{% block title %}گزارش‌ها{% endblock %}
+
+{% block inventory_content %}
+<style>
+  .report-kpis{display:flex;gap:.65rem;flex-wrap:wrap;margin-bottom:1rem}.report-kpi{min-width:130px;flex:1;background:#fff;border:1px solid #e2e8f0;border-radius:13px;padding:.75rem .9rem}.report-kpi label{display:block;color:#64748b;font-size:.75rem}.report-kpi strong{font-size:1.1rem;color:#172033}
+  .report-card-list{display:flex;flex-direction:column;gap:.55rem}.report-item{border:1px solid #e5eaf1;border-radius:12px;padding:.75rem .85rem;background:#fff}.report-item-top{display:flex;justify-content:space-between;gap:.5rem;font-weight:700}.report-muted{font-size:.76rem;color:#64748b;margin-top:.25rem}.report-disclosure{border:1px solid #e2e8f0;border-radius:12px;background:#fff;margin-top:.75rem}.report-disclosure>summary{list-style:none;padding:.72rem .9rem;cursor:pointer;font-weight:650;color:#475569}.report-disclosure>summary::-webkit-details-marker{display:none}.report-disclosure-body{border-top:1px solid #eef2f7;padding:.8rem}.report-flow{display:flex;flex-direction:column;gap:.5rem}.report-flow-card{display:flex;align-items:center;justify-content:space-between;gap:.7rem;border:1px solid #e5eaf1;border-radius:11px;padding:.65rem .8rem;background:#fff}.report-flow-card.is-short{border-right:3px solid #dc2626}.report-flow-main{min-width:0}.report-flow-title{font-weight:700;color:#1e293b}.report-flow-sub{color:#64748b;font-size:.74rem;margin-top:.15rem}.report-flow-numbers{white-space:nowrap;text-align:left;font-size:.78rem;color:#334155}.report-flow-numbers strong{display:block;color:#0f172a}.ledger-card{border:1px solid #e5eaf1;border-radius:12px;padding:.8rem .9rem;background:#fff}.ledger-top{display:flex;justify-content:space-between;gap:.7rem}.ledger-balance{font-weight:750;font-size:1.02rem}.report-person{border:1px solid #e2e8f0;border-radius:13px;background:#fff;margin-bottom:.65rem;padding:.8rem}.report-person-head{display:flex;justify-content:space-between;gap:.7rem;align-items:center}.report-materials{display:flex;flex-direction:column;gap:.45rem;margin-top:.7rem}.report-material{background:#f8fafc;border-radius:9px;padding:.55rem .65rem;font-size:.8rem}.history-item{border:1px solid #e2e8f0;border-radius:12px;padding:.7rem .85rem;background:#fff}.history-pairs{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.45rem}.history-pair{background:#f8fafc;border-radius:8px;padding:.45rem .55rem}.history-pair label{display:block;color:#64748b;font-size:.68rem}.history-pair span{font-size:.8rem;color:#1e293b;overflow-wrap:anywhere}
+
+  .report-material{background:#f8fafc;border:1px solid #edf1f6;border-radius:9px;padding:.55rem .65rem;font-size:.8rem}
+  .report-material>summary{display:flex;justify-content:space-between;align-items:center;gap:.6rem;cursor:pointer;list-style:none}
+  .report-material>summary::-webkit-details-marker{display:none}
+  .report-material>summary::after{content:'＋';color:#64748b;font-size:.85rem}
+  .report-material[open]>summary::after{content:'−'}
+  .report-use-list{display:flex;flex-direction:column;gap:.45rem;margin-top:.6rem}
+  .report-use{border-top:1px solid #e2e8f0;padding:.55rem .1rem .15rem}
+  .report-use-title{font-weight:700;color:#1e293b}
+  .report-use-meta{color:#64748b;font-size:.73rem;margin-top:.15rem}
+  .report-use-amounts{font-size:.75rem;margin-top:.3rem}
+</style>
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+  <div>
+    <h1 class="h3 mb-1">گزارش‌ها</h1>
+    {% comment %} <div class="small text-muted">همهٔ گزارش‌های انبار در همین صفحه — فقط‌خواندنی.</div> {% endcomment %}
+  </div>
+  {% comment %} <a href="{% url 'inventory:data_integrity_audit' %}" class="btn btn-sm btn-outline-warning">
+    <i class="bi bi-shield-exclamation"></i> بررسی سلامت داده
+  </a> {% endcomment %}
+</div>
+
+<ul class="nav nav-tabs mb-3">
+  {% for key, label in tabs %}
+    <li class="nav-item">
+      <a class="nav-link {% if tab == key %}active{% endif %}"
+         href="?tab={{ key }}{% if date_from_jalali %}&date_from={{ date_from_jalali }}{% endif %}{% if date_to_jalali %}&date_to={{ date_to_jalali }}{% endif %}{% if filters.material_id %}&material={{ filters.material_id }}{% endif %}{% if filters.worker_id %}&worker={{ filters.worker_id }}{% endif %}{% if filters.order_id %}&order={{ filters.order_id }}{% endif %}{% if key == 'history' %}&report={{ history_report_key|default:'consumption' }}{% endif %}">{{ label }}</a>
+    </li>
+  {% endfor %}
+</ul>
+
+<details class="filter-disclosure mb-3 no-print"><summary><i class="bi bi-funnel me-1"></i> فیلترها</summary><form method="get" class="d-flex gap-2 flex-wrap mt-2">
+  <input type="hidden" name="tab" value="{{ tab }}">
+  <input type="text" name="date_from" class="form-control form-control-sm text-center" style="max-width:130px"
+         placeholder="از 1405-07-01" value="{{ date_from_jalali }}"
+         pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}" maxlength="10" dir="ltr" title="تاریخ شمسی">
+  <input type="text" name="date_to" class="form-control form-control-sm text-center" style="max-width:130px"
+         placeholder="تا 1405-07-31" value="{{ date_to_jalali }}"
+         pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}" maxlength="10" dir="ltr" title="تاریخ شمسی">
+  <select name="material" class="form-select form-select-sm" style="max-width:200px">
+    <option value="">همهٔ مواد</option>
+    {% for m in materials %}
+      <option value="{{ m.id }}" {% if filters.material_id == m.id %}selected{% endif %}>{{ m.name }}</option>
+    {% endfor %}
+  </select>
+  <select name="worker" class="form-select form-select-sm" style="max-width:200px">
+    <option value="">همهٔ کارگران</option>
+    {% for w in paint_workers %}
+      <option value="{{ w.id }}" {% if filters.worker_id == w.id %}selected{% endif %}>{{ w.get_full_name|default:w.username }}</option>
+    {% endfor %}
+  </select>
+  <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-funnel"></i>فیلتر</button>
+  <a href="?tab={{ tab }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-x-circle"></i> پاک</a>
+</form></details>
+
+{# ---------------- نگاه کلی ---------------- #}
+{% if tab == 'overview' %}
+
+{% comment %} <div class="report-kpis"><div class="report-kpi"><label>موجودی کم</label><strong class="{% if low_stock %}text-danger{% else %}text-success{% endif %}">{{ low_stock|length }}</strong></div><div class="report-kpi"><label>برنامه‌های امروز</label><strong>{{ dashboard.manager.queue_rows }}</strong></div><div class="report-kpi"><label>مغایرت برنامه</label><strong class="{% if dashboard.manager.conflict_count %}text-danger{% endif %}">{{ dashboard.manager.conflict_count }}</strong></div></div> {% endcomment %}
+{% if low_stock %}<section class="mb-3"><h2 class="h6 mb-2">نیاز به تأمین</h2><div class="report-card-list">{% for row in low_stock %}<article class="report-item"><div class="report-item-top"><span>{{ row.name }}{% if row.code %} <small class="text-muted">· {{ row.code }}</small>{% endif %}</span><span class="text-danger fw-bold">موجودی {{ row.stock|floatformat:2 }} {{ row.unit }}</span></div>{% if depletion_dates|get_item:row.id %}<div class="report-muted">برنامهٔ فعلی نشان می‌دهد موجودی در {{ depletion_dates|get_item:row.id|persian_date }} به کمبود می‌رسد.</div>{% endif %}</article>{% endfor %}</div></section>{% else %}<div class="alert alert-success py-2 small">ماده‌ای زیر حد هشدار نیست.</div>{% endif %}
+<details class="report-disclosure"><summary><i class="bi bi-calendar3 me-1"></i> پیش‌بینی برنامهٔ آینده · تا ۶۰ روز</summary><div class="report-disclosure-body"><div class="report-flow">{% for row in stock_forecast %}<a class="report-flow-card text-decoration-none {% if row.short %}is-short{% endif %}" href="{{ row.url }}"><div class="report-flow-main"><div class="report-flow-title">{{ row.material.name }} · {{ row.date|persian_date }}</div><div class="report-flow-sub">نیاز {{ row.needed|floatformat:2 }} {{ row.material.get_unit_display }}{% for detail in row.details %} · {{ detail.worker }}{% endfor %}</div></div><div class="report-flow-numbers"><strong class="{% if row.short %}text-danger{% endif %}">{{ row.balance|floatformat:2 }}</strong>مانده</div></a>{% empty %}<div class="text-muted small">برنامهٔ آینده‌ای ثبت نشده است.</div>{% endfor %}</div></div></details>
+<details class="report-disclosure"><summary><i class="bi bi-box-seam me-1"></i> نمایش موجودی همهٔ مواد</summary><div class="report-disclosure-body"><div class="report-card-list">{% for row in dashboard.warehouse.materials %}<article class="report-item"><div class="report-item-top"><span>{{ row.name }}{% if row.code %} <small class="text-muted">· {{ row.code }}</small>{% endif %}</span><strong class="{% if row.stock <= row.min_stock_alert %}text-danger{% endif %}">{{ row.stock|floatformat:2 }} {{ row.unit }}</strong></div>{% if depletion_dates|get_item:row.id %}<div class="report-muted">پیش‌بینی رسیدن به کمبود: {{ depletion_dates|get_item:row.id|persian_date }}</div>{% endif %}</article>{% empty %}<div class="text-muted small">ماده‌ای ثبت نشده است.</div>{% endfor %}</div></div></details>
+{% if alerts %}<details class="report-disclosure"><summary><i class="bi bi-bell me-1"></i> هشدارها · {{ alert_total }}</summary><div class="report-disclosure-body">{% for alert in alerts %}<div class="small mb-2"><strong>{{ alert.title }}</strong> · {{ alert.message }} {% if alert.url %}<a href="{{ alert.url }}">بازکردن</a>{% endif %}</div>{% endfor %}</div></details>{% endif %}
+
+{# ---------------- دفتر گردش انبار ---------------- #}
+{% elif tab == 'ledger' %}
+<div class="d-flex flex-column gap-2">{% for row in ledger.rows %}{% with movement=row.movement %}<article class="ledger-card"><div class="ledger-top"><div><div class="fw-bold">{{ movement.raw_material.name }}</div><div class="report-muted">{{ movement.created_at|persian_datetime }} · {{ movement.get_movement_type_display }}</div></div><div class="text-end"><div class="ledger-balance {% if row.signed < 0 %}text-danger{% else %}text-success{% endif %}">{{ row.signed|floatformat:2 }} {{ movement.raw_material.get_unit_display }}</div><div class="report-muted">مانده {{ row.balance|floatformat:2 }}</div></div></div><details class="mt-2"><summary class="small text-secondary"> ثبت‌کننده</summary><div class="report-muted">{{ row.reference }} · {% if movement.created_by %}{{ movement.created_by.get_full_name|default:movement.created_by.username }}{% else %}—{% endif %}</div></details></article>{% endwith %}{% empty %}<div class="empty-day text-center p-4 text-muted">حرکتی در این بازه نیست.</div>{% endfor %}</div>
+{% if ledger.truncated %}<div class="alert alert-info mt-3 small">{{ ledger.limit }}  از {{ ledger.total_count }} نمایش داده شده؛ بازه را محدودتر کنید.</div>{% endif %}
+
+{# ---------------- تحلیل مصرف ---------------- #}
+{% elif tab == 'consumption' %}
+<div class="small text-muted mb-2">بازهٔ گزارش: {{ date_from_jalali }} تا {{ date_to_jalali }}</div>
+{% comment %} <div class="report-kpis"><div class="report-kpi"><label>مقدار برنامه</label><strong>{{ consumption.totals.planned|floatformat:2 }}</strong></div><div class="report-kpi"><label>مصرف واقعی</label><strong>{{ consumption.totals.actual|floatformat:2 }}</strong></div><div class="report-kpi"><label>مصرف اضافه</label><strong class="{% if consumption.totals.excess > 0 %}text-danger{% endif %}">{{ consumption.totals.excess|floatformat:2 }}</strong></div></div> {% endcomment %}
+<h2 class="h6 mb-2">مصرف به تفکیک شخص</h2>
+{% for person in consumption.by_worker %}
+<section class="report-person">
+  <div class="report-person-head"><span class="fw-bold">{{ person.name }}</span><span class="small text-end">مصرف <strong>{{ person.actual|floatformat:2 }}</strong> · اضافه <strong class="{% if person.excess > 0 %}text-danger{% endif %}">{{ person.excess|floatformat:2 }}</strong></span></div>
+  <div class="report-materials">
+  {% for item in person.materials %}
+    <details class="report-material">
+      <summary><span><strong>{{ item.name }}</strong><span class="report-muted d-block">برنامه {{ item.planned|floatformat:2 }} {{ item.unit }}</span></span><span class="text-end text-nowrap">مصرف <b>{{ item.actual|floatformat:2 }}</b> {{ item.unit }}<span class="report-muted d-block">اضافه <b class="{% if item.excess > 0 %}text-danger{% endif %}">{{ item.excess|floatformat:2 }}</b> {{ item.unit }}</span></span></summary>
+      {% comment %} <div class="report-use-list"><div class="report-use-meta">اگر یک ردیف شامل چند سفارش باشد، مقدار مصرف بین سفارش‌ها بر پایهٔ سهم هر سفارش از برنامه تقسیم شده است.</div> {% endcomment %}
+      {% for use in item.details %}
+        <article class="report-use">
+          <div class="report-use-title">سفارش {{ use.order_number }}{% if use.product %} · {{ use.product }}{% endif %}</div>
+          <div class="report-use-meta">{{ use.work_date|persian_date }}{% if use.customer %} · مشتری {{ use.customer }}{% endif %}{% if use.representative %} · نماینده {{ use.representative }}{% endif %}{% if use.stage %} · {{ use.stage }}{% endif %}{% if use.color_part %} · {{ use.color_part }}{% endif %}</div>
+          <div class="report-use-amounts">برنامه {{ use.planned|floatformat:2 }} {{ use.unit }} · مصرف {{ use.actual|floatformat:2 }} {{ use.unit }} · اضافه <strong class="{% if use.excess > 0 %}text-danger{% endif %}">{{ use.excess|floatformat:2 }} {{ use.unit }}</strong></div>
+        </article>
+      {% empty %}<div class="report-muted">جزئیات سفارش برای این مصرف ثبت نشده است.</div>{% endfor %}
+      </div>
+    </details>
+  {% endfor %}
+  </div>
+</section>
+{% empty %}<div class="empty-day text-center p-4 text-muted">داده‌ای در این دوره نیست.</div>{% endfor %}
+<section class="mt-3"><h2 class="h6 mb-2">جمع مصرف هر ماده</h2><div class="report-card-list">
+{% for row in consumption.rows %}
+  <details class="report-material">
+    <summary><span><strong>{{ row.raw_material }}</strong><span class="report-muted d-block">برنامه {{ row.planned|floatformat:2 }} {{ row.unit }}</span></span><span class="text-end text-nowrap">مصرف <b>{{ row.actual|floatformat:2 }}</b> {{ row.unit }}<span class="report-muted d-block">اضافه <b class="{% if row.excess > 0 %}text-danger{% endif %}">{{ row.excess|floatformat:2 }}</b> {{ row.unit }}</span></span></summary>
+    <div class="report-use-list"><div class="report-use-meta">اگر یک ردیف شامل چند سفارش باشد، مقدار مصرف بین سفارش‌ها بر پایهٔ سهم هر سفارش از برنامه تقسیم شده است.</div>
+    {% for use in row.details %}
+      <article class="report-use">
+        <div class="report-use-title">{{ use.worker }} · سفارش {{ use.order_number }}{% if use.product %} · {{ use.product }}{% endif %}</div>
+        <div class="report-use-meta">{{ use.work_date|persian_date }}{% if use.customer %} · مشتری {{ use.customer }}{% endif %}{% if use.representative %} · نماینده {{ use.representative }}{% endif %}{% if use.stage %} · {{ use.stage }}{% endif %}{% if use.color_part %} · {{ use.color_part }}{% endif %}</div>
+        <div class="report-use-amounts">برنامه {{ use.planned|floatformat:2 }} {{ use.unit }} · مصرف {{ use.actual|floatformat:2 }} {{ use.unit }} · اضافه <strong class="{% if use.excess > 0 %}text-danger{% endif %}">{{ use.excess|floatformat:2 }} {{ use.unit }}</strong></div>
+      </article>
+    {% empty %}<div class="report-muted">جزئیات سفارش برای این مصرف ثبت نشده است.</div>{% endfor %}
+    </div>
+  </details>
+{% empty %}<div class="text-muted small">ماده‌ای در این بازه نیست.</div>{% endfor %}
+</div></section>
+
+{# ---------------- گزارش‌های تاریخی ---------------- #}
+{% elif tab == 'history' %}
+<section><h2 class="h6 mb-2">{{ history.title }}</h2><div class="d-flex flex-column gap-2">{% for row in history.rows %}<article class="history-item"><div class="history-pairs">{% for column,cell in history.columns|zip_lists:row %}<div class="history-pair"><label>{{ column }}</label><span>{{ cell|default:"—" }}</span></div>{% endfor %}</div></article>{% empty %}<div class="empty-day text-center p-4 text-muted">داده‌ای در این بازه نیست.</div>{% endfor %}</div><div class="form-text mt-2">{{ history.total }} ردیف</div></section>
+{% endif %}
+{% endblock %}

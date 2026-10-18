@@ -1,0 +1,64 @@
+{% extends 'storefront/layouts/store.html' %}
+
+{% block title %}{% if object %}ویرایش آدرس{% else %}افزودن آدرس جدید{% endif %} — حساب کاربری{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-2xl px-4 py-8">
+    <h1 class="mb-6 text-2xl font-bold">{% if object %}ویرایش آدرس{% else %}افزودن آدرس جدید{% endif %}</h1>
+
+    <form method="post" class="card p-5 space-y-5">
+        {% csrf_token %}
+        {% if form.non_field_errors %}
+        <div class="rounded-lg bg-red-50 p-3 text-sm text-red-700">{{ form.non_field_errors }}</div>
+        {% endif %}
+
+        <div class="grid gap-4 sm:grid-cols-2">
+            <div>
+                <label for="{{ form.title.id_for_label }}" class="label">عنوان آدرس <span class="text-red-500">*</span></label>
+                {{ form.title }}
+                {% if form.title.errors %}<p class="mt-1 text-sm text-red-600">{{ form.title.errors }}</p>{% endif %}
+            </div>
+            <div>
+                <label for="{{ form.recipient.id_for_label }}" class="label">نام گیرنده <span class="text-red-500">*</span></label>
+                {{ form.recipient }}
+                {% if form.recipient.errors %}<p class="mt-1 text-sm text-red-600">{{ form.recipient.errors }}</p>{% endif %}
+            </div>
+        </div>
+
+        <div class="grid gap-4 sm:grid-cols-2">
+            <div>
+                <label for="{{ form.province.id_for_label }}" class="label">استان</label>
+                {{ form.province }}
+                {% if form.province.errors %}<p class="mt-1 text-sm text-red-600">{{ form.province.errors }}</p>{% endif %}
+            </div>
+            <div>
+                <label for="{{ form.city.id_for_label }}" class="label">شهر <span class="text-red-500">*</span></label>
+                {{ form.city }}
+                {% if form.city.errors %}<p class="mt-1 text-sm text-red-600">{{ form.city.errors }}</p>{% endif %}
+            </div>
+        </div>
+
+        <div>
+            <label for="{{ form.postal_code.id_for_label }}" class="label">کد پستی</label>
+            {{ form.postal_code }}
+            {% if form.postal_code.errors %}<p class="mt-1 text-sm text-red-600">{{ form.postal_code.errors }}</p>{% endif %}
+        </div>
+
+        <div>
+            <label for="{{ form.address.id_for_label }}" class="label">آدرس کامل <span class="text-red-500">*</span></label>
+            {{ form.address }}
+            {% if form.address.errors %}<p class="mt-1 text-sm text-red-600">{{ form.address.errors }}</p>{% endif %}
+        </div>
+
+        <div class="flex items-center gap-2">
+            {{ form.is_default }}
+            <label for="{{ form.is_default.id_for_label }}" class="label mb-0 cursor-pointer">تنظیم به عنوان آدرس پیش‌فرض</label>
+        </div>
+
+        <div class="flex gap-3 pt-4 border-t border-stone-200">
+            <button type="submit" class="btn-primary flex-1 py-3">{% if object %}ذخیره تغییرات{% else %}افزودن آدرس{% endif %}</button>
+            <a href="{% url 'accounts:address_list' %}" class="btn-outline flex-1 py-3 text-center">انصراف</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

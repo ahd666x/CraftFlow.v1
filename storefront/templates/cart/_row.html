@@ -1,0 +1,92 @@
+{% load storefront_filters %}
+{% comment %}
+یک سطر سبد. `item` از نوع CartItem است.
+اگر `use_htmx` صحیح باشد، فرم‌ها با HTMX عمل می‌کنند (برای مینی‌کارت).
+در غیر این صورت، فرم‌ها به‌صورت معمولی ارسال می‌شوند (برای صفحه جزئیات سبد).
+{% endcomment %}
+<div class="card flex flex-wrap items-center gap-4 p-4">
+    {% if item.product.image %}
+    <a href="{% url 'storefront:product_detail' item.product.slug %}"
+       class="h-20 w-20 shrink-0 overflow-hidden rounded-default bg-stone-100">
+        <img src="{{ item.product.image.url }}" alt="{{ item.product.name }}"
+             width="80" height="80"
+             class="h-full w-full object-cover" loading="lazy">
+    </a>
+    {% elif item.product.gallery_images.first %}
+    <a href="{% url 'storefront:product_detail' item.product.slug %}"
+       class="h-20 w-20 shrink-0 overflow-hidden rounded-default bg-stone-100">
+        <img src="{{ item.product.gallery_images.first.image.url }}" alt="{{ item.product.name }}"
+             width="80" height="80"
+             class="h-full w-full object-cover" loading="lazy">
+    </a>
+    {% endif %}
+
+    <div class="min-w-0 flex-1">
+        <a href="{% url 'storefront:product_detail' item.product.slug %}"
+           class="font-medium text-stone-900 hover:text-primary-700">
+            {{ item.product.name }}
+        </a>
+        <div class="mt-0.5 text-sm text-stone-500">
+            {% if item.has_custom_dimensions %}
+                {% if item.custom_length %}طول {{ item.custom_length }}{% endif %}
+                {% if item.custom_width %} / عرض {{ item.custom_width }}{% endif %}
+                {% if item.custom_height %} / ارتفاع {{ item.custom_height }}{% endif %}
+                سانتی‌متر
+            {% else %}
+                ابعاد پیش‌فرض
+            {% endif %}
+        </div>
+        <div class="mt-0.5 text-sm text-stone-500">
+            {% if can_see_prices %}
+            قیمت واحد: {{ item.unit_price|fa_price }} تومان
+            {% else %}
+            برای اطلاع از قیمت تماس بگیرید
+            {% endif %}
+        </div>
+        {% if item.resolved_colors %}
+        <div class="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-stone-500">
+            {% for part, code in item.resolved_colors.items %}
+            <span class="flex items-center gap-1">
+                <span class="inline-block h-3 w-3 rounded-full border border-stone-300"
+                      style="background: {{ code|color_hex }}" aria-hidden="true"></span>
+                {{ part }}: کد {{ code }}
+            </span>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="flex items-center gap-2">
+        <form method="post" action="{% url 'cart:cart_update' item.id %}"
+              {% if use_htmx %}hx-post="{% url 'cart:cart_update' item.id %}"
+              hx-target="#mini-cart-content"
+              hx-swap="innerHTML"{% endif %}
+              class="flex items-center gap-2">
+            {% csrf_token %}
+            <button type="button" data-cart-step="-1" aria-label="کاهش تعداد"
+                    class="flex h-8 w-8 items-center justify-center rounded-default border border-stone-200 text-stone-500 hover:bg-stone-100">−</button>
+            <input type="number" name="quantity" value="{{ item.quantity }}" min="1"
+                   class="input w-20 py-1.5 text-center cart-qty-input">
+            <button type="button" data-cart-step="1" aria-label="افزایش تعداد"
+                    class="flex h-8 w-8 items-center justify-center rounded-default border border-stone-200 text-stone-500 hover:bg-stone-100">+</button>
+        </form>
+    </div>
+
+    <div class="text-left">
+        {% if can_see_prices %}
+        <span class="block text-lg font-bold">{{ item.total_price|fa_price }}</span>
+        <span class="text-xs text-stone-500">تومان</span>
+        {% else %}
+        <span class="block text-sm text-stone-500">برای اطلاع از قیمت تماس بگیرید</span>
+        {% endif %}
+    </div>
+
+    <form method="post" action="{% url 'cart:cart_remove' item.id %}"
+          {% if use_htmx %}hx-post="{% url 'cart:cart_remove' item.id %}"
+          hx-target="#mini-cart-content"
+          hx-swap="innerHTML"{% endif %}>
+        {% csrf_token %}
+        <button type="submit" class="btn-outline px-3 py-1.5 text-xs"
+                aria-label="حذف {{ item.product.name }}">حذف</button>
+    </form>
+</div>

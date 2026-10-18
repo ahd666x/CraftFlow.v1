@@ -94,11 +94,11 @@ class DeliveryExecutionBase(TestCase):
 
         for raw in (cls.raw, cls.raw_pack4, cls.raw_pack0):
             PaintingMaterialRequirement.objects.create(
-                process=cls.process, raw_material=raw, product=cls.product,
+                process=cls.process, stage=cls.stage, raw_material=raw, product=cls.product,
                 color_part='بدنه', consumption_per_unit=Decimal('0.500'),
             )
 
-        for raw, qty in ((cls.raw, '100'), (cls.raw_pack4, '50'), (cls.raw_pack0, '40')):
+        for raw, qty in ((cls.raw, '100'), (cls.raw_pack4, '48'), (cls.raw_pack0, '40')):
             StockMovement.objects.create(
                 raw_material=raw, movement_type='purchase',
                 quantity=Decimal(qty), created_by=cls.superuser,
@@ -144,12 +144,12 @@ class DeliveryExecutionBase(TestCase):
     def _ajax(self):
         return {'HTTP_X_REQUESTED_WITH': 'XMLHttpRequest'}
 
-    def _post_delivery(self, queue, user=None):
+    def _post_delivery(self, queue, user=None, quantity=None):
         client = self.client
         client.force_login(user or self.warehouse_user)
         return client.post(
             reverse('inventory:daily_queue_delivery', args=[queue.pk]),
-            {}, **self._ajax(),
+            {'quantity': quantity} if quantity is not None else {}, **self._ajax(),
         )
 
 
@@ -228,7 +228,7 @@ class SuccessfulDeliveryTests(DeliveryExecutionBase):
 
 class PackageRoundingTests(DeliveryExecutionBase):
     def test_04_package_rounding_up(self):
-        """نیاز ۳ کیلو با بستهٔ ۴ کیلویی → خروج فیزیکی ۴ کیلو."""
+        """وقتی بستهٔ بازی وجود ندارد، مقدار دقیق نیاز تحویل می‌شود."""
         queue = self._build_queue(self.raw_pack4, '3')
 
         services.execute_daily_delivery(queue_id=queue.pk, delivered_by=self.superuser)
@@ -237,8 +237,7 @@ class PackageRoundingTests(DeliveryExecutionBase):
         movement = StockMovement.objects.filter(
             raw_material=self.raw_pack4, movement_type='consumption'
         ).order_by('-id').first()
-        self.assertEqual(movement.quantity, Decimal('4.00'))
-        # delivered_quantity مقدار مورد نیاز است، نه خروج فیزیکی بسته
+        self.assertEqual(movement.quantity, Decimal('3.00'))
         self.assertEqual(queue.delivered_quantity, Decimal('3.00'))
 
     def test_05_package_exact_multiple_no_over_delivery(self):
@@ -253,7 +252,7 @@ class PackageRoundingTests(DeliveryExecutionBase):
         self.assertEqual(movement.quantity, Decimal('4.00'))
 
     def test_06_two_packages_for_five_kg(self):
-        """نیاز ۵ کیلو با بستهٔ ۴ کیلویی → ۲ بسته = ۸ کیلو."""
+        """مقدار تحویل در نبود بستهٔ باز برابر نیاز است، نه چند برابر آن."""
         queue = self._build_queue(self.raw_pack4, '5')
 
         services.execute_daily_delivery(queue_id=queue.pk, delivered_by=self.superuser)
@@ -261,7 +260,7 @@ class PackageRoundingTests(DeliveryExecutionBase):
         movement = StockMovement.objects.filter(
             raw_material=self.raw_pack4, movement_type='consumption'
         ).order_by('-id').first()
-        self.assertEqual(movement.quantity, Decimal('8.00'))
+        self.assertEqual(movement.quantity, Decimal('5.00'))
 
     def test_07_no_pack_size_delivers_exact_planned(self):
         """بدون pack_size → تحویل دقیقاً برابر مقدار برنامه."""
@@ -324,22 +323,31 @@ class StockSafetyTests(DeliveryExecutionBase):
         raw = self.raw_pack4
         StockMovement.objects.create(
             raw_material=raw, movement_type='consumption',
-            quantity=Decimal('48'), created_by=self.superuser, note='کاهش موجودی',
+            quantity=Decimal('46'), created_by=self.superuser, note='کاهش موجودی',
         )
         queue = self._build_queue(raw, '4')
         # موجودی ۲ کیلو، ولی یک بستهٔ کامل ۴ کیلو لازم است
         self.assertEqual(raw.current_stock, Decimal('2.00'))
 
+        result = services.execute_daily_delivery(
+            queue_id=queue.pk, delivered_by=self.superuser,
+        )
+        self.assertEqual(result.delivered_quantity, Decimal('2.00'))
+        self.assertEqual(result.status, 'partial')
+
+    def test_12_insufficient_stock_when_no_open_material_is_available(self):
+        raw = self.raw_pack4
+        StockMovement.objects.create(
+            raw_material=raw, movement_type='consumption',
+            quantity=Decimal('48'), created_by=self.superuser, note='تخلیه برای آزمون',
+        )
+        queue = self._build_queue(raw, '4')
         with self.assertRaises(HandoverError):
-            services.execute_daily_delivery(
-                queue_id=queue.pk, delivered_by=self.superuser,
-            )
+            services.execute_daily_delivery(queue_id=queue.pk, delivered_by=self.superuser)
+        self.assertEqual(StockMovement.objects.filter(
+            raw_material=raw, movement_type='consumption').count(), 1)
 
-        queue.refresh_from_db()
-        self.assertEqual(queue.status, 'pending')
-        self.assertEqual(queue.delivered_quantity, Decimal('0.00'))
-
-    def test_12_zero_planned_is_rejected(self):
+    def test_13_zero_planned_is_rejected(self):
         queue = self._build_queue(self.raw, '0')
 
         with self.assertRaises(HandoverError):
@@ -381,7 +389,7 @@ class IdempotencyTests(DeliveryExecutionBase):
     def test_14_duplicate_delivery_rejected(self):
         queue = self._build_queue(self.raw_pack4, '3')
 
-        services.execute_daily_delivery(queue_id=queue.pk, delivered_by=self.superuser)
+        services.execute_daily_delivery(queue_id=queue.pk, delivered_by=self.superuser, quantity='3')
         stock_after_first = self.raw_pack4.current_stock
         movements_after_first = StockMovement.objects.count()
 
@@ -401,7 +409,7 @@ class IdempotencyTests(DeliveryExecutionBase):
 
         first = self._post_delivery(queue)
         self.assertEqual(first.status_code, 200)
-        self.assertEqual(self.raw_pack4.current_stock, stock_before - Decimal('4.00'))
+        self.assertEqual(self.raw_pack4.current_stock, stock_before - Decimal('3.00'))
 
         second = self._post_delivery(queue)
         self.assertEqual(second.status_code, 400)
@@ -410,7 +418,7 @@ class IdempotencyTests(DeliveryExecutionBase):
         self.assertIn('قبلاً تحویل داده شده', payload['error'])
 
         # دقیقاً یک بار مصرف
-        self.assertEqual(self.raw_pack4.current_stock, stock_before - Decimal('4.00'))
+        self.assertEqual(self.raw_pack4.current_stock, stock_before - Decimal('3.00'))
         self.assertEqual(
             StockMovement.objects.filter(
                 raw_material=self.raw_pack4, movement_type='consumption'
@@ -468,13 +476,14 @@ class IdempotencyTests(DeliveryExecutionBase):
             )
         self.assertIn('یافت نشد', str(ctx.exception))
 
-    def test_19_service_accepts_controlled_partial_delivery(self):
-        """قابلیت تحویل کنترل‌شدهٔ جزئی باید حفظ شود (بدون UI جدید)."""
-        queue = self._build_queue(self.raw_pack4, '8')
+    def test_19_delivery_uses_planned_amount_with_no_open_remainder(self):
+        """
+        وقتی موجودی مضرب اندازهٔ بسته است، تحویل دقیقاً به اندازهٔ نیاز است.
+        """
+        queue = self._build_queue(self.raw_pack4, '2')
 
         services.execute_daily_delivery(
             queue_id=queue.pk, delivered_by=self.superuser,
-            items=[(1, Decimal('2'))],
         )
 
         queue.refresh_from_db()
@@ -482,8 +491,17 @@ class IdempotencyTests(DeliveryExecutionBase):
         movement = StockMovement.objects.filter(
             raw_material=self.raw_pack4, movement_type='consumption'
         ).order_by('-id').first()
-        # ۲ کیلو نیاز → یک بستهٔ ۴ کیلویی
-        self.assertEqual(movement.quantity, Decimal('4.00'))
+        self.assertEqual(movement.quantity, Decimal('2.00'))
+
+    def test_19b_delivery_service_rejects_a_legacy_items_argument(self):
+        """API قدیمی نباید بی‌صدا کار کند؛ خطای روشن بدهد."""
+        queue = self._build_queue(self.raw_pack4, '8')
+
+        with self.assertRaises(TypeError):
+            services.execute_daily_delivery(
+                queue_id=queue.pk, delivered_by=self.superuser,
+                items=[(1, Decimal('2'))],
+            )
 
 
 class AtomicityTests(DeliveryExecutionBase):
@@ -583,13 +601,23 @@ class DeliveryPermissionTests(DeliveryExecutionBase):
         queue.refresh_from_db()
         self.assertEqual(queue.status, 'delivered')
 
-    def test_26_success_message_is_persian(self):
+    def test_26_success_message_names_material_worker_and_amount(self):
+        """
+        پیام موفقیت باید به انباردار بگوید چه چیزی، به چه کسی و چقدر تحویل شد —
+        نه اینکه فقط بگوید «موفق بود».
+        """
         queue = self._build_queue(self.raw, '2')
 
         response = self._post_delivery(queue)
         payload = json.loads(response.content)
         self.assertEqual(payload['status'], 'delivered')
 
-        # پیام موفقیت فارسی از طریق messages framework ثبت شده است
-        messages = [str(m) for m in response.wsgi_request._messages]
-        self.assertTrue(any('موفقیت' in m for m in messages), messages)
+        stored = [str(m) for m in response.wsgi_request._messages]
+        self.assertTrue(
+            any(
+                queue.raw_material.name in m
+                and queue.worker.get_full_name() in m
+                for m in stored
+            ),
+            stored,
+        )

@@ -81,7 +81,7 @@ class ClosingBase(TestCase):
 
         for raw in (cls.raw, cls.raw_b):
             PaintingMaterialRequirement.objects.create(
-                process=cls.process, raw_material=raw, product=cls.product,
+                process=cls.process, stage=cls.stage, raw_material=raw, product=cls.product,
                 color_part='بدنه', consumption_per_unit=Decimal('1.000'),
             )
             StockMovement.objects.create(
@@ -307,7 +307,6 @@ class ClosingReadOnlyTests(ClosingBase):
                 queue.returned_quantity, queue.actual_consumption,
                 queue.excess_consumption, queue.status,
                 queue.has_plan_conflict, queue.conflict_note,
-                queue.updated_at,
             )
             for queue in DailyMaterialQueue.objects.all()
         }
@@ -405,9 +404,9 @@ class ClosingViewTests(ClosingBase):
     def test_18_empty_day_renders(self):
         response = self._get()
         self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, 'inventory/daily_closing.html')
+        self.assertTemplateUsed(response, 'inventory/closing.html')
         self.assertTrue(response.context['control']['closable'])
-        self.assertContains(response, 'قابل بستن')
+        self.assertContains(response, 'همه‌چیز کامل است')
 
     def test_19_day_with_problems_shows_needs_review(self):
         self._task(quantity=2)
@@ -415,7 +414,7 @@ class ClosingViewTests(ClosingBase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context['control']['status'], 'needs_review')
-        self.assertContains(response, 'نیازمند بررسی')
+        self.assertContains(response, 'باید قبل از بستن روز بررسی شود')
         self.assertContains(response, 'ناقص')
 
     def test_20_problem_rows_are_listed(self):
@@ -481,15 +480,18 @@ class ClosingViewTests(ClosingBase):
         response = self._get({'material': str(self.raw_b.pk)})
         self.assertEqual(response.context['summary']['total_planned'], Decimal('2.00'))
 
-    def test_26_totals_are_rendered(self):
+    def test_26_compact_closing_state_is_rendered_without_legacy_totals(self):
         self._task(quantity=2)
         for queue in self._day_queues():
             self._deliver(queue)
         self._return(self._day_queues()[0], '0.50')
 
         response = self._get()
-        self.assertContains(response, '4.00')   # مجموع برنامه و تحویل
-        self.assertContains(response, '0.50')   # مجموع برگشت
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'بستن روز')
+        # خلاصه‌های جدولی حذف شده‌اند؛ اطلاعات کنترل مهم به صورت کارت ارائه می‌شود.
+        self.assertContains(response, 'inventory-item-card')
+        self.assertNotContains(response, '<table')
 
     def test_27_navigation_link_exists(self):
         response = self._get()
