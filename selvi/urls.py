@@ -38,6 +38,7 @@ urlpatterns = [
     ),
     path('', include('product.urls')),
     path('inventory/', include('inventory.urls')),
+    path('cutting/', include('cutting.urls')),
     path('craftflow-ai/', include('craftflow_ai.urls')),
     # ابزار تغییر طول قطعه CNC
     path('cnc/', include('cnc_resizer.urls')),

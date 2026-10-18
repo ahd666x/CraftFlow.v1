@@ -1,0 +1,51 @@
+{% extends 'base.html' %}
+{% block title %}سیاست مصرف ورق{% endblock %}
+{% block content %}
+<div class="container-fluid py-4" dir="rtl">
+  <h1 class="mb-3">سیاست مصرف موجودی</h1>
+  {% include 'cutting/_inventory_nav.html' %}
+  {% include 'cutting/_messages.html' %}
+
+  <section class="card mb-4" aria-labelledby="strategy-title">
+    <div class="card-header"><h2 class="h5 mb-0" id="strategy-title">ترتیب انتخاب ورق‌ها</h2></div>
+    <div class="card-body">
+      <form method="post">{% csrf_token %}
+        <fieldset><legend class="visually-hidden">انتخاب سیاست مصرف</legend>
+          <div class="row g-3">
+            <div class="col-12 col-lg-4"><input class="btn-check" type="radio" name="strategy" id="strategy-offcuts-first" value="offcuts_first" {% if setting.strategy == 'offcuts_first' %}checked{% endif %} required><label class="card strategy-option h-100 w-100 text-start" for="strategy-offcuts-first"><div class="card-body"><h3 class="h5">ابتدا پرت</h3><p class="mb-2">پرت‌های سازگار را زودتر مصرف می‌کند، سپس سراغ ورق کامل می‌رود.</p><div class="small text-muted">مثال: اگر یک پرت برای قطعه کافی باشد، ورق کامل دست‌نخورده می‌ماند.</div></div></label></div>
+            <div class="col-12 col-lg-4"><input class="btn-check" type="radio" name="strategy" id="strategy-full-only" value="full_only" {% if setting.strategy == 'full_only' %}checked{% endif %}><label class="card strategy-option h-100 w-100 text-start" for="strategy-full-only"><div class="card-body"><h3 class="h5">فقط ورق کامل</h3><p class="mb-2">در برنامه‌ی جدید فقط از ورق کامل استفاده می‌کند.</p><div class="small text-muted">مثال: پرت‌های موجود تا تصمیم بعدی در انبار محفوظ می‌مانند.</div></div></label></div>
+            <div class="col-12 col-lg-4"><input class="btn-check" type="radio" name="strategy" id="strategy-priority" value="priority" {% if setting.strategy == 'priority' %}checked{% endif %}><label class="card strategy-option h-100 w-100 text-start" for="strategy-priority"><div class="card-body"><h3 class="h5">اولویت دستی</h3><p class="mb-2">اولویت عددی هر ردیف موجودی را مبنای انتخاب می‌گیرد.</p><div class="small text-muted">مثال: مقدار 1 پیش از مقدار 100 انتخاب می‌شود.</div></div></label></div>
+          </div>
+        </fieldset>
+        <button class="btn btn-primary mt-3">ذخیره سیاست</button>
+      </form>
+    </div>
+  </section>
+
+  <section class="card mb-4" aria-labelledby="default-kerf-title">
+    <div class="card-header"><h2 class="h5 mb-0" id="default-kerf-title">ضخامت تیغه پیش‌فرض</h2></div>
+    <div class="card-body">
+      <p class="text-muted">این مقدار در صف برش به‌عنوان پیش‌فرض قرار می‌گیرد؛ اپراتور می‌تواند آن را برای یک برنامه تغییر دهد.</p>
+      <form method="post" class="row g-2 align-items-end">{% csrf_token %}<input type="hidden" name="action" value="save_kerf">
+        <div class="col-sm-4 col-md-3"><label class="form-label" for="default-kerf">ضخامت تیغه (mm)</label><input class="form-control" id="default-kerf" name="default_kerf" type="number" min="0" max="999.9" step="0.1" value="{{ setting.default_kerf }}" required></div>
+        <div class="col-sm-auto"><button class="btn btn-primary">ذخیره تیغه</button></div>
+      </form>
+    </div>
+  </section>
+
+  {% if setting.strategy == 'priority' %}
+  <section class="card" aria-labelledby="priorities-title">
+    <div class="card-header"><h2 class="h5 mb-0" id="priorities-title">اولویت ردیف‌های موجودی (عدد کمتر = زودتر)</h2></div>
+    <form method="post">{% csrf_token %}<input type="hidden" name="action" value="save_priorities">
+      <div class="table-responsive"><table class="table align-middle mb-0"><thead><tr><th scope="col">متریال</th><th scope="col">نوع</th><th scope="col">ابعاد (mm)</th><th scope="col">تعداد</th><th scope="col">اولویت</th></tr></thead><tbody>
+        {% for s in stock %}<tr><td>{{ s.material.name }}<div class="small text-muted">{{ s.material.thickness }} mm</div></td><td>{% if s.is_offcut %}<span class="badge bg-warning text-dark">پرت</span>{% else %}<span class="badge bg-primary">کامل</span>{% endif %}</td><td>{{ s.width }}×{{ s.height }}</td><td>{{ s.quantity }}</td><td><input class="form-control priority-input" type="number" step="1" name="priority_{{ s.pk }}" id="priority-{{ s.pk }}" value="{{ s.priority }}" aria-label="اولویت {{ s.material.name }} {{ s.width }}×{{ s.height }}"></td></tr>
+        {% empty %}<tr><td colspan="5" class="text-muted">موجودی فعال وجود ندارد.</td></tr>{% endfor %}
+      </tbody></table></div>
+      <div class="card-footer"><button class="btn btn-primary">ذخیره همه</button></div>
+    </form>
+  </section>
+  {% else %}
+  <div class="alert alert-info">جدول اولویت دستی فقط وقتی سیاست مصرف «اولویت دستی» انتخاب شده باشد نمایش داده می‌شود.</div>
+  {% endif %}
+</div>
+{% endblock %}
