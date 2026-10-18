@@ -1,0 +1,246 @@
+def planner(request):
+    materials = Material.objects.all().order_by('name')
+    if request.method == 'POST' and request.POST.get('action') == 'plan':
+        order_ids = request.POST.getlist('order_ids')
+        cnc_sheet_mode = request.POST.get('planning_mode') == 'cnc_sheets'
+        cnc_sheet_plans = []
+        cnc_issues = []
+        try:
+            kerf = Decimal(request.POST.get('kerf', str(CuttingSettings.current().default_kerf)))
+            if not kerf.is_finite() or kerf < 0 or kerf.quantize(MM) != kerf:
+                raise ValueError('ضخامت تیغه باید صفر یا عدد مثبت با حداکثر یک رقم اعشار باشد.')
+        except (InvalidOperation, ValueError):
+            messages.error(request, 'مقدار تیغه معتبر نیست.'); return redirect('cutting:planner')
+        if not order_ids:
+            messages.error(request, 'برای برنامه‌ریزی دست‌کم یک سفارش انتخاب کنید.'); return redirect('cutting:planner')
+        if cnc_sheet_mode:
+            try:
+                from cnc_resizer.anomaly_report import find_unusual_parts
+                unusual = find_unusual_parts(order_ids=order_ids)
+                cnc_unusual = [row for row in unusual if (row['routing_code'] or '').strip().lower().split('.')[0:1] == ['cnc']]
+                if cnc_unusual:
+                    preview = '، '.join(
+                        f"{row['part_name']} ({row['length']}×{row['width']})" for row in cnc_unusual[:5]
+                    )
+                    suffix = f' و {len(cnc_unusual) - 5} مورد دیگر' if len(cnc_unusual) > 5 else ''
+                    messages.warning(request, f'قطعات غیرمعمول نیازمند بررسی: {preview}{suffix}')
+                from cnc_resizer.sheet_nesting import create_cnc_sheet_plans
+                cnc_sheet_plans, cnc_issues = create_cnc_sheet_plans(
+                    order_ids, request.user, kerf=kerf,
+                )
+                if cnc_sheet_plans:
+                    messages.success(request, f'{len(cnc_sheet_plans)} فایل G-code برای ورق‌های CNC ساخته شد.')
+                if cnc_issues:
+                    messages.warning(request, f'{len(cnc_issues)} قطعه به‌دلیل خطا از برنامه عبور داده شد؛ فهرست خطاها در صفحه خروجی‌های ورق CNC ثبت شده است.')
+            except (ValueError, OSError) as exc:
+                messages.error(request, str(exc)); return redirect('cutting:planner')
+            except Exception as exc:
+                # The CNC resolver raises a domain error when an operator has
+                # not yet approved the per-part CNC profile. Never expose a
+                # traceback from the planning screen in that case.
+                from cnc_resizer.services import CncResolutionError
+                if isinstance(exc, CncResolutionError):
+                    messages.error(
+                        request,
+                        f'{exc} — ابتدا از صفحهٔ اسکن قطعه، الگوی CNC را ثبت و تأیید کنید.',
+                    )
+                    return redirect('cutting:planner')
+                raise
+        try:
+            with transaction.atomic():
+                task_query = ProductionTask.objects.select_for_update().filter(
+                    order_id__in=order_ids, station_name='cut', status='pending', part__isnull=False,
+                    quantity__gt=F('completed_quantity'),
+                )
+                if cnc_sheet_mode:
+                    task_query = task_query.exclude(part__routing_code__iregex=r'^\s*cnc(?:\.|$)')
+                tasks = list(task_query.select_related('part__material', 'order', 'order__customer').order_by('pk'))
+                if not tasks:
+                    if cnc_sheet_plans or cnc_issues:
+                        return redirect('cnc_resizer:sheet_plans')
+                    raise ValueError('قطعه آماده برش برای سفارش‌های انتخاب‌شده پیدا نشد.')
+                task_ids = [task.pk for task in tasks]
+                if CutPlanTask.objects.filter(task_id__in=task_ids, plan__status='planned').exists():
+                    raise ValueError('برخی از تسک‌ها هم‌اکنون در برنامه برش دیگری رزرو هستند.')
+                settings_row = CuttingSettings.current()
+                stock_qs = SheetStock.objects.select_for_update().filter(active=True, quantity__gt=0, material_id__in={t.part.material_id for t in tasks})
+                if settings_row.strategy == 'full_only':
+                    stock_qs = stock_qs.filter(is_offcut=False)
+                stock_rows = list(stock_qs.select_related('material').order_by('priority', 'is_offcut', 'width', 'height', 'pk'))
+                reserved = _reserved_counts([s.pk for s in stock_rows])
+                stock_by_id = {s.pk: s for s in stock_rows}
+                available = []
+                for stock in stock_rows:
+                    for _ in range(max(0, stock.quantity - reserved[stock.pk])):
+                        available.append({
+                            'stock_id': stock.pk, 'width': stock.width, 'height': stock.height,
+                            'is_offcut': stock.is_offcut, 'priority': stock.priority,
+                            'grain': stock.grain, 'label': f'{stock.material.name} {stock.width}×{stock.height}',
+                        })
+                grouped = defaultdict(list)
+                for task in tasks:
+                    part = task.part
+                    if part.length <= 0 or part.width <= 0:
+                        from cnc_resizer.models import CncPlanningIssue
+                        CncPlanningIssue.objects.create(
+                            task=task, order=task.order, part=part, mode='standard',
+                            reason=f'ابعاد قطعه «{part.name or part.f3}» باید مثبت باشند.',
+                            details={'stage': 'dimensions'}, created_by=request.user,
+                        )
+                        continue
+                    remaining_quantity = task.quantity - task.completed_quantity
+                    for _ in range(remaining_quantity):
+                        grouped[part.material_id].append({
+                            # CUT convention: X = Part.length, Y = Part.width.
+                            # The CNC G-code generator uses a separate Y=length convention.
+                            'width': part.length, 'height': part.width,
+                            'orig_width': part.length, 'orig_height': part.width,
+                            'turn': part.turn, 'grain': part.grain, 'f2': part.f2 or part.name,
+                            'f3': part.f3, 'routing': part.routing_code, 'order': str(task.order_id),
+                            'customer': str(task.order.customer), 'label': f'{part.name} / سفارش {task.order_id}',
+                            'uid': len(grouped[part.material_id]), 'task_id': task.pk,
+                        })
+                rows = []
+                from cnc_resizer.models import CncPlanningIssue
+                for material_id, parts in grouped.items():
+                    material = next(task.part.material for task in tasks if task.part.material_id == material_id)
+                    material_stock = [item for item in available if stock_by_id[item['stock_id']].material_id == material_id]
+                    if not material_stock:
+                        for task_id in {piece['task_id'] for piece in parts}:
+                            task = next(task for task in tasks if task.id == task_id)
+                            CncPlanningIssue.objects.create(
+                                task=task, order=task.order, part=task.part, mode='standard',
+                                reason=f'برای متریال «{material.name}» ورق آزاد موجود نیست.',
+                                details={'stage': 'stock'}, created_by=request.user,
+                            )
+                        continue
+                    remaining = list(parts)
+                    layouts = []
+                    while remaining:
+                        try:
+                            layouts = optimize(remaining, material_stock, kerf, policy=settings_row.strategy)
+                            break
+                        except (ValueError, TypeError) as exc:
+                            candidate = next(
+                                (piece for piece in remaining if piece.get('label', '') in str(exc)),
+                                remaining[-1],
+                            )
+                            bad_task_id = candidate['task_id']
+                            removed = [piece for piece in remaining if piece['task_id'] == bad_task_id]
+                            remaining = [piece for piece in remaining if piece['task_id'] != bad_task_id]
+                            task = next(task for task in tasks if task.id == bad_task_id)
+                            CncPlanningIssue.objects.create(
+                                task=task, order=task.order, part=task.part, mode='standard',
+                                reason=str(exc), details={'stage': 'nesting', 'quantity': len(removed)},
+                                created_by=request.user,
+                            )
+                    for layout in layouts:
+                        layout['expected_offcuts'] = expected_offcuts(layout, kerf)
+                    if layouts:
+                        rows.append({
+                            'type': material.name.replace(' ', '-'), 'thickness': str(material.thickness),
+                            'sheets': layouts, 'shapes': remaining, 'material_id': material_id,
+                        })
+                planned_quantities = Counter()
+                for row in rows:
+                    for layout in row['sheets']:
+                        for piece in layout['parts']:
+                            if piece.get('task_id') is not None:
+                                planned_quantities[int(piece['task_id'])] += 1
+                orders = list(Order.objects.filter(pk__in=order_ids))
+                plan = CutPlan.objects.create(created_by=request.user, plan_data={'rows': [], 'kerf': str(kerf), 'policy': settings_row.strategy})
+                plan.orders.set(orders)
+                for task in tasks:
+                    if not planned_quantities[task.pk]:
+                        continue
+                    CutPlanTask.objects.create(
+                        plan=plan, task=task, quantity=planned_quantities[task.pk],
+                        task_quantity=task.quantity, completed_before=task.completed_quantity,
+                    )
+                layout_index = defaultdict(int)
+                for row in rows:
+                    for layout in row['sheets']:
+                        stock_data = layout['sheet']
+                        source = stock_by_id[stock_data['stock_id']]
+                        index = layout_index[row['material_id']]
+                        layout_index[row['material_id']] += 1
+                        sheet_record = CutPlanSheet.objects.create(
+                            plan=plan, source_stock=source, material_id=row['material_id'],
+                            layout_index=index, width=source.width, height=source.height,
+                            was_offcut=source.is_offcut,
+                        )
+                        stock_data['plan_sheet_id'] = sheet_record.pk
+                        pieces_by_task = Counter(
+                            int(piece['task_id']) for piece in layout['parts']
+                            if piece.get('task_id') is not None
+                        )
+                        for task_id, quantity in pieces_by_task.items():
+                            CutPlanSheetTask.objects.create(
+                                plan_sheet=sheet_record, task_id=task_id, quantity=quantity,
+                            )
+                        _event(stock=source, event_type='reserve', user=request.user, plan=plan, note=f'رزرو در برنامه #{plan.pk}')
+                plan.plan_data = _json_safe({'rows': rows, 'kerf': kerf, 'policy': settings_row.strategy})
+                plan.save(update_fields=('plan_data',))
+            return redirect('cutting:plan_detail', plan_id=plan.pk)
+        except ValueError as exc:
+            messages.error(request, str(exc)); return redirect('cutting:planner')
+    reserved_order_ids = CutPlanTask.objects.filter(plan__status='planned').values('task__order_id')
+    available_tasks = ProductionTask.objects.filter(
+        station_name='cut', status='pending', part__isnull=False,
+        quantity__gt=F('completed_quantity'), order__isnull=False,
+    ).exclude(order_id__in=reserved_order_ids)
+    order_qs = Order.objects.filter(pk__in=available_tasks.values('order_id')).select_related('customer')
+    status_filter = request.GET.get('status', '')
+    valid_statuses = dict(Order.ORDER_STATUS)
+    if status_filter in valid_statuses:
+        order_qs = order_qs.filter(status=status_filter)
+    query = request.GET.get('q', '').strip()
+    if query:
+        search = Q(customer__name__icontains=query) | Q(number__icontains=query)
+        if query.isdigit():
+            search |= Q(pk=int(query))
+        order_qs = order_qs.filter(search)
+    orders = list(order_qs.annotate(
+        cut_task_count=Count('tasks', filter=Q(tasks__pk__in=available_tasks), distinct=True),
+        remaining_pieces=Sum(
+            F('tasks__quantity') - F('tasks__completed_quantity'),
+            filter=Q(tasks__pk__in=available_tasks),
+        ),
+    ).order_by('priority', F('due_date').asc(nulls_last=True), '-id'))
+    needs_queryset = available_tasks.filter(
+        order_id__in=[order.pk for order in orders],
+    ).select_related('part__material', 'order', 'order__customer').order_by('order_id', 'part__name', 'pk')
+    needs_page = Paginator(needs_queryset, 50).get_page(request.GET.get('needs_page'))
+    for task in needs_page.object_list:
+        task.remaining_quantity = max(0, task.quantity - task.completed_quantity)
+        task.needs_validation_error = (
+            'ابعاد نامعتبر' if task.part.length <= 0 or task.part.width <= 0 else ''
+        )
+    material_names = defaultdict(list)
+    if orders:
+        material_rows = available_tasks.filter(order_id__in=[order.pk for order in orders]).values(
+            'order_id', 'part__material__name',
+        ).distinct().order_by('part__material__name')
+        for material_row in material_rows:
+            material_names[material_row['order_id']].append(material_row['part__material__name'])
+        for order in orders:
+            order.cut_material_names = material_names[order.pk]
+            today_jalali = jdatetime.date.fromgregorian(date=timezone.localdate())
+            order.cut_is_overdue = bool(order.due_date and order.due_date < today_jalali)
+    active_plans = CutPlan.objects.filter(status='planned').annotate(
+        reserved_sheet_count=Count('planned_sheets', distinct=True),
+    ).prefetch_related('orders').order_by('-created_at')[:10]
+    setting = CuttingSettings.current()
+    needs_pagination_params = request.GET.copy()
+    needs_pagination_params.pop('needs_page', None)
+    return render(request, 'cutting/planner.html', {
+        'materials': materials, 'orders': orders, 'setting': setting,
+        'order_statuses': Order.ORDER_STATUS, 'status_filter': status_filter, 'query': query,
+        'active_plans': active_plans,
+        'needs_page': needs_page,
+        'needs_pagination_query': needs_pagination_params.urlencode(),
+    })
+
+
+@cutting_operator
+@require_GET
