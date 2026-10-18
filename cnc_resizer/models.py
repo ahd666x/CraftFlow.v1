@@ -2,6 +2,53 @@ from django.conf import settings
 from django.db import models
 
 
+class CncControllerProfile(models.Model):
+    """Auditable controller declaration; approval alone does not create an adapter."""
+    key = models.SlugField(max_length=80, unique=True)
+    manufacturer = models.CharField(max_length=120)
+    model = models.CharField(max_length=120)
+    firmware_version = models.CharField(max_length=120, blank=True)
+    adapter_key = models.CharField(max_length=100, blank=True)
+    supported_g_codes = models.JSONField(default=list, blank=True)
+    supported_m_codes = models.JSONField(default=list, blank=True)
+    validated_source_sha256 = models.JSONField(default=list, blank=True)
+    validation_evidence = models.TextField(blank=True)
+    active = models.BooleanField(default=False)
+    approved = models.BooleanField(default=False)
+    approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                                    related_name="approved_cnc_controller_profiles")
+    approved_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ("manufacturer", "model", "key")
+        verbose_name = "پروفایل کنترلر CNC"
+        verbose_name_plural = "پروفایل‌های کنترلر CNC"
+
+    @property
+    def governance_ready(self):
+        return bool(
+            self.active and self.approved and self.approved_by_id and self.approved_at
+            and self.validation_evidence.strip()
+            and isinstance(self.validated_source_sha256, list) and self.validated_source_sha256
+        )
+
+    @property
+    def postprocessor_config(self):
+        return {
+            "approved": self.governance_ready,
+            "adapter_key": self.adapter_key,
+            "validated_source_sha256": self.validated_source_sha256,
+            "supported_g_codes": self.supported_g_codes,
+            "supported_m_codes": self.supported_m_codes,
+            "supported_compact_tokens": [],
+        }
+
+    def __str__(self):
+        return f"{self.manufacturer} {self.model} ({self.firmware_version or 'firmware unknown'})"
+
+
 class CncFile(models.Model):
     KIND_BASE = "base"
     KIND_DERIVED = "derived"
@@ -27,6 +74,10 @@ class CncFile(models.Model):
     length_after = models.DecimalField(max_digits=10, decimal_places=3, null=True, blank=True)
     resizable = models.BooleanField(default=False, verbose_name="قابل تغییر اندازه")
     validation_error = models.TextField(blank=True, verbose_name="خطای اعتبارسنجی")
+    controller_profile = models.ForeignKey(
+        CncControllerProfile, null=True, blank=True, on_delete=models.PROTECT,
+        related_name="cnc_files", verbose_name="پروفایل کنترلر تأییدشده",
+    )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True,
@@ -144,3 +195,24 @@ class CncPlanningIssue(models.Model):
 
     def __str__(self):
         return f"خطای CNC تسک {self.task_id or '-'}: {self.reason[:60]}"
+
+
+class CncEngineeringProfile(models.Model):
+    """Private, source-hash-bound persistent rules for the reverse-engineering workbench."""
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                              related_name="cnc_engineering_profiles")
+    source_sha256 = models.CharField(max_length=64, db_index=True)
+    filename = models.CharField(max_length=255, blank=True)
+    profile = models.JSONField(default=dict)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("-updated_at",)
+        constraints = [models.UniqueConstraint(fields=("owner", "source_sha256"),
+                                               name="cnc_eng_profile_owner_source_uniq")]
+        verbose_name = "پروفایل مهندسی CNC"
+        verbose_name_plural = "پروفایل‌های مهندسی CNC"
+
+    def __str__(self):
+        return f"CNC profile {self.source_sha256[:12]} — {self.owner_id}"

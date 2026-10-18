@@ -135,48 +135,19 @@ def resolve_cnc_file(part, created_by=None):
 
     if profile.get('axis', 'length') != 'length':
         raise CncResolutionError('محور CNC انتخاب‌شده پشتیبانی نمی‌شود؛ Y باید به Part.length نگاشت شود')
-    params = {
-        'mode': profile.get('mode', 'equal'),
-        'delta': float(delta),
-        'symmetric': bool(profile.get('symmetric', True)),
-    }
-    for key in ('enabled', 'manual', 'tool_dia'):
-        if key in profile:
-            params[key] = profile[key]
-    source_params = dict(params)
-    source_params['source_sha256'] = base_record.sha256
-    source_params['axis'] = 'length'
-
     with open(base_record.path, 'rb') as stream:
         source_text = stream.read(core.MAX_BYTES + 1).decode('utf-8-sig')
-    result = core.process(source_text, params)
-    actual_delta = Decimal(str(result['length_after'])) - Decimal(str(result['length_before']))
-    if abs(actual_delta - delta) > Decimal('0.1'):
-        raise CncResolutionError(
-            f"delta فایل CNC با مقدار خواسته‌شده برابر نیست: {actual_delta} در برابر {delta}"
-        )
-
-    extension = getattr(settings, 'CNC_FILE_EXTENSION', '.cnc')
-    key = canonical_barcode_key(part.f3)
-    digest = _sha256(result['cnc_text'].encode('utf-8'))
-    filename = f"{key}.derived-{digest[:12]}{extension}"
-    path = os.path.join(str(getattr(settings, 'CNC_SOURCE_DIR', '')), filename)
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, 'w', encoding='utf-8', newline='') as stream:
-        stream.write(result['cnc_text'])
-    record, _ = CncFile.objects.update_or_create(
-        barcode_key=key,
-        sha256=digest,
-        kind=CncFile.KIND_DERIVED,
-        defaults={
-            'path': path,
-            'source_file': base_record,
-            'params': source_params,
-            'length_before': result['length_before'],
-            'length_after': result['length_after'],
-            'resizable': True,
-            'validation_error': '',
-            'created_by': created_by,
-        },
-    )
-    return record
+    from .engine.parser import ParseError, parse_program
+    from .engine.postprocessor import execution_gate
+    try:
+        parsed_source = parse_program(source_text, filename=base_record.barcode_key)
+    except ParseError as exc:
+        raise CncResolutionError(f"فایل CNC در موتور جدید قابل تجزیه نیست: {exc}") from exc
+    controller = base_record.controller_profile
+    controller_config = controller.postprocessor_config if controller else None
+    gate = execution_gate(parsed_source, controller_config, source_sha256=base_record.sha256)
+    if not gate["allowed"]:
+        raise CncResolutionError("تولید فایل مشتق CNC مسدود است: " + "; ".join(gate["reasons"]))
+    # A registry adapter is required to serialize transformed IR. The legacy
+    # text-rewriter remains preview-only and is not allowed to write a file.
+    raise CncResolutionError("تولید فایل مشتق غیرفعال است؛ آداپتر پست‌پروسسور تأییدشده هنوز ثبت نشده است.")

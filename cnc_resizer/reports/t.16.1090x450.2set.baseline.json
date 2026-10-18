@@ -1,0 +1,944 @@
+{
+  "schema_version": "1.1",
+  "report_type": "target_cnc_read_only_baseline",
+  "input": {
+    "filename": "t.16.1090x450.2set.cnc",
+    "sha256_raw_bytes": "375103b2377b21a1083baf57a6035b23b06d98df97255a715f50fe5890d8d7c5",
+    "bytes": 5793,
+    "line_count": 309,
+    "source_text_modified": false,
+    "source_program_included": false
+  },
+  "safety": {
+    "read_only": true,
+    "machine_output_written": false,
+    "resized_program_generated": false,
+    "safe_for_execution": false,
+    "controller_identified": false
+  },
+  "legacy_core_baseline": {
+    "detect_geometry": {
+      "ok": true,
+      "hole_levels": 2,
+      "edge_lo": 6.542,
+      "edge_hi": 1083.458
+    },
+    "zero_delta_baseline": {
+      "ok": true,
+      "resizable": true,
+      "length_before": 1084.916,
+      "length_after": 1084.916,
+      "gap_count": 3,
+      "hole_count": 4,
+      "contour_count": 6,
+      "zero_delta_text_identical": true,
+      "output_written": false
+    }
+  },
+  "legacy_detector": {
+    "large_blocks": [
+      "block-0004",
+      "block-0005",
+      "block-0010"
+    ],
+    "last_large_block_would_be_selected": "block-0010",
+    "selection_is_heuristic": true
+  },
+  "modal_and_commands": {
+    "units": "unspecified",
+    "coordinate_mode": "absolute",
+    "coordinate_system": "G54",
+    "plane_explicit": null,
+    "observed_g_codes": [
+      "G0",
+      "G1",
+      "G2",
+      "G3",
+      "G43",
+      "G53",
+      "G54",
+      "G90"
+    ],
+    "observed_m_codes": [
+      "M141",
+      "M3",
+      "M30",
+      "M6"
+    ],
+    "tools": [
+      2,
+      3
+    ],
+    "h_registers": [
+      {
+        "value": 3.0,
+        "source_line": 7
+      },
+      {
+        "value": 2.0,
+        "source_line": 269
+      }
+    ],
+    "feeds": [
+      10000.0,
+      12000.0
+    ],
+    "spindle_values": [
+      15000.0,
+      16000.0
+    ],
+    "unknown_g_codes": [],
+    "unknown_m_codes": [
+      {
+        "code": "M141",
+        "source_lines": [
+          5
+        ]
+      }
+    ],
+    "compact_controller_tokens": [
+      {
+        "token": "M6T2",
+        "source_lines": [
+          268
+        ]
+      },
+      {
+        "token": "M6T3",
+        "source_lines": [
+          6
+        ]
+      }
+    ],
+    "machine_coordinate_source_lines": [
+      307,
+      308
+    ]
+  },
+  "parser_summary": {
+    "line_count": 309,
+    "move_count": 299,
+    "path_block_count": 11,
+    "arc_count": 32,
+    "source_sha256_utf8_text": "375103b2377b21a1083baf57a6035b23b06d98df97255a715f50fe5890d8d7c5"
+  },
+  "blocks": [
+    {
+      "block_id": "block-0001",
+      "source_line_start": 8,
+      "source_line_end": 20,
+      "move_count": 11,
+      "linear_count": 11,
+      "arc_count": 0,
+      "depth_min": -7.0,
+      "depth_max": -7.0,
+      "depth_values": [
+        -7.0
+      ],
+      "tools": [
+        3
+      ],
+      "bounds": {
+        "x_min": 32.167,
+        "y_min": -2.0,
+        "x_max": 49.167,
+        "y_max": 1092.0,
+        "width": 17.0,
+        "height": 1094.0,
+        "quality": "linear_endpoints"
+      },
+      "closed": false,
+      "unresolved_moves": [],
+      "connectivity_errors": []
+    },
+    {
+      "block_id": "block-0002",
+      "source_line_start": 21,
+      "source_line_end": 33,
+      "move_count": 11,
+      "linear_count": 11,
+      "arc_count": 0,
+      "depth_min": -14.0,
+      "depth_max": -14.0,
+      "depth_values": [
+        -14.0
+      ],
+      "tools": [
+        3
+      ],
+      "bounds": {
+        "x_min": 32.167,
+        "y_min": -2.0,
+        "x_max": 49.167,
+        "y_max": 1092.0,
+        "width": 17.0,
+        "height": 1094.0,
+        "quality": "linear_endpoints"
+      },
+      "closed": false,
+      "unresolved_moves": [],
+      "connectivity_errors": []
+    },
+    {
+      "block_id": "block-0003",
+      "source_line_start": 34,
+      "source_line_end": 45,
+      "move_count": 10,
+      "linear_count": 10,
+      "arc_count": 0,
+      "depth_min": -14.0,
+      "depth_max": -7.0,
+      "depth_values": [
+        -14.0,
+        -7.0
+      ],
+      "tools": [
+        3
+      ],
+      "bounds": {
+        "x_min": 437.614,
+        "y_min": 222.183,
+        "x_max": 438.114,
+        "y_max": 867.817,
+        "width": 0.5,
+        "height": 645.634,
+        "quality": "linear_endpoints"
+      },
+      "closed": true,
+      "unresolved_moves": [],
+      "connectivity_errors": []
+    },
+    {
+      "block_id": "block-0004",
+      "source_line_start": 46,
+      "source_line_end": 142,
+      "move_count": 95,
+      "linear_count": 95,
+      "arc_count": 0,
+      "depth_min": -7.0,
+      "depth_max": -7.0,
+      "depth_values": [
+        -7.0
+      ],
+      "tools": [
+        3
+      ],
+      "bounds": {
+        "x_min": 32.167,
+        "y_min": 223.0,
+        "x_max": 447.513,
+        "y_max": 867.0,
+        "width": 415.346,
+        "height": 644.0,
+        "quality": "linear_endpoints"
+      },
+      "closed": false,
+      "unresolved_moves": [],
+      "connectivity_errors": []
+    },
+    {
+      "block_id": "block-0005",
+      "source_line_start": 143,
+      "source_line_end": 239,
+      "move_count": 95,
+      "linear_count": 95,
+      "arc_count": 0,
+      "depth_min": -14.0,
+      "depth_max": -14.0,
+      "depth_values": [
+        -14.0
+      ],
+      "tools": [
+        3
+      ],
+      "bounds": {
+        "x_min": 32.167,
+        "y_min": 223.0,
+        "x_max": 447.513,
+        "y_max": 867.0,
+        "width": 415.346,
+        "height": 644.0,
+        "quality": "linear_endpoints"
+      },
+      "closed": false,
+      "unresolved_moves": [],
+      "connectivity_errors": []
+    },
+    {
+      "block_id": "block-0006",
+      "source_line_start": 240,
+      "source_line_end": 246,
+      "move_count": 5,
+      "linear_count": 1,
+      "arc_count": 4,
+      "depth_min": -12.0,
+      "depth_max": -12.0,
+      "depth_values": [
+        -12.0
+      ],
+      "tools": [
+        3
+      ],
+      "bounds": {
+        "x_min": 107.167,
+        "y_min": 147.5,
+        "x_max": 111.167,
+        "y_max": 151.5,
+        "width": 4.0,
+        "height": 4.0,
+        "quality": "assumed_g17_projected_arc_bounds"
+      },
+      "closed": true,
+      "unresolved_moves": [],
+      "connectivity_errors": []
+    },
+    {
+      "block_id": "block-0007",
+      "source_line_start": 247,
+      "source_line_end": 253,
+      "move_count": 5,
+      "linear_count": 1,
+      "arc_count": 4,
+      "depth_min": -12.0,
+      "depth_max": -12.0,
+      "depth_values": [
+        -12.0
+      ],
+      "tools": [
+        3
+      ],
+      "bounds": {
+        "x_min": 257.167,
+        "y_min": 147.499,
+        "x_max": 261.167,
+        "y_max": 151.499,
+        "width": 4.0,
+        "height": 4.0,
+        "quality": "assumed_g17_projected_arc_bounds"
+      },
+      "closed": true,
+      "unresolved_moves": [],
+      "connectivity_errors": []
+    },
+    {
+      "block_id": "block-0008",
+      "source_line_start": 254,
+      "source_line_end": 260,
+      "move_count": 5,
+      "linear_count": 1,
+      "arc_count": 4,
+      "depth_min": -12.0,
+      "depth_max": -12.0,
+      "depth_values": [
+        -12.0
+      ],
+      "tools": [
+        3
+      ],
+      "bounds": {
+        "x_min": 257.167,
+        "y_min": 938.499,
+        "x_max": 261.167,
+        "y_max": 942.499,
+        "width": 4.0,
+        "height": 4.0,
+        "quality": "assumed_g17_projected_arc_bounds"
+      },
+      "closed": true,
+      "unresolved_moves": [],
+      "connectivity_errors": []
+    },
+    {
+      "block_id": "block-0009",
+      "source_line_start": 261,
+      "source_line_end": 267,
+      "move_count": 5,
+      "linear_count": 1,
+      "arc_count": 4,
+      "depth_min": -12.0,
+      "depth_max": -12.0,
+      "depth_values": [
+        -12.0
+      ],
+      "tools": [
+        3
+      ],
+      "bounds": {
+        "x_min": 107.167,
+        "y_min": 938.5,
+        "x_max": 111.167,
+        "y_max": 942.5,
+        "width": 4.0,
+        "height": 4.0,
+        "quality": "assumed_g17_projected_arc_bounds"
+      },
+      "closed": true,
+      "unresolved_moves": [],
+      "connectivity_errors": []
+    },
+    {
+      "block_id": "block-0010",
+      "source_line_start": 270,
+      "source_line_end": 305,
+      "move_count": 34,
+      "linear_count": 18,
+      "arc_count": 16,
+      "depth_min": -16.0,
+      "depth_max": -14.0,
+      "depth_values": [
+        -16.0,
+        -14.0
+      ],
+      "tools": [
+        2
+      ],
+      "bounds": {
+        "x_min": 26.167,
+        "y_min": 2.542,
+        "x_max": 439.167,
+        "y_max": 1087.458,
+        "width": 413.0,
+        "height": 1084.9160000000002,
+        "quality": "assumed_g17_projected_arc_bounds"
+      },
+      "closed": true,
+      "unresolved_moves": [],
+      "connectivity_errors": []
+    },
+    {
+      "block_id": "block-0011",
+      "source_line_start": 306,
+      "source_line_end": 306,
+      "move_count": 0,
+      "linear_count": 0,
+      "arc_count": 0,
+      "depth_min": null,
+      "depth_max": null,
+      "depth_values": [],
+      "tools": [],
+      "bounds": null,
+      "closed": false,
+      "unresolved_moves": [],
+      "connectivity_errors": []
+    }
+  ],
+  "features": [
+    {
+      "id": "feature-block-0001",
+      "block_id": "block-0001",
+      "kind": "elongated_path_candidate",
+      "confidence": "low_geometric_pattern",
+      "source_lines": {
+        "start": 8,
+        "end": 20
+      },
+      "bounds": {
+        "x_min": 32.167,
+        "y_min": -2.0,
+        "x_max": 49.167,
+        "y_max": 1092.0,
+        "width": 17.0,
+        "height": 1094.0,
+        "quality": "linear_endpoints"
+      },
+      "depth_values": [
+        -7.0
+      ],
+      "tools": [
+        3
+      ],
+      "move_count": 11,
+      "arc_count": 0,
+      "geometry_quality": "linear_endpoints",
+      "requires_operator_confirmation": true
+    },
+    {
+      "id": "feature-block-0002",
+      "block_id": "block-0002",
+      "kind": "elongated_path_candidate",
+      "confidence": "low_geometric_pattern",
+      "source_lines": {
+        "start": 21,
+        "end": 33
+      },
+      "bounds": {
+        "x_min": 32.167,
+        "y_min": -2.0,
+        "x_max": 49.167,
+        "y_max": 1092.0,
+        "width": 17.0,
+        "height": 1094.0,
+        "quality": "linear_endpoints"
+      },
+      "depth_values": [
+        -14.0
+      ],
+      "tools": [
+        3
+      ],
+      "move_count": 11,
+      "arc_count": 0,
+      "geometry_quality": "linear_endpoints",
+      "requires_operator_confirmation": true
+    },
+    {
+      "id": "feature-block-0003",
+      "block_id": "block-0003",
+      "kind": "elongated_path_candidate",
+      "confidence": "low_geometric_pattern",
+      "source_lines": {
+        "start": 34,
+        "end": 45
+      },
+      "bounds": {
+        "x_min": 437.614,
+        "y_min": 222.183,
+        "x_max": 438.114,
+        "y_max": 867.817,
+        "width": 0.5,
+        "height": 645.634,
+        "quality": "linear_endpoints"
+      },
+      "depth_values": [
+        -14.0,
+        -7.0
+      ],
+      "tools": [
+        3
+      ],
+      "move_count": 10,
+      "arc_count": 0,
+      "geometry_quality": "linear_endpoints",
+      "requires_operator_confirmation": true
+    },
+    {
+      "id": "feature-block-0004",
+      "block_id": "block-0004",
+      "kind": "raster_or_zigzag_candidate",
+      "confidence": "medium_geometric_pattern",
+      "source_lines": {
+        "start": 46,
+        "end": 142
+      },
+      "bounds": {
+        "x_min": 32.167,
+        "y_min": 223.0,
+        "x_max": 447.513,
+        "y_max": 867.0,
+        "width": 415.346,
+        "height": 644.0,
+        "quality": "linear_endpoints"
+      },
+      "depth_values": [
+        -7.0
+      ],
+      "tools": [
+        3
+      ],
+      "move_count": 95,
+      "arc_count": 0,
+      "geometry_quality": "linear_endpoints",
+      "requires_operator_confirmation": true,
+      "raster_analysis": {
+        "pass_count": 48,
+        "pitch_values": [
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0
+        ],
+        "median_pitch": 14.0,
+        "pitch_unit": "program_units"
+      }
+    },
+    {
+      "id": "feature-block-0005",
+      "block_id": "block-0005",
+      "kind": "raster_or_zigzag_candidate",
+      "confidence": "medium_geometric_pattern",
+      "source_lines": {
+        "start": 143,
+        "end": 239
+      },
+      "bounds": {
+        "x_min": 32.167,
+        "y_min": 223.0,
+        "x_max": 447.513,
+        "y_max": 867.0,
+        "width": 415.346,
+        "height": 644.0,
+        "quality": "linear_endpoints"
+      },
+      "depth_values": [
+        -14.0
+      ],
+      "tools": [
+        3
+      ],
+      "move_count": 95,
+      "arc_count": 0,
+      "geometry_quality": "linear_endpoints",
+      "requires_operator_confirmation": true,
+      "raster_analysis": {
+        "pass_count": 48,
+        "pitch_values": [
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0,
+          14.0
+        ],
+        "median_pitch": 14.0,
+        "pitch_unit": "program_units"
+      }
+    },
+    {
+      "id": "feature-block-0006",
+      "block_id": "block-0006",
+      "kind": "small_loop_candidate",
+      "confidence": "medium_assumed_plane_geometry",
+      "source_lines": {
+        "start": 240,
+        "end": 246
+      },
+      "bounds": {
+        "x_min": 107.167,
+        "y_min": 147.5,
+        "x_max": 111.167,
+        "y_max": 151.5,
+        "width": 4.0,
+        "height": 4.0,
+        "quality": "assumed_g17_projected_arc_bounds"
+      },
+      "depth_values": [
+        -12.0
+      ],
+      "tools": [
+        3
+      ],
+      "move_count": 5,
+      "arc_count": 4,
+      "geometry_quality": "assumed_g17_projected_arc_bounds",
+      "requires_operator_confirmation": true
+    },
+    {
+      "id": "feature-block-0007",
+      "block_id": "block-0007",
+      "kind": "small_loop_candidate",
+      "confidence": "medium_assumed_plane_geometry",
+      "source_lines": {
+        "start": 247,
+        "end": 253
+      },
+      "bounds": {
+        "x_min": 257.167,
+        "y_min": 147.499,
+        "x_max": 261.167,
+        "y_max": 151.499,
+        "width": 4.0,
+        "height": 4.0,
+        "quality": "assumed_g17_projected_arc_bounds"
+      },
+      "depth_values": [
+        -12.0
+      ],
+      "tools": [
+        3
+      ],
+      "move_count": 5,
+      "arc_count": 4,
+      "geometry_quality": "assumed_g17_projected_arc_bounds",
+      "requires_operator_confirmation": true
+    },
+    {
+      "id": "feature-block-0008",
+      "block_id": "block-0008",
+      "kind": "small_loop_candidate",
+      "confidence": "medium_assumed_plane_geometry",
+      "source_lines": {
+        "start": 254,
+        "end": 260
+      },
+      "bounds": {
+        "x_min": 257.167,
+        "y_min": 938.499,
+        "x_max": 261.167,
+        "y_max": 942.499,
+        "width": 4.0,
+        "height": 4.0,
+        "quality": "assumed_g17_projected_arc_bounds"
+      },
+      "depth_values": [
+        -12.0
+      ],
+      "tools": [
+        3
+      ],
+      "move_count": 5,
+      "arc_count": 4,
+      "geometry_quality": "assumed_g17_projected_arc_bounds",
+      "requires_operator_confirmation": true
+    },
+    {
+      "id": "feature-block-0009",
+      "block_id": "block-0009",
+      "kind": "small_loop_candidate",
+      "confidence": "medium_assumed_plane_geometry",
+      "source_lines": {
+        "start": 261,
+        "end": 267
+      },
+      "bounds": {
+        "x_min": 107.167,
+        "y_min": 938.5,
+        "x_max": 111.167,
+        "y_max": 942.5,
+        "width": 4.0,
+        "height": 4.0,
+        "quality": "assumed_g17_projected_arc_bounds"
+      },
+      "depth_values": [
+        -12.0
+      ],
+      "tools": [
+        3
+      ],
+      "move_count": 5,
+      "arc_count": 4,
+      "geometry_quality": "assumed_g17_projected_arc_bounds",
+      "requires_operator_confirmation": true
+    },
+    {
+      "id": "feature-block-0010",
+      "block_id": "block-0010",
+      "kind": "large_closed_path_candidate",
+      "confidence": "medium_geometry_only",
+      "source_lines": {
+        "start": 270,
+        "end": 305
+      },
+      "bounds": {
+        "x_min": 26.167,
+        "y_min": 2.542,
+        "x_max": 439.167,
+        "y_max": 1087.458,
+        "width": 413.0,
+        "height": 1084.9160000000002,
+        "quality": "assumed_g17_projected_arc_bounds"
+      },
+      "depth_values": [
+        -16.0,
+        -14.0
+      ],
+      "tools": [
+        2
+      ],
+      "move_count": 34,
+      "arc_count": 16,
+      "geometry_quality": "assumed_g17_projected_arc_bounds",
+      "requires_operator_confirmation": true
+    },
+    {
+      "id": "feature-block-0011",
+      "block_id": "block-0011",
+      "kind": "unresolved",
+      "confidence": "none",
+      "source_lines": {
+        "start": 306,
+        "end": 306
+      },
+      "bounds": null,
+      "depth_values": [],
+      "tools": [],
+      "move_count": 0,
+      "arc_count": 0,
+      "geometry_quality": "unresolved",
+      "requires_operator_confirmation": true
+    }
+  ],
+  "patterns": [
+    {
+      "id": "repeat-001",
+      "kind": "similar_closed_loop_group",
+      "feature_ids": [
+        "feature-block-0006",
+        "feature-block-0007",
+        "feature-block-0008",
+        "feature-block-0009"
+      ],
+      "size_signature": {
+        "width": 4.0,
+        "height": 4.0,
+        "depths": [
+          -12.0
+        ]
+      },
+      "confidence": "medium_geometric_similarity",
+      "physical_operation": "unconfirmed"
+    },
+    {
+      "id": "symmetry-002",
+      "kind": "mirror_symmetry_candidate",
+      "axis": "vertical_x",
+      "axis_coordinate": 184.167,
+      "feature_ids": [
+        "feature-block-0006",
+        "feature-block-0007",
+        "feature-block-0008",
+        "feature-block-0009"
+      ],
+      "confidence": "medium_geometric_pattern",
+      "physical_operation": "unconfirmed"
+    },
+    {
+      "id": "symmetry-003",
+      "kind": "mirror_symmetry_candidate",
+      "axis": "horizontal_y",
+      "axis_coordinate": 545.0,
+      "feature_ids": [
+        "feature-block-0006",
+        "feature-block-0007",
+        "feature-block-0008",
+        "feature-block-0009"
+      ],
+      "confidence": "medium_geometric_pattern",
+      "physical_operation": "unconfirmed"
+    },
+    {
+      "id": "depth-repeat-004",
+      "kind": "same_xy_path_at_multiple_depths",
+      "feature_ids": [
+        "feature-block-0001",
+        "feature-block-0002"
+      ],
+      "depth_values": [
+        -14.0,
+        -7.0
+      ],
+      "confidence": "high_geometric_similarity",
+      "physical_operation": "unconfirmed"
+    },
+    {
+      "id": "depth-repeat-005",
+      "kind": "same_xy_path_at_multiple_depths",
+      "feature_ids": [
+        "feature-block-0004",
+        "feature-block-0005"
+      ],
+      "depth_values": [
+        -14.0,
+        -7.0
+      ],
+      "confidence": "high_geometric_similarity",
+      "physical_operation": "unconfirmed"
+    }
+  ],
+  "warnings": [
+    "واحد برنامه صریحاً با G20/G21 تعیین نشده است؛ ابعاد بر حسب واحد برنامه گزارش شده‌اند و میلی‌متر فرض نشده‌اند.",
+    "صفحهٔ قوس با G17/G18/G19 صریحاً تعیین نشده؛ مرکز/شعاع قوس‌ها قطعی گزارش نمی‌شود.",
+    "افست مبدأ کاری G54-G59 در گزارش اعمال نشده؛ مختصات برنامه معادل مختصات فیزیکی ماشین نیست.",
+    "جبران طول ابزار G43/H فقط به‌عنوان دستور مشاهده‌شده ثبت شده و روی مختصات Z اعمال نشده است.",
+    "دستور M ناشناخته یا وابسته به کنترلر وجود دارد؛ پیش از خروجی اجرایی باید مستند شود.",
+    "قالب فشردهٔ M/T ثبت شد؛ بدون پروفایل کنترلر، معنای دقیق آن فرض نشده است.",
+    "چند بلوک بزرگ وجود دارد؛ detect_geometry فعلی آخرین بلوک واجد شرط را کانتور فرض می‌کند و ممکن است مسیر سطحی را انتخاب کند.",
+    "حرکت‌های G53 در مختصات ماشین از هندسهٔ برنامه جدا نگه داشته شده‌اند.",
+    "Axis coordinates without an active motion mode at line 3 were not interpreted.",
+    "Units are not declared with G20/G21; coordinates remain in unspecified program units.",
+    "Work coordinate offset is recorded by name only; no machine-specific G54-G59 offset is applied.",
+    "G53 machine-coordinate moves are preserved in the IR but excluded from work-coordinate feature geometry.",
+    "Tool-length compensation is recorded but not applied to XYZ geometry.",
+    "No plane-selection code was present; G17/XY was assumed for geometric preview only.",
+    "Unknown/controller-specific M codes are present; a controller profile is required.",
+    "Compact M/T command forms were preserved as controller-specific tokens."
+  ],
+  "acceptance": {
+    "narrow_path_separate": true,
+    "two_surface_pass_features_separate": true,
+    "four_small_loop_candidates": true,
+    "large_closed_contour_not_misclassified_as_raster": true,
+    "raster_pitch_detected": true
+  }
+}

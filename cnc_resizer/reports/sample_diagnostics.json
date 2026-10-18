@@ -1,0 +1,6461 @@
+{
+  "schema_version": "1.0",
+  "report_type": "read_only_cnc_diagnostics",
+  "input": {
+    "filename": "cnc_resizer/sample.cnc",
+    "sha256": "23527f115b081a104f2a24338a282cb4b8886b2a97a15f5dbb0af1bc0c12cf61",
+    "utf8_bytes": 5563,
+    "line_count": 231,
+    "content_modified": false
+  },
+  "safety": {
+    "controller_identified": false,
+    "controller_status": "unknown",
+    "machine_output_written": false,
+    "nonzero_resize_executed": false,
+    "safe_for_execution": false,
+    "statement": "گزارش هندسی/تشخیصی است؛ تشخیص ویژگی معادل تعیین قطعی عملیات فیزیکی نیست."
+  },
+  "modal_state": {
+    "coordinate_modes_seen": {
+      "absolute": 1
+    },
+    "units_seen": {},
+    "units_at_end": "unspecified",
+    "planes_seen": {},
+    "plane_at_end": "unspecified"
+  },
+  "program_summary": {
+    "motion_line_count": 221,
+    "block_count": 10,
+    "blocks_with_cut_motion": 9,
+    "motion_counts": {
+      "G0": 19,
+      "G1": 166,
+      "G2": 12,
+      "G3": 24
+    },
+    "tools": [
+      {
+        "number": 2,
+        "source_lines": [
+          4,
+          6
+        ]
+      }
+    ],
+    "feed_values": [
+      {
+        "value": "15000",
+        "source_lines": [
+          9,
+          33,
+          57,
+          81,
+          105,
+          129,
+          153,
+          177,
+          201
+        ]
+      }
+    ],
+    "spindle_values": [
+      {
+        "value": "16000",
+        "source_lines": [
+          8,
+          31,
+          32,
+          55,
+          56,
+          79,
+          80,
+          103,
+          104,
+          127,
+          128,
+          151,
+          152,
+          175,
+          176,
+          199,
+          200,
+          227,
+          228
+        ]
+      }
+    ],
+    "depth_values": [
+      -16.0,
+      -14.0,
+      -12.0
+    ],
+    "machine_coordinate_lines": [
+      3,
+      229,
+      230
+    ]
+  },
+  "commands": {
+    "observed_g_codes": {
+      "G0": 19,
+      "G1": 54,
+      "G2": 12,
+      "G3": 24,
+      "G43": 1,
+      "G53": 3,
+      "G54": 1,
+      "G90": 1
+    },
+    "observed_m_codes": {
+      "M141": 1,
+      "M3": 19,
+      "M30": 1,
+      "M6": 2
+    },
+    "unknown_m_codes": [
+      {
+        "token": "M141",
+        "source_lines": [
+          5
+        ]
+      }
+    ],
+    "compact_m_t_tokens": [
+      {
+        "token": "M6T2",
+        "source_lines": [
+          6
+        ]
+      }
+    ],
+    "unknown_g_codes": []
+  },
+  "legacy_core_baseline": {
+    "detect_geometry": {
+      "ok": true,
+      "hole_levels": 6,
+      "edge_lo": 105.969,
+      "edge_hi": 1634.031
+    },
+    "zero_delta_baseline": {
+      "ok": true,
+      "resizable": true,
+      "length_before": 1731.71,
+      "length_after": 1731.71,
+      "gap_count": 5,
+      "hole_count": 8,
+      "contour_count": 1,
+      "zero_delta_text_identical": true,
+      "output_written": false
+    }
+  },
+  "legacy_detector_candidates": {
+    "large_blocks": [
+      "block-0009"
+    ],
+    "last_large_block_would_be_selected": "block-0009",
+    "selection_is_heuristic": true
+  },
+  "blocks": [
+    {
+      "block_id": "block-0001",
+      "started_by": "rapid_xy",
+      "source_line_start": 8,
+      "source_line_end": 31,
+      "start": {
+        "x": 113.194,
+        "y": 67.004,
+        "z": 5.0
+      },
+      "end": {
+        "x": 113.194,
+        "y": 67.004,
+        "z": 5.0
+      },
+      "closed_by_endpoints": true,
+      "motion_counts": {
+        "G0": 2,
+        "G1": 19,
+        "G3": 3
+      },
+      "segment_count": 24,
+      "depths": [
+        -12.0
+      ],
+      "depth_min": -12.0,
+      "depth_max": -12.0,
+      "tools": [
+        2
+      ],
+      "bounds": {
+        "x_min": 112.942,
+        "y_min": 65.347,
+        "x_max": 114.929,
+        "y_max": 67.335,
+        "width": 1.987,
+        "height": 1.988,
+        "method": "motion endpoints only; arc extrema may extend beyond these bounds"
+      },
+      "moves": [
+        {
+          "source_line": 8,
+          "motion": "G0",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": null,
+          "end": {
+            "x": 113.194,
+            "y": 67.004,
+            "z": 5.0
+          },
+          "raw_axis_words": {
+            "x": 113.194,
+            "y": 67.004,
+            "z": 5.0
+          },
+          "z": 5.0,
+          "tool": 2,
+          "feed": null,
+          "spindle": 16000.0,
+          "raw": "N70G0X113.194Y67.004Z5.000M3 S16000"
+        },
+        {
+          "source_line": 9,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 113.194,
+            "y": 67.004,
+            "z": 5.0
+          },
+          "end": {
+            "x": 113.194,
+            "y": 67.004,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "z": -12.0
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N80G1Z-12.000F15000.0"
+        },
+        {
+          "source_line": 10,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 113.194,
+            "y": 67.004,
+            "z": -12.0
+          },
+          "end": {
+            "x": 113.072,
+            "y": 66.836,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 113.072,
+            "y": 66.836
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N90G1X113.072Y66.836"
+        },
+        {
+          "source_line": 11,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 113.072,
+            "y": 66.836,
+            "z": -12.0
+          },
+          "end": {
+            "x": 112.967,
+            "y": 66.573,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 112.967,
+            "y": 66.573
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N100X112.967Y66.573"
+        },
+        {
+          "source_line": 12,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 112.967,
+            "y": 66.573,
+            "z": -12.0
+          },
+          "end": {
+            "x": 112.942,
+            "y": 66.285,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 112.942,
+            "y": 66.285
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N110X112.942Y66.285"
+        },
+        {
+          "source_line": 13,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 112.942,
+            "y": 66.285,
+            "z": -12.0
+          },
+          "end": {
+            "x": 112.999,
+            "y": 66.001,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 112.999,
+            "y": 66.001
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N120X112.999Y66.001"
+        },
+        {
+          "source_line": 14,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 112.999,
+            "y": 66.001,
+            "z": -12.0
+          },
+          "end": {
+            "x": 113.133,
+            "y": 65.751,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 113.133,
+            "y": 65.751
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N130X113.133Y65.751"
+        },
+        {
+          "source_line": 15,
+          "motion": "G3",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 113.133,
+            "y": 65.751,
+            "z": -12.0
+          },
+          "end": {
+            "x": 113.44,
+            "y": 65.477,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 113.44,
+            "y": 65.477
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N140G3X113.440Y65.477I+0.838J+0.629",
+          "arc": {
+            "direction": "counterclockwise",
+            "plane": "unspecified",
+            "center_offsets": {
+              "i": 0.838,
+              "j": 0.629
+            }
+          }
+        },
+        {
+          "source_line": 16,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 113.44,
+            "y": 65.477,
+            "z": -12.0
+          },
+          "end": {
+            "x": 113.703,
+            "y": 65.372,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 113.703,
+            "y": 65.372
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N150G1X113.703Y65.372"
+        },
+        {
+          "source_line": 17,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 113.703,
+            "y": 65.372,
+            "z": -12.0
+          },
+          "end": {
+            "x": 113.992,
+            "y": 65.347,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 113.992,
+            "y": 65.347
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N160X113.992Y65.347"
+        },
+        {
+          "source_line": 18,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 113.992,
+            "y": 65.347,
+            "z": -12.0
+          },
+          "end": {
+            "x": 114.275,
+            "y": 65.404,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 114.275,
+            "y": 65.404
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N170X114.275Y65.404"
+        },
+        {
+          "source_line": 19,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 114.275,
+            "y": 65.404,
+            "z": -12.0
+          },
+          "end": {
+            "x": 114.525,
+            "y": 65.538,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 114.525,
+            "y": 65.538
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N180X114.525Y65.538"
+        },
+        {
+          "source_line": 20,
+          "motion": "G3",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 114.525,
+            "y": 65.538,
+            "z": -12.0
+          },
+          "end": {
+            "x": 114.799,
+            "y": 65.845,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 114.799,
+            "y": 65.845
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N190G3X114.799Y65.845I-0.629J+0.838",
+          "arc": {
+            "direction": "counterclockwise",
+            "plane": "unspecified",
+            "center_offsets": {
+              "i": -0.629,
+              "j": 0.838
+            }
+          }
+        },
+        {
+          "source_line": 21,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 114.799,
+            "y": 65.845,
+            "z": -12.0
+          },
+          "end": {
+            "x": 114.904,
+            "y": 66.109,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 114.904,
+            "y": 66.109
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N200G1X114.904Y66.109"
+        },
+        {
+          "source_line": 22,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 114.904,
+            "y": 66.109,
+            "z": -12.0
+          },
+          "end": {
+            "x": 114.929,
+            "y": 66.397,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 114.929,
+            "y": 66.397
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N210X114.929Y66.397"
+        },
+        {
+          "source_line": 23,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 114.929,
+            "y": 66.397,
+            "z": -12.0
+          },
+          "end": {
+            "x": 114.872,
+            "y": 66.68,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 114.872,
+            "y": 66.68
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N220X114.872Y66.680"
+        },
+        {
+          "source_line": 24,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 114.872,
+            "y": 66.68,
+            "z": -12.0
+          },
+          "end": {
+            "x": 114.738,
+            "y": 66.93,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 114.738,
+            "y": 66.93
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N230X114.738Y66.930"
+        },
+        {
+          "source_line": 25,
+          "motion": "G3",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 114.738,
+            "y": 66.93,
+            "z": -12.0
+          },
+          "end": {
+            "x": 114.431,
+            "y": 67.205,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 114.431,
+            "y": 67.205
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N240G3X114.431Y67.205I-0.838J-0.629",
+          "arc": {
+            "direction": "counterclockwise",
+            "plane": "unspecified",
+            "center_offsets": {
+              "i": -0.838,
+              "j": -0.629
+            }
+          }
+        },
+        {
+          "source_line": 26,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 114.431,
+            "y": 67.205,
+            "z": -12.0
+          },
+          "end": {
+            "x": 114.168,
+            "y": 67.31,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 114.168,
+            "y": 67.31
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N250G1X114.168Y67.310"
+        },
+        {
+          "source_line": 27,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 114.168,
+            "y": 67.31,
+            "z": -12.0
+          },
+          "end": {
+            "x": 113.879,
+            "y": 67.335,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 113.879,
+            "y": 67.335
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N260X113.879Y67.335"
+        },
+        {
+          "source_line": 28,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 113.879,
+            "y": 67.335,
+            "z": -12.0
+          },
+          "end": {
+            "x": 113.596,
+            "y": 67.277,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 113.596,
+            "y": 67.277
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N270X113.596Y67.277"
+        },
+        {
+          "source_line": 29,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 113.596,
+            "y": 67.277,
+            "z": -12.0
+          },
+          "end": {
+            "x": 113.346,
+            "y": 67.144,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 113.346,
+            "y": 67.144
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N280X113.346Y67.144"
+        },
+        {
+          "source_line": 30,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 113.346,
+            "y": 67.144,
+            "z": -12.0
+          },
+          "end": {
+            "x": 113.194,
+            "y": 67.004,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 113.194,
+            "y": 67.004
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N290X113.194Y67.004"
+        },
+        {
+          "source_line": 31,
+          "motion": "G0",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 113.194,
+            "y": 67.004,
+            "z": -12.0
+          },
+          "end": {
+            "x": 113.194,
+            "y": 67.004,
+            "z": 5.0
+          },
+          "raw_axis_words": {
+            "z": 5.0
+          },
+          "z": 5.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N300G0Z5.000M3 S16000"
+        }
+      ],
+      "classification": {
+        "candidate": "small_closed_loop_or_hole",
+        "confidence": "high_geometry_only",
+        "evidence": [
+          "closed path",
+          "arc motion present",
+          "endpoint bounds <= 5 program units"
+        ]
+      }
+    },
+    {
+      "block_id": "block-0002",
+      "started_by": "rapid_xy",
+      "source_line_start": 32,
+      "source_line_end": 55,
+      "start": {
+        "x": 17.734,
+        "y": 152.276,
+        "z": 5.0
+      },
+      "end": {
+        "x": 17.734,
+        "y": 152.276,
+        "z": 5.0
+      },
+      "closed_by_endpoints": true,
+      "motion_counts": {
+        "G0": 2,
+        "G1": 19,
+        "G3": 3
+      },
+      "segment_count": 24,
+      "depths": [
+        -12.0
+      ],
+      "depth_min": -12.0,
+      "depth_max": -12.0,
+      "tools": [
+        2
+      ],
+      "bounds": {
+        "x_min": 17.482,
+        "y_min": 150.62,
+        "x_max": 19.47,
+        "y_max": 152.608,
+        "width": 1.988,
+        "height": 1.988,
+        "method": "motion endpoints only; arc extrema may extend beyond these bounds"
+      },
+      "moves": [
+        {
+          "source_line": 32,
+          "motion": "G0",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 113.194,
+            "y": 67.004,
+            "z": 5.0
+          },
+          "end": {
+            "x": 17.734,
+            "y": 152.276,
+            "z": 5.0
+          },
+          "raw_axis_words": {
+            "x": 17.734,
+            "y": 152.276
+          },
+          "z": 5.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N310G0X17.734Y152.276M3 S16000"
+        },
+        {
+          "source_line": 33,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 17.734,
+            "y": 152.276,
+            "z": 5.0
+          },
+          "end": {
+            "x": 17.734,
+            "y": 152.276,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "z": -12.0
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N320G1Z-12.000F15000.0"
+        },
+        {
+          "source_line": 34,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 17.734,
+            "y": 152.276,
+            "z": -12.0
+          },
+          "end": {
+            "x": 17.612,
+            "y": 152.109,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 17.612,
+            "y": 152.109
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N330G1X17.612Y152.109"
+        },
+        {
+          "source_line": 35,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 17.612,
+            "y": 152.109,
+            "z": -12.0
+          },
+          "end": {
+            "x": 17.507,
+            "y": 151.846,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 17.507,
+            "y": 151.846
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N340X17.507Y151.846"
+        },
+        {
+          "source_line": 36,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 17.507,
+            "y": 151.846,
+            "z": -12.0
+          },
+          "end": {
+            "x": 17.482,
+            "y": 151.558,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 17.482,
+            "y": 151.558
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N350X17.482Y151.558"
+        },
+        {
+          "source_line": 37,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 17.482,
+            "y": 151.558,
+            "z": -12.0
+          },
+          "end": {
+            "x": 17.539,
+            "y": 151.274,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 17.539,
+            "y": 151.274
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N360X17.539Y151.274"
+        },
+        {
+          "source_line": 38,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 17.539,
+            "y": 151.274,
+            "z": -12.0
+          },
+          "end": {
+            "x": 17.673,
+            "y": 151.024,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 17.673,
+            "y": 151.024
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N370X17.673Y151.024"
+        },
+        {
+          "source_line": 39,
+          "motion": "G3",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 17.673,
+            "y": 151.024,
+            "z": -12.0
+          },
+          "end": {
+            "x": 17.98,
+            "y": 150.75,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 17.98,
+            "y": 150.75
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N380G3X17.980Y150.750I+0.838J+0.629",
+          "arc": {
+            "direction": "counterclockwise",
+            "plane": "unspecified",
+            "center_offsets": {
+              "i": 0.838,
+              "j": 0.629
+            }
+          }
+        },
+        {
+          "source_line": 40,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 17.98,
+            "y": 150.75,
+            "z": -12.0
+          },
+          "end": {
+            "x": 18.244,
+            "y": 150.645,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 18.244,
+            "y": 150.645
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N390G1X18.244Y150.645"
+        },
+        {
+          "source_line": 41,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 18.244,
+            "y": 150.645,
+            "z": -12.0
+          },
+          "end": {
+            "x": 18.532,
+            "y": 150.62,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 18.532,
+            "y": 150.62
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N400X18.532Y150.620"
+        },
+        {
+          "source_line": 42,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 18.532,
+            "y": 150.62,
+            "z": -12.0
+          },
+          "end": {
+            "x": 18.815,
+            "y": 150.677,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 18.815,
+            "y": 150.677
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N410X18.815Y150.677"
+        },
+        {
+          "source_line": 43,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 18.815,
+            "y": 150.677,
+            "z": -12.0
+          },
+          "end": {
+            "x": 19.065,
+            "y": 150.811,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 19.065,
+            "y": 150.811
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N420X19.065Y150.811"
+        },
+        {
+          "source_line": 44,
+          "motion": "G3",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 19.065,
+            "y": 150.811,
+            "z": -12.0
+          },
+          "end": {
+            "x": 19.34,
+            "y": 151.118,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 19.34,
+            "y": 151.118
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N430G3X19.340Y151.118I-0.629J+0.838",
+          "arc": {
+            "direction": "counterclockwise",
+            "plane": "unspecified",
+            "center_offsets": {
+              "i": -0.629,
+              "j": 0.838
+            }
+          }
+        },
+        {
+          "source_line": 45,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 19.34,
+            "y": 151.118,
+            "z": -12.0
+          },
+          "end": {
+            "x": 19.445,
+            "y": 151.382,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 19.445,
+            "y": 151.382
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N440G1X19.445Y151.382"
+        },
+        {
+          "source_line": 46,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 19.445,
+            "y": 151.382,
+            "z": -12.0
+          },
+          "end": {
+            "x": 19.47,
+            "y": 151.67,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 19.47,
+            "y": 151.67
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N450X19.470Y151.670"
+        },
+        {
+          "source_line": 47,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 19.47,
+            "y": 151.67,
+            "z": -12.0
+          },
+          "end": {
+            "x": 19.413,
+            "y": 151.953,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 19.413,
+            "y": 151.953
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N460X19.413Y151.953"
+        },
+        {
+          "source_line": 48,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 19.413,
+            "y": 151.953,
+            "z": -12.0
+          },
+          "end": {
+            "x": 19.279,
+            "y": 152.203,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 19.279,
+            "y": 152.203
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N470X19.279Y152.203"
+        },
+        {
+          "source_line": 49,
+          "motion": "G3",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 19.279,
+            "y": 152.203,
+            "z": -12.0
+          },
+          "end": {
+            "x": 18.972,
+            "y": 152.478,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 18.972,
+            "y": 152.478
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N480G3X18.972Y152.478I-0.838J-0.629",
+          "arc": {
+            "direction": "counterclockwise",
+            "plane": "unspecified",
+            "center_offsets": {
+              "i": -0.838,
+              "j": -0.629
+            }
+          }
+        },
+        {
+          "source_line": 50,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 18.972,
+            "y": 152.478,
+            "z": -12.0
+          },
+          "end": {
+            "x": 18.708,
+            "y": 152.583,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 18.708,
+            "y": 152.583
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N490G1X18.708Y152.583"
+        },
+        {
+          "source_line": 51,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 18.708,
+            "y": 152.583,
+            "z": -12.0
+          },
+          "end": {
+            "x": 18.42,
+            "y": 152.608,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 18.42,
+            "y": 152.608
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N500X18.420Y152.608"
+        },
+        {
+          "source_line": 52,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 18.42,
+            "y": 152.608,
+            "z": -12.0
+          },
+          "end": {
+            "x": 18.136,
+            "y": 152.55,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 18.136,
+            "y": 152.55
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N510X18.136Y152.550"
+        },
+        {
+          "source_line": 53,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 18.136,
+            "y": 152.55,
+            "z": -12.0
+          },
+          "end": {
+            "x": 17.886,
+            "y": 152.416,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 17.886,
+            "y": 152.416
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N520X17.886Y152.416"
+        },
+        {
+          "source_line": 54,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 17.886,
+            "y": 152.416,
+            "z": -12.0
+          },
+          "end": {
+            "x": 17.734,
+            "y": 152.276,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 17.734,
+            "y": 152.276
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N530X17.734Y152.276"
+        },
+        {
+          "source_line": 55,
+          "motion": "G0",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 17.734,
+            "y": 152.276,
+            "z": -12.0
+          },
+          "end": {
+            "x": 17.734,
+            "y": 152.276,
+            "z": 5.0
+          },
+          "raw_axis_words": {
+            "z": 5.0
+          },
+          "z": 5.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N540G0Z5.000M3 S16000"
+        }
+      ],
+      "classification": {
+        "candidate": "small_closed_loop_or_hole",
+        "confidence": "high_geometry_only",
+        "evidence": [
+          "closed path",
+          "arc motion present",
+          "endpoint bounds <= 5 program units"
+        ]
+      }
+    },
+    {
+      "block_id": "block-0003",
+      "started_by": "rapid_xy",
+      "source_line_start": 56,
+      "source_line_end": 79,
+      "start": {
+        "x": 58.998,
+        "y": 512.496,
+        "z": 5.0
+      },
+      "end": {
+        "x": 58.998,
+        "y": 512.496,
+        "z": 5.0
+      },
+      "closed_by_endpoints": true,
+      "motion_counts": {
+        "G0": 2,
+        "G1": 19,
+        "G3": 3
+      },
+      "segment_count": 24,
+      "depths": [
+        -12.0
+      ],
+      "depth_min": -12.0,
+      "depth_max": -12.0,
+      "tools": [
+        2
+      ],
+      "bounds": {
+        "x_min": 58.023,
+        "y_min": 510.526,
+        "x_max": 59.972,
+        "y_max": 512.496,
+        "width": 1.949,
+        "height": 1.97,
+        "method": "motion endpoints only; arc extrema may extend beyond these bounds"
+      },
+      "moves": [
+        {
+          "source_line": 56,
+          "motion": "G0",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 17.734,
+            "y": 152.276,
+            "z": 5.0
+          },
+          "end": {
+            "x": 58.998,
+            "y": 512.496,
+            "z": 5.0
+          },
+          "raw_axis_words": {
+            "x": 58.998,
+            "y": 512.496
+          },
+          "z": 5.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N550G0X58.998Y512.496M3 S16000"
+        },
+        {
+          "source_line": 57,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 58.998,
+            "y": 512.496,
+            "z": 5.0
+          },
+          "end": {
+            "x": 58.998,
+            "y": 512.496,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "z": -12.0
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N560G1Z-12.000F15000.0"
+        },
+        {
+          "source_line": 58,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 58.998,
+            "y": 512.496,
+            "z": -12.0
+          },
+          "end": {
+            "x": 58.792,
+            "y": 512.475,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 58.792,
+            "y": 512.475
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N570G1X58.792Y512.475"
+        },
+        {
+          "source_line": 59,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 58.792,
+            "y": 512.475,
+            "z": -12.0
+          },
+          "end": {
+            "x": 58.526,
+            "y": 512.378,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 58.526,
+            "y": 512.378
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N580X58.526Y512.378"
+        },
+        {
+          "source_line": 60,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 58.526,
+            "y": 512.378,
+            "z": -12.0
+          },
+          "end": {
+            "x": 58.294,
+            "y": 512.204,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 58.294,
+            "y": 512.204
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N590X58.294Y512.204"
+        },
+        {
+          "source_line": 61,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 58.294,
+            "y": 512.204,
+            "z": -12.0
+          },
+          "end": {
+            "x": 58.121,
+            "y": 511.973,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 58.121,
+            "y": 511.973
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N600X58.121Y511.973"
+        },
+        {
+          "source_line": 62,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 58.121,
+            "y": 511.973,
+            "z": -12.0
+          },
+          "end": {
+            "x": 58.023,
+            "y": 511.706,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 58.023,
+            "y": 511.706
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N610X58.023Y511.706"
+        },
+        {
+          "source_line": 63,
+          "motion": "G3",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 58.023,
+            "y": 511.706,
+            "z": -12.0
+          },
+          "end": {
+            "x": 58.023,
+            "y": 511.295,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 58.023,
+            "y": 511.295
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N620G3X58.023Y511.295I+1.027J-0.206",
+          "arc": {
+            "direction": "counterclockwise",
+            "plane": "unspecified",
+            "center_offsets": {
+              "i": 1.027,
+              "j": -0.206
+            }
+          }
+        },
+        {
+          "source_line": 64,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 58.023,
+            "y": 511.295,
+            "z": -12.0
+          },
+          "end": {
+            "x": 58.121,
+            "y": 511.028,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 58.121,
+            "y": 511.028
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N630G1X58.121Y511.028"
+        },
+        {
+          "source_line": 65,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 58.121,
+            "y": 511.028,
+            "z": -12.0
+          },
+          "end": {
+            "x": 58.294,
+            "y": 510.797,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 58.294,
+            "y": 510.797
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N640X58.294Y510.797"
+        },
+        {
+          "source_line": 66,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 58.294,
+            "y": 510.797,
+            "z": -12.0
+          },
+          "end": {
+            "x": 58.526,
+            "y": 510.623,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 58.526,
+            "y": 510.623
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N650X58.526Y510.623"
+        },
+        {
+          "source_line": 67,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 58.526,
+            "y": 510.623,
+            "z": -12.0
+          },
+          "end": {
+            "x": 58.792,
+            "y": 510.526,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 58.792,
+            "y": 510.526
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N660X58.792Y510.526"
+        },
+        {
+          "source_line": 68,
+          "motion": "G3",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 58.792,
+            "y": 510.526,
+            "z": -12.0
+          },
+          "end": {
+            "x": 59.204,
+            "y": 510.526,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 59.204,
+            "y": 510.526
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N670G3X59.204Y510.526I+0.206J+1.027",
+          "arc": {
+            "direction": "counterclockwise",
+            "plane": "unspecified",
+            "center_offsets": {
+              "i": 0.206,
+              "j": 1.027
+            }
+          }
+        },
+        {
+          "source_line": 69,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 59.204,
+            "y": 510.526,
+            "z": -12.0
+          },
+          "end": {
+            "x": 59.47,
+            "y": 510.623,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 59.47,
+            "y": 510.623
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N680G1X59.470Y510.623"
+        },
+        {
+          "source_line": 70,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 59.47,
+            "y": 510.623,
+            "z": -12.0
+          },
+          "end": {
+            "x": 59.702,
+            "y": 510.797,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 59.702,
+            "y": 510.797
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N690X59.702Y510.797"
+        },
+        {
+          "source_line": 71,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 59.702,
+            "y": 510.797,
+            "z": -12.0
+          },
+          "end": {
+            "x": 59.875,
+            "y": 511.028,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 59.875,
+            "y": 511.028
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N700X59.875Y511.028"
+        },
+        {
+          "source_line": 72,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 59.875,
+            "y": 511.028,
+            "z": -12.0
+          },
+          "end": {
+            "x": 59.972,
+            "y": 511.295,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 59.972,
+            "y": 511.295
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N710X59.972Y511.295"
+        },
+        {
+          "source_line": 73,
+          "motion": "G3",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 59.972,
+            "y": 511.295,
+            "z": -12.0
+          },
+          "end": {
+            "x": 59.972,
+            "y": 511.706,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 59.972,
+            "y": 511.706
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N720G3X59.972Y511.706I-1.027J+0.206",
+          "arc": {
+            "direction": "counterclockwise",
+            "plane": "unspecified",
+            "center_offsets": {
+              "i": -1.027,
+              "j": 0.206
+            }
+          }
+        },
+        {
+          "source_line": 74,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 59.972,
+            "y": 511.706,
+            "z": -12.0
+          },
+          "end": {
+            "x": 59.875,
+            "y": 511.973,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 59.875,
+            "y": 511.973
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N730G1X59.875Y511.973"
+        },
+        {
+          "source_line": 75,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 59.875,
+            "y": 511.973,
+            "z": -12.0
+          },
+          "end": {
+            "x": 59.702,
+            "y": 512.204,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 59.702,
+            "y": 512.204
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N740X59.702Y512.204"
+        },
+        {
+          "source_line": 76,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 59.702,
+            "y": 512.204,
+            "z": -12.0
+          },
+          "end": {
+            "x": 59.47,
+            "y": 512.378,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 59.47,
+            "y": 512.378
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N750X59.470Y512.378"
+        },
+        {
+          "source_line": 77,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 59.47,
+            "y": 512.378,
+            "z": -12.0
+          },
+          "end": {
+            "x": 59.204,
+            "y": 512.475,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 59.204,
+            "y": 512.475
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N760X59.204Y512.475"
+        },
+        {
+          "source_line": 78,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 59.204,
+            "y": 512.475,
+            "z": -12.0
+          },
+          "end": {
+            "x": 58.998,
+            "y": 512.496,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 58.998,
+            "y": 512.496
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N770X58.998Y512.496"
+        },
+        {
+          "source_line": 79,
+          "motion": "G0",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 58.998,
+            "y": 512.496,
+            "z": -12.0
+          },
+          "end": {
+            "x": 58.998,
+            "y": 512.496,
+            "z": 5.0
+          },
+          "raw_axis_words": {
+            "z": 5.0
+          },
+          "z": 5.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N780G0Z5.000M3 S16000"
+        }
+      ],
+      "classification": {
+        "candidate": "small_closed_loop_or_hole",
+        "confidence": "high_geometry_only",
+        "evidence": [
+          "closed path",
+          "arc motion present",
+          "endpoint bounds <= 5 program units"
+        ]
+      }
+    },
+    {
+      "block_id": "block-0004",
+      "started_by": "rapid_xy",
+      "source_line_start": 80,
+      "source_line_end": 103,
+      "start": {
+        "x": 314.998,
+        "y": 512.496,
+        "z": 5.0
+      },
+      "end": {
+        "x": 314.998,
+        "y": 512.496,
+        "z": 5.0
+      },
+      "closed_by_endpoints": true,
+      "motion_counts": {
+        "G0": 2,
+        "G1": 19,
+        "G3": 3
+      },
+      "segment_count": 24,
+      "depths": [
+        -12.0
+      ],
+      "depth_min": -12.0,
+      "depth_max": -12.0,
+      "tools": [
+        2
+      ],
+      "bounds": {
+        "x_min": 314.023,
+        "y_min": 510.526,
+        "x_max": 315.972,
+        "y_max": 512.496,
+        "width": 1.949,
+        "height": 1.97,
+        "method": "motion endpoints only; arc extrema may extend beyond these bounds"
+      },
+      "moves": [
+        {
+          "source_line": 80,
+          "motion": "G0",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 58.998,
+            "y": 512.496,
+            "z": 5.0
+          },
+          "end": {
+            "x": 314.998,
+            "y": 512.496,
+            "z": 5.0
+          },
+          "raw_axis_words": {
+            "x": 314.998,
+            "y": 512.496
+          },
+          "z": 5.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N790G0X314.998Y512.496M3 S16000"
+        },
+        {
+          "source_line": 81,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 314.998,
+            "y": 512.496,
+            "z": 5.0
+          },
+          "end": {
+            "x": 314.998,
+            "y": 512.496,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "z": -12.0
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N800G1Z-12.000F15000.0"
+        },
+        {
+          "source_line": 82,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 314.998,
+            "y": 512.496,
+            "z": -12.0
+          },
+          "end": {
+            "x": 314.792,
+            "y": 512.475,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 314.792,
+            "y": 512.475
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N810G1X314.792Y512.475"
+        },
+        {
+          "source_line": 83,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 314.792,
+            "y": 512.475,
+            "z": -12.0
+          },
+          "end": {
+            "x": 314.525,
+            "y": 512.378,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 314.525,
+            "y": 512.378
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N820X314.525Y512.378"
+        },
+        {
+          "source_line": 84,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 314.525,
+            "y": 512.378,
+            "z": -12.0
+          },
+          "end": {
+            "x": 314.294,
+            "y": 512.204,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 314.294,
+            "y": 512.204
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N830X314.294Y512.204"
+        },
+        {
+          "source_line": 85,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 314.294,
+            "y": 512.204,
+            "z": -12.0
+          },
+          "end": {
+            "x": 314.121,
+            "y": 511.973,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 314.121,
+            "y": 511.973
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N840X314.121Y511.973"
+        },
+        {
+          "source_line": 86,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 314.121,
+            "y": 511.973,
+            "z": -12.0
+          },
+          "end": {
+            "x": 314.023,
+            "y": 511.706,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 314.023,
+            "y": 511.706
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N850X314.023Y511.706"
+        },
+        {
+          "source_line": 87,
+          "motion": "G3",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 314.023,
+            "y": 511.706,
+            "z": -12.0
+          },
+          "end": {
+            "x": 314.023,
+            "y": 511.295,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 314.023,
+            "y": 511.295
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N860G3X314.023Y511.295I+1.027J-0.206",
+          "arc": {
+            "direction": "counterclockwise",
+            "plane": "unspecified",
+            "center_offsets": {
+              "i": 1.027,
+              "j": -0.206
+            }
+          }
+        },
+        {
+          "source_line": 88,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 314.023,
+            "y": 511.295,
+            "z": -12.0
+          },
+          "end": {
+            "x": 314.121,
+            "y": 511.028,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 314.121,
+            "y": 511.028
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N870G1X314.121Y511.028"
+        },
+        {
+          "source_line": 89,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 314.121,
+            "y": 511.028,
+            "z": -12.0
+          },
+          "end": {
+            "x": 314.294,
+            "y": 510.797,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 314.294,
+            "y": 510.797
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N880X314.294Y510.797"
+        },
+        {
+          "source_line": 90,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 314.294,
+            "y": 510.797,
+            "z": -12.0
+          },
+          "end": {
+            "x": 314.525,
+            "y": 510.623,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 314.525,
+            "y": 510.623
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N890X314.525Y510.623"
+        },
+        {
+          "source_line": 91,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 314.525,
+            "y": 510.623,
+            "z": -12.0
+          },
+          "end": {
+            "x": 314.792,
+            "y": 510.526,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 314.792,
+            "y": 510.526
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N900X314.792Y510.526"
+        },
+        {
+          "source_line": 92,
+          "motion": "G3",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 314.792,
+            "y": 510.526,
+            "z": -12.0
+          },
+          "end": {
+            "x": 315.204,
+            "y": 510.526,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 315.204
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N910G3X315.204I+0.206J+1.027",
+          "arc": {
+            "direction": "counterclockwise",
+            "plane": "unspecified",
+            "center_offsets": {
+              "i": 0.206,
+              "j": 1.027
+            }
+          }
+        },
+        {
+          "source_line": 93,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 315.204,
+            "y": 510.526,
+            "z": -12.0
+          },
+          "end": {
+            "x": 315.47,
+            "y": 510.623,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 315.47,
+            "y": 510.623
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N920G1X315.470Y510.623"
+        },
+        {
+          "source_line": 94,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 315.47,
+            "y": 510.623,
+            "z": -12.0
+          },
+          "end": {
+            "x": 315.702,
+            "y": 510.797,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 315.702,
+            "y": 510.797
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N930X315.702Y510.797"
+        },
+        {
+          "source_line": 95,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 315.702,
+            "y": 510.797,
+            "z": -12.0
+          },
+          "end": {
+            "x": 315.875,
+            "y": 511.028,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 315.875,
+            "y": 511.028
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N940X315.875Y511.028"
+        },
+        {
+          "source_line": 96,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 315.875,
+            "y": 511.028,
+            "z": -12.0
+          },
+          "end": {
+            "x": 315.972,
+            "y": 511.295,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 315.972,
+            "y": 511.295
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N950X315.972Y511.295"
+        },
+        {
+          "source_line": 97,
+          "motion": "G3",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 315.972,
+            "y": 511.295,
+            "z": -12.0
+          },
+          "end": {
+            "x": 315.972,
+            "y": 511.706,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 315.972,
+            "y": 511.706
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N960G3X315.972Y511.706I-1.027J+0.206",
+          "arc": {
+            "direction": "counterclockwise",
+            "plane": "unspecified",
+            "center_offsets": {
+              "i": -1.027,
+              "j": 0.206
+            }
+          }
+        },
+        {
+          "source_line": 98,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 315.972,
+            "y": 511.706,
+            "z": -12.0
+          },
+          "end": {
+            "x": 315.875,
+            "y": 511.973,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 315.875,
+            "y": 511.973
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N970G1X315.875Y511.973"
+        },
+        {
+          "source_line": 99,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 315.875,
+            "y": 511.973,
+            "z": -12.0
+          },
+          "end": {
+            "x": 315.702,
+            "y": 512.204,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 315.702,
+            "y": 512.204
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N980X315.702Y512.204"
+        },
+        {
+          "source_line": 100,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 315.702,
+            "y": 512.204,
+            "z": -12.0
+          },
+          "end": {
+            "x": 315.47,
+            "y": 512.378,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 315.47,
+            "y": 512.378
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N990X315.470Y512.378"
+        },
+        {
+          "source_line": 101,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 315.47,
+            "y": 512.378,
+            "z": -12.0
+          },
+          "end": {
+            "x": 315.204,
+            "y": 512.475,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 315.204,
+            "y": 512.475
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1000X315.204Y512.475"
+        },
+        {
+          "source_line": 102,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 315.204,
+            "y": 512.475,
+            "z": -12.0
+          },
+          "end": {
+            "x": 314.998,
+            "y": 512.496,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 314.998,
+            "y": 512.496
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1010X314.998Y512.496"
+        },
+        {
+          "source_line": 103,
+          "motion": "G0",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 314.998,
+            "y": 512.496,
+            "z": -12.0
+          },
+          "end": {
+            "x": 314.998,
+            "y": 512.496,
+            "z": 5.0
+          },
+          "raw_axis_words": {
+            "z": 5.0
+          },
+          "z": 5.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1020G0Z5.000M3 S16000"
+        }
+      ],
+      "classification": {
+        "candidate": "small_closed_loop_or_hole",
+        "confidence": "high_geometry_only",
+        "evidence": [
+          "closed path",
+          "arc motion present",
+          "endpoint bounds <= 5 program units"
+        ]
+      }
+    },
+    {
+      "block_id": "block-0005",
+      "started_by": "rapid_xy",
+      "source_line_start": 104,
+      "source_line_end": 127,
+      "start": {
+        "x": 314.998,
+        "y": 1227.505,
+        "z": 5.0
+      },
+      "end": {
+        "x": 314.998,
+        "y": 1227.505,
+        "z": 5.0
+      },
+      "closed_by_endpoints": true,
+      "motion_counts": {
+        "G0": 2,
+        "G1": 19,
+        "G3": 3
+      },
+      "segment_count": 24,
+      "depths": [
+        -12.0
+      ],
+      "depth_min": -12.0,
+      "depth_max": -12.0,
+      "tools": [
+        2
+      ],
+      "bounds": {
+        "x_min": 314.023,
+        "y_min": 1227.505,
+        "x_max": 315.972,
+        "y_max": 1229.474,
+        "width": 1.949,
+        "height": 1.969,
+        "method": "motion endpoints only; arc extrema may extend beyond these bounds"
+      },
+      "moves": [
+        {
+          "source_line": 104,
+          "motion": "G0",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 314.998,
+            "y": 512.496,
+            "z": 5.0
+          },
+          "end": {
+            "x": 314.998,
+            "y": 1227.505,
+            "z": 5.0
+          },
+          "raw_axis_words": {
+            "x": 314.998,
+            "y": 1227.505
+          },
+          "z": 5.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1030G0X314.998Y1227.505M3 S16000"
+        },
+        {
+          "source_line": 105,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 314.998,
+            "y": 1227.505,
+            "z": 5.0
+          },
+          "end": {
+            "x": 314.998,
+            "y": 1227.505,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "z": -12.0
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1040G1Z-12.000F15000.0"
+        },
+        {
+          "source_line": 106,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 314.998,
+            "y": 1227.505,
+            "z": -12.0
+          },
+          "end": {
+            "x": 315.204,
+            "y": 1227.525,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 315.204,
+            "y": 1227.525
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1050G1X315.204Y1227.525"
+        },
+        {
+          "source_line": 107,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 315.204,
+            "y": 1227.525,
+            "z": -12.0
+          },
+          "end": {
+            "x": 315.47,
+            "y": 1227.623,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 315.47,
+            "y": 1227.623
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1060X315.470Y1227.623"
+        },
+        {
+          "source_line": 108,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 315.47,
+            "y": 1227.623,
+            "z": -12.0
+          },
+          "end": {
+            "x": 315.702,
+            "y": 1227.796,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 315.702,
+            "y": 1227.796
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1070X315.702Y1227.796"
+        },
+        {
+          "source_line": 109,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 315.702,
+            "y": 1227.796,
+            "z": -12.0
+          },
+          "end": {
+            "x": 315.875,
+            "y": 1228.027,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 315.875,
+            "y": 1228.027
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1080X315.875Y1228.027"
+        },
+        {
+          "source_line": 110,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 315.875,
+            "y": 1228.027,
+            "z": -12.0
+          },
+          "end": {
+            "x": 315.972,
+            "y": 1228.294,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 315.972,
+            "y": 1228.294
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1090X315.972Y1228.294"
+        },
+        {
+          "source_line": 111,
+          "motion": "G3",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 315.972,
+            "y": 1228.294,
+            "z": -12.0
+          },
+          "end": {
+            "x": 315.972,
+            "y": 1228.706,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 315.972,
+            "y": 1228.706
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1100G3X315.972Y1228.706I-1.027J+0.206",
+          "arc": {
+            "direction": "counterclockwise",
+            "plane": "unspecified",
+            "center_offsets": {
+              "i": -1.027,
+              "j": 0.206
+            }
+          }
+        },
+        {
+          "source_line": 112,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 315.972,
+            "y": 1228.706,
+            "z": -12.0
+          },
+          "end": {
+            "x": 315.875,
+            "y": 1228.972,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 315.875,
+            "y": 1228.972
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1110G1X315.875Y1228.972"
+        },
+        {
+          "source_line": 113,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 315.875,
+            "y": 1228.972,
+            "z": -12.0
+          },
+          "end": {
+            "x": 315.702,
+            "y": 1229.204,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 315.702,
+            "y": 1229.204
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1120X315.702Y1229.204"
+        },
+        {
+          "source_line": 114,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 315.702,
+            "y": 1229.204,
+            "z": -12.0
+          },
+          "end": {
+            "x": 315.47,
+            "y": 1229.377,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 315.47,
+            "y": 1229.377
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1130X315.470Y1229.377"
+        },
+        {
+          "source_line": 115,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 315.47,
+            "y": 1229.377,
+            "z": -12.0
+          },
+          "end": {
+            "x": 315.204,
+            "y": 1229.474,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 315.204,
+            "y": 1229.474
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1140X315.204Y1229.474"
+        },
+        {
+          "source_line": 116,
+          "motion": "G3",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 315.204,
+            "y": 1229.474,
+            "z": -12.0
+          },
+          "end": {
+            "x": 314.792,
+            "y": 1229.474,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 314.792
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1150G3X314.792I-0.206J-1.027",
+          "arc": {
+            "direction": "counterclockwise",
+            "plane": "unspecified",
+            "center_offsets": {
+              "i": -0.206,
+              "j": -1.027
+            }
+          }
+        },
+        {
+          "source_line": 117,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 314.792,
+            "y": 1229.474,
+            "z": -12.0
+          },
+          "end": {
+            "x": 314.525,
+            "y": 1229.377,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 314.525,
+            "y": 1229.377
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1160G1X314.525Y1229.377"
+        },
+        {
+          "source_line": 118,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 314.525,
+            "y": 1229.377,
+            "z": -12.0
+          },
+          "end": {
+            "x": 314.294,
+            "y": 1229.204,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 314.294,
+            "y": 1229.204
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1170X314.294Y1229.204"
+        },
+        {
+          "source_line": 119,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 314.294,
+            "y": 1229.204,
+            "z": -12.0
+          },
+          "end": {
+            "x": 314.121,
+            "y": 1228.972,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 314.121,
+            "y": 1228.972
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1180X314.121Y1228.972"
+        },
+        {
+          "source_line": 120,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 314.121,
+            "y": 1228.972,
+            "z": -12.0
+          },
+          "end": {
+            "x": 314.023,
+            "y": 1228.706,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 314.023,
+            "y": 1228.706
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1190X314.023Y1228.706"
+        },
+        {
+          "source_line": 121,
+          "motion": "G3",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 314.023,
+            "y": 1228.706,
+            "z": -12.0
+          },
+          "end": {
+            "x": 314.023,
+            "y": 1228.294,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "y": 1228.294
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1200G3Y1228.294I+1.027J-0.206",
+          "arc": {
+            "direction": "counterclockwise",
+            "plane": "unspecified",
+            "center_offsets": {
+              "i": 1.027,
+              "j": -0.206
+            }
+          }
+        },
+        {
+          "source_line": 122,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 314.023,
+            "y": 1228.294,
+            "z": -12.0
+          },
+          "end": {
+            "x": 314.121,
+            "y": 1228.027,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 314.121,
+            "y": 1228.027
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1210G1X314.121Y1228.027"
+        },
+        {
+          "source_line": 123,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 314.121,
+            "y": 1228.027,
+            "z": -12.0
+          },
+          "end": {
+            "x": 314.294,
+            "y": 1227.796,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 314.294,
+            "y": 1227.796
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1220X314.294Y1227.796"
+        },
+        {
+          "source_line": 124,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 314.294,
+            "y": 1227.796,
+            "z": -12.0
+          },
+          "end": {
+            "x": 314.525,
+            "y": 1227.623,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 314.525,
+            "y": 1227.623
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1230X314.525Y1227.623"
+        },
+        {
+          "source_line": 125,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 314.525,
+            "y": 1227.623,
+            "z": -12.0
+          },
+          "end": {
+            "x": 314.792,
+            "y": 1227.525,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 314.792,
+            "y": 1227.525
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1240X314.792Y1227.525"
+        },
+        {
+          "source_line": 126,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 314.792,
+            "y": 1227.525,
+            "z": -12.0
+          },
+          "end": {
+            "x": 314.998,
+            "y": 1227.505,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 314.998,
+            "y": 1227.505
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1250X314.998Y1227.505"
+        },
+        {
+          "source_line": 127,
+          "motion": "G0",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 314.998,
+            "y": 1227.505,
+            "z": -12.0
+          },
+          "end": {
+            "x": 314.998,
+            "y": 1227.505,
+            "z": 5.0
+          },
+          "raw_axis_words": {
+            "z": 5.0
+          },
+          "z": 5.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1260G0Z5.000M3 S16000"
+        }
+      ],
+      "classification": {
+        "candidate": "small_closed_loop_or_hole",
+        "confidence": "high_geometry_only",
+        "evidence": [
+          "closed path",
+          "arc motion present",
+          "endpoint bounds <= 5 program units"
+        ]
+      }
+    },
+    {
+      "block_id": "block-0006",
+      "started_by": "rapid_xy",
+      "source_line_start": 128,
+      "source_line_end": 151,
+      "start": {
+        "x": 58.998,
+        "y": 1227.505,
+        "z": 5.0
+      },
+      "end": {
+        "x": 58.998,
+        "y": 1227.505,
+        "z": 5.0
+      },
+      "closed_by_endpoints": true,
+      "motion_counts": {
+        "G0": 2,
+        "G1": 19,
+        "G3": 3
+      },
+      "segment_count": 24,
+      "depths": [
+        -12.0
+      ],
+      "depth_min": -12.0,
+      "depth_max": -12.0,
+      "tools": [
+        2
+      ],
+      "bounds": {
+        "x_min": 58.023,
+        "y_min": 1227.505,
+        "x_max": 59.972,
+        "y_max": 1229.474,
+        "width": 1.949,
+        "height": 1.969,
+        "method": "motion endpoints only; arc extrema may extend beyond these bounds"
+      },
+      "moves": [
+        {
+          "source_line": 128,
+          "motion": "G0",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 314.998,
+            "y": 1227.505,
+            "z": 5.0
+          },
+          "end": {
+            "x": 58.998,
+            "y": 1227.505,
+            "z": 5.0
+          },
+          "raw_axis_words": {
+            "x": 58.998,
+            "y": 1227.505
+          },
+          "z": 5.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1270G0X58.998Y1227.505M3 S16000"
+        },
+        {
+          "source_line": 129,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 58.998,
+            "y": 1227.505,
+            "z": 5.0
+          },
+          "end": {
+            "x": 58.998,
+            "y": 1227.505,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "z": -12.0
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1280G1Z-12.000F15000.0"
+        },
+        {
+          "source_line": 130,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 58.998,
+            "y": 1227.505,
+            "z": -12.0
+          },
+          "end": {
+            "x": 59.204,
+            "y": 1227.525,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 59.204,
+            "y": 1227.525
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1290G1X59.204Y1227.525"
+        },
+        {
+          "source_line": 131,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 59.204,
+            "y": 1227.525,
+            "z": -12.0
+          },
+          "end": {
+            "x": 59.47,
+            "y": 1227.623,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 59.47,
+            "y": 1227.623
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1300X59.470Y1227.623"
+        },
+        {
+          "source_line": 132,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 59.47,
+            "y": 1227.623,
+            "z": -12.0
+          },
+          "end": {
+            "x": 59.702,
+            "y": 1227.796,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 59.702,
+            "y": 1227.796
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1310X59.702Y1227.796"
+        },
+        {
+          "source_line": 133,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 59.702,
+            "y": 1227.796,
+            "z": -12.0
+          },
+          "end": {
+            "x": 59.875,
+            "y": 1228.027,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 59.875,
+            "y": 1228.027
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1320X59.875Y1228.027"
+        },
+        {
+          "source_line": 134,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 59.875,
+            "y": 1228.027,
+            "z": -12.0
+          },
+          "end": {
+            "x": 59.972,
+            "y": 1228.294,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 59.972,
+            "y": 1228.294
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1330X59.972Y1228.294"
+        },
+        {
+          "source_line": 135,
+          "motion": "G3",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 59.972,
+            "y": 1228.294,
+            "z": -12.0
+          },
+          "end": {
+            "x": 59.972,
+            "y": 1228.706,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 59.972,
+            "y": 1228.706
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1340G3X59.972Y1228.706I-1.027J+0.206",
+          "arc": {
+            "direction": "counterclockwise",
+            "plane": "unspecified",
+            "center_offsets": {
+              "i": -1.027,
+              "j": 0.206
+            }
+          }
+        },
+        {
+          "source_line": 136,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 59.972,
+            "y": 1228.706,
+            "z": -12.0
+          },
+          "end": {
+            "x": 59.875,
+            "y": 1228.972,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 59.875,
+            "y": 1228.972
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1350G1X59.875Y1228.972"
+        },
+        {
+          "source_line": 137,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 59.875,
+            "y": 1228.972,
+            "z": -12.0
+          },
+          "end": {
+            "x": 59.702,
+            "y": 1229.204,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 59.702,
+            "y": 1229.204
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1360X59.702Y1229.204"
+        },
+        {
+          "source_line": 138,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 59.702,
+            "y": 1229.204,
+            "z": -12.0
+          },
+          "end": {
+            "x": 59.47,
+            "y": 1229.377,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 59.47,
+            "y": 1229.377
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1370X59.470Y1229.377"
+        },
+        {
+          "source_line": 139,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 59.47,
+            "y": 1229.377,
+            "z": -12.0
+          },
+          "end": {
+            "x": 59.204,
+            "y": 1229.474,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 59.204,
+            "y": 1229.474
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1380X59.204Y1229.474"
+        },
+        {
+          "source_line": 140,
+          "motion": "G3",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 59.204,
+            "y": 1229.474,
+            "z": -12.0
+          },
+          "end": {
+            "x": 58.792,
+            "y": 1229.474,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 58.792
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1390G3X58.792I-0.206J-1.027",
+          "arc": {
+            "direction": "counterclockwise",
+            "plane": "unspecified",
+            "center_offsets": {
+              "i": -0.206,
+              "j": -1.027
+            }
+          }
+        },
+        {
+          "source_line": 141,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 58.792,
+            "y": 1229.474,
+            "z": -12.0
+          },
+          "end": {
+            "x": 58.526,
+            "y": 1229.377,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 58.526,
+            "y": 1229.377
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1400G1X58.526Y1229.377"
+        },
+        {
+          "source_line": 142,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 58.526,
+            "y": 1229.377,
+            "z": -12.0
+          },
+          "end": {
+            "x": 58.294,
+            "y": 1229.204,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 58.294,
+            "y": 1229.204
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1410X58.294Y1229.204"
+        },
+        {
+          "source_line": 143,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 58.294,
+            "y": 1229.204,
+            "z": -12.0
+          },
+          "end": {
+            "x": 58.121,
+            "y": 1228.972,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 58.121,
+            "y": 1228.972
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1420X58.121Y1228.972"
+        },
+        {
+          "source_line": 144,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 58.121,
+            "y": 1228.972,
+            "z": -12.0
+          },
+          "end": {
+            "x": 58.023,
+            "y": 1228.706,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 58.023,
+            "y": 1228.706
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1430X58.023Y1228.706"
+        },
+        {
+          "source_line": 145,
+          "motion": "G3",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 58.023,
+            "y": 1228.706,
+            "z": -12.0
+          },
+          "end": {
+            "x": 58.023,
+            "y": 1228.294,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 58.023,
+            "y": 1228.294
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1440G3X58.023Y1228.294I+1.027J-0.206",
+          "arc": {
+            "direction": "counterclockwise",
+            "plane": "unspecified",
+            "center_offsets": {
+              "i": 1.027,
+              "j": -0.206
+            }
+          }
+        },
+        {
+          "source_line": 146,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 58.023,
+            "y": 1228.294,
+            "z": -12.0
+          },
+          "end": {
+            "x": 58.121,
+            "y": 1228.027,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 58.121,
+            "y": 1228.027
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1450G1X58.121Y1228.027"
+        },
+        {
+          "source_line": 147,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 58.121,
+            "y": 1228.027,
+            "z": -12.0
+          },
+          "end": {
+            "x": 58.294,
+            "y": 1227.796,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 58.294,
+            "y": 1227.796
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1460X58.294Y1227.796"
+        },
+        {
+          "source_line": 148,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 58.294,
+            "y": 1227.796,
+            "z": -12.0
+          },
+          "end": {
+            "x": 58.526,
+            "y": 1227.623,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 58.526,
+            "y": 1227.623
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1470X58.526Y1227.623"
+        },
+        {
+          "source_line": 149,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 58.526,
+            "y": 1227.623,
+            "z": -12.0
+          },
+          "end": {
+            "x": 58.792,
+            "y": 1227.525,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 58.792,
+            "y": 1227.525
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1480X58.792Y1227.525"
+        },
+        {
+          "source_line": 150,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 58.792,
+            "y": 1227.525,
+            "z": -12.0
+          },
+          "end": {
+            "x": 58.998,
+            "y": 1227.505,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 58.998,
+            "y": 1227.505
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1490X58.998Y1227.505"
+        },
+        {
+          "source_line": 151,
+          "motion": "G0",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 58.998,
+            "y": 1227.505,
+            "z": -12.0
+          },
+          "end": {
+            "x": 58.998,
+            "y": 1227.505,
+            "z": 5.0
+          },
+          "raw_axis_words": {
+            "z": 5.0
+          },
+          "z": 5.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1500G0Z5.000M3 S16000"
+        }
+      ],
+      "classification": {
+        "candidate": "small_closed_loop_or_hole",
+        "confidence": "high_geometry_only",
+        "evidence": [
+          "closed path",
+          "arc motion present",
+          "endpoint bounds <= 5 program units"
+        ]
+      }
+    },
+    {
+      "block_id": "block-0007",
+      "started_by": "rapid_xy",
+      "source_line_start": 152,
+      "source_line_end": 175,
+      "start": {
+        "x": 17.734,
+        "y": 1587.724,
+        "z": 5.0
+      },
+      "end": {
+        "x": 17.734,
+        "y": 1587.724,
+        "z": 5.0
+      },
+      "closed_by_endpoints": true,
+      "motion_counts": {
+        "G0": 2,
+        "G1": 19,
+        "G3": 3
+      },
+      "segment_count": 24,
+      "depths": [
+        -12.0
+      ],
+      "depth_min": -12.0,
+      "depth_max": -12.0,
+      "tools": [
+        2
+      ],
+      "bounds": {
+        "x_min": 17.482,
+        "y_min": 1587.393,
+        "x_max": 19.47,
+        "y_max": 1589.38,
+        "width": 1.988,
+        "height": 1.987,
+        "method": "motion endpoints only; arc extrema may extend beyond these bounds"
+      },
+      "moves": [
+        {
+          "source_line": 152,
+          "motion": "G0",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 58.998,
+            "y": 1227.505,
+            "z": 5.0
+          },
+          "end": {
+            "x": 17.734,
+            "y": 1587.724,
+            "z": 5.0
+          },
+          "raw_axis_words": {
+            "x": 17.734,
+            "y": 1587.724
+          },
+          "z": 5.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1510G0X17.734Y1587.724M3 S16000"
+        },
+        {
+          "source_line": 153,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 17.734,
+            "y": 1587.724,
+            "z": 5.0
+          },
+          "end": {
+            "x": 17.734,
+            "y": 1587.724,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "z": -12.0
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1520G1Z-12.000F15000.0"
+        },
+        {
+          "source_line": 154,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 17.734,
+            "y": 1587.724,
+            "z": -12.0
+          },
+          "end": {
+            "x": 17.886,
+            "y": 1587.584,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 17.886,
+            "y": 1587.584
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1530G1X17.886Y1587.584"
+        },
+        {
+          "source_line": 155,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 17.886,
+            "y": 1587.584,
+            "z": -12.0
+          },
+          "end": {
+            "x": 18.136,
+            "y": 1587.45,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 18.136,
+            "y": 1587.45
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1540X18.136Y1587.450"
+        },
+        {
+          "source_line": 156,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 18.136,
+            "y": 1587.45,
+            "z": -12.0
+          },
+          "end": {
+            "x": 18.42,
+            "y": 1587.393,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 18.42,
+            "y": 1587.393
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1550X18.420Y1587.393"
+        },
+        {
+          "source_line": 157,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 18.42,
+            "y": 1587.393,
+            "z": -12.0
+          },
+          "end": {
+            "x": 18.708,
+            "y": 1587.418,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 18.708,
+            "y": 1587.418
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1560X18.708Y1587.418"
+        },
+        {
+          "source_line": 158,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 18.708,
+            "y": 1587.418,
+            "z": -12.0
+          },
+          "end": {
+            "x": 18.972,
+            "y": 1587.523,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 18.972,
+            "y": 1587.523
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1570X18.972Y1587.523"
+        },
+        {
+          "source_line": 159,
+          "motion": "G3",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 18.972,
+            "y": 1587.523,
+            "z": -12.0
+          },
+          "end": {
+            "x": 19.279,
+            "y": 1587.797,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 19.279,
+            "y": 1587.797
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1580G3X19.279Y1587.797I-0.531J+0.903",
+          "arc": {
+            "direction": "counterclockwise",
+            "plane": "unspecified",
+            "center_offsets": {
+              "i": -0.531,
+              "j": 0.903
+            }
+          }
+        },
+        {
+          "source_line": 160,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 19.279,
+            "y": 1587.797,
+            "z": -12.0
+          },
+          "end": {
+            "x": 19.413,
+            "y": 1588.047,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 19.413,
+            "y": 1588.047
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1590G1X19.413Y1588.047"
+        },
+        {
+          "source_line": 161,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 19.413,
+            "y": 1588.047,
+            "z": -12.0
+          },
+          "end": {
+            "x": 19.47,
+            "y": 1588.331,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 19.47,
+            "y": 1588.331
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1600X19.470Y1588.331"
+        },
+        {
+          "source_line": 162,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 19.47,
+            "y": 1588.331,
+            "z": -12.0
+          },
+          "end": {
+            "x": 19.445,
+            "y": 1588.619,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 19.445,
+            "y": 1588.619
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1610X19.445Y1588.619"
+        },
+        {
+          "source_line": 163,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 19.445,
+            "y": 1588.619,
+            "z": -12.0
+          },
+          "end": {
+            "x": 19.34,
+            "y": 1588.882,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 19.34,
+            "y": 1588.882
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1620X19.340Y1588.882"
+        },
+        {
+          "source_line": 164,
+          "motion": "G3",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 19.34,
+            "y": 1588.882,
+            "z": -12.0
+          },
+          "end": {
+            "x": 19.065,
+            "y": 1589.189,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 19.065,
+            "y": 1589.189
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1630G3X19.065Y1589.189I-0.903J-0.531",
+          "arc": {
+            "direction": "counterclockwise",
+            "plane": "unspecified",
+            "center_offsets": {
+              "i": -0.903,
+              "j": -0.531
+            }
+          }
+        },
+        {
+          "source_line": 165,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 19.065,
+            "y": 1589.189,
+            "z": -12.0
+          },
+          "end": {
+            "x": 18.815,
+            "y": 1589.323,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 18.815,
+            "y": 1589.323
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1640G1X18.815Y1589.323"
+        },
+        {
+          "source_line": 166,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 18.815,
+            "y": 1589.323,
+            "z": -12.0
+          },
+          "end": {
+            "x": 18.532,
+            "y": 1589.38,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 18.532,
+            "y": 1589.38
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1650X18.532Y1589.380"
+        },
+        {
+          "source_line": 167,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 18.532,
+            "y": 1589.38,
+            "z": -12.0
+          },
+          "end": {
+            "x": 18.244,
+            "y": 1589.355,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 18.244,
+            "y": 1589.355
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1660X18.244Y1589.355"
+        },
+        {
+          "source_line": 168,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 18.244,
+            "y": 1589.355,
+            "z": -12.0
+          },
+          "end": {
+            "x": 17.98,
+            "y": 1589.25,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 17.98,
+            "y": 1589.25
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1670X17.980Y1589.250"
+        },
+        {
+          "source_line": 169,
+          "motion": "G3",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 17.98,
+            "y": 1589.25,
+            "z": -12.0
+          },
+          "end": {
+            "x": 17.673,
+            "y": 1588.976,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 17.673,
+            "y": 1588.976
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1680G3X17.673Y1588.976I+0.531J-0.903",
+          "arc": {
+            "direction": "counterclockwise",
+            "plane": "unspecified",
+            "center_offsets": {
+              "i": 0.531,
+              "j": -0.903
+            }
+          }
+        },
+        {
+          "source_line": 170,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 17.673,
+            "y": 1588.976,
+            "z": -12.0
+          },
+          "end": {
+            "x": 17.539,
+            "y": 1588.726,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 17.539,
+            "y": 1588.726
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1690G1X17.539Y1588.726"
+        },
+        {
+          "source_line": 171,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 17.539,
+            "y": 1588.726,
+            "z": -12.0
+          },
+          "end": {
+            "x": 17.482,
+            "y": 1588.443,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 17.482,
+            "y": 1588.443
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1700X17.482Y1588.443"
+        },
+        {
+          "source_line": 172,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 17.482,
+            "y": 1588.443,
+            "z": -12.0
+          },
+          "end": {
+            "x": 17.507,
+            "y": 1588.155,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 17.507,
+            "y": 1588.155
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1710X17.507Y1588.155"
+        },
+        {
+          "source_line": 173,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 17.507,
+            "y": 1588.155,
+            "z": -12.0
+          },
+          "end": {
+            "x": 17.612,
+            "y": 1587.891,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 17.612,
+            "y": 1587.891
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1720X17.612Y1587.891"
+        },
+        {
+          "source_line": 174,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 17.612,
+            "y": 1587.891,
+            "z": -12.0
+          },
+          "end": {
+            "x": 17.734,
+            "y": 1587.724,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 17.734,
+            "y": 1587.724
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1730X17.734Y1587.724"
+        },
+        {
+          "source_line": 175,
+          "motion": "G0",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 17.734,
+            "y": 1587.724,
+            "z": -12.0
+          },
+          "end": {
+            "x": 17.734,
+            "y": 1587.724,
+            "z": 5.0
+          },
+          "raw_axis_words": {
+            "z": 5.0
+          },
+          "z": 5.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1740G0Z5.000M3 S16000"
+        }
+      ],
+      "classification": {
+        "candidate": "small_closed_loop_or_hole",
+        "confidence": "high_geometry_only",
+        "evidence": [
+          "closed path",
+          "arc motion present",
+          "endpoint bounds <= 5 program units"
+        ]
+      }
+    },
+    {
+      "block_id": "block-0008",
+      "started_by": "rapid_xy",
+      "source_line_start": 176,
+      "source_line_end": 199,
+      "start": {
+        "x": 113.194,
+        "y": 1672.997,
+        "z": 5.0
+      },
+      "end": {
+        "x": 113.194,
+        "y": 1672.997,
+        "z": 5.0
+      },
+      "closed_by_endpoints": true,
+      "motion_counts": {
+        "G0": 2,
+        "G1": 19,
+        "G3": 3
+      },
+      "segment_count": 24,
+      "depths": [
+        -12.0
+      ],
+      "depth_min": -12.0,
+      "depth_max": -12.0,
+      "tools": [
+        2
+      ],
+      "bounds": {
+        "x_min": 112.942,
+        "y_min": 1672.666,
+        "x_max": 114.929,
+        "y_max": 1674.653,
+        "width": 1.987,
+        "height": 1.987,
+        "method": "motion endpoints only; arc extrema may extend beyond these bounds"
+      },
+      "moves": [
+        {
+          "source_line": 176,
+          "motion": "G0",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 17.734,
+            "y": 1587.724,
+            "z": 5.0
+          },
+          "end": {
+            "x": 113.194,
+            "y": 1672.997,
+            "z": 5.0
+          },
+          "raw_axis_words": {
+            "x": 113.194,
+            "y": 1672.997
+          },
+          "z": 5.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1750G0X113.194Y1672.997M3 S16000"
+        },
+        {
+          "source_line": 177,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 113.194,
+            "y": 1672.997,
+            "z": 5.0
+          },
+          "end": {
+            "x": 113.194,
+            "y": 1672.997,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "z": -12.0
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1760G1Z-12.000F15000.0"
+        },
+        {
+          "source_line": 178,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 113.194,
+            "y": 1672.997,
+            "z": -12.0
+          },
+          "end": {
+            "x": 113.346,
+            "y": 1672.857,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 113.346,
+            "y": 1672.857
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1770G1X113.346Y1672.857"
+        },
+        {
+          "source_line": 179,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 113.346,
+            "y": 1672.857,
+            "z": -12.0
+          },
+          "end": {
+            "x": 113.596,
+            "y": 1672.723,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 113.596,
+            "y": 1672.723
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1780X113.596Y1672.723"
+        },
+        {
+          "source_line": 180,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 113.596,
+            "y": 1672.723,
+            "z": -12.0
+          },
+          "end": {
+            "x": 113.879,
+            "y": 1672.666,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 113.879,
+            "y": 1672.666
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1790X113.879Y1672.666"
+        },
+        {
+          "source_line": 181,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 113.879,
+            "y": 1672.666,
+            "z": -12.0
+          },
+          "end": {
+            "x": 114.168,
+            "y": 1672.691,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 114.168,
+            "y": 1672.691
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1800X114.168Y1672.691"
+        },
+        {
+          "source_line": 182,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 114.168,
+            "y": 1672.691,
+            "z": -12.0
+          },
+          "end": {
+            "x": 114.431,
+            "y": 1672.796,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 114.431,
+            "y": 1672.796
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1810X114.431Y1672.796"
+        },
+        {
+          "source_line": 183,
+          "motion": "G3",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 114.431,
+            "y": 1672.796,
+            "z": -12.0
+          },
+          "end": {
+            "x": 114.738,
+            "y": 1673.07,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 114.738,
+            "y": 1673.07
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1820G3X114.738Y1673.070I-0.531J+0.903",
+          "arc": {
+            "direction": "counterclockwise",
+            "plane": "unspecified",
+            "center_offsets": {
+              "i": -0.531,
+              "j": 0.903
+            }
+          }
+        },
+        {
+          "source_line": 184,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 114.738,
+            "y": 1673.07,
+            "z": -12.0
+          },
+          "end": {
+            "x": 114.872,
+            "y": 1673.32,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 114.872,
+            "y": 1673.32
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1830G1X114.872Y1673.320"
+        },
+        {
+          "source_line": 185,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 114.872,
+            "y": 1673.32,
+            "z": -12.0
+          },
+          "end": {
+            "x": 114.929,
+            "y": 1673.603,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 114.929,
+            "y": 1673.603
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1840X114.929Y1673.603"
+        },
+        {
+          "source_line": 186,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 114.929,
+            "y": 1673.603,
+            "z": -12.0
+          },
+          "end": {
+            "x": 114.904,
+            "y": 1673.891,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 114.904,
+            "y": 1673.891
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1850X114.904Y1673.891"
+        },
+        {
+          "source_line": 187,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 114.904,
+            "y": 1673.891,
+            "z": -12.0
+          },
+          "end": {
+            "x": 114.799,
+            "y": 1674.155,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 114.799,
+            "y": 1674.155
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1860X114.799Y1674.155"
+        },
+        {
+          "source_line": 188,
+          "motion": "G3",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 114.799,
+            "y": 1674.155,
+            "z": -12.0
+          },
+          "end": {
+            "x": 114.525,
+            "y": 1674.462,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 114.525,
+            "y": 1674.462
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1870G3X114.525Y1674.462I-0.903J-0.531",
+          "arc": {
+            "direction": "counterclockwise",
+            "plane": "unspecified",
+            "center_offsets": {
+              "i": -0.903,
+              "j": -0.531
+            }
+          }
+        },
+        {
+          "source_line": 189,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 114.525,
+            "y": 1674.462,
+            "z": -12.0
+          },
+          "end": {
+            "x": 114.275,
+            "y": 1674.596,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 114.275,
+            "y": 1674.596
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1880G1X114.275Y1674.596"
+        },
+        {
+          "source_line": 190,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 114.275,
+            "y": 1674.596,
+            "z": -12.0
+          },
+          "end": {
+            "x": 113.992,
+            "y": 1674.653,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 113.992,
+            "y": 1674.653
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1890X113.992Y1674.653"
+        },
+        {
+          "source_line": 191,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 113.992,
+            "y": 1674.653,
+            "z": -12.0
+          },
+          "end": {
+            "x": 113.703,
+            "y": 1674.628,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 113.703,
+            "y": 1674.628
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1900X113.703Y1674.628"
+        },
+        {
+          "source_line": 192,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 113.703,
+            "y": 1674.628,
+            "z": -12.0
+          },
+          "end": {
+            "x": 113.44,
+            "y": 1674.523,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 113.44,
+            "y": 1674.523
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1910X113.440Y1674.523"
+        },
+        {
+          "source_line": 193,
+          "motion": "G3",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 113.44,
+            "y": 1674.523,
+            "z": -12.0
+          },
+          "end": {
+            "x": 113.133,
+            "y": 1674.249,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 113.133,
+            "y": 1674.249
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1920G3X113.133Y1674.249I+0.531J-0.903",
+          "arc": {
+            "direction": "counterclockwise",
+            "plane": "unspecified",
+            "center_offsets": {
+              "i": 0.531,
+              "j": -0.903
+            }
+          }
+        },
+        {
+          "source_line": 194,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 113.133,
+            "y": 1674.249,
+            "z": -12.0
+          },
+          "end": {
+            "x": 112.999,
+            "y": 1673.999,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 112.999,
+            "y": 1673.999
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1930G1X112.999Y1673.999"
+        },
+        {
+          "source_line": 195,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 112.999,
+            "y": 1673.999,
+            "z": -12.0
+          },
+          "end": {
+            "x": 112.942,
+            "y": 1673.715,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 112.942,
+            "y": 1673.715
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1940X112.942Y1673.715"
+        },
+        {
+          "source_line": 196,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 112.942,
+            "y": 1673.715,
+            "z": -12.0
+          },
+          "end": {
+            "x": 112.967,
+            "y": 1673.427,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 112.967,
+            "y": 1673.427
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1950X112.967Y1673.427"
+        },
+        {
+          "source_line": 197,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 112.967,
+            "y": 1673.427,
+            "z": -12.0
+          },
+          "end": {
+            "x": 113.072,
+            "y": 1673.164,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 113.072,
+            "y": 1673.164
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1960X113.072Y1673.164"
+        },
+        {
+          "source_line": 198,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 113.072,
+            "y": 1673.164,
+            "z": -12.0
+          },
+          "end": {
+            "x": 113.194,
+            "y": 1672.997,
+            "z": -12.0
+          },
+          "raw_axis_words": {
+            "x": 113.194,
+            "y": 1672.997
+          },
+          "z": -12.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1970X113.194Y1672.997"
+        },
+        {
+          "source_line": 199,
+          "motion": "G0",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 113.194,
+            "y": 1672.997,
+            "z": -12.0
+          },
+          "end": {
+            "x": 113.194,
+            "y": 1672.997,
+            "z": 5.0
+          },
+          "raw_axis_words": {
+            "z": 5.0
+          },
+          "z": 5.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1980G0Z5.000M3 S16000"
+        }
+      ],
+      "classification": {
+        "candidate": "small_closed_loop_or_hole",
+        "confidence": "high_geometry_only",
+        "evidence": [
+          "closed path",
+          "arc motion present",
+          "endpoint bounds <= 5 program units"
+        ]
+      }
+    },
+    {
+      "block_id": "block-0009",
+      "started_by": "rapid_xy",
+      "source_line_start": 200,
+      "source_line_end": 227,
+      "start": {
+        "x": -0.5,
+        "y": 111.045,
+        "z": 5.0
+      },
+      "end": {
+        "x": -0.5,
+        "y": 111.045,
+        "z": 5.0
+      },
+      "closed_by_endpoints": true,
+      "motion_counts": {
+        "G0": 2,
+        "G1": 14,
+        "G2": 12
+      },
+      "segment_count": 28,
+      "depths": [
+        -16.0,
+        -14.0
+      ],
+      "depth_min": -16.0,
+      "depth_max": -14.0,
+      "tools": [
+        2
+      ],
+      "bounds": {
+        "x_min": -0.5,
+        "y_min": 4.449,
+        "x_max": 400.5,
+        "y_max": 1735.551,
+        "width": 401.0,
+        "height": 1731.102,
+        "method": "motion endpoints only; arc extrema may extend beyond these bounds"
+      },
+      "moves": [
+        {
+          "source_line": 200,
+          "motion": "G0",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 113.194,
+            "y": 1672.997,
+            "z": 5.0
+          },
+          "end": {
+            "x": -0.5,
+            "y": 111.045,
+            "z": 5.0
+          },
+          "raw_axis_words": {
+            "x": -0.5,
+            "y": 111.045
+          },
+          "z": 5.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N1990G0X-0.500Y111.045M3 S16000"
+        },
+        {
+          "source_line": 201,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": -0.5,
+            "y": 111.045,
+            "z": 5.0
+          },
+          "end": {
+            "x": -0.5,
+            "y": 111.045,
+            "z": -14.0
+          },
+          "raw_axis_words": {
+            "z": -14.0
+          },
+          "z": -14.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N2000G1Z-14.000F15000.0"
+        },
+        {
+          "source_line": 202,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": -0.5,
+            "y": 111.045,
+            "z": -14.0
+          },
+          "end": {
+            "x": -0.5,
+            "y": 1628.955,
+            "z": -14.0
+          },
+          "raw_axis_words": {
+            "y": 1628.955
+          },
+          "z": -14.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N2010G1Y1628.955"
+        },
+        {
+          "source_line": 203,
+          "motion": "G2",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": -0.5,
+            "y": 1628.955,
+            "z": -14.0
+          },
+          "end": {
+            "x": 1.306,
+            "y": 1632.3,
+            "z": -14.0
+          },
+          "raw_axis_words": {
+            "x": 1.306,
+            "y": 1632.3
+          },
+          "z": -14.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N2020G2X1.306Y1632.300I+4.000J+0.000",
+          "arc": {
+            "direction": "clockwise",
+            "plane": "unspecified",
+            "center_offsets": {
+              "i": 4.0,
+              "j": 0.0
+            }
+          }
+        },
+        {
+          "source_line": 204,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 1.306,
+            "y": 1632.3,
+            "z": -14.0
+          },
+          "end": {
+            "x": 158.137,
+            "y": 1735.2,
+            "z": -14.0
+          },
+          "raw_axis_words": {
+            "x": 158.137,
+            "y": 1735.2
+          },
+          "z": -14.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N2030G1X158.137Y1735.200"
+        },
+        {
+          "source_line": 205,
+          "motion": "G2",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 158.137,
+            "y": 1735.2,
+            "z": -14.0
+          },
+          "end": {
+            "x": 161.862,
+            "y": 1735.551,
+            "z": -14.0
+          },
+          "raw_axis_words": {
+            "x": 161.862,
+            "y": 1735.551
+          },
+          "z": -14.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N2040G2X161.862Y1735.551I+2.194J-3.344",
+          "arc": {
+            "direction": "clockwise",
+            "plane": "unspecified",
+            "center_offsets": {
+              "i": 2.194,
+              "j": -3.344
+            }
+          }
+        },
+        {
+          "source_line": 206,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 161.862,
+            "y": 1735.551,
+            "z": -14.0
+          },
+          "end": {
+            "x": 398.031,
+            "y": 1637.727,
+            "z": -14.0
+          },
+          "raw_axis_words": {
+            "x": 398.031,
+            "y": 1637.727
+          },
+          "z": -14.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N2050G1X398.031Y1637.727"
+        },
+        {
+          "source_line": 207,
+          "motion": "G2",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 398.031,
+            "y": 1637.727,
+            "z": -14.0
+          },
+          "end": {
+            "x": 400.5,
+            "y": 1634.031,
+            "z": -14.0
+          },
+          "raw_axis_words": {
+            "x": 400.5,
+            "y": 1634.031
+          },
+          "z": -14.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N2060G2X400.500Y1634.031I-1.531J-3.696",
+          "arc": {
+            "direction": "clockwise",
+            "plane": "unspecified",
+            "center_offsets": {
+              "i": -1.531,
+              "j": -3.696
+            }
+          }
+        },
+        {
+          "source_line": 208,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 400.5,
+            "y": 1634.031,
+            "z": -14.0
+          },
+          "end": {
+            "x": 400.5,
+            "y": 105.969,
+            "z": -14.0
+          },
+          "raw_axis_words": {
+            "y": 105.969
+          },
+          "z": -14.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N2070G1Y105.969"
+        },
+        {
+          "source_line": 209,
+          "motion": "G2",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 400.5,
+            "y": 105.969,
+            "z": -14.0
+          },
+          "end": {
+            "x": 398.031,
+            "y": 102.273,
+            "z": -14.0
+          },
+          "raw_axis_words": {
+            "x": 398.031,
+            "y": 102.273
+          },
+          "z": -14.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N2080G2X398.031Y102.273I-4.000J-0.000",
+          "arc": {
+            "direction": "clockwise",
+            "plane": "unspecified",
+            "center_offsets": {
+              "i": -4.0,
+              "j": -0.0
+            }
+          }
+        },
+        {
+          "source_line": 210,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 398.031,
+            "y": 102.273,
+            "z": -14.0
+          },
+          "end": {
+            "x": 161.862,
+            "y": 4.449,
+            "z": -14.0
+          },
+          "raw_axis_words": {
+            "x": 161.862,
+            "y": 4.449
+          },
+          "z": -14.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N2090G1X161.862Y4.449"
+        },
+        {
+          "source_line": 211,
+          "motion": "G2",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 161.862,
+            "y": 4.449,
+            "z": -14.0
+          },
+          "end": {
+            "x": 158.137,
+            "y": 4.8,
+            "z": -14.0
+          },
+          "raw_axis_words": {
+            "x": 158.137,
+            "y": 4.8
+          },
+          "z": -14.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N2100G2X158.137Y4.800I-1.531J+3.696",
+          "arc": {
+            "direction": "clockwise",
+            "plane": "unspecified",
+            "center_offsets": {
+              "i": -1.531,
+              "j": 3.696
+            }
+          }
+        },
+        {
+          "source_line": 212,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 158.137,
+            "y": 4.8,
+            "z": -14.0
+          },
+          "end": {
+            "x": 1.306,
+            "y": 107.701,
+            "z": -14.0
+          },
+          "raw_axis_words": {
+            "x": 1.306,
+            "y": 107.701
+          },
+          "z": -14.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N2110G1X1.306Y107.701"
+        },
+        {
+          "source_line": 213,
+          "motion": "G2",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 1.306,
+            "y": 107.701,
+            "z": -14.0
+          },
+          "end": {
+            "x": -0.5,
+            "y": 111.045,
+            "z": -14.0
+          },
+          "raw_axis_words": {
+            "x": -0.5,
+            "y": 111.045
+          },
+          "z": -14.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N2120G2X-0.500Y111.045I+2.194J+3.344",
+          "arc": {
+            "direction": "clockwise",
+            "plane": "unspecified",
+            "center_offsets": {
+              "i": 2.194,
+              "j": 3.344
+            }
+          }
+        },
+        {
+          "source_line": 214,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": -0.5,
+            "y": 111.045,
+            "z": -14.0
+          },
+          "end": {
+            "x": -0.5,
+            "y": 111.045,
+            "z": -16.0
+          },
+          "raw_axis_words": {
+            "z": -16.0
+          },
+          "z": -16.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N2130G1Z-16.000"
+        },
+        {
+          "source_line": 215,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": -0.5,
+            "y": 111.045,
+            "z": -16.0
+          },
+          "end": {
+            "x": -0.5,
+            "y": 1628.955,
+            "z": -16.0
+          },
+          "raw_axis_words": {
+            "y": 1628.955
+          },
+          "z": -16.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N2140G1Y1628.955"
+        },
+        {
+          "source_line": 216,
+          "motion": "G2",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": -0.5,
+            "y": 1628.955,
+            "z": -16.0
+          },
+          "end": {
+            "x": 1.306,
+            "y": 1632.3,
+            "z": -16.0
+          },
+          "raw_axis_words": {
+            "x": 1.306,
+            "y": 1632.3
+          },
+          "z": -16.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N2150G2X1.306Y1632.300I+4.000J+0.000",
+          "arc": {
+            "direction": "clockwise",
+            "plane": "unspecified",
+            "center_offsets": {
+              "i": 4.0,
+              "j": 0.0
+            }
+          }
+        },
+        {
+          "source_line": 217,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 1.306,
+            "y": 1632.3,
+            "z": -16.0
+          },
+          "end": {
+            "x": 158.137,
+            "y": 1735.2,
+            "z": -16.0
+          },
+          "raw_axis_words": {
+            "x": 158.137,
+            "y": 1735.2
+          },
+          "z": -16.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N2160G1X158.137Y1735.200"
+        },
+        {
+          "source_line": 218,
+          "motion": "G2",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 158.137,
+            "y": 1735.2,
+            "z": -16.0
+          },
+          "end": {
+            "x": 161.862,
+            "y": 1735.551,
+            "z": -16.0
+          },
+          "raw_axis_words": {
+            "x": 161.862,
+            "y": 1735.551
+          },
+          "z": -16.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N2170G2X161.862Y1735.551I+2.194J-3.344",
+          "arc": {
+            "direction": "clockwise",
+            "plane": "unspecified",
+            "center_offsets": {
+              "i": 2.194,
+              "j": -3.344
+            }
+          }
+        },
+        {
+          "source_line": 219,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 161.862,
+            "y": 1735.551,
+            "z": -16.0
+          },
+          "end": {
+            "x": 398.031,
+            "y": 1637.727,
+            "z": -16.0
+          },
+          "raw_axis_words": {
+            "x": 398.031,
+            "y": 1637.727
+          },
+          "z": -16.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N2180G1X398.031Y1637.727"
+        },
+        {
+          "source_line": 220,
+          "motion": "G2",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 398.031,
+            "y": 1637.727,
+            "z": -16.0
+          },
+          "end": {
+            "x": 400.5,
+            "y": 1634.031,
+            "z": -16.0
+          },
+          "raw_axis_words": {
+            "x": 400.5,
+            "y": 1634.031
+          },
+          "z": -16.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N2190G2X400.500Y1634.031I-1.531J-3.696",
+          "arc": {
+            "direction": "clockwise",
+            "plane": "unspecified",
+            "center_offsets": {
+              "i": -1.531,
+              "j": -3.696
+            }
+          }
+        },
+        {
+          "source_line": 221,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 400.5,
+            "y": 1634.031,
+            "z": -16.0
+          },
+          "end": {
+            "x": 400.5,
+            "y": 105.969,
+            "z": -16.0
+          },
+          "raw_axis_words": {
+            "y": 105.969
+          },
+          "z": -16.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N2200G1Y105.969"
+        },
+        {
+          "source_line": 222,
+          "motion": "G2",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 400.5,
+            "y": 105.969,
+            "z": -16.0
+          },
+          "end": {
+            "x": 398.031,
+            "y": 102.273,
+            "z": -16.0
+          },
+          "raw_axis_words": {
+            "x": 398.031,
+            "y": 102.273
+          },
+          "z": -16.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N2210G2X398.031Y102.273I-4.000J-0.000",
+          "arc": {
+            "direction": "clockwise",
+            "plane": "unspecified",
+            "center_offsets": {
+              "i": -4.0,
+              "j": -0.0
+            }
+          }
+        },
+        {
+          "source_line": 223,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 398.031,
+            "y": 102.273,
+            "z": -16.0
+          },
+          "end": {
+            "x": 161.862,
+            "y": 4.449,
+            "z": -16.0
+          },
+          "raw_axis_words": {
+            "x": 161.862,
+            "y": 4.449
+          },
+          "z": -16.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N2220G1X161.862Y4.449"
+        },
+        {
+          "source_line": 224,
+          "motion": "G2",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 161.862,
+            "y": 4.449,
+            "z": -16.0
+          },
+          "end": {
+            "x": 158.137,
+            "y": 4.8,
+            "z": -16.0
+          },
+          "raw_axis_words": {
+            "x": 158.137,
+            "y": 4.8
+          },
+          "z": -16.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N2230G2X158.137Y4.800I-1.531J+3.696",
+          "arc": {
+            "direction": "clockwise",
+            "plane": "unspecified",
+            "center_offsets": {
+              "i": -1.531,
+              "j": 3.696
+            }
+          }
+        },
+        {
+          "source_line": 225,
+          "motion": "G1",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 158.137,
+            "y": 4.8,
+            "z": -16.0
+          },
+          "end": {
+            "x": 1.306,
+            "y": 107.701,
+            "z": -16.0
+          },
+          "raw_axis_words": {
+            "x": 1.306,
+            "y": 107.701
+          },
+          "z": -16.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N2240G1X1.306Y107.701"
+        },
+        {
+          "source_line": 226,
+          "motion": "G2",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": 1.306,
+            "y": 107.701,
+            "z": -16.0
+          },
+          "end": {
+            "x": -0.5,
+            "y": 111.045,
+            "z": -16.0
+          },
+          "raw_axis_words": {
+            "x": -0.5,
+            "y": 111.045
+          },
+          "z": -16.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N2250G2X-0.500Y111.045I+2.194J+3.344",
+          "arc": {
+            "direction": "clockwise",
+            "plane": "unspecified",
+            "center_offsets": {
+              "i": 2.194,
+              "j": 3.344
+            }
+          }
+        },
+        {
+          "source_line": 227,
+          "motion": "G0",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": -0.5,
+            "y": 111.045,
+            "z": -16.0
+          },
+          "end": {
+            "x": -0.5,
+            "y": 111.045,
+            "z": 5.0
+          },
+          "raw_axis_words": {
+            "z": 5.0
+          },
+          "z": 5.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N2260G0Z5.000M3 S16000"
+        }
+      ],
+      "classification": {
+        "candidate": "large_closed_contour_candidate",
+        "confidence": "medium_geometry_only",
+        "evidence": [
+          "path returns near its start",
+          "arc motion present",
+          "large XY bounds",
+          "not proof of finished-part boundary"
+        ]
+      }
+    },
+    {
+      "block_id": "block-0010",
+      "started_by": "rapid_xy",
+      "source_line_start": 228,
+      "source_line_end": 228,
+      "start": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 5.0
+      },
+      "end": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 5.0
+      },
+      "closed_by_endpoints": true,
+      "motion_counts": {
+        "G0": 1
+      },
+      "segment_count": 1,
+      "depths": [],
+      "depth_min": null,
+      "depth_max": null,
+      "tools": [
+        2
+      ],
+      "bounds": {
+        "x_min": 0.0,
+        "y_min": 0.0,
+        "x_max": 0.0,
+        "y_max": 0.0,
+        "width": 0.0,
+        "height": 0.0,
+        "method": "motion endpoints only; arc extrema may extend beyond these bounds"
+      },
+      "moves": [
+        {
+          "source_line": 228,
+          "motion": "G0",
+          "coordinate_mode": "absolute",
+          "coordinate_frame": "program",
+          "start": {
+            "x": -0.5,
+            "y": 111.045,
+            "z": 5.0
+          },
+          "end": {
+            "x": 0.0,
+            "y": 0.0,
+            "z": 5.0
+          },
+          "raw_axis_words": {
+            "x": 0.0,
+            "y": 0.0
+          },
+          "z": 5.0,
+          "tool": 2,
+          "feed": 15000.0,
+          "spindle": 16000.0,
+          "raw": "N2270G0X0.000Y0.000M3 S16000"
+        }
+      ],
+      "classification": {
+        "candidate": "rapid_positioning_only",
+        "confidence": "high_motion_type_only",
+        "evidence": [
+          "block contains no G1/G2/G3 cutting/interpolation moves"
+        ]
+      }
+    }
+  ],
+  "warnings": [
+    "واحد برنامه صریحاً با G20/G21 تعیین نشده است؛ ابعاد بر حسب واحد برنامه گزارش شده‌اند و میلی‌متر فرض نشده‌اند.",
+    "صفحهٔ قوس با G17/G18/G19 صریحاً تعیین نشده؛ مرکز/شعاع قوس‌ها قطعی گزارش نمی‌شود.",
+    "افست مبدأ کاری G54-G59 در گزارش اعمال نشده؛ مختصات برنامه معادل مختصات فیزیکی ماشین نیست.",
+    "جبران طول ابزار G43/H فقط به‌عنوان دستور مشاهده‌شده ثبت شده و روی مختصات Z اعمال نشده است.",
+    "دستور M ناشناخته یا وابسته به کنترلر وجود دارد؛ پیش از خروجی اجرایی باید مستند شود.",
+    "قالب فشردهٔ M/T ثبت شد؛ بدون پروفایل کنترلر، معنای دقیق آن فرض نشده است.",
+    "حرکت‌های G53 در مختصات ماشین از هندسهٔ برنامه جدا نگه داشته شده‌اند."
+  ]
+}

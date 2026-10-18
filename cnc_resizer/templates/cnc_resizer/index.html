@@ -126,8 +126,9 @@
 {% csrf_token %}
 <header class="top">
   <h1>تغییر طول قطعه CNC</h1>
-  <span class="sub">فایل cnc را باز کنید، وکتورها را ببینید، میزان و نحوه‌ی تغییر طول را تنظیم کنید و خروجی را بگیرید</span>
+  <span class="sub">فایل CNC را بارگذاری کنید؛ تحلیل جدید فقط در حالت پیش‌نمایش ایمن است.</span>
   <span class="spacer"></span>
+  <a class="primary" href="{{ engine_url }}" style="text-decoration:none">مهندسی معکوس و پیش‌نمایش</a>
   <a class="primary" href="{{ sheet_plans_url }}" style="text-decoration:none">برنامه‌های ورق CNC</a>
   <button id="themeBtn" type="button" title="تغییر تم">تم</button>
 </header>
@@ -218,13 +219,13 @@
     <div class="stage-head">
       <div class="tabs" role="tablist">
         <button type="button" role="tab" id="tabView" aria-selected="true">وکتورها</button>
-        <button type="button" role="tab" id="tabCode" aria-selected="false">کد CNC خروجی</button>
+          <button type="button" role="tab" id="tabCode" aria-selected="false">وضعیت خروجی CNC</button>
       </div>
       <label class="check" id="onlyChWrap" hidden><input type="checkbox" id="onlyCh"> فقط خطوط تغییرکرده</label>
       <span class="spacer"></span>
-      <button type="button" id="copyBtn" disabled>کپی کد</button>
-      <button type="button" id="dxfBtn" disabled>دانلود DXF</button>
-      <button type="button" id="cncBtn" class="primary" disabled>دانلود CNC</button>
+      <button type="button" id="copyBtn" disabled title="تا تأیید کنترلر مسدود است">کپی کد</button>
+      <button type="button" id="dxfBtn" disabled title="تا تأیید کنترلر مسدود است">دانلود DXF</button>
+      <button type="button" id="cncBtn" class="primary" disabled title="پست‌پروسسور کنترلر تأییدشده موجود نیست">دانلود CNC — مسدود</button>
     </div>
 
     <div class="view" id="view">
@@ -613,7 +614,7 @@
   function render(first) {
     const r = S.res;
     const has = !!r;
-    ['cncBtn', 'dxfBtn', 'copyBtn'].forEach((id) => { $(id).disabled = !has || S.res?.resizable === false; });
+    ['cncBtn', 'dxfBtn', 'copyBtn'].forEach((id) => { $(id).disabled = !has || S.res?.safe_for_execution !== true; });
     $('saveProfileBtn').disabled = !has || S.res?.resizable === false;
     $('empty').hidden = has; $('legend').hidden = !has; $('zoombtns').hidden = !has; $('stats').hidden = !has;
     if (!has) { document.querySelector('#svg').textContent = ''; showWarn([]); syncModeUI(); return; }
@@ -626,7 +627,7 @@
     document.querySelectorAll('#delta, #target, #tool, #chips button, #modes input, #sym, #gapTable input').forEach((node) => {
       node.disabled = S.res.resizable === false;
     });
-    showWarn(r.warnings);
+    showWarn([...(r.warnings || []), ...(r.output_blocked_reason ? [r.output_blocked_reason] : [])]);
 
     $('sBefore').textContent = f1(r.length_before) + ' mm';
     $('sAfter').textContent = f1(r.length_after) + ' mm';
@@ -764,6 +765,11 @@
   function renderCode() {
     const tb = $('codeBody'); tb.textContent = '';
     if (!S.res) return;
+    if (!S.res.cnc_text) {
+      const tr = document.createElement('tr'), td = document.createElement('td');
+      td.textContent = S.res.output_blocked_reason || 'خروجی اجرایی در این محیط تولید نمی‌شود؛ فقط پیش‌نمایش در دسترس است.';
+      tr.appendChild(td); tb.appendChild(tr); return;
+    }
     const lines = S.res.cnc_text.split(/\r?\n/), ch = new Set(S.res.changed_lines), only = $('onlyCh').checked;
     const frag = document.createDocumentFragment(); let shown = 0;
     for (let i = 0; i < lines.length && shown < 4000; i++) {

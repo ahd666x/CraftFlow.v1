@@ -1,6 +1,7 @@
 import os
 import tempfile
 import json
+import hashlib
 
 from django.contrib.auth.models import Group, User
 from django.test import TestCase
@@ -9,8 +10,8 @@ from decimal import Decimal
 
 from product.models import Material, Part, Product, ProductBOM, ProductCategory
 
-from .models import CncFile, CncPartProfile
-from .services import canonical_barcode_key, register_base_file, resolve_cnc_file
+from .models import CncControllerProfile, CncEngineeringProfile, CncFile, CncPartProfile
+from .services import CncResolutionError, canonical_barcode_key, register_base_file, resolve_cnc_file
 from .tests import SAMPLE
 
 
@@ -18,7 +19,10 @@ class CncIntegrationTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.manager = User.objects.create_user("cnc-manager", password="testpass")
-        cls.manager.groups.add(Group.objects.create(name="2"))
+        manager_group = Group.objects.create(name="2")
+        cls.manager.groups.add(manager_group)
+        cls.manager2 = User.objects.create_user("cnc-manager-2", password="testpass")
+        cls.manager2.groups.add(manager_group)
         cls.regular = User.objects.create_user("cnc-user", password="testpass")
 
     def test_resizer_requires_manager(self):
@@ -34,6 +38,111 @@ class CncIntegrationTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "/cnc/api/process/")
         self.assertContains(response, "/cnc/api/analyze/")
+        self.assertContains(response, "/cnc/engine/")
+
+    def test_new_engine_page_and_analysis_api_are_preview_only(self):
+        self.client.login(username="cnc-manager", password="testpass")
+        page = self.client.get(reverse("cnc_resizer:engine_workbench"))
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, "حالت ایمن و فقط پیش‌نمایش")
+        content = "\n".join(["G21 G90 G17", "G0 X0 Y0 Z5", "G1 Z-2", "G1 X10 Y0",
+                              "G1 X10 Y100", "G1 X20 Y100", "G1 X20 Y0", ""])
+        response = self.client.post(
+            reverse("cnc_resizer:engine_analyze"),
+            data=json.dumps({"filename": "small.cnc", "content": content}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        payload = response.json()
+        self.assertFalse(payload["safe_for_execution"])
+        self.assertFalse(payload["execution_gate"]["allowed"])
+        feature_id = payload["analysis"]["features"][0]["id"]
+        preview = self.client.post(
+            reverse("cnc_resizer:engine_preview"),
+            data=json.dumps({"content": content, "profile": {
+                "axis": "y", "target_dimension": 120, "reference_start": 0, "reference_end": 100,
+                "features": {feature_id: "stretch"},
+                "operator_interpretations": {feature_id: "surface_or_raster_candidate"},
+            }}),
+            content_type="application/json",
+        )
+        self.assertEqual(preview.status_code, 200, preview.content)
+        self.assertTrue(preview.json()["preview_only"])
+        self.assertNotIn("cnc_text", preview.json())
+        self.assertFalse(preview.json()["safe_for_execution"])
+        self.assertFalse(preview.json()["operator_review"]["physical_operation_confirmed"])
+        self.assertEqual(preview.json()["operator_review"]["features"][0]["selected_interpretation"], "surface_or_raster_candidate")
+        missing_rule = self.client.post(
+            reverse("cnc_resizer:engine_preview"),
+            data=json.dumps({"content": content, "profile": {
+                "axis": "y", "target_dimension": 120, "reference_start": 0, "reference_end": 100,
+                "features": {},
+            }}),
+            content_type="application/json",
+        )
+        self.assertEqual(missing_rule.status_code, 400)
+
+    def test_engine_workbench_profile_is_persisted_by_exact_hash_and_private_to_owner(self):
+        self.client.login(username="cnc-manager", password="testpass")
+        content = "\n".join(["G21 G90 G17", "G0 X0 Y0 Z5", "G1 Z-2", "G1 X10 Y0", "G1 Y100",
+                              "G1 X20 Y100", "G1 Y0", ""])
+        digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
+        profile = {
+            "axis": "y", "target_dimension": 100, "reference_start": 0, "reference_end": 100,
+            "features": {"feature-block-0001": "fixed"},
+            "operator_interpretations": {"feature-block-0001": "other_candidate"},
+        }
+        saved = self.client.post(reverse("cnc_resizer:engine_profile"),
+                                 data=json.dumps({"filename": "panel.cnc", "content": content, "profile": profile}),
+                                 content_type="application/json")
+        self.assertEqual(saved.status_code, 200, saved.content)
+        self.assertTrue(saved.json()["saved"])
+        self.assertEqual(CncEngineeringProfile.objects.get(owner=self.manager).source_sha256, digest)
+        loaded = self.client.get(reverse("cnc_resizer:engine_profile"), {"sha256": digest})
+        self.assertEqual(loaded.status_code, 200)
+        self.assertEqual(loaded.json()["profile"], profile)
+        self.client.logout()
+        self.client.login(username="cnc-manager-2", password="testpass")
+        private = self.client.get(reverse("cnc_resizer:engine_profile"), {"sha256": digest})
+        self.assertEqual(private.status_code, 200)
+        self.assertFalse(private.json()["found"])
+
+    def test_engine_preflight_reports_blockers_without_generating_output(self):
+        self.client.login(username="cnc-manager", password="testpass")
+        content = "\n".join(["G21 G90 G17", "G0 X0 Y0 Z5", "G1 Z-2", "G1 X10 Y0", "G1 Y100",
+                              "G1 X20 Y100", "G1 Y0", ""])
+        response = self.client.post(reverse("cnc_resizer:engine_analyze"),
+                                    data=json.dumps({"content": content}), content_type="application/json")
+        feature_id = response.json()["analysis"]["features"][0]["id"]
+        preflight = self.client.post(reverse("cnc_resizer:engine_preflight"), data=json.dumps({
+            "content": content,
+            "profile": {"axis": "y", "target_dimension": 100, "reference_start": 0, "reference_end": 100,
+                        "features": {feature_id: "fixed"}},
+            "machine_limits": {"x_min": -100, "x_max": 100, "y_min": 0, "y_max": 200},
+        }), content_type="application/json")
+        self.assertEqual(preflight.status_code, 200, preflight.content)
+        report = preflight.json()["preflight"]
+        self.assertFalse(report["allowed"])
+        self.assertFalse(report["output_generated"])
+        self.assertEqual(report["execution_gate"], "blocked")
+        self.assertTrue(any("output serializer" in reason for reason in report["blockers"]))
+
+    def test_legacy_process_endpoint_never_returns_machine_or_dxf_output(self):
+        self.client.login(username="cnc-manager", password="testpass")
+        with open(SAMPLE, "r", encoding="utf-8") as stream:
+            content = stream.read()
+        response = self.client.post(
+            reverse("cnc_resizer:process"),
+            data=json.dumps({"content": content, "params": {"delta": 0}}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload["preview_only"])
+        self.assertFalse(payload["safe_for_execution"])
+        self.assertFalse(payload["machine_output_written"])
+        self.assertNotIn("cnc_text", payload)
+        self.assertNotIn("dxf_text", payload)
 
     def test_analyze_api_returns_feature_inventory_for_ui(self):
         self.client.login(username="cnc-manager", password="testpass")
@@ -108,7 +217,7 @@ class CncIntegrationTests(TestCase):
             "panel.1740.5x500",
         )
 
-    def test_resolver_uses_length_as_cnc_y_and_caches_derived_file(self):
+    def test_resolver_blocks_derived_file_without_verified_controller_adapter(self):
         category = ProductCategory.objects.create(name="CNC category")
         product = Product.objects.create(category=category, name="CNC product", base_price=1)
         material = Material.objects.create(name="MDF", thickness=Decimal("16.0"))
@@ -135,14 +244,16 @@ class CncIntegrationTests(TestCase):
                         params={'mode': 'equal', 'symmetric': True, 'axis': 'length'},
                         approved=True, approved_by=self.manager,
                     )
-                    record = resolve_cnc_file(dynamic, self.manager)
-                    derived_exists = os.path.exists(record.path)
+                    with self.assertRaises(CncResolutionError):
+                        resolve_cnc_file(dynamic, self.manager)
                 finally:
                     os.unlink(source_path)
-        self.assertEqual(record.kind, CncFile.KIND_DERIVED)
-        self.assertTrue(record.path.endswith(".cnc"))
-        self.assertTrue(derived_exists)
-        self.assertAlmostEqual(float(record.params["delta"]), 20.0, places=3)
+        self.assertFalse(CncFile.objects.filter(kind=CncFile.KIND_DERIVED).exists())
+
+    def test_controller_profile_is_not_ready_without_auditable_approval_and_fixture(self):
+        profile = CncControllerProfile.objects.create(key="unknown-cnc", manufacturer="Unknown", model="Unknown")
+        self.assertFalse(profile.governance_ready)
+        self.assertFalse(profile.postprocessor_config["approved"])
 
     def test_same_length_part_uses_base_without_resize_profile(self):
         material = Material.objects.create(name="MDF same", thickness=Decimal("16.0"))

@@ -9,7 +9,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from . import core
-from .models import CncFile, CncPartProfile, CncPlanningIssue, CncSheetPlan
+from .models import CncEngineeringProfile, CncFile, CncPartProfile, CncPlanningIssue, CncSheetPlan
 from product.models import Part
 from .services import _base_record_for_part
 
@@ -41,6 +41,7 @@ def index(request):
     return render(request, "cnc_resizer/index.html", {
         "api_url": reverse("cnc_resizer:process"),
         "analyze_api_url": reverse("cnc_resizer:analyze"),
+        "engine_url": reverse("cnc_resizer:engine_workbench"),
         "archive_api_url": reverse("cnc_resizer:archive_files"),
         "profile_api_url": reverse("cnc_resizer:part_profile"),
         "sheet_plans_url": reverse("cnc_resizer:sheet_plans"),
@@ -50,11 +51,31 @@ def index(request):
 
 @login_required
 @cnc_operator_required
+@require_GET
+def engine_workbench(request):
+    return render(request, "cnc_resizer/engine_workbench.html", {
+        "resizer_url": reverse("cnc_resizer:index"),
+        "engine_analyze_url": reverse("cnc_resizer:engine_analyze"),
+        "engine_preview_url": reverse("cnc_resizer:engine_preview"),
+        "engine_profile_url": reverse("cnc_resizer:engine_profile"),
+        "engine_preflight_url": reverse("cnc_resizer:engine_preflight"),
+    })
+
+
+@login_required
+@cnc_operator_required
 @require_POST
 def process(request):
-    """JSON in  : {filename, content (the .cnc text), params}
-       JSON out : see core.process().  CSRF is enforced as usual (the page sends the token)."""
+    """Return legacy geometry previews only; executable CNC/DXF payloads are stripped fail-closed."""
     status, data = core.handle_request(request.body)
+    if status == 200 and "cnc_text" in data:
+        data.pop("cnc_text", None)
+        data.pop("dxf_text", None)
+        data["preview_only"] = True
+        data["safe_for_execution"] = False
+        data["machine_output_written"] = False
+        data["output_blocked_reason"] = "پست‌پروسسور مختص کنترلر تأییدشده ثبت نشده است؛ API فقط پیش‌نمایش هندسی ارائه می‌دهد."
+        data.setdefault("warnings", []).append(data["output_blocked_reason"])
     return JsonResponse(data, status=status, json_dumps_params={"ensure_ascii": False})
 
 
@@ -76,6 +97,156 @@ def analyze(request):
         return JsonResponse({'ok': False, 'error': str(exc)}, status=400,
                             json_dumps_params={'ensure_ascii': False})
     return JsonResponse(result, json_dumps_params={'ensure_ascii': False})
+
+
+@login_required
+@cnc_operator_required
+@require_POST
+def engine_analyze(request):
+    """Parse a CNC file into the independent IR and return preview diagnostics."""
+    import json
+    import os
+    from .engine.parser import ParseError
+    from .engine.service import inspect_program
+    try:
+        payload = json.loads(request.body.decode('utf-8'))
+        if not isinstance(payload, dict) or not isinstance(payload.get('content'), str):
+            raise ValueError('content must be a string')
+        result = inspect_program(payload['content'], filename=os.path.basename(payload.get('filename') or 'uploaded.cnc'))
+    except (TypeError, ValueError, json.JSONDecodeError, ParseError) as exc:
+        return JsonResponse({'ok': False, 'error': str(exc)}, status=400, json_dumps_params={'ensure_ascii': False})
+    return JsonResponse(result, json_dumps_params={'ensure_ascii': False})
+
+
+@login_required
+@cnc_operator_required
+@require_POST
+def engine_preview(request):
+    """Return geometry-only parametric preview; never returns G-code text."""
+    import json
+    import os
+    from .engine.parametric import TransformError
+    from .engine.parser import ParseError
+    from .engine.service import preview_program
+    try:
+        payload = json.loads(request.body.decode('utf-8'))
+        if not isinstance(payload, dict) or not isinstance(payload.get('content'), str):
+            raise ValueError('content must be a string')
+        profile = payload.get('profile')
+        if not isinstance(profile, dict):
+            raise ValueError('profile must be an object')
+        result = preview_program(payload['content'], profile, filename=os.path.basename(payload.get('filename') or 'uploaded.cnc'))
+        interpretations = profile.get('operator_interpretations') or {}
+        if not isinstance(interpretations, dict):
+            raise ValueError('operator_interpretations must be an object')
+        known_ids = {feature['id'] for feature in result['original']['features']}
+        if set(interpretations) - known_ids:
+            raise ValueError('operator_interpretations contains unknown feature IDs')
+        allowed_interpretations = {
+            'unconfirmed', 'hole_or_loop_candidate', 'slot_or_groove_candidate',
+            'surface_or_raster_candidate', 'outer_contour_candidate', 'other_candidate',
+        }
+        invalid = {key: value for key, value in interpretations.items() if value not in allowed_interpretations}
+        if invalid:
+            raise ValueError('unsupported operator interpretation label')
+        result['operator_review'] = {
+            'physical_operation_confirmed': False,
+            'features': [{
+                'feature_id': feature['id'],
+                'selected_interpretation': interpretations.get(feature['id'], 'unconfirmed'),
+                'transform_rule': (profile['features'][feature['id']].get('mode')
+                                   if isinstance(profile['features'][feature['id']], dict)
+                                   else profile['features'][feature['id']]),
+            } for feature in result['original']['features']],
+        }
+    except (TypeError, ValueError, json.JSONDecodeError, ParseError, TransformError) as exc:
+        return JsonResponse({'ok': False, 'error': str(exc)}, status=400, json_dumps_params={'ensure_ascii': False})
+    return JsonResponse(result, json_dumps_params={'ensure_ascii': False})
+
+
+@login_required
+@cnc_operator_required
+@require_http_methods(['GET', 'POST'])
+def engine_profile(request):
+    """Load/save a user's durable engineering rules, bound to the parsed source hash."""
+    import hashlib
+    import json
+    import os
+    import re
+    from .engine.parametric import TransformError
+    from .engine.parser import ParseError, parse_program
+    from .engine.recognition import recognize
+    from .engine.service import preview_program
+    if request.method == 'GET':
+        digest = request.GET.get('sha256', '')
+        if not re.fullmatch(r'[0-9a-f]{64}', digest):
+            return JsonResponse({'ok': False, 'error': 'source sha256 نامعتبر است.'}, status=400)
+        record = CncEngineeringProfile.objects.filter(owner=request.user, source_sha256=digest).first()
+        if not record:
+            return JsonResponse({'ok': True, 'found': False, 'source_sha256': digest})
+        return JsonResponse({'ok': True, 'found': True, 'source_sha256': digest,
+                             'filename': record.filename, 'profile': record.profile,
+                             'updated_at': record.updated_at.isoformat()})
+    try:
+        payload = json.loads(request.body.decode('utf-8'))
+        if not isinstance(payload, dict) or not isinstance(payload.get('content'), str):
+            raise ValueError('content باید متن CNC باشد.')
+        profile = payload.get('profile')
+        if not isinstance(profile, dict):
+            raise ValueError('profile باید یک شیء باشد.')
+        content = payload['content']
+        parsed = parse_program(content, filename=os.path.basename(payload.get('filename') or 'uploaded.cnc'))
+        # Run all finite-number, feature-ID, dependency-cycle, arc and geometry constraints
+        # before persisting. Failed targets may still be saved for later editing; malformed
+        # rules and transforms that cannot even be evaluated are not.
+        preview_program(content, profile, filename=parsed.filename)
+        interpretations = profile.get('operator_interpretations') or {}
+        if not isinstance(interpretations, dict):
+            raise ValueError('operator_interpretations باید یک شیء باشد.')
+        feature_ids = {feature['id'] for feature in recognize(parsed)['features']}
+        if set(interpretations) - feature_ids:
+            raise ValueError('تفسیر شامل شناسهٔ ویژگی ناشناخته است.')
+        allowed_interpretations = {'unconfirmed', 'hole_or_loop_candidate', 'slot_or_groove_candidate',
+                                   'surface_or_raster_candidate', 'outer_contour_candidate', 'other_candidate'}
+        if any(value not in allowed_interpretations for value in interpretations.values()):
+            raise ValueError('برچسب تفسیر اپراتور معتبر نیست.')
+        digest = hashlib.sha256(content.encode('utf-8')).hexdigest()
+        record, _ = CncEngineeringProfile.objects.update_or_create(
+            owner=request.user, source_sha256=digest,
+            defaults={'filename': parsed.filename[:255], 'profile': profile},
+        )
+    except (TypeError, ValueError, KeyError, json.JSONDecodeError, ParseError, TransformError) as exc:
+        return JsonResponse({'ok': False, 'error': str(exc)}, status=400, json_dumps_params={'ensure_ascii': False})
+    return JsonResponse({'ok': True, 'saved': True, 'source_sha256': digest,
+                         'profile_id': record.pk, 'updated_at': record.updated_at.isoformat()},
+                        json_dumps_params={'ensure_ascii': False})
+
+
+@login_required
+@cnc_operator_required
+@require_POST
+def engine_preflight(request):
+    """Stage-seven output-readiness report; deliberately emits no machine file."""
+    import json
+    import os
+    from .engine.output_validation import validate_output_candidate
+    from .engine.parametric import TransformError
+    from .engine.parser import ParseError, parse_program
+    from .engine.service import preview_program
+    try:
+        payload = json.loads(request.body.decode('utf-8'))
+        if not isinstance(payload, dict) or not isinstance(payload.get('content'), str):
+            raise ValueError('content باید متن CNC باشد.')
+        profile = payload.get('profile')
+        if not isinstance(profile, dict):
+            raise ValueError('profile باید یک شیء باشد.')
+        filename = os.path.basename(payload.get('filename') or 'uploaded.cnc')
+        source = parse_program(payload['content'], filename=filename)
+        candidate = preview_program(payload['content'], profile, filename=filename)
+        report = validate_output_candidate(source, candidate, payload.get('machine_limits'))
+    except (TypeError, ValueError, json.JSONDecodeError, ParseError, TransformError) as exc:
+        return JsonResponse({'ok': False, 'error': str(exc)}, status=400, json_dumps_params={'ensure_ascii': False})
+    return JsonResponse({'ok': True, 'preflight': report}, json_dumps_params={'ensure_ascii': False})
 
 
 @login_required

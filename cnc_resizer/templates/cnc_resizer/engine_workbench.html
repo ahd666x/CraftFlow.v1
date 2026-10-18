@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>مهندسی معکوس CNC</title>
+<style>
+:root{font-family:Tahoma,Arial,sans-serif;color:#17212b;background:#f3f6f9;--blue:#087e9b;--border:#d6dee6;--muted:#687786;--panel:#fff;--warn:#fff4d6;--red:#9a2734}
+*{box-sizing:border-box}body{margin:0}header{height:62px;background:#132b3a;color:#fff;display:flex;align-items:center;gap:16px;padding:0 18px}header h1{font-size:18px;margin:0}header a{color:#c9f2ff;margin-right:auto}
+.layout{padding:14px;display:grid;grid-template-columns:minmax(310px,400px) 1fr;gap:14px;height:calc(100vh - 62px)}aside,main{background:var(--panel);border:1px solid var(--border);border-radius:9px;min-height:0;overflow:auto;padding:14px}.card{border-bottom:1px solid var(--border);padding-bottom:14px;margin-bottom:14px}.card:last-child{border:0}
+h2{font-size:15px;margin:0 0 10px}.hint{font-size:12px;line-height:1.7;color:var(--muted)}label{font-size:12px;display:block;margin:7px 0;color:#344452}input,select,textarea,button{font:inherit}input,select,textarea{width:100%;border:1px solid var(--border);border-radius:6px;padding:8px;background:#fff;color:#152431}textarea{height:140px;resize:vertical;direction:ltr;text-align:left;font-family:monospace;font-size:12px}button{border:1px solid #bac8d3;background:#fff;border-radius:6px;padding:9px 12px;cursor:pointer;color:#162b39}button.primary{background:var(--blue);color:#fff;border-color:var(--blue)}button:disabled{opacity:.5;cursor:not-allowed}.row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.banner{padding:10px;border-radius:6px;background:var(--warn);font-size:12px;line-height:1.8;margin:8px 0}.banner.danger{background:#ffeaec;color:var(--red)}.feature{border:1px solid var(--border);border-radius:6px;padding:8px;margin:7px 0}.feature.selected{border-color:var(--blue);box-shadow:0 0 0 2px #087e9b20}.feature-title{font-weight:bold;font-size:12px}.feature small{display:block;color:var(--muted);line-height:1.6;margin:4px 0}.feature select{margin-top:4px}.status{font-size:12px;line-height:1.8}
+.grid-main{display:grid;grid-template-rows:auto minmax(280px,1fr) minmax(140px,auto);gap:10px;height:100%}.stats{display:flex;flex-wrap:wrap;gap:8px}.stat{border:1px solid var(--border);padding:7px 10px;border-radius:6px;font-size:12px}.canvas{min-height:280px;border:1px solid var(--border);border-radius:6px;background:#fbfdff;position:relative;overflow:hidden}.canvas svg{width:100%;height:100%;min-height:280px;display:block;touch-action:none}.canvas-tools{position:absolute;z-index:2;top:8px;left:8px;display:flex;gap:4px;align-items:center;background:#ffffffdf;padding:4px;border-radius:7px}.canvas-tools button{padding:5px 9px}.canvas-tools button.active{background:var(--blue);color:#fff}.coords{position:absolute;z-index:2;bottom:7px;left:8px;background:#ffffffdf;border:1px solid var(--border);border-radius:5px;padding:5px 8px;font-size:11px;direction:ltr;max-width:calc(100% - 16px)}.list{overflow:auto;max-height:220px;font-size:12px;line-height:1.7}.line{border-bottom:1px solid #e8edf1;padding:5px 0}.legend{display:flex;gap:14px;font-size:11px;margin:6px 0;color:var(--muted)}.swatch{display:inline-block;width:14px;height:3px;vertical-align:middle;background:#087e9b;margin-left:5px}.swatch.old{background:#9ca9b4}.swatch.selected{background:#c64a30}@media(max-width:950px){.layout{height:auto;grid-template-columns:1fr}.grid-main{height:auto;min-height:650px}aside{overflow:visible}}
+</style>
+</head>
+<body>
+{% csrf_token %}
+<header><h1>مهندسی معکوس CNC — تحلیل و پیش‌نمایش</h1><a href="{{ resizer_url }}">بازگشت به ابزار CNC</a></header>
+<div class="layout">
+<aside>
+  <div class="banner danger"><b>حالت ایمن و فقط پیش‌نمایش</b><br>هیچ G-code اجرایی تولید یا ذخیره نمی‌شود. کنترلر فایل نمونهٔ اصلی هنوز مشخص و تأیید نشده است.</div>
+  <section class="card">
+    <h2>۱. بارگذاری منبع</h2>
+    <input id="file" type="file" accept=".cnc,.nc,.tap,.txt,.gcode,text/plain">
+    <label for="source">یا متن G-code را وارد کنید</label>
+    <textarea id="source" spellcheck="false" placeholder="G-code را وارد یا فایل را انتخاب کنید"></textarea>
+    <button id="analyze" class="primary" type="button">تجزیه و تحلیل هندسه</button>
+    <div id="analyzeStatus" class="status" aria-live="polite"></div>
+  </section>
+  <section class="card" id="rulesCard" hidden>
+    <h2>۲. قواعد پارامتریک برای پیش‌نمایش</h2>
+    <div class="row">
+      <label>محور تغییر<select id="axis"><option value="y">Y — طول</option><option value="x">X — عرض</option></select></label>
+      <label>بعد هدف<input id="target" type="number" step="0.001"></label>
+    </div>
+    <div class="row">
+      <label>مرجع شروع<input id="refStart" type="number" step="0.001"></label>
+      <label>مرجع پایان<input id="refEnd" type="number" step="0.001"></label>
+    </div>
+    <p class="hint">G20 به mm تبدیل می‌شود و G21 mm است؛ اگر برنامه واحد را مشخص نکند، اعداد در واحد خام برنامه باقی می‌مانند و واحد فیزیکی نامعلوم است. تغییر قوس با کشش مستقیم رد می‌شود.</p>
+    <div id="features"></div>
+    <div class="row"><button id="saveProfile" type="button" disabled>ذخیرهٔ پایدار قواعد</button><button id="loadProfile" type="button" disabled>بارگذاری قواعد ذخیره‌شده</button></div>
+    <div id="profileStatus" class="status" aria-live="polite"></div>
+    <button id="preview" class="primary" type="button" disabled>اعتبارسنجی و پیش‌نمایش تغییر</button>
+    <div id="previewStatus" class="status" aria-live="polite"></div>
+  </section>
+  <section class="card">
+    <h2>۳. پیش‌پرواز مرحلهٔ ۷ — بدون تولید فایل</h2>
+    <p class="hint">محدوده‌ها برحسب واحد فیزیکی دستگاه تعریف شوند. فایل هدف واحد، آفست G54 و جبران طول ابزار را حل نمی‌کند؛ گزارش این موارد را مسدود می‌کند. این بررسی شبیه‌ساز کنترلر نیست و خروجی اجرایی تولید نمی‌کند.</p>
+    <div class="row"><label>X min<input id="machineXMin" type="number" step="0.001"></label><label>X max<input id="machineXMax" type="number" step="0.001"></label></div>
+    <div class="row"><label>Y min<input id="machineYMin" type="number" step="0.001"></label><label>Y max<input id="machineYMax" type="number" step="0.001"></label></div>
+    <div class="row"><label>Z min<input id="machineZMin" type="number" step="0.001"></label><label>Z max<input id="machineZMax" type="number" step="0.001"></label></div>
+    <div class="row"><label>حداکثر feed<input id="machineMaxFeed" type="number" step="0.001"></label><label>حداکثر spindle<input id="machineMaxSpindle" type="number" step="1"></label></div>
+    <button id="preflight" type="button" disabled>اجرای پیش‌پرواز خروجی (فقط گزارش)</button>
+    <div id="preflightStatus" class="status" aria-live="polite"></div>
+    <div class="banner danger"><b>G-code اجرایی همچنان مسدود است.</b> برای این فایل کنترلر شناسایی نشده و دستورهای M141 و M6T3، G54 و جبران طول ابزار نیاز به تفسیر معتبر دارند.</div>
+  </section>
+</aside>
+<main>
+  <div class="grid-main">
+    <div><div id="stats" class="stats"></div><div class="legend"><span><i class="swatch old"></i>منبع</span><span><i class="swatch"></i>پیش‌نمایش</span><span><i class="swatch selected"></i>ویژگی انتخاب‌شده</span></div></div>
+    <div class="canvas" id="canvas"><div class="canvas-tools"><button id="zoomIn" type="button" title="بزرگ‌نمایی">+</button><button id="zoomOut" type="button" title="کوچک‌نمایی">−</button><button id="fit" type="button">جا کردن</button><button id="measure" type="button">اندازه‌گیری</button></div><svg id="svg" viewBox="0 0 1000 700" aria-label="پیش‌نمایش هندسهٔ ابزار"></svg><div id="coords" class="coords">X — · Y —</div></div>
+    <div class="list" id="details"><p class="hint">پس از تحلیل، مسیرها، فرمان‌های ناشناخته و هشدارهای اعتبارسنجی نمایش داده می‌شوند.</p></div>
+  </div>
+</main>
+</div>
+<script>
+(() => {
+  'use strict';
+  const $ = id => document.getElementById(id), NS = 'http://www.w3.org/2000/svg';
+  const apiAnalyze = '{{ engine_analyze_url }}', apiPreview = '{{ engine_preview_url }}', apiProfile = '{{ engine_profile_url }}', apiPreflight = '{{ engine_preflight_url }}';
+  const svg = $('svg'), canvas = $('canvas');
+  let filename = 'uploaded.cnc', analysis = null, preview = null, view = null, fitView = null;
+  let activeGroup = null, measureMode = false, measurePoints = [], panState = null, selectedFeature = null;
+  function csrf(){const m=document.cookie.match(/(?:^|; )csrftoken=([^;]+)/);return m?decodeURIComponent(m[1]):(document.querySelector('input[name=csrfmiddlewaretoken]')?.value||'');}
+  function fetchJson(url,payload){const options={credentials:'same-origin'};if(payload!==undefined){options.method='POST';options.headers={'Content-Type':'application/json','X-CSRFToken':csrf()};options.body=JSON.stringify(payload);}return fetch(url,options).then(async r=>{const d=await r.json();if(!r.ok)throw new Error(d.error||`HTTP ${r.status}`);return d;});}
+  function setView(v){if(!v)return;view={...v};svg.setAttribute('viewBox',`${view.x} ${view.y} ${view.w} ${view.h}`);}
+  function zoom(factor,cx,cy){if(!view)return;cx=cx??view.x+view.w/2;cy=cy??view.y+view.h/2;const w=view.w*factor,h=view.h*factor;setView({x:cx-(cx-view.x)*factor,y:cy-(cy-view.y)*factor,w,h});}
+  function worldPoint(event){if(!activeGroup)return null;const matrix=activeGroup.getScreenCTM();if(!matrix)return null;const p=svg.createSVGPoint();p.x=event.clientX;p.y=event.clientY;return p.matrixTransform(matrix.inverse());}
+  function selectFeature(id){selectedFeature=id;document.querySelectorAll('[data-feature-card]').forEach(card=>card.classList.toggle('selected',card.dataset.featureCard===id));svg.querySelectorAll('[data-feature-id]').forEach(path=>{if(path.dataset.oldLayer!=='true')path.setAttribute('stroke',path.dataset.featureId===id?'#c64a30':'#087e9b');});}
+  function pathFor(block){
+    let d='',last=null;
+    for(const m of block?.motions||[]){
+      if(!['linear','arc_cw','arc_ccw'].includes(m.motion)||!m.start||!m.end||m.start.x==null||m.start.y==null||m.end.x==null||m.end.y==null)continue;
+      const s=m.start,e=m.end;
+      if(!last||Math.hypot(last.x-s.x,last.y-s.y)>.05)d+=`M ${s.x} ${s.y} `;
+      const arc=m.arc,planeAxes={XY:['x','y'],XZ:['x','z'],YZ:['y','z']}[arc?.plane];
+      if(planeAxes&&arc.center&&arc.radius>0&&arc.sweep_radians!=null){
+        const [first,second]=planeAxes,a0=Math.atan2(s[second]-arc.center[second],s[first]-arc.center[first]);
+        const count=Math.max(6,Math.ceil(Math.abs(arc.sweep_radians)/(Math.PI/24)));
+        for(let i=1;i<=count;i++){
+          const t=i/count,a=a0+arc.sweep_radians*t,firstValue=arc.center[first]+arc.radius*Math.cos(a),secondValue=arc.center[second]+arc.radius*Math.sin(a);
+          let x,y;
+          if(arc.plane==='XY'){x=firstValue;y=secondValue;}
+          else if(arc.plane==='XZ'){x=firstValue;y=s.y+(e.y-s.y)*t;}
+          else{x=s.x+(e.x-s.x)*t;y=firstValue;}
+          d+=`L ${x} ${y} `;
+        }
+      }else d+=`L ${e.x} ${e.y} `;
+      last=e;
+    }
+    return d;
+  }
+  function drawLayer(group,geometry,program,oldLayer=false){const blocks=new Map((program?.blocks||[]).map(b=>[b.id,b]));for(const f of geometry?.features||[]){const d=pathFor(blocks.get(f.block_id));if(!d)continue;const path=document.createElementNS(NS,'path');path.setAttribute('d',d);path.setAttribute('fill','none');path.setAttribute('stroke',oldLayer?'#9ca9b4':(f.id===selectedFeature?'#c64a30':'#087e9b'));path.setAttribute('stroke-width','1.8');path.setAttribute('vector-effect','non-scaling-stroke');path.setAttribute('opacity',oldLayer?'.65':'.95');if(oldLayer)path.setAttribute('stroke-dasharray','5 4');path.dataset.featureId=f.id;path.dataset.oldLayer=String(oldLayer);path.style.cursor='pointer';group.appendChild(path);}}
+  function draw(result){svg.replaceChildren();const geom=result?.analysis||result?.resized;if(!geom?.bounds)return;const oldGeom=preview&&analysis?analysis.analysis:null;const allBounds=[geom.bounds,...(oldGeom?[oldGeom.bounds]:[])];const xMin=Math.min(...allBounds.map(b=>b.x_min)),xMax=Math.max(...allBounds.map(b=>b.x_max)),yMin=Math.min(...allBounds.map(b=>b.y_min)),yMax=Math.max(...allBounds.map(b=>b.y_max));const pad=Math.max(xMax-xMin,yMax-yMin)*.06||5;const x=xMin-pad,y=yMin-pad,w=xMax-xMin+pad*2,h=yMax-yMin+pad*2;fitView={x,y,w,h};setView(fitView);const group=document.createElementNS(NS,'g');group.setAttribute('transform',`translate(0 ${y+y+h}) scale(1 -1)`);svg.appendChild(group);activeGroup=group;if(oldGeom)drawLayer(group,oldGeom,analysis.program,true);drawLayer(group,geom,result.program_ir||analysis?.program,false);}
+  function showStats(){if(!analysis)return;const a=analysis.analysis,b=a.bounds;const items=[`واحد منبع: ${a.units}`,`بلوک: ${a.blocks.length}`,`ویژگی: ${a.features.length}`,`X: ${b?b.x_min.toFixed(3)+'…'+b.x_max.toFixed(3):'—'}`,`Y: ${b?b.y_min.toFixed(3)+'…'+b.y_max.toFixed(3):'—'}`,`وضعیت: نیازمند بررسی اپراتور`];$('stats').replaceChildren(...items.map(text=>{const d=document.createElement('div');d.className='stat';d.textContent=text;return d;}));}
+  function showDetails(){
+    if(!analysis)return;const a=analysis.analysis,p=analysis.program,v=analysis.validation,container=$('details');container.replaceChildren();
+    const meta=document.createElement('div');meta.className='line';meta.textContent=`ابزارها: ${(p.tools||[]).join(', ')||'—'} · H: ${(p.h_registers||[]).map(x=>`H${x.value}@${x.source_line}`).join(', ')||'—'} · F: ${(p.feed_values||[]).join(', ')||'—'} · S: ${(p.spindle_values||[]).join(', ')||'—'}`;container.appendChild(meta);
+    for(const f of a.features){const row=document.createElement('div');row.className='line';const raster=f.raster_analysis?` · رفت‌ها ${f.raster_analysis.pass_count} · گام میانه ${f.raster_analysis.median_pitch??'—'} ${f.raster_analysis.pitch_unit}`:'';row.textContent=`${f.id} · ${f.kind} · اطمینان ${f.confidence} · خطوط ${f.source_lines.start}-${f.source_lines.end} · ${f.move_count} حرکت / ${f.arc_count} قوس${raster}`;container.appendChild(row);}
+    for(const pattern of a.patterns||[]){const row=document.createElement('div');row.className='line';row.textContent=`الگوی احتمالی: ${pattern.kind} · ویژگی‌ها: ${(pattern.feature_ids||[]).join(', ')} · اطمینان ${pattern.confidence} · تفسیر فیزیکی تأییدنشده`;container.appendChild(row);}
+    for(const w of [...(a.warnings||[]),...(v.warnings||[])]){const row=document.createElement('div');row.className='line';row.textContent='هشدار: '+w;container.appendChild(row);}
+    const codes=[...(p.unknown_g_codes||[]).map(x=>`${x.code} @ ${x.source_lines.join(',')}`),...(p.unknown_m_codes||[]).map(x=>`${x.code} @ ${x.source_lines.join(',')}`),...(p.compact_controller_tokens||[]).map(x=>`${x.token} @ ${x.source_lines.join(',')}`)];
+    if(codes.length){const row=document.createElement('div');row.className='line';row.textContent='دستورهای نیازمند تأیید کنترلر: '+codes.join(' · ');container.appendChild(row);}
+    const g53=(p.moves||[]).filter(move=>move.machine_coordinates).map(move=>move.source_line);if(g53.length){const row=document.createElement('div');row.className='line';row.textContent='حرکت‌های G53 حذف‌شده از محدودهٔ کاری — خطوط: '+g53.join(', ');container.appendChild(row);}
+    if(preview?.operator_review){for(const item of preview.operator_review.features){const row=document.createElement('div');row.className='line';row.textContent=`بازبینی اپراتور ${item.feature_id}: ${item.selected_interpretation}; قاعدهٔ هندسی: ${item.transform_rule}`;container.appendChild(row);}}
+  }
+  function buildRules(){
+    const container=$('features');container.replaceChildren();
+    for(const f of analysis.analysis.features){
+      const card=document.createElement('div');card.className='feature';card.dataset.featureCard=f.id;card.onclick=()=>selectFeature(f.id);
+      const title=document.createElement('div');title.className='feature-title';title.textContent=`${f.id} · ${f.kind}`;
+      const small=document.createElement('small');const bounds=f.bounds?`X ${f.bounds.x_min.toFixed(2)}…${f.bounds.x_max.toFixed(2)}; Y ${f.bounds.y_min.toFixed(2)}…${f.bounds.y_max.toFixed(2)}`:'بدون مختصات';small.textContent=`${bounds} · خطوط ${f.source_lines.start}–${f.source_lines.end} · اطمینان ${f.confidence}؛ عملیات فیزیکی تأییدنشده`;
+      const operation=document.createElement('select');operation.dataset.operationId=f.id;operation.setAttribute('aria-label','تفسیر احتمالی اپراتور');operation.onclick=e=>e.stopPropagation();
+      for(const [value,label] of [['unconfirmed','تفسیر فیزیکی: تأییدنشده'],['hole_or_loop_candidate','حلقه/سوراخ احتمالی'],['slot_or_groove_candidate','شیار/مسیر باریک احتمالی'],['surface_or_raster_candidate','مسیر سطحی/رفت‌وبرگشتی احتمالی'],['outer_contour_candidate','کانتور بیرونی احتمالی'],['other_candidate','سایر — هنوز احتمالی']]){const option=document.createElement('option');option.value=value;option.textContent=label;operation.appendChild(option);}
+      const rule=document.createElement('select');rule.dataset.featureId=f.id;rule.setAttribute('aria-label','قاعدهٔ تغییر هندسی');rule.onclick=e=>e.stopPropagation();
+      for(const [value,label] of [['unreviewed','قاعدهٔ تغییر را انتخاب کنید…'],['fixed','ثابت — حفظ مختصات/فاصله از مرجع'],['middle_scale','تغییر ناحیهٔ میانی با حفظ ابتدا و انتها'],['dependent_end','وابسته به انتهای مرجع — انتقال صلب'],['dependent_feature','حفظ فاصله از ویژگی مرجع انتخابی']]){const option=document.createElement('option');option.value=value;option.textContent=label;if(value==='middle_scale'&&f.closed)option.disabled=true;rule.appendChild(option);}
+      const anchor=document.createElement('select');anchor.dataset.anchorId=f.id;anchor.setAttribute('aria-label','ویژگی مرجع برای حفظ فاصله');anchor.onclick=e=>e.stopPropagation();
+      const empty=document.createElement('option');empty.value='';empty.textContent='انتخاب ویژگی مرجع…';anchor.appendChild(empty);
+      for(const other of analysis.analysis.features){if(other.id===f.id)continue;const option=document.createElement('option');option.value=other.id;option.textContent=`${other.id} · ${other.kind}`;anchor.appendChild(option);}
+      const offset=document.createElement('input');offset.type='number';offset.step='0.001';offset.placeholder='فاصلهٔ فعلی را حفظ کن';offset.dataset.offsetId=f.id;offset.setAttribute('aria-label','فاصلهٔ نسبی روی محور');
+      const relation=document.createElement('div');relation.hidden=true;relation.append(anchor,offset);
+      const changed=()=>{relation.hidden=rule.value!=='dependent_feature';preview=null;$('previewStatus').textContent='قواعد یا تفسیر تغییر کرد؛ پیش‌نمایش قبلی پاک شد.';draw(analysis);};rule.onchange=changed;operation.onchange=changed;anchor.onchange=changed;offset.oninput=changed;
+      card.append(title,small,operation,rule,relation);container.appendChild(card);
+    }
+    selectFeature(selectedFeature);
+  }
+  $('file').addEventListener('change',async e=>{const f=e.target.files?.[0];if(!f)return;if(f.size>2*1024*1024){$('analyzeStatus').textContent='فایل بزرگ‌تر از ۲ مگابایت است.';return;}filename=f.name;$('source').value=await f.text();analysis=null;preview=null;$('rulesCard').hidden=true;$('preview').disabled=true;$('saveProfile').disabled=true;$('loadProfile').disabled=true;$('preflight').disabled=true;svg.replaceChildren();$('analyzeStatus').textContent=`بارگذاری شد: ${filename} (${f.size} bytes)`;});
+  $('analyze').onclick=async()=>{const content=$('source').value;if(!content.trim()){$('analyzeStatus').textContent='ابتدا فایل یا متن CNC را وارد کنید.';return;}$('analyze').disabled=true;$('analyzeStatus').textContent='در حال تجزیه…';try{analysis=await fetchJson(apiAnalyze,{filename,content});preview=null;selectedFeature=null;showStats();showDetails();buildRules();if(!analysis.analysis.bounds)throw new Error('هندسهٔ قابل نمایش پیدا نشد');$('rulesCard').hidden=false;$('preview').disabled=false;$('saveProfile').disabled=false;$('loadProfile').disabled=false;$('preflight').disabled=false;setReferences($('axis').value);draw(analysis);$('analyzeStatus').textContent='تحلیل هندسی انجام شد؛ قواعد ذخیره‌شده را می‌توانید بارگذاری کنید.';await loadProfile(true);}catch(err){analysis=null;$('rulesCard').hidden=true;$('analyzeStatus').textContent=err.message;}finally{$('analyze').disabled=false;}};
+  function setReferences(axis){if(!analysis?.analysis.bounds)return;const b=analysis.analysis.bounds,lo=axis==='y'?b.y_min:b.x_min,hi=axis==='y'?b.y_max:b.x_max;$('refStart').value=lo;$('refEnd').value=hi;$('target').value=(hi-lo).toFixed(3);}
+  $('axis').onchange=()=>setReferences($('axis').value);
+  function collectProfile(){
+    const featureRules={},operatorInterpretations={};
+    document.querySelectorAll('[data-feature-id]').forEach(s=>{
+      const id=s.dataset.featureId;
+      if(s.value==='dependent_feature'){
+        const rule={mode:s.value,anchor_feature_id:document.querySelector(`[data-anchor-id="${id}"]`).value};
+        const rawOffset=document.querySelector(`[data-offset-id="${id}"]`).value;if(rawOffset!=='')rule.offset=Number(rawOffset);featureRules[id]=rule;
+      }else featureRules[id]=s.value;
+    });
+    document.querySelectorAll('[data-operation-id]').forEach(s=>operatorInterpretations[s.dataset.operationId]=s.value);
+    return {axis:$('axis').value,target_dimension:Number($('target').value),reference_start:Number($('refStart').value),reference_end:Number($('refEnd').value),features:featureRules,operator_interpretations:operatorInterpretations};
+  }
+  function applyProfile(profile){
+    $('axis').value=profile.axis||'y';if(profile.target_dimension!=null)$('target').value=profile.target_dimension;if(profile.reference_start!=null)$('refStart').value=profile.reference_start;if(profile.reference_end!=null)$('refEnd').value=profile.reference_end;
+    document.querySelectorAll('[data-feature-id]').forEach(s=>{const id=s.dataset.featureId,stored=profile.features?.[id],rule=typeof stored==='string'?{mode:stored}:(stored||{});s.value=rule.mode||'unreviewed';if(rule.anchor_feature_id)document.querySelector(`[data-anchor-id="${id}"]`).value=rule.anchor_feature_id;if(rule.offset!=null)document.querySelector(`[data-offset-id="${id}"]`).value=rule.offset;document.querySelector(`[data-anchor-id="${id}"]`).parentElement.hidden=rule.mode!=='dependent_feature';});
+    document.querySelectorAll('[data-operation-id]').forEach(s=>s.value=profile.operator_interpretations?.[s.dataset.operationId]||'unconfirmed');preview=null;draw(analysis);
+  }
+  async function loadProfile(silent=false){if(!analysis)return;try{const result=await fetchJson(`${apiProfile}?sha256=${encodeURIComponent(analysis.program.source_sha256)}`,undefined);if(result.found){applyProfile(result.profile);$('profileStatus').textContent=`قواعد ذخیره‌شدهٔ این نسخه بارگذاری شد (${result.updated_at}).`;}else if(!silent){$('profileStatus').textContent='برای این فایل پروفایل ذخیره‌شده‌ای پیدا نشد.';}}catch(err){if(!silent)$('profileStatus').textContent=err.message;}}
+  $('saveProfile').onclick=async()=>{if(!analysis)return;try{$('profileStatus').textContent='در حال اعتبارسنجی و ذخیره…';const result=await fetchJson(apiProfile,{filename,content:$('source').value,profile:collectProfile()});$('profileStatus').textContent=`قواعد پایدار ذخیره شد (${result.updated_at})؛ فقط برای حساب شما و همین هش منبع.`;}catch(err){$('profileStatus').textContent='ذخیره نشد: '+err.message;}};
+  $('loadProfile').onclick=()=>loadProfile(false);
+  $('preview').onclick=async()=>{if(!analysis)return;$('preview').disabled=true;$('previewStatus').textContent='در حال اعتبارسنجی پیش‌نمایش…';try{preview=await fetchJson(apiPreview,{filename,content:$('source').value,profile:collectProfile()});draw(preview);showDetails();const v=preview.validation;$('previewStatus').textContent=(v.passed?'پیش‌نمایش از نظر قیود هندسی موفق است. ':'پیش‌نمایش به تأیید/اصلاح نیاز دارد. ')+`بعد درخواستی ${preview.dimension_requested}؛ بعد اندازه‌گیری‌شده ${preview.dimension_after}. `+[...(v.errors||[]),...(v.warnings||[])].join(' ');}catch(err){preview=null;$('previewStatus').textContent=err.message;}finally{$('preview').disabled=false;}};
+  $('preflight').onclick=async()=>{if(!analysis)return;$('preflight').disabled=true;$('preflightStatus').textContent='در حال بررسی قیدهای خروجی…';try{const machine_limits={};for(const [field,id] of [['x_min','machineXMin'],['x_max','machineXMax'],['y_min','machineYMin'],['y_max','machineYMax'],['z_min','machineZMin'],['z_max','machineZMax'],['max_feed','machineMaxFeed'],['max_spindle','machineMaxSpindle']]){const raw=$(id).value;if(raw!=='')machine_limits[field]=Number(raw);}const response=await fetchJson(apiPreflight,{filename,content:$('source').value,profile:collectProfile(),machine_limits});const r=response.preflight;$('preflightStatus').textContent=`وضعیت: مسدود؛ فایل تولید نشد. تغییرات مختصاتی ${r.changed_move_count} حرکت. موانع: ${r.blockers.join('؛ ')} هشدارها: ${r.warnings.join('؛ ')}`;}catch(err){$('preflightStatus').textContent='پیش‌پرواز انجام نشد: '+err.message;}finally{$('preflight').disabled=false;}};
+  $('zoomIn').onclick=()=>zoom(.8);$('zoomOut').onclick=()=>zoom(1.25);$('fit').onclick=()=>setView(fitView);$('measure').onclick=()=>{measureMode=!measureMode;measurePoints=[];$('measure').classList.toggle('active',measureMode);$('coords').textContent=measureMode?'روی دو نقطه کلیک کنید':'X — · Y —';};
+  svg.addEventListener('pointermove',e=>{const p=worldPoint(e);if(p)$('coords').textContent=`X ${p.x.toFixed(3)} · Y ${p.y.toFixed(3)}${measureMode?' · نقطهٔ اندازه‌گیری':''}`;});
+  svg.addEventListener('click',e=>{const p=worldPoint(e);if(measureMode&&p){measurePoints.push({x:p.x,y:p.y});const marker=document.createElementNS(NS,'circle');marker.setAttribute('cx',p.x);marker.setAttribute('cy',p.y);marker.setAttribute('r',Math.max(view.w,view.h)/180);marker.setAttribute('fill','#c64a30');activeGroup.appendChild(marker);if(measurePoints.length===2){const [a,b]=measurePoints,dist=Math.hypot(b.x-a.x,b.y-a.y),unit=analysis?.analysis.units?.startsWith('mm')?'mm':'program units (unknown)';const line=document.createElementNS(NS,'line');line.setAttribute('x1',a.x);line.setAttribute('y1',a.y);line.setAttribute('x2',b.x);line.setAttribute('y2',b.y);line.setAttribute('stroke','#c64a30');line.setAttribute('stroke-width','1.5');line.setAttribute('vector-effect','non-scaling-stroke');activeGroup.appendChild(line);$('coords').textContent=`ΔX ${(b.x-a.x).toFixed(3)} · ΔY ${(b.y-a.y).toFixed(3)} · فاصله ${dist.toFixed(3)} ${unit}`;measurePoints=[];}return;}const id=e.target?.dataset?.featureId;if(id){selectFeature(id);const card=[...document.querySelectorAll('[data-feature-card]')].find(c=>c.dataset.featureCard===id);card?.scrollIntoView({block:'nearest',behavior:'smooth'});}});
+  svg.addEventListener('wheel',e=>{if(!view)return;e.preventDefault();const rect=svg.getBoundingClientRect(),cx=view.x+(e.clientX-rect.left)/rect.width*view.w,cy=view.y+(e.clientY-rect.top)/rect.height*view.h;zoom(e.deltaY<0?.85:1.18,cx,cy);},{passive:false});
+  canvas.addEventListener('pointerdown',e=>{if(!view||(!e.shiftKey&&e.button!==1))return;panState={x:e.clientX,y:e.clientY,view:{...view}};canvas.setPointerCapture(e.pointerId);});
+  canvas.addEventListener('pointermove',e=>{if(!panState)return;const rect=svg.getBoundingClientRect();setView({x:panState.view.x-(e.clientX-panState.x)*panState.view.w/rect.width,y:panState.view.y-(e.clientY-panState.y)*panState.view.h/rect.height,w:panState.view.w,h:panState.view.h});});
+  canvas.addEventListener('pointerup',()=>panState=null);canvas.addEventListener('pointercancel',()=>panState=null);
+})();
+</script>
+</body>
+</html>
