@@ -59,9 +59,7 @@ def process(request):
 def archive_files(request):
     record_id = request.GET.get("id")
     if record_id:
-        record = CncFile.objects.filter(
-            pk=record_id, kind=CncFile.KIND_BASE, resizable=True
-        ).first()
+        record = CncFile.objects.filter(pk=record_id, kind=CncFile.KIND_BASE).first()
         if not record or not record.path:
             raise Http404("فایل CNC آرشیو پیدا نشد")
         try:
@@ -72,18 +70,20 @@ def archive_files(request):
         return JsonResponse({
             "id": record.id,
             "name": record.barcode_key,
+            "resizable": record.resizable,
             "content": content,
         }, json_dumps_params={"ensure_ascii": False})
 
     records = CncFile.objects.filter(
-        kind=CncFile.KIND_BASE, resizable=True
-    ).values("id", "barcode_key", "length_before", "created_at")
+        kind=CncFile.KIND_BASE
+    ).values("id", "barcode_key", "length_before", "resizable", "created_at")
     return JsonResponse({
         "files": [
             {
                 "id": row["id"],
                 "name": row["barcode_key"],
                 "length": row["length_before"],
+                "resizable": row["resizable"],
             }
             for row in records
         ]

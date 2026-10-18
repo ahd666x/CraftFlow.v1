@@ -361,6 +361,20 @@ def _span(vec):
     return (min(ys), max(ys)) if ys else (0.0, 0.0)
 
 
+def view_only_result(text, lines, eol, tool_dia, reason):
+    """Return geometry for viewing without permitting an automatic resize."""
+    vectors = extract_vectors(lines, tool_dia)
+    a, b = _span(vectors)
+    shown = vectors_for_json(vectors)
+    return dict(
+        ok=True, resizable=False, features=[], hole_rows=[], gaps=[], families=[], cuts=[],
+        delta=0.0, length_before=round(b - a, 3), length_after=round(b - a, 3),
+        original=shown, resized=shown,
+        warnings=[f"این فایل فقط نمایش داده می‌شود و قابل تغییر طول نیست: {reason}"],
+        changed_lines=[], cnc_text=text, dxf_text=to_dxf(vectors),
+    )
+
+
 def process(text, params=None):
     """params: mode ('equal'|'proportional'|'manual'), delta (mm), symmetric (bool),
                enabled ([bool per gap]), manual ([mm per gap]), tool_dia (mm).
@@ -381,7 +395,12 @@ def process(text, params=None):
     tool_dia = _num(params, 'tool_dia', 8.0, 0.1, 100)
     symmetric = bool(params.get('symmetric', True))
 
-    levels, edge_lo, edge_hi = detect_geometry(lines)
+    try:
+        levels, edge_lo, edge_hi = detect_geometry(lines)
+    except CncError as exc:
+        if params.get('allow_view_only'):
+            return view_only_result(text, lines, eol, tool_dia, str(exc))
+        raise
     mids = [l for l in levels if edge_lo < l[0] < edge_hi]
     features = [edge_lo] + [l[0] for l in mids] + [edge_hi]
     n = len(features) - 1
@@ -414,7 +433,7 @@ def process(text, params=None):
 
     changed = [i for i, (p, q) in enumerate(zip(lines, out_lines)) if p != q]
     return dict(
-        ok=True,
+        ok=True, resizable=True,
         features=[dict(y=round(f, 3)) for f in features],
         hole_rows=[dict(y=round(l[0], 3), xs=[round(x, 2) for x in l[1]]) for l in levels],
         gaps=[dict(index=k, y0=round(features[k], 3), y1=round(features[k + 1], 3),
@@ -446,7 +465,7 @@ def handle_request(raw):
     except Exception:
         return 400, dict(ok=False, error="درخواست نامعتبر است")
     try:
-        return 200, process(text, params)
+        return 200, process(text, {**params, 'allow_view_only': True})
     except CncError as e:
         return 400, dict(ok=False, error=str(e))
     except Exception:
