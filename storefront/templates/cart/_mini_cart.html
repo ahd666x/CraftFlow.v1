@@ -11,7 +11,11 @@
         <div class="border-t border-stone-200 pt-4 space-y-2">
             <div class="flex justify-between text-xs text-stone-600 mb-1">
                 <span>برای ارسال رایگان</span>
+                {% if can_see_prices %}
                 <span>{{ site_settings.free_shipping_threshold|subtract:cart.total_price|fa_price }} تومان باقی مانده</span>
+                {% else %}
+                <span>—</span>
+                {% endif %}
             </div>
             <div class="h-2 bg-stone-200 rounded-full overflow-hidden">
                 <div class="h-full bg-primary-600 rounded-full transition-all duration-300"
@@ -21,16 +25,24 @@
         {% endif %}
 
         <div class="border-t border-stone-200 pt-4 space-y-3">
-            <div class="flex items-center justify-between text-sm text-stone-600">
-                <span>جمع اقلام ({{ cart.total_items }})</span>
-                <span>{{ cart.total_price|fa_price }}</span>
-            </div>
+        <div class="flex items-center justify-between text-sm text-stone-600">
+            <span>جمع اقلام ({{ cart.total_items }})</span>
+            {% if can_see_prices %}
+            <span>{{ cart.total_price|fa_price }}</span>
+            {% else %}
+            <span>—</span>
+            {% endif %}
+        </div>
 
-            {% if cart.discount %}
-            <div class="flex items-center justify-between text-emerald-700 text-sm">
-                <span>تخفیف ({{ cart.discount.code }})</span>
-                <span>-{{ cart.discount_amount|fa_price }}</span>
-            </div>
+        {% if cart.discount %}
+        <div class="flex items-center justify-between text-emerald-700 text-sm">
+            <span>تخفیف ({{ cart.discount.code }})</span>
+            {% if can_see_prices %}
+            <span>-{{ cart.discount_amount|fa_price }}</span>
+            {% else %}
+            <span>—</span>
+            {% endif %}
+        </div>
             <form method="post" action="{% url 'discounts:remove_discount' %}"
                   hx-post="{% url 'discounts:remove_discount' %}"
                   hx-target="#mini-cart-content" hx-swap="innerHTML">
@@ -39,10 +51,14 @@
             </form>
             {% endif %}
 
-            <div class="flex items-center justify-between border-t border-stone-200 pt-3">
-                <span class="font-semibold">مبلغ قابل پرداخت</span>
-                <span class="text-lg font-bold text-primary-800">{{ cart.final_price|fa_price }}</span>
-            </div>
+        <div class="flex items-center justify-between border-t border-stone-200 pt-3">
+            <span class="font-semibold">مبلغ قابل پرداخت</span>
+            {% if can_see_prices %}
+            <span class="text-lg font-bold text-primary-800">{{ cart.final_price|fa_price }}</span>
+            {% else %}
+            <span class="text-lg font-bold text-primary-800">—</span>
+            {% endif %}
+        </div>
             <p class="text-xs text-stone-500">تومان</p>
 
             {% if not cart.discount %}

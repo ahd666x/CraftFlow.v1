@@ -2,20 +2,16 @@ User-agent: *
 Allow: /shop/
 Allow: /accounts/login/
 Allow: /accounts/register/
-Allow: /accounts/password-reset/
-Allow: /cart/
-Allow: /payments/
+Disallow: /shop/checkout/
+Disallow: /shop/orders/
+Disallow: /shop/returns/
+Disallow: /cart/
+Disallow: /payments/
 Disallow: /admin/
 Disallow: /accounts/profile/
 Disallow: /accounts/addresses/
 Disallow: /accounts/password-change/
 Disallow: /inventory/
 Disallow: /craftflow-ai/
-Disallow: /api/
-Disallow: /cart/checkout/
-Disallow: /cart/checkout/
-Disallow: /orders/
-Disallow: /returns/
-Disallow: /profile/
 
 Sitemap: {{ request.scheme }}://{{ request.get_host }}/sitemap.xml

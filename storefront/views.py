@@ -10,6 +10,7 @@ from django.templatetags.static import static
 from cart.services import get_or_create_cart
 from product.models import Color, Customer, Order, OrderItem, Product, ProductCategory
 from storefront.models import Address, HeroSlide, ProductReview, SiteSettings
+from storefront.permissions import can_see_prices
 
 
 def manifest(request):
@@ -114,9 +115,9 @@ def product_list(request):
     if category_slug:
         queryset = queryset.filter(category__slug=category_slug)
 
-    # Price range filter
-    min_price = request.GET.get('min_price')
-    max_price = request.GET.get('max_price')
+    show_prices = can_see_prices(request.user)
+    min_price = request.GET.get('min_price') if show_prices else None
+    max_price = request.GET.get('max_price') if show_prices else None
     if min_price:
         try:
             queryset = queryset.filter(base_price__gte=int(min_price))
@@ -129,6 +130,8 @@ def product_list(request):
             pass
 
     sort = request.GET.get('sort', '')
+    if not show_prices and sort in ('price_asc', 'price_desc'):
+        sort = ''
     queryset = _sort_queryset(queryset, sort)
 
     # Pagination: 12 products per page
@@ -289,9 +292,9 @@ def category_detail(request, slug):
     if q:
         queryset = queryset.filter(Q(name__icontains=q) | Q(description__icontains=q))
     
-    # Price range filter
-    min_price = request.GET.get('min_price')
-    max_price = request.GET.get('max_price')
+    show_prices = can_see_prices(request.user)
+    min_price = request.GET.get('min_price') if show_prices else None
+    max_price = request.GET.get('max_price') if show_prices else None
     if min_price:
         try:
             queryset = queryset.filter(base_price__gte=int(min_price))
@@ -304,6 +307,8 @@ def category_detail(request, slug):
             pass
 
     sort = request.GET.get('sort', '')
+    if not show_prices and sort in ('price_asc', 'price_desc'):
+        sort = ''
     queryset = _sort_queryset(queryset, sort)
 
     # Pagination: 12 products per page

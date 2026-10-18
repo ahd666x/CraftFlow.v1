@@ -72,6 +72,8 @@ INSTALLED_APPS = [
     'cutting',
     'rest_framework',
     'django.contrib.humanize',
+    # ابزار تغییر طول قطعه CNC
+    'cnc_resizer',
 
 ]
 
@@ -102,6 +104,7 @@ TEMPLATES = [
                 'cart.context_processors.cart_totals',
                 'storefront.context_processors.site_settings',
                 'storefront.context_processors.is_home',
+                'storefront.context_processors.price_visibility',
                 'cutting.context_processors.cutting_nav',
             ],
         },

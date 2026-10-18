@@ -22,14 +22,16 @@
   "brand": {
     "@type": "Brand",
     "name": "{{ site_settings.site_name|escapejs }}"
-  },
-  "offers": {
+  }
+  {% if can_see_prices %}
+  ,"offers": {
     "@type": "Offer",
     "url": "{{ request.build_absolute_uri }}",
     "priceCurrency": "IRR",
     "price": "{% widthratio product.base_price 1 10 %}",
     "availability": "https://schema.org/InStock"
   }
+  {% endif %}
   {% if product.review_count|default:0 > 0 %}
   ,
   "aggregateRating": {
@@ -187,8 +189,10 @@
                     <dl class="grid grid-cols-2 gap-4 text-sm">
                         <div class="font-medium text-stone-500">دسته‌بندی</div>
                         <div class="text-stone-900">{{ product.category.name }}</div>
+                        {% if can_see_prices %}
                         <div class="font-medium text-stone-500">قیمت پایه</div>
                         <div class="text-stone-900">{{ product.base_price|fa_price }} تومان</div>
+                        {% endif %}
                         
                         {% if product.length or product.width or product.height %}
                         <div class="font-medium text-stone-500">ابعاد</div>
@@ -322,11 +326,11 @@
 
         {# ---------- Right Column: Sticky Price Card + Add to Cart ---------- #}
         <div x-data="dimensionPrice({
-                basePrice: {{ product.base_price|js_number }},
+                basePrice: {% if can_see_prices %}{{ product.base_price|js_number }}{% else %}0{% endif %},
                 dims: {
-                    length: {def: {{ product.length|js_number }}, editable: {{ product.length_editable|yesno:'true,false' }}, percent: {{ product.length_price_percent|js_number }} },
-                    width:  {def: {{ product.width|js_number }},  editable: {{ product.width_editable|yesno:'true,false' }},  percent: {{ product.width_price_percent|js_number }} },
-                    height: {def: {{ product.height|js_number }}, editable: {{ product.height_editable|yesno:'true,false' }}, percent: {{ product.height_price_percent|js_number }} }
+                    length: {def: {% if can_see_prices %}{{ product.length|js_number }}{% else %}0{% endif %}, editable: {{ product.length_editable|yesno:'true,false' }}, percent: {% if can_see_prices %}{{ product.length_price_percent|js_number }}{% else %}0{% endif %} },
+                    width:  {def: {% if can_see_prices %}{{ product.width|js_number }}{% else %}0{% endif %},  editable: {{ product.width_editable|yesno:'true,false' }},  percent: {% if can_see_prices %}{{ product.width_price_percent|js_number }}{% else %}0{% endif %} },
+                    height: {def: {% if can_see_prices %}{{ product.height|js_number }}{% else %}0{% endif %}, editable: {{ product.height_editable|yesno:'true,false' }}, percent: {% if can_see_prices %}{{ product.height_price_percent|js_number }}{% else %}0{% endif %} }
                 }
             })"
             class="lg:order-2 lg:sticky lg:top-20 lg:self-start">
@@ -428,17 +432,25 @@
                             <label class="label" for="qty">تعداد</label>
                             <input id="qty" name="quantity" type="number" min="1" x-model.number="quantity" class="input w-20 text-center">
                         </div>
+                        {% if can_see_prices %}
                         <div class="text-left">
                             <span class="block text-xs text-stone-500">قیمت کل</span>
                             <span class="text-xl font-bold" x-text="total().toLocaleString('fa-IR') + ' تومان'"></span>
                         </div>
+                        {% endif %}
                     </div>
 
+                    {% if can_see_prices %}
                     <button type="submit" class="btn-primary w-full py-3"
                             :disabled="adding || !isValid()" :class="{'opacity-50 cursor-not-allowed': adding || !isValid()}">
                         <span x-show="!adding">افزودن به سبد خرید</span>
                         <span x-show="adding" x-cloak>در حال افزودن...</span>
                     </button>
+                    {% else %}
+                    <div class="text-center text-sm text-stone-500 py-2">
+                        برای ثبت سفارش با ما تماس بگیرید.
+                    </div>
+                    {% endif %}
                 </form>
             </div>
         </div>

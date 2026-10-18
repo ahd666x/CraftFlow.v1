@@ -1,7 +1,6 @@
 from django.contrib.sitemaps import Sitemap
 from django.urls import reverse
 from product.models import Product, ProductCategory
-from storefront.models import HeroSlide
 
 
 class StaticViewSitemap(Sitemap):
@@ -14,8 +13,6 @@ class StaticViewSitemap(Sitemap):
             'storefront:product_list',
             'storefront:category_list',
             'storefront:about',
-            'storefront:return_policy',
-            'storefront:terms_of_service',
             'accounts:login',
             'accounts:register',
         ]
@@ -29,10 +26,10 @@ class ProductSitemap(Sitemap):
     priority = 0.8
 
     def items(self):
-        return Product.active_objects.filter(is_active=True)
+        return Product.active_objects.all()
 
-    def lastmod(self, obj):
-        return obj.updated_at
+    def location(self, obj):
+        return reverse('storefront:product_detail', kwargs={'slug': obj.slug})
 
 
 class CategorySitemap(Sitemap):
@@ -42,16 +39,5 @@ class CategorySitemap(Sitemap):
     def items(self):
         return ProductCategory.objects.filter(is_active=True)
 
-    def lastmod(self, obj):
-        return obj.updated_at
-
-
-class HeroSlideSitemap(Sitemap):
-    changefreq = 'daily'
-    priority = 0.6
-
-    def items(self):
-        return HeroSlide.objects.filter(is_active=True)
-
-    def lastmod(self, obj):
-        return obj.updated_at
+    def location(self, obj):
+        return reverse('storefront:category_detail', kwargs={'slug': obj.slug})

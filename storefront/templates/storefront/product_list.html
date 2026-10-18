@@ -9,6 +9,14 @@
 {% if current_category %}محصولات دسته {{ current_category.name }}{% else %}همه محصولات فروشگاه{% endif %}
 {% endblock %}
 
+{% block og_title %}
+{% if current_category %}محصولات {{ current_category.name }}{% else %}همه محصولات{% endif %} — {{ site_settings.site_name }}
+{% endblock %}
+
+{% block og_description %}
+{% if current_category %}محصولات دسته {{ current_category.name }}{% else %}همه محصولات فروشگاه{% endif %} در {{ site_settings.site_name }}
+{% endblock %}
+
 {% block content %}
 <div class="mx-auto max-w-6xl px-4 py-8">
 
@@ -31,8 +39,10 @@
             <label for="sort" class="text-sm text-stone-600">مرتب‌سازی:</label>
             <select name="sort" id="sort" onchange="this.form.submit()" class="select w-auto py-1.5">
                 <option value="" {% if not sort %}selected{% endif %}>جدیدترین</option>
+                {% if can_see_prices %}
                 <option value="price_asc" {% if sort == 'price_asc' %}selected{% endif %}>ارزان‌ترین</option>
                 <option value="price_desc" {% if sort == 'price_desc' %}selected{% endif %}>گران‌ترین</option>
+                {% endif %}
                 <option value="name" {% if sort == 'name' %}selected{% endif %}>نام</option>
             </select>
         </form>
@@ -53,11 +63,13 @@
             <a href="?{% if q %}q={{ q }}&{% endif %}{% if sort %}sort={{ sort }}&{% endif %}{% if min_price %}min_price={{ min_price }}&{% endif %}{% if max_price %}max_price={{ max_price }}&{% endif %}" class="text-primary-600 hover:text-primary-800" aria-label="حذف فیلتر دسته‌بندی">×</a>
         </span>
         {% endif %}
+        {% if can_see_prices %}
         {% if min_price or max_price %}
         <span class="inline-flex items-center gap-1 px-3 py-1 text-sm bg-primary-100 text-primary-800 rounded-full">
             قیمت: {% if min_price %}{{ min_price|fa_price }}{% else %}۰{% endif %} - {% if max_price %}{{ max_price|fa_price }}{% else %}∞{% endif %} تومان
             <a href="?{% if q %}q={{ q }}&{% endif %}{% if selected_category %}category={{ selected_category }}&{% endif %}{% if sort %}sort={{ sort }}&{% endif %}" class="text-primary-600 hover:text-primary-800" aria-label="حذف فیلتر قیمت">×</a>
         </span>
+        {% endif %}
         {% endif %}
         <a href="{% url 'storefront:product_list' %}" class="inline-flex items-center px-3 py-1 text-sm text-stone-500 hover:text-stone-700">پاک کردن همه</a>
     </div>
@@ -89,6 +101,7 @@
                 </ul>
             </div>
 
+            {% if can_see_prices %}
             <div class="mt-4 card p-4">
                 <h2 class="mb-3 font-semibold">محدوده قیمت</h2>
                 <form method="get" class="space-y-3">
@@ -114,6 +127,7 @@
                     {% endif %}
                 </form>
             </div>
+            {% endif %}
         </aside>
 
         {# Mobile Filter Button & Drawer #}
@@ -178,6 +192,7 @@
                             {% endfor %}
                         </ul>
                     </div>
+                    {% if can_see_prices %}
                     <div>
                         <h3 class="font-semibold mb-3">محدوده قیمت</h3>
                         <form method="get" class="space-y-3" id="mobile-price-form">
@@ -204,6 +219,7 @@
                             </div>
                         </form>
                     </div>
+                    {% endif %}
                 </div>
                 <div class="p-4 border-t border-stone-100 sticky bottom-0 bg-white rounded-b-2xl">
                     <button type="button" @click="filterOpen = false; document.getElementById('mobile-price-form').dispatchEvent(new Event('submit'))" class="btn-primary w-full py-3">اعمال و بستن</button>

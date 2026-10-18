@@ -11,7 +11,6 @@ from storefront.sitemaps import (
     StaticViewSitemap,
     ProductSitemap,
     CategorySitemap,
-    HeroSlideSitemap,
 )
 
 # Error handlers
@@ -22,7 +21,6 @@ sitemaps = {
     'static': StaticViewSitemap,
     'products': ProductSitemap,
     'categories': CategorySitemap,
-    'hero_slides': HeroSlideSitemap,
 }
 
 urlpatterns = [
@@ -42,6 +40,8 @@ urlpatterns = [
     path('inventory/', include('inventory.urls')),
     path('cutting/', include('cutting.urls')),
     path('craftflow-ai/', include('craftflow_ai.urls')),
+    # ابزار تغییر طول قطعه CNC
+    path('cnc/', include('cnc_resizer.urls')),
     # فروشگاه روی پیشوند /shop سوار می‌شود تا با پنل تولید قاطی نشود.
     # قالب‌های فروشگاه هم namespace مستقل `storefront/` دارند.
     path('shop/', include('storefront.urls')),
