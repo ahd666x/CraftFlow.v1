@@ -80,7 +80,6 @@
 .stock-kpi-card .kpi-note{font-size:.68rem;color:#94a3b8;margin-top:.2rem}
 .stock-kpi-card .kpi-note b{color:#334155}
 .stock-history-note{font-size:.72rem;color:#94a3b8}
-@media(max-width:575.98px){.stock-summary-grid{grid-template-columns:repeat(2,1fr)}.stock-kpi-card .kpi-value{font-size:1.25rem}}
-
 @media(max-width:1100px){.cnc-kpis{grid-template-columns:repeat(3,1fr)}.cnc-kpi-note{grid-column:1/-1}.cnc-layout{grid-template-columns:1fr}.cnc-side-panel{position:static}}
 @media(max-width:700px){.cnc-workbench{margin:-1rem;padding:.8rem}.cnc-topbar{align-items:flex-start;flex-direction:column}.cnc-top-actions{width:100%}.cnc-top-actions .btn{flex:1}.cnc-commandbar{overflow:auto}.cnc-command{white-space:nowrap}.cnc-kpis{grid-template-columns:1fr 1fr}.cnc-program-grid{grid-template-columns:1fr}.cnc-kpi-note{grid-column:1/-1}}
+@media(max-width:575.98px){.stock-summary-grid{grid-template-columns:repeat(2,1fr)}.stock-kpi-card .kpi-value{font-size:1.25rem}}
