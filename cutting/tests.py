@@ -11,7 +11,7 @@ from product.models import Customer, Material, Order, Part, ProductionTask
 from .models import CuttingSettings, CutPlan, CutPlanSheet, SheetSizeSpec, SheetStock, SheetStockEvent
 from .optimizer import expected_offcuts, make_autocut, optimize
 from .templatetags.cutting_extras import jalali
-from cnc_resizer.models import CncSheetPlan
+from cnc_resizer.models import CncPlanningIssue, CncSheetPlan
 
 
 class CuttingOptimizerRegressionTests(SimpleTestCase):
@@ -402,6 +402,71 @@ class InventoryAndCutFlowTests(TestCase):
         self.assertEqual(response.status_code, 302)
         cut_plan = CutPlan.objects.get()
         self.assertEqual(cut_plan.planned_tasks.get().quantity, 1)
+
+    def test_cnc_result_consumes_stock_records_event_and_completes_piece(self):
+        stock = self.add_stock()
+        self.part.routing_code = 'cnc.cut'
+        self.part.save(update_fields=['routing_code'])
+        plan = CncSheetPlan.objects.create(
+            material=self.material, source_stock=stock, sheet_index=0,
+            width=stock.width, height=stock.height,
+            layout={'parts': [{'task_id': self.task.pk, 'width': 300, 'height': 400}]},
+            gcode='G-code', created_by=self.user,
+        )
+        response = self.client.post(reverse('cnc_resizer:complete_sheet_plan', args=[plan.pk]), {
+            'outcome': 'used', 'note': 'test run', f'rem_{plan.pk}_1_width': '500',
+            f'rem_{plan.pk}_1_height': '600',
+        })
+        self.assertEqual(response.status_code, 302)
+        plan.refresh_from_db(); stock.refresh_from_db(); self.task.refresh_from_db()
+        self.assertEqual((plan.status, plan.result_outcome), ('done', 'used'))
+        self.assertEqual(stock.quantity, 0)
+        self.assertEqual((self.task.completed_quantity, self.task.status), (1, 'done'))
+        self.assertTrue(SheetStockEvent.objects.filter(cnc_plan=plan, event_type='consume', quantity_delta=-1).exists())
+        self.assertTrue(SheetStock.objects.filter(created_from_cnc_plan=plan, is_offcut=True).exists())
+
+    def test_untouched_cnc_result_releases_reservation_without_consuming_stock(self):
+        stock = self.add_stock()
+        plan = CncSheetPlan.objects.create(
+            material=self.material, source_stock=stock, sheet_index=0,
+            width=stock.width, height=stock.height, layout={'parts': [{'task_id': self.task.pk}]},
+            gcode='G-code', created_by=self.user,
+        )
+        self.client.post(reverse('cnc_resizer:complete_sheet_plan', args=[plan.pk]), {'outcome': 'untouched'})
+        plan.refresh_from_db(); stock.refresh_from_db(); self.task.refresh_from_db()
+        self.assertEqual((plan.status, plan.result_outcome), ('done', 'untouched'))
+        self.assertEqual(stock.quantity, 1)
+        self.assertEqual(self.task.completed_quantity, 0)
+        self.assertTrue(SheetStockEvent.objects.filter(cnc_plan=plan, event_type='untouched').exists())
+
+    def test_cnc_planning_issue_can_be_resolved_and_reopened_from_ui_route(self):
+        issue = CncPlanningIssue.objects.create(
+            task=self.task, order=self.order, part=self.part, reason='تست', created_by=self.user,
+        )
+        response = self.client.post(reverse('cnc_resizer:update_planning_issue', args=[issue.pk]), {
+            'status': 'resolved', 'note': 'بررسی شد',
+        })
+        self.assertEqual(response.status_code, 302)
+        issue.refresh_from_db()
+        self.assertEqual((issue.status, issue.resolution_note, issue.resolved_by), ('resolved', 'بررسی شد', self.user))
+        self.client.post(reverse('cnc_resizer:update_planning_issue', args=[issue.pk]), {'status': 'open'})
+        issue.refresh_from_db()
+        self.assertEqual((issue.status, issue.resolved_by), ('open', None))
+
+    def test_cnc_workbench_renders_result_and_issue_controls(self):
+        stock = self.add_stock()
+        plan = CncSheetPlan.objects.create(
+            material=self.material, source_stock=stock, sheet_index=0,
+            width=stock.width, height=stock.height, layout={'parts': [{'task_id': self.task.pk}]},
+            gcode='G-code', created_by=self.user,
+        )
+        issue = CncPlanningIssue.objects.create(task=self.task, order=self.order, part=self.part, reason='بررسی', created_by=self.user)
+        response = self.client.get(reverse('cnc_resizer:sheet_plans'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, reverse('cnc_resizer:complete_sheet_plan', args=[plan.pk]))
+        self.assertContains(response, 'ثبت نتیجهٔ واقعی اجرا')
+        self.assertContains(response, reverse('cnc_resizer:update_planning_issue', args=[issue.pk]))
+        self.assertContains(response, 'نادیده‌گرفتن')
 
     def test_cnc_plan_download_and_cancel_are_owner_or_manager_only(self):
         stock = self.add_stock()

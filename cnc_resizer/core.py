@@ -542,6 +542,9 @@ def validate_profile(profile, inventory):
     if profile.get('axis', 'length') != 'length':
         errors.append('محور تغییر CNC باید length باشد؛ طول روی Y قرار دارد')
     rules = profile.get('features') or {}
+    if not isinstance(rules, dict):
+        errors.append('قواعد featureها باید یک شیء معتبر باشند')
+        rules = {}
     known = {f['id'] for f in inventory}
     for fid in rules:
         if fid not in known:
@@ -551,10 +554,22 @@ def validate_profile(profile, inventory):
         mode = rule.get('mode') if isinstance(rule, dict) else None
         if not rule or mode in (None, 'view_only', 'unknown'):
             errors.append(f"feature {item['id']} هنوز توسط اپراتور تأیید نشده است")
+        elif mode not in ('fixed', 'stretch'):
+            errors.append(f"حالت feature {item['id']} پشتیبانی نمی‌شود")
         if item['kind'] in ('outer_contour', 'hole') and mode == 'stretch':
             errors.append(f"تغییر مستقیم {item['kind']} مجاز نیست؛ فقط خطوط صاف میانی را انتخاب کنید")
-    if not profile.get('reference_points'):
+    reference_points = profile.get('reference_points')
+    if not isinstance(reference_points, dict) or not reference_points:
         errors.append('حداقل یک نقطهٔ مرجع اپراتور ثبت نشده است')
+    else:
+        try:
+            values = [float(value) for value in reference_points.values()]
+            if not values or not all(math.isfinite(value) for value in values):
+                raise ValueError
+            if 'start' in reference_points and 'end' in reference_points and float(reference_points['start']) == float(reference_points['end']):
+                errors.append('نقاط مرجع شروع و پایان باید متفاوت باشند')
+        except (TypeError, ValueError, OverflowError):
+            errors.append('مقادیر نقاط مرجع باید عددی و متناهی باشند')
     return errors
 
 

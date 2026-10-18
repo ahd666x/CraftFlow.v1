@@ -1,5 +1,6 @@
 import os
 import tempfile
+import json
 
 from django.contrib.auth.models import Group, User
 from django.test import TestCase
@@ -32,6 +33,61 @@ class CncIntegrationTests(TestCase):
         response = self.client.get(reverse("cnc_resizer:index"))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "/cnc/api/process/")
+        self.assertContains(response, "/cnc/api/analyze/")
+
+    def test_analyze_api_returns_feature_inventory_for_ui(self):
+        self.client.login(username="cnc-manager", password="testpass")
+        with open(SAMPLE, "r", encoding="utf-8") as stream:
+            content = stream.read()
+        response = self.client.post(
+            reverse("cnc_resizer:analyze"),
+            data=json.dumps({"content": content, "params": {}}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload["ok"])
+        self.assertIn("features", payload)
+        self.assertIn("ready", payload)
+
+    def test_feature_profile_save_is_validated_and_does_not_approve_legacy_profile(self):
+        self.client.login(username="cnc-manager", password="testpass")
+        material = Material.objects.create(name="Feature MDF", thickness=Decimal("16.0"))
+        part = Part.objects.create(
+            material=material, name="Feature panel", length=Decimal("400"),
+            width=Decimal("300"), f3="feature.400x300", routing_code="cnc",
+        )
+        with tempfile.NamedTemporaryFile(suffix=".cnc", delete=False) as stream:
+            with open(SAMPLE, "rb") as sample:
+                stream.write(sample.read())
+            source_path = stream.name
+        try:
+            source = register_base_file(source_path, part.f3, self.manager)
+            with open(source_path, "r", encoding="utf-8") as stream:
+                content = stream.read()
+            from . import core
+            inventory = core.analyze(content)["features"]
+            feature_profile = {
+                "axis": "length",
+                "features": {feature["id"]: {"mode": "fixed"} for feature in inventory},
+                "reference_points": {"start": 0, "end": 400},
+            }
+            response = self.client.post(
+                reverse("cnc_resizer:part_profile") + f"?part_id={part.pk}",
+                data=json.dumps({
+                    "part_id": part.pk, "source_id": source.pk,
+                    "params": {"mode": "equal", "symmetric": True, "axis": "length"},
+                    "feature_profile": feature_profile,
+                }),
+                content_type="application/json",
+            )
+        finally:
+            os.unlink(source_path)
+        self.assertEqual(response.status_code, 200, response.content)
+        profile = CncPartProfile.objects.get(part=part)
+        self.assertEqual(profile.feature_profile, feature_profile)
+        self.assertEqual(profile.feature_source_file_id, source.pk)
+        self.assertFalse(profile.approved)
 
     def test_archive_revision_is_indexed_and_validated(self):
         with tempfile.NamedTemporaryFile(suffix=".cnc", delete=False) as stream:

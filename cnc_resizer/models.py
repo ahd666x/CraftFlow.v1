@@ -61,6 +61,16 @@ class CncPartProfile(models.Model):
         verbose_name="فایل پایه",
     )
     params = models.JSONField(default=dict, verbose_name="الگوی تغییر اندازه")
+    feature_profile = models.JSONField(default=dict, blank=True, verbose_name="پروفایل تحلیل ویژگی‌ها")
+    feature_source_file = models.ForeignKey(
+        CncFile, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="feature_profiles", verbose_name="فایل منبع تحلیل ویژگی‌ها",
+    )
+    feature_profile_updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="updated_cnc_feature_profiles",
+    )
+    feature_profile_updated_at = models.DateTimeField(null=True, blank=True)
     approved = models.BooleanField(default=False, verbose_name="تأیید شده")
     approved_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
@@ -89,6 +99,12 @@ class CncSheetPlan(models.Model):
     width = models.DecimalField(max_digits=10, decimal_places=1)
     height = models.DecimalField(max_digits=10, decimal_places=1)
     status = models.CharField(max_length=12, choices=STATUS, default="planned")
+    RESULT_OUTCOMES = (("used", "مصرف شد"), ("untouched", "استفاده نشد"), ("scrapped", "اسقاط شد"))
+    result_outcome = models.CharField(max_length=12, choices=RESULT_OUTCOMES, blank=True)
+    actual_offcuts = models.JSONField(default=list, blank=True)
+    result_note = models.CharField(max_length=255, blank=True)
+    completed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="completed_cnc_sheet_plans")
+    completed_at = models.DateTimeField(null=True, blank=True)
     kerf = models.DecimalField(max_digits=6, decimal_places=1, default=4)
     layout = models.JSONField(default=dict)
     gcode = models.TextField()
@@ -107,12 +123,17 @@ class CncSheetPlan(models.Model):
 
 class CncPlanningIssue(models.Model):
     MODES = (("cnc_sheets", "تفکیک CNC"), ("standard", "برش عادی"))
+    STATUSES = (("open", "باز"), ("resolved", "رفع شد"), ("ignored", "نادیده گرفته شد"))
     task = models.ForeignKey("product.ProductionTask", null=True, blank=True, on_delete=models.SET_NULL, related_name="cnc_planning_issues")
     order = models.ForeignKey("product.Order", null=True, blank=True, on_delete=models.SET_NULL, related_name="cnc_planning_issues")
     part = models.ForeignKey("product.Part", null=True, blank=True, on_delete=models.SET_NULL, related_name="cnc_planning_issues")
     mode = models.CharField(max_length=20, choices=MODES, default="cnc_sheets")
     reason = models.TextField()
     details = models.JSONField(default=dict, blank=True)
+    status = models.CharField(max_length=12, choices=STATUSES, default="open")
+    resolution_note = models.CharField(max_length=255, blank=True)
+    resolved_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="resolved_cnc_planning_issues")
+    resolved_at = models.DateTimeField(null=True, blank=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="cnc_planning_issues")
     created_at = models.DateTimeField(auto_now_add=True)
 

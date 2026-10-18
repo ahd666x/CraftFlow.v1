@@ -12,5 +12,7 @@ urlpatterns = [
     path("api/part-profile/", views.part_profile, name="part_profile"),
     path("sheets/", views.sheet_plans, name="sheet_plans"),
     path("sheets/<int:plan_id>/cancel/", views.cancel_sheet_plan, name="cancel_sheet_plan"),
+    path("sheets/<int:plan_id>/complete/", views.complete_sheet_plan, name="complete_sheet_plan"),
     path("sheets/<int:plan_id>/download/", views.download_sheet_plan, name="download_sheet_plan"),
+    path("issues/<int:issue_id>/status/", views.update_planning_issue, name="update_planning_issue"),
 ]

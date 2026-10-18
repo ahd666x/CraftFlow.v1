@@ -17,7 +17,7 @@
     <a class="cnc-command" href="{% url 'cutting:inventory' %}"><i class="bi bi-stack"></i><span>موجودی ورق</span></a>
     <a class="cnc-command" href="{% url 'cnc_resizer:index' %}"><i class="bi bi-rulers"></i><span>تنظیم قطعه</span></a>
     <div class="cnc-command-spacer"></div>
-    <div class="cnc-legend"><span class="cnc-led led-green"></span> آمادهٔ دانلود <span class="cnc-led led-gray"></span> لغوشده</div>
+    <div class="cnc-legend"><span class="cnc-led led-green"></span> آمادهٔ دانلود <span class="cnc-led led-blue"></span> اجراشده <span class="cnc-led led-gray"></span> لغوشده</div>
   </div>
   <section class="cnc-kpis" aria-label="خلاصهٔ برنامه‌های CNC">
     <div class="cnc-kpi"><span class="cnc-kpi-icon blue"><i class="bi bi-files"></i></span><div><span>کل برنامه‌ها</span><strong>{{ plans|length }}</strong></div></div>
@@ -30,8 +30,8 @@
       <div class="cnc-section-heading"><div><div class="cnc-section-kicker">SHEET PROGRAMS</div><h2>برنامه‌های ورق</h2></div><span class="cnc-count-badge">{{ plans|length }} برنامه</span></div>
       <div class="cnc-program-grid">
         {% for plan in plans %}
-        <article class="cnc-program-card {% if plan.status != 'planned' %}is-cancelled{% endif %}">
-          <div class="cnc-program-head"><div><span class="cnc-program-id">CNC-{{ plan.id|stringformat:'04d' }}</span><h3>{{ plan.material.name }}</h3></div><span class="cnc-status {% if plan.status == 'planned' %}ready{% else %}cancelled{% endif %}"><span></span>{{ plan.get_status_display }}</span></div>
+        <article class="cnc-program-card {% if plan.status == 'cancelled' %}is-cancelled{% endif %}">
+          <div class="cnc-program-head"><div><span class="cnc-program-id">CNC-{{ plan.id|stringformat:'04d' }}</span><h3>{{ plan.material.name }}</h3></div><span class="cnc-status {% if plan.status == 'planned' %}ready{% elif plan.status == 'done' %}done{% else %}cancelled{% endif %}"><span></span>{{ plan.get_status_display }}</span></div>
           <div class="cnc-sheet-canvas" style="--sheet-ratio:{{ plan.aspect }}" role="img" aria-label="چیدمان قطعات روی ورق {{ plan.width }} در {{ plan.height }}">
             <div class="cnc-canvas-grid"></div>
             <div class="cnc-sheet-label">{{ plan.width }} × {{ plan.height }} mm</div>
@@ -39,12 +39,44 @@
           </div>
           <div class="cnc-program-meta"><span><i class="bi bi-aspect-ratio"></i> {{ plan.width }} × {{ plan.height }}</span><span><i class="bi bi-boxes"></i> {{ plan.layout.parts|length }} قطعه</span><span><i class="bi bi-calendar3"></i> {{ plan.created_at }}</span></div>
           {% if plan.orders %}<div class="cnc-orders">سفارش‌ها: {% for o in plan.orders %}<b>#{{ o }}</b>{% if not forloop.last %}، {% endif %}{% endfor %}</div>{% endif %}
-          {% if plan.status == 'planned' %}<div class="cnc-program-actions"><a class="btn btn-success flex-grow-1" href="{% url 'cnc_resizer:download_sheet_plan' plan.id %}"><i class="bi bi-download"></i> دانلود G-code کل ورق</a><form method="post" action="{% url 'cnc_resizer:cancel_sheet_plan' plan.id %}" onsubmit="return confirm('این برنامه لغو و ورق و قطعات آن آزاد شوند؟')">{% csrf_token %}<button class="btn btn-outline-danger" title="لغو و آزادسازی" aria-label="لغو برنامه {{ plan.id }}"><i class="bi bi-x-lg"></i></button></form></div>{% else %}<div class="cnc-cancelled-note"><i class="bi bi-slash-circle"></i> این برنامه لغو شده و دیگر قابل اجرا نیست.</div>{% endif %}
+          {% if plan.status != 'cancelled' %}<div class="cnc-program-actions"><a class="btn btn-success flex-grow-1" href="{% url 'cnc_resizer:download_sheet_plan' plan.id %}"><i class="bi bi-download"></i> {% if plan.status == 'done' %}دانلود مجدد G-code{% else %}دانلود G-code کل ورق{% endif %}</a>{% if plan.status == 'planned' %}<form method="post" action="{% url 'cnc_resizer:cancel_sheet_plan' plan.id %}" onsubmit="return confirm('این برنامه لغو و ورق و قطعات آن آزاد شوند؟')">{% csrf_token %}<button class="btn btn-outline-danger" title="لغو و آزادسازی" aria-label="لغو برنامه {{ plan.id }}"><i class="bi bi-x-lg"></i></button></form>{% endif %}</div>{% endif %}
+          {% if plan.status == 'planned' %}
+          <form class="cnc-result-form" method="post" action="{% url 'cnc_resizer:complete_sheet_plan' plan.id %}" data-cnc-result data-plan-id="{{ plan.id }}">
+            {% csrf_token %}<h4>ثبت نتیجهٔ واقعی اجرا</h4>
+            <label>نتیجهٔ ورق<select name="outcome" required><option value="">انتخاب کنید…</option><option value="used">مصرف شد؛ قطعات ساخته شدند</option><option value="untouched">ورق مصرف نشد</option><option value="scrapped">ورق اسقاط شد</option></select></label>
+            <label>یادداشت / علت اسقاط<input name="note" maxlength="255" placeholder="برای اسقاط الزامی است"></label>
+            <div data-remnants hidden><p>پرت‌های قابل استفادهٔ واقعی (اختیاری)</p><div data-remnant-rows><div class="cnc-remnant-row"><input type="number" min="0.1" step="0.1" name="rem_{{ plan.id }}_1_width" placeholder="عرض (mm)"><input type="number" min="0.1" step="0.1" name="rem_{{ plan.id }}_1_height" placeholder="طول (mm)"></div></div><button type="button" class="btn btn-sm btn-outline-secondary" data-add-remnant>افزودن پرت</button></div>
+            <button class="btn btn-primary" type="submit">ثبت نتیجه و به‌روزرسانی موجودی</button>
+          </form>
+          {% elif plan.status == 'done' %}<div class="cnc-cancelled-note">نتیجه: <b>{{ plan.get_result_outcome_display }}</b>{% if plan.result_note %} — {{ plan.result_note }}{% endif %}{% if plan.completed_at %}<br>ثبت‌کننده: {{ plan.completed_by|default:'-' }} · {{ plan.completed_at }}{% endif %}{% if plan.actual_offcuts %}<br>پرت واقعی ثبت‌شده: {% for offcut in plan.actual_offcuts %}{{ offcut.width }} × {{ offcut.height }} mm{% if not forloop.last %}، {% endif %}{% endfor %}{% endif %}</div>
+          {% else %}<div class="cnc-cancelled-note"><i class="bi bi-slash-circle"></i> این برنامه لغو شده و دیگر قابل اجرا نیست.</div>{% endif %}
         </article>
         {% empty %}<div class="cnc-empty"><i class="bi bi-layers"></i><h3>هنوز برنامه‌ای ساخته نشده است</h3><p>از صف برش، حالت «تفکیک CNC» را انتخاب کنید تا برنامهٔ ورق ایجاد شود.</p><a class="btn btn-primary" href="{% url 'cutting:planner' %}">رفتن به برنامه‌ریزی</a></div>{% endfor %}
       </div>
     </section>
-    <aside class="cnc-side-panel"><div class="cnc-side-head"><div><div class="cnc-section-kicker">QUALITY CONTROL</div><h2>موارد نیازمند بررسی</h2></div><span class="cnc-issue-count">{{ issues|length }}</span></div><p class="cnc-side-help">قطعاتی که در این اجرا وارد G-code نشده‌اند، اینجا ثبت می‌شوند.</p><div class="cnc-issues">{% for issue in issues %}<div class="cnc-issue"><div class="cnc-issue-top"><b>#{{ issue.task_id|default:'-' }} · سفارش #{{ issue.order_id|default:'-' }}</b><span>{{ issue.get_mode_display }}</span></div><strong>{{ issue.part.name|default:issue.part.f3|default:'قطعه نامشخص' }}</strong><div class="small text-muted">{% if issue.part %}{{ issue.part.width }} × {{ issue.part.length }} mm{% endif %}</div><div class="cnc-issue-reason"><i class="bi bi-exclamation-circle"></i>{{ issue.reason }}</div></div>{% empty %}<div class="cnc-no-issues"><i class="bi bi-shield-check"></i><span>خطای ثبت‌شده‌ای وجود ندارد.</span></div>{% endfor %}</div></aside>
+    <aside class="cnc-side-panel"><div class="cnc-side-head"><div><div class="cnc-section-kicker">QUALITY CONTROL</div><h2>موارد نیازمند بررسی</h2></div><span class="cnc-issue-count">{{ issues|length }}</span></div><p class="cnc-side-help">قطعاتی که در این اجرا وارد G-code نشده‌اند، اینجا ثبت می‌شوند.</p><div class="cnc-issues">{% for issue in issues %}<div class="cnc-issue"><div class="cnc-issue-top"><b>#{{ issue.task_id|default:'-' }} · سفارش #{{ issue.order_id|default:'-' }}</b><span>{{ issue.get_mode_display }} · {{ issue.get_status_display }}</span></div><strong>{{ issue.part.name|default:issue.part.f3|default:'قطعه نامشخص' }}</strong><div class="small text-muted">{% if issue.part %}{{ issue.part.width }} × {{ issue.part.length }} mm{% endif %}</div><div class="cnc-issue-reason"><i class="bi bi-exclamation-circle"></i>{{ issue.reason }}</div>{% if issue.resolution_note %}<p>{{ issue.resolution_note }}</p>{% endif %}<div class="cnc-issue-actions">{% if issue.status != 'open' %}<form method="post" action="{% url 'cnc_resizer:update_planning_issue' issue.id %}">{% csrf_token %}<input type="hidden" name="status" value="open"><button class="btn btn-sm btn-outline-secondary">بازگشایی</button></form>{% else %}<form method="post" action="{% url 'cnc_resizer:update_planning_issue' issue.id %}">{% csrf_token %}<input type="hidden" name="status" value="resolved"><input name="note" maxlength="255" placeholder="یادداشت رفع (اختیاری)"><button class="btn btn-sm btn-success">رفع شد</button></form><form method="post" action="{% url 'cnc_resizer:update_planning_issue' issue.id %}">{% csrf_token %}<input type="hidden" name="status" value="ignored"><input name="note" maxlength="255" placeholder="علت نادیده‌گرفتن"><button class="btn btn-sm btn-outline-secondary">نادیده‌گرفتن</button></form>{% endif %}</div></div>{% empty %}<div class="cnc-no-issues"><i class="bi bi-shield-check"></i><span>خطای ثبت‌شده‌ای وجود ندارد.</span></div>{% endfor %}</div></aside>
   </main>
 </div>
+<script>
+document.querySelectorAll('[data-cnc-result]').forEach((form) => {
+  const outcome = form.querySelector('[name="outcome"]');
+  const note = form.querySelector('[name="note"]');
+  const remnants = form.querySelector('[data-remnants]');
+  const rows = form.querySelector('[data-remnant-rows]');
+  const planId = form.dataset.planId;
+  let index = 1;
+  const sync = () => { remnants.hidden = outcome.value !== 'used'; note.required = outcome.value === 'scrapped'; };
+  outcome.addEventListener('change', sync); sync();
+  form.querySelector('[data-add-remnant]').addEventListener('click', () => {
+    if (index >= 50) return;
+    index += 1;
+    const row = document.createElement('div'); row.className = 'cnc-remnant-row';
+    row.innerHTML = `<input type="number" min="0.1" step="0.1" name="rem_${planId}_${index}_width" placeholder="عرض (mm)"><input type="number" min="0.1" step="0.1" name="rem_${planId}_${index}_height" placeholder="طول (mm)">`;
+    rows.appendChild(row);
+  });
+  form.addEventListener('submit', (event) => {
+    if (!confirm('نتیجه ثبت می‌شود و در صورت مصرف یا اسقاط، موجودی ورق و وضعیت تسک‌ها تغییر می‌کند. ادامه می‌دهید؟')) event.preventDefault();
+  });
+});
+</script>
 {% endblock %}

@@ -128,6 +128,7 @@
   <h1>تغییر طول قطعه CNC</h1>
   <span class="sub">فایل cnc را باز کنید، وکتورها را ببینید، میزان و نحوه‌ی تغییر طول را تنظیم کنید و خروجی را بگیرید</span>
   <span class="spacer"></span>
+  <a class="primary" href="{{ sheet_plans_url }}" style="text-decoration:none">برنامه‌های ورق CNC</a>
   <button id="themeBtn" type="button" title="تغییر تم">تم</button>
 </header>
 
@@ -146,6 +147,18 @@
       <div id="partProfileBox" hidden style="margin-top:10px">
         <button type="button" id="saveProfileBtn" class="primary" style="width:100%">ثبت الگوی این قطعه</button>
         <p class="hint" id="profileStatus"></p>
+      </div>
+      <hr>
+      <button type="button" id="analyzeFeaturesBtn" style="width:100%">تحلیل ویژگی‌های G-code</button>
+      <div id="featureProfileEditor" hidden style="margin-top:10px">
+        <p class="hint">برای هر ویژگی حالت ثابت یا ناحیهٔ کشش را انتخاب کنید. این تحلیل ذخیره می‌شود اما تا پیاده‌سازی کشش featureمحور در تولید G-code استفاده نمی‌شود.</p>
+        <div class="row">
+          <label class="field">نقطهٔ مرجع شروع (Y mm)<input type="number" step="0.001" id="featureRefStart"></label>
+          <label class="field">نقطهٔ مرجع پایان (Y mm)<input type="number" step="0.001" id="featureRefEnd"></label>
+        </div>
+        <div id="featureList" style="display:grid;gap:6px;margin:8px 0"></div>
+        <p class="hint" id="featureProfileStatus" aria-live="polite"></p>
+        <button type="button" id="saveFeatureProfileBtn" style="width:100%" disabled>ذخیرهٔ تحلیل ویژگی‌ها</button>
       </div>
       <label class="field" style="display:block;margin-top:10px">یا انتخاب از آرشیو
         <select id="archiveFile">
@@ -242,6 +255,7 @@
   'use strict';
   const $ = (id) => document.getElementById(id);
   const API = document.body.dataset.api || '/api/process/';
+  const ANALYZE_API = '{{ analyze_api_url }}';
   const PROFILE_API = '{{ profile_api_url }}';
   const PART_ID = '{{ part_id|escapejs }}';
   const NS = 'http://www.w3.org/2000/svg';
@@ -249,7 +263,7 @@
   const S = {
     name: '', text: '', res: null, reqId: 0, timer: null,
     mode: 'equal', symmetric: true, enabled: [], manual: [], tool: 8,
-    vb: null, fs: 12, tab: 'view',
+    vb: null, fs: 12, tab: 'view', featureInventory: [], featureProfile: null,
   };
 
   // ------------------------------------------------------------ helpers
@@ -302,6 +316,7 @@
     const r = new FileReader();
     r.onload = () => {
       S.name = f.name; S.text = String(r.result); S.res = null; S.enabled = []; S.manual = [];
+      S.featureProfile = null; S.featureInventory = []; $('featureProfileEditor').hidden = true;
       $('fname').textContent = f.name;
       $('dropTitle').textContent = 'فایل انتخاب شد'; $('dropSub').textContent = 'برای تعویض کلیک کنید';
       run(true);
@@ -331,6 +346,7 @@
       const resp = await fetch('{{ archive_api_url }}?id=' + encodeURIComponent(archiveFile.value), { credentials: 'same-origin' });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.error || 'خطا در خواندن فایل آرشیو');
+      S.featureProfile = null; S.featureInventory = []; $('featureProfileEditor').hidden = true;
       window.__cncApp.loadText(data.name + '.cnc', data.content);
       $('fname').textContent = data.name + '.cnc';
       $('dropTitle').textContent = 'فایل آرشیو انتخاب شد';
@@ -346,8 +362,9 @@
       const data = await resp.json();
       if (!resp.ok || !data.success) throw new Error(data.error || 'الگوی CNC بارگذاری نشد');
       window.__cncApp.loadText(data.source_name + '.cnc', data.content);
-      archiveFile.value = String(data.source_id || '');
+      archiveFile.value = String(data.feature_source_id || data.source_id || '');
       const p = data.params || {};
+      S.featureProfile = data.feature_profile && Object.keys(data.feature_profile).length ? data.feature_profile : null;
       S.mode = p.mode || 'equal'; S.symmetric = p.symmetric !== false;
       S.enabled = Array.isArray(p.enabled) ? p.enabled : [];
       S.manual = Array.isArray(p.manual) ? p.manual : [];
@@ -358,8 +375,107 @@
       syncModeUI();
       $('delta').value = Number(data.part_length - data.base_length).toFixed(3);
       schedule();
+      if (S.featureProfile) await analyzeFeatures(S.featureProfile);
     } catch (err) { showErr(err.message); }
   }
+
+  function currentFeatureProfile() {
+    const features = {};
+    document.querySelectorAll('[data-feature-mode]').forEach((input) => {
+      features[input.dataset.featureMode] = { mode: input.value };
+    });
+    const points = {};
+    const start = $('featureRefStart').value, end = $('featureRefEnd').value;
+    if (start !== '') points.start = Number(start);
+    if (end !== '') points.end = Number(end);
+    return { axis: 'length', features, reference_points: points };
+  }
+  function renderFeatureList(features, savedProfile) {
+    const list = $('featureList'); list.replaceChildren();
+    const savedRules = (savedProfile && savedProfile.features) || {};
+    features.forEach((feature) => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:grid;grid-template-columns:1fr minmax(150px,.8fr);gap:8px;align-items:center;border:1px solid var(--line);border-radius:6px;padding:7px';
+      const summary = document.createElement('span');
+      summary.textContent = `${feature.id} · ${feature.kind} · ${feature.segments} segment · X ${feature.bounds.x0}…${feature.bounds.x1}, Y ${feature.bounds.y0}…${feature.bounds.y1}`;
+      const select = document.createElement('select');
+      select.dataset.featureMode = feature.id;
+      const choices = [['view_only', 'تأییدنشده / فقط مشاهده'], ['fixed', 'ثابت؛ بدون کشش']];
+      if (!['hole', 'outer_contour'].includes(feature.kind)) choices.push(['stretch', 'ناحیهٔ کشش']);
+      choices.forEach(([value, label]) => {
+        const option = document.createElement('option'); option.value = value; option.textContent = label; select.appendChild(option);
+      });
+      select.value = (savedRules[feature.id] && savedRules[feature.id].mode) || 'view_only';
+      select.addEventListener('change', validateFeatureProfile);
+      row.append(summary, select); list.appendChild(row);
+    });
+  }
+  async function validateFeatureProfile() {
+    if (!S.featureInventory.length) return;
+    const profile = currentFeatureProfile();
+    $('featureProfileStatus').textContent = 'در حال اعتبارسنجی…';
+    $('saveFeatureProfileBtn').disabled = true;
+    try {
+      const resp = await fetch(ANALYZE_API, {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+        body: JSON.stringify({ content: S.text, params: { profile } }),
+      });
+      const data = await resp.json();
+      if (!resp.ok || !data.ok) throw new Error(data.error || 'اعتبارسنجی پروفایل انجام نشد');
+      S.featureProfile = profile;
+      $('featureProfileStatus').textContent = data.ready
+        ? 'پروفایل از نظر فهرست ویژگی‌ها معتبر است. این پروفایل هنوز برای تولید G-code فعال نیست.'
+        : (data.profile_errors || []).join(' — ');
+      $('saveFeatureProfileBtn').disabled = !data.ready;
+    } catch (err) { $('featureProfileStatus').textContent = err.message; }
+  }
+  async function analyzeFeatures(savedProfile) {
+    if (!S.text) { showErr('ابتدا یک فایل CNC بارگذاری کنید.'); return; }
+    $('featureProfileEditor').hidden = false;
+    $('featureProfileStatus').textContent = 'در حال تحلیل فایل…';
+    try {
+      const params = savedProfile ? { profile: savedProfile } : {};
+      const resp = await fetch(ANALYZE_API, {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+        body: JSON.stringify({ content: S.text, params }),
+      });
+      const data = await resp.json();
+      if (!resp.ok || !data.ok) throw new Error(data.error || 'تحلیل فایل انجام نشد');
+      S.featureInventory = data.features || [];
+      const profile = savedProfile || null;
+      $('featureRefStart').value = profile?.reference_points?.start ?? '';
+      $('featureRefEnd').value = profile?.reference_points?.end ?? '';
+      renderFeatureList(S.featureInventory, profile);
+      $('featureProfileStatus').textContent = profile
+        ? (data.ready ? 'پروفایل ذخیره‌شده بارگذاری و اعتبارسنجی شد.' : (data.profile_errors || []).join(' — '))
+        : `تحلیل کامل شد؛ ${S.featureInventory.length} ویژگی پیدا شد. حالت هر ویژگی و نقاط مرجع را تعیین کنید.`;
+      $('saveFeatureProfileBtn').disabled = !data.ready;
+      if (profile && !data.ready) await validateFeatureProfile();
+    } catch (err) { $('featureProfileStatus').textContent = err.message; }
+  }
+  $('analyzeFeaturesBtn').onclick = () => analyzeFeatures(null);
+  $('featureRefStart').onchange = validateFeatureProfile;
+  $('featureRefEnd').onchange = validateFeatureProfile;
+  $('saveFeatureProfileBtn').onclick = async () => {
+    if (!S.featureProfile || !PART_ID || !archiveFile.value) {
+      $('featureProfileStatus').textContent = 'برای ذخیرهٔ پروفایل قطعه، فایل آرشیوی و شناسهٔ قطعه لازم است.';
+      return;
+    }
+    const params = { mode: S.mode, symmetric: S.symmetric, enabled: S.enabled, manual: S.manual, tool_dia: S.tool, axis: 'length' };
+    try {
+      const resp = await fetch(PROFILE_API + '?part_id=' + encodeURIComponent(PART_ID), {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+        body: JSON.stringify({ part_id: PART_ID, source_id: archiveFile.value, params, feature_profile: S.featureProfile }),
+      });
+      const data = await resp.json();
+      if (!resp.ok || !data.success) throw new Error(data.error || 'ذخیرهٔ تحلیل انجام نشد');
+      $('featureProfileStatus').textContent = data.message;
+    } catch (err) { $('featureProfileStatus').textContent = err.message; }
+  };
+  $('saveFeatureProfileBtn').style.display = PART_ID ? '' : 'none';
   $('saveProfileBtn').onclick = async () => {
     if (!S.res || !S.res.resizable || !PART_ID) return;
     const params = { mode: S.mode, symmetric: S.symmetric, enabled: S.enabled, manual: S.manual, tool_dia: S.tool, axis: 'length' };

@@ -29,15 +29,15 @@ class CncPartProfileAdmin(admin.ModelAdmin):
 
 @admin.register(CncSheetPlan)
 class CncSheetPlanAdmin(admin.ModelAdmin):
-    list_display = ("id", "material", "source_stock", "sheet_index", "status", "created_at")
-    list_filter = ("status", "material")
+    list_display = ("id", "material", "source_stock", "sheet_index", "status", "result_outcome", "completed_by", "completed_at", "created_at")
+    list_filter = ("status", "result_outcome", "material")
     search_fields = ("material__name",)
     readonly_fields = ("created_at",)
 
 
 @admin.register(CncPlanningIssue)
 class CncPlanningIssueAdmin(admin.ModelAdmin):
-    list_display = ("id", "task", "order", "part", "mode", "created_by", "created_at")
-    list_filter = ("mode", "created_at")
+    list_display = ("id", "task", "order", "part", "mode", "status", "resolved_by", "resolved_at", "created_by", "created_at")
+    list_filter = ("mode", "status", "created_at")
     search_fields = ("reason", "part__name", "part__f3")
     readonly_fields = ("created_at",)
