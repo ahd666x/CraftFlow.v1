@@ -91,7 +91,19 @@ def _reserved_counts(stock_ids=None):
     result = Counter()
     for stock_id in qs.values_list('source_stock_id', flat=True):
         result[stock_id] += 1
+    # Sheets already assigned to a planned CNC (G-code) program are not free either.
+    from cnc_resizer.models import CncSheetPlan
+    cnc = CncSheetPlan.objects.filter(status='planned')
+    if stock_ids is not None:
+        cnc = cnc.filter(source_stock_id__in=stock_ids)
+    for stock_id in cnc.values_list('source_stock_id', flat=True):
+        result[stock_id] += 1
     return result
+
+
+def _has_planned_cnc_reservation(stock_id):
+    from cnc_resizer.models import CncSheetPlan
+    return CncSheetPlan.objects.filter(source_stock_id=stock_id, status='planned').exists()
 
 
 def _event(*, stock, event_type, user, quantity_delta=0, note='', plan=None, width=None, height=None, is_offcut=None):
@@ -109,6 +121,9 @@ def planner(request):
     materials = Material.objects.all().order_by('name')
     if request.method == 'POST' and request.POST.get('action') == 'plan':
         order_ids = request.POST.getlist('order_ids')
+        cnc_sheet_mode = request.POST.get('planning_mode') == 'cnc_sheets'
+        cnc_sheet_plans = []
+        cnc_issues = []
         try:
             kerf = Decimal(request.POST.get('kerf', str(CuttingSettings.current().default_kerf)))
             if not kerf.is_finite() or kerf < 0 or kerf.quantize(MM) != kerf:
@@ -117,13 +132,51 @@ def planner(request):
             messages.error(request, 'مقدار تیغه معتبر نیست.'); return redirect('cutting:planner')
         if not order_ids:
             messages.error(request, 'برای برنامه‌ریزی دست‌کم یک سفارش انتخاب کنید.'); return redirect('cutting:planner')
+        if cnc_sheet_mode:
+            try:
+                from cnc_resizer.anomaly_report import find_unusual_parts
+                unusual = find_unusual_parts(order_ids=order_ids)
+                cnc_unusual = [row for row in unusual if (row['routing_code'] or '').strip().lower().split('.')[0:1] == ['cnc']]
+                if cnc_unusual:
+                    preview = '، '.join(
+                        f"{row['part_name']} ({row['length']}×{row['width']})" for row in cnc_unusual[:5]
+                    )
+                    suffix = f' و {len(cnc_unusual) - 5} مورد دیگر' if len(cnc_unusual) > 5 else ''
+                    messages.warning(request, f'قطعات غیرمعمول نیازمند بررسی: {preview}{suffix}')
+                from cnc_resizer.sheet_nesting import create_cnc_sheet_plans
+                cnc_sheet_plans, cnc_issues = create_cnc_sheet_plans(
+                    order_ids, request.user, kerf=kerf,
+                )
+                if cnc_sheet_plans:
+                    messages.success(request, f'{len(cnc_sheet_plans)} فایل G-code برای ورق‌های CNC ساخته شد.')
+                if cnc_issues:
+                    messages.warning(request, f'{len(cnc_issues)} قطعه به‌دلیل خطا از برنامه عبور داده شد؛ فهرست خطاها در صفحه خروجی‌های ورق CNC ثبت شده است.')
+            except (ValueError, OSError) as exc:
+                messages.error(request, str(exc)); return redirect('cutting:planner')
+            except Exception as exc:
+                # The CNC resolver raises a domain error when an operator has
+                # not yet approved the per-part CNC profile. Never expose a
+                # traceback from the planning screen in that case.
+                from cnc_resizer.services import CncResolutionError
+                if isinstance(exc, CncResolutionError):
+                    messages.error(
+                        request,
+                        f'{exc} — ابتدا از صفحهٔ اسکن قطعه، الگوی CNC را ثبت و تأیید کنید.',
+                    )
+                    return redirect('cutting:planner')
+                raise
         try:
             with transaction.atomic():
-                tasks = list(ProductionTask.objects.select_for_update().filter(
+                task_query = ProductionTask.objects.select_for_update().filter(
                     order_id__in=order_ids, station_name='cut', status='pending', part__isnull=False,
                     quantity__gt=F('completed_quantity'),
-                ).select_related('part__material', 'order', 'order__customer').order_by('pk'))
+                )
+                if cnc_sheet_mode:
+                    task_query = task_query.exclude(part__routing_code__iregex=r'^\s*cnc(?:\.|$)')
+                tasks = list(task_query.select_related('part__material', 'order', 'order__customer').order_by('pk'))
                 if not tasks:
+                    if cnc_sheet_plans or cnc_issues:
+                        return redirect('cnc_resizer:sheet_plans')
                     raise ValueError('قطعه آماده برش برای سفارش‌های انتخاب‌شده پیدا نشد.')
                 task_ids = [task.pk for task in tasks]
                 if CutPlanTask.objects.filter(task_id__in=task_ids, plan__status='planned').exists():
@@ -144,15 +197,21 @@ def planner(request):
                             'grain': stock.grain, 'label': f'{stock.material.name} {stock.width}×{stock.height}',
                         })
                 grouped = defaultdict(list)
-                planned_quantities = {}
                 for task in tasks:
                     part = task.part
                     if part.length <= 0 or part.width <= 0:
-                        raise ValueError(f'ابعاد قطعه «{part.name}» باید مثبت باشند.')
+                        from cnc_resizer.models import CncPlanningIssue
+                        CncPlanningIssue.objects.create(
+                            task=task, order=task.order, part=part, mode='standard',
+                            reason=f'ابعاد قطعه «{part.name or part.f3}» باید مثبت باشند.',
+                            details={'stage': 'dimensions'}, created_by=request.user,
+                        )
+                        continue
                     remaining_quantity = task.quantity - task.completed_quantity
-                    planned_quantities[task.pk] = remaining_quantity
                     for _ in range(remaining_quantity):
                         grouped[part.material_id].append({
+                            # CUT convention: X = Part.length, Y = Part.width.
+                            # The CNC G-code generator uses a separate Y=length convention.
                             'width': part.length, 'height': part.width,
                             'orig_width': part.length, 'orig_height': part.width,
                             'turn': part.turn, 'grain': part.grain, 'f2': part.f2 or part.name,
@@ -161,25 +220,58 @@ def planner(request):
                             'uid': len(grouped[part.material_id]), 'task_id': task.pk,
                         })
                 rows = []
-                try:
-                    for material_id, parts in grouped.items():
-                        material = next(task.part.material for task in tasks if task.part.material_id == material_id)
-                        material_stock = [item for item in available if stock_by_id[item['stock_id']].material_id == material_id]
-                        if not material_stock:
-                            raise ValueError(f'برای «{material.name}» موجودی آزاد ثبت نشده است؛ یا تمام موجودی رزرو شده است.')
-                        layouts = optimize(parts, material_stock, kerf, policy=settings_row.strategy)
-                        for layout in layouts:
-                            layout['expected_offcuts'] = expected_offcuts(layout, kerf)
+                from cnc_resizer.models import CncPlanningIssue
+                for material_id, parts in grouped.items():
+                    material = next(task.part.material for task in tasks if task.part.material_id == material_id)
+                    material_stock = [item for item in available if stock_by_id[item['stock_id']].material_id == material_id]
+                    if not material_stock:
+                        for task_id in {piece['task_id'] for piece in parts}:
+                            task = next(task for task in tasks if task.id == task_id)
+                            CncPlanningIssue.objects.create(
+                                task=task, order=task.order, part=task.part, mode='standard',
+                                reason=f'برای متریال «{material.name}» ورق آزاد موجود نیست.',
+                                details={'stage': 'stock'}, created_by=request.user,
+                            )
+                        continue
+                    remaining = list(parts)
+                    layouts = []
+                    while remaining:
+                        try:
+                            layouts = optimize(remaining, material_stock, kerf, policy=settings_row.strategy)
+                            break
+                        except (ValueError, TypeError) as exc:
+                            candidate = next(
+                                (piece for piece in remaining if piece.get('label', '') in str(exc)),
+                                remaining[-1],
+                            )
+                            bad_task_id = candidate['task_id']
+                            removed = [piece for piece in remaining if piece['task_id'] == bad_task_id]
+                            remaining = [piece for piece in remaining if piece['task_id'] != bad_task_id]
+                            task = next(task for task in tasks if task.id == bad_task_id)
+                            CncPlanningIssue.objects.create(
+                                task=task, order=task.order, part=task.part, mode='standard',
+                                reason=str(exc), details={'stage': 'nesting', 'quantity': len(removed)},
+                                created_by=request.user,
+                            )
+                    for layout in layouts:
+                        layout['expected_offcuts'] = expected_offcuts(layout, kerf)
+                    if layouts:
                         rows.append({
                             'type': material.name.replace(' ', '-'), 'thickness': str(material.thickness),
-                            'sheets': layouts, 'shapes': parts, 'material_id': material_id,
+                            'sheets': layouts, 'shapes': remaining, 'material_id': material_id,
                         })
-                except ValueError:
-                    raise
+                planned_quantities = Counter()
+                for row in rows:
+                    for layout in row['sheets']:
+                        for piece in layout['parts']:
+                            if piece.get('task_id') is not None:
+                                planned_quantities[int(piece['task_id'])] += 1
                 orders = list(Order.objects.filter(pk__in=order_ids))
                 plan = CutPlan.objects.create(created_by=request.user, plan_data={'rows': [], 'kerf': str(kerf), 'policy': settings_row.strategy})
                 plan.orders.set(orders)
                 for task in tasks:
+                    if not planned_quantities[task.pk]:
+                        continue
                     CutPlanTask.objects.create(
                         plan=plan, task=task, quantity=planned_quantities[task.pk],
                         task_quantity=task.quantity, completed_before=task.completed_quantity,
@@ -234,6 +326,15 @@ def planner(request):
             filter=Q(tasks__pk__in=available_tasks),
         ),
     ).order_by('priority', F('due_date').asc(nulls_last=True), '-id'))
+    needs_queryset = available_tasks.filter(
+        order_id__in=[order.pk for order in orders],
+    ).select_related('part__material', 'order', 'order__customer').order_by('order_id', 'part__name', 'pk')
+    needs_page = Paginator(needs_queryset, 50).get_page(request.GET.get('needs_page'))
+    for task in needs_page.object_list:
+        task.remaining_quantity = max(0, task.quantity - task.completed_quantity)
+        task.needs_validation_error = (
+            'ابعاد نامعتبر' if task.part.length <= 0 or task.part.width <= 0 else ''
+        )
     material_names = defaultdict(list)
     if orders:
         material_rows = available_tasks.filter(order_id__in=[order.pk for order in orders]).values(
@@ -249,10 +350,14 @@ def planner(request):
         reserved_sheet_count=Count('planned_sheets', distinct=True),
     ).prefetch_related('orders').order_by('-created_at')[:10]
     setting = CuttingSettings.current()
+    needs_pagination_params = request.GET.copy()
+    needs_pagination_params.pop('needs_page', None)
     return render(request, 'cutting/planner.html', {
         'materials': materials, 'orders': orders, 'setting': setting,
         'order_statuses': Order.ORDER_STATUS, 'status_filter': status_filter, 'query': query,
         'active_plans': active_plans,
+        'needs_page': needs_page,
+        'needs_pagination_query': needs_pagination_params.urlencode(),
     })
 
 
@@ -280,6 +385,8 @@ def planner_preview(request):
     ).exclude(order_id__in=reserved_order_ids).select_related(
         'part__material', 'order', 'order__customer',
     ).order_by('pk'))
+    if request.GET.get('planning_mode') == 'cnc_sheets':
+        tasks = [task for task in tasks if not (task.part.routing_code or '').strip().lower().split('.')[0:1] == ['cnc']]
     total_pieces = sum(task.quantity - task.completed_quantity for task in tasks)
     invalid_part = next((task.part for task in tasks if task.part.length <= 0 or task.part.width <= 0), None)
     if invalid_part:
@@ -308,6 +415,7 @@ def planner_preview(request):
         part = task.part
         for _ in range(task.quantity - task.completed_quantity):
             grouped[part.material_id].append({
+                # CUT convention: X = Part.length, Y = Part.width.
                 'width': part.length, 'height': part.width, 'orig_width': part.length,
                 'orig_height': part.width, 'turn': part.turn, 'grain': part.grain,
                 'label': f'{part.name} / سفارش {task.order_id}', 'uid': len(grouped[part.material_id]),
@@ -434,10 +542,26 @@ def plan_detail(request, plan_id):
         'waste_area_m2': max(Decimal('0'), total_sheet_area - total_piece_area) / Decimal('1000000'),
         'utilization_percent': (total_piece_area / total_sheet_area * 100) if total_sheet_area else Decimal('0'),
     }
+    outcome_counts = Counter(
+        sheet.outcome for sheet in plan.planned_sheets.all()
+    )
+    sheet_progress = {
+        'total': sum(outcome_counts.values()),
+        'reserved': outcome_counts.get('reserved', 0),
+        'used': outcome_counts.get('used', 0),
+        'untouched': outcome_counts.get('untouched', 0),
+        'scrapped': outcome_counts.get('scrapped', 0),
+        'completed': sum(outcome_counts.get(key, 0) for key in ('used', 'untouched', 'scrapped')),
+    }
+    sheet_progress['percent'] = (
+        sheet_progress['completed'] * 100 / sheet_progress['total']
+        if sheet_progress['total'] else 0
+    )
     unfinished_tasks = [row for row in plan.planned_tasks.select_related('task', 'task__part') if row.task.status != 'done']
     return render(request, 'cutting/plan_detail.html', {
         'plan': plan, 'summaries': summaries, 'unfinished_tasks': unfinished_tasks,
-        'plan_metrics': plan_metrics, 'color_legend': color_legend,
+        'plan_metrics': plan_metrics, 'sheet_progress': sheet_progress,
+        'color_legend': color_legend,
     })
 
 
@@ -649,23 +773,30 @@ def inventory(request, kind=None):
     offcut_count = active.filter(is_offcut=True).aggregate(total=Sum('quantity'))['total'] or 0
     total_count = full_count + offcut_count
     summaries = list(active.values('material_id', 'material__name', 'material__thickness', 'is_offcut').annotate(units=Sum('quantity')).order_by('material__name', 'is_offcut'))
-    reserved_groups = CutPlanSheet.objects.filter(
-        outcome='reserved', plan__status='planned', source_stock__active=True, source_stock__quantity__gt=0,
-    ).values(
-        'source_stock__material_id', 'source_stock__is_offcut',
-    ).annotate(units=Count('pk'))
-    reserved_by_group = {
-        (row['source_stock__material_id'], row['source_stock__is_offcut']): row['units']
-        for row in reserved_groups
+    reserved_by_stock = _reserved_counts()
+    reserved_by_group = defaultdict(int)
+    stock_dimensions = {
+        row['pk']: row for row in SheetStock.objects.filter(pk__in=reserved_by_stock).values('pk', 'material_id', 'is_offcut')
     }
+    for stock_id, reserved_units in reserved_by_stock.items():
+        stock_row = stock_dimensions.get(stock_id)
+        if stock_row:
+            reserved_by_group[(stock_row['material_id'], stock_row['is_offcut'])] += reserved_units
     for summary in summaries:
         summary['reserved'] = min(summary['units'], reserved_by_group.get((summary['material_id'], summary['is_offcut']), 0))
         summary['available'] = summary['units'] - summary['reserved']
     reserved_count = sum(row['reserved'] for row in summaries)
     available_count = total_count - reserved_count
+    event_totals = SheetStockEvent.objects.filter(
+        event_type__in=('consume', 'scrap'), quantity_delta__lt=0,
+    ).values('event_type').annotate(total=Sum('quantity_delta'))
+    event_totals = {row['event_type']: abs(row['total'] or 0) for row in event_totals}
     rows = _inventory_queryset(request, kind)
     page = Paginator(rows, 40).get_page(request.GET.get('page'))
+    reserved_by_stock = _reserved_counts([stock.pk for stock in page.object_list])
     for stock in page.object_list:
+        stock.reserved_quantity = reserved_by_stock.get(stock.pk, 0)
+        stock.available_quantity = max(0, stock.quantity - stock.reserved_quantity)
         stock.reserve_percent = min(100, round(100 * stock.reserved_quantity / stock.quantity)) if stock.quantity else 0
         longest = max(float(stock.width), float(stock.height), 1)
         stock.visual_width_px = max(12, round(58 * float(stock.width) / longest))
@@ -693,6 +824,7 @@ def inventory(request, kind=None):
         'kind': kind or 'all', 'page': page, 'materials': Material.objects.all().order_by('name'),
         'summaries': summaries, 'full_count': full_count, 'offcut_count': offcut_count,
         'total_count': total_count, 'reserved_count': reserved_count, 'available_count': available_count,
+        'consumed_count': event_totals.get('consume', 0), 'scrapped_count': event_totals.get('scrap', 0),
         'pagination_query': pagination_query, 'toggle_inactive_query': toggle_inactive_query,
         'setting': setting, 'query': request.GET.get('q', ''), 'sort_links': sort_links,
         'thicknesses': Material.objects.values_list('thickness', flat=True).distinct().order_by('thickness'),
@@ -771,7 +903,7 @@ def stock_edit(request, stock_id):
                 stock = SheetStock.objects.select_for_update().get(pk=stock_id)
                 if not stock.active or stock.quantity < 1:
                     raise ValueError('موجودی غیرفعال یا تمام‌شده قابل ویرایش نیست.')
-                if stock.plan_reservations.filter(outcome='reserved', plan__status='planned').exists():
+                if stock.plan_reservations.filter(outcome='reserved', plan__status='planned').exists() or _has_planned_cnc_reservation(stock.pk):
                     raise ValueError('این بچ برای برنامه برش رزرو است و تا آزادشدن رزرو قابل ویرایش نیست.')
                 old = {'material_id': stock.material_id, 'material_name': stock.material.name,
                        'width': stock.width, 'height': stock.height, 'quantity': stock.quantity,
@@ -821,7 +953,7 @@ def stock_deactivate(request, stock_id):
         try:
             with transaction.atomic():
                 stock = SheetStock.objects.select_for_update().get(pk=stock_id)
-                if stock.plan_reservations.filter(outcome='reserved', plan__status='planned').exists():
+                if stock.plan_reservations.filter(outcome='reserved', plan__status='planned').exists() or _has_planned_cnc_reservation(stock.pk):
                     raise ValueError('موجودی رزروشده قابل غیرفعال‌سازی نیست؛ ابتدا برنامه را لغو کنید.')
                 stock.active = False; stock.inactive_reason = reason[:255]; stock.save(update_fields=('active', 'inactive_reason', 'updated_at'))
                 _event(stock=stock, event_type='deactivate', user=request.user, note=reason)

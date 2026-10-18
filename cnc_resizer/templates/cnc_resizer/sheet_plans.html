@@ -1,0 +1,50 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}مرکز برنامه‌ریزی CNC{% endblock %}
+{% block content %}
+<div class="cnc-workbench" dir="rtl">
+  {% include 'cutting/_inventory_nav.html' %}
+  <header class="cnc-topbar">
+    <div class="cnc-title-group">
+      <span class="cnc-app-mark"><i class="bi bi-cpu"></i></span>
+      <div><div class="cnc-eyebrow">CRAFTFLOW / CNC WORKBENCH</div><h1>مرکز برنامه‌ریزی CNC</h1><p>چیدمان ورق، کنترل مسیر و تولید G-code کامل</p></div>
+    </div>
+    <div class="cnc-top-actions"><a class="btn btn-light" href="{% url 'cutting:planner' %}"><i class="bi bi-arrow-right"></i> بازگشت به صف برش</a><a class="btn btn-primary" href="{% url 'cutting:planner' %}"><i class="bi bi-plus-lg"></i> برنامهٔ جدید</a></div>
+  </header>
+  {% include 'cutting/_messages.html' %}
+  <div class="cnc-commandbar" role="toolbar" aria-label="عملیات CNC">
+    <div class="cnc-command active"><i class="bi bi-grid-3x3-gap"></i><span>برنامه‌ها</span></div>
+    <a class="cnc-command" href="{% url 'cutting:inventory' %}"><i class="bi bi-stack"></i><span>موجودی ورق</span></a>
+    <a class="cnc-command" href="{% url 'cnc_resizer:index' %}"><i class="bi bi-rulers"></i><span>تنظیم قطعه</span></a>
+    <div class="cnc-command-spacer"></div>
+    <div class="cnc-legend"><span class="cnc-led led-green"></span> آمادهٔ دانلود <span class="cnc-led led-gray"></span> لغوشده</div>
+  </div>
+  <section class="cnc-kpis" aria-label="خلاصهٔ برنامه‌های CNC">
+    <div class="cnc-kpi"><span class="cnc-kpi-icon blue"><i class="bi bi-files"></i></span><div><span>کل برنامه‌ها</span><strong>{{ plans|length }}</strong></div></div>
+    <div class="cnc-kpi"><span class="cnc-kpi-icon green"><i class="bi bi-check2-circle"></i></span><div><span>آمادهٔ اجرا</span><strong>{% with active_count=plans|length %}{{ active_count }}{% endwith %}</strong></div></div>
+    <div class="cnc-kpi"><span class="cnc-kpi-icon amber"><i class="bi bi-exclamation-triangle"></i></span><div><span>موارد نیازمند بررسی</span><strong>{{ issues|length }}</strong></div></div>
+    <div class="cnc-kpi cnc-kpi-note"><i class="bi bi-info-circle"></i><span>هر برنامه یک فایل G-code کامل برای یک ورق است؛ طول قطعه روی محور Y قرار می‌گیرد.</span></div>
+  </section>
+  <main class="cnc-layout">
+    <section class="cnc-programs">
+      <div class="cnc-section-heading"><div><div class="cnc-section-kicker">SHEET PROGRAMS</div><h2>برنامه‌های ورق</h2></div><span class="cnc-count-badge">{{ plans|length }} برنامه</span></div>
+      <div class="cnc-program-grid">
+        {% for plan in plans %}
+        <article class="cnc-program-card {% if plan.status != 'planned' %}is-cancelled{% endif %}">
+          <div class="cnc-program-head"><div><span class="cnc-program-id">CNC-{{ plan.id|stringformat:'04d' }}</span><h3>{{ plan.material.name }}</h3></div><span class="cnc-status {% if plan.status == 'planned' %}ready{% else %}cancelled{% endif %}"><span></span>{{ plan.get_status_display }}</span></div>
+          <div class="cnc-sheet-canvas" style="--sheet-ratio:{{ plan.aspect }}" role="img" aria-label="چیدمان قطعات روی ورق {{ plan.width }} در {{ plan.height }}">
+            <div class="cnc-canvas-grid"></div>
+            <div class="cnc-sheet-label">{{ plan.width }} × {{ plan.height }} mm</div>
+            {% for box in plan.preview %}<div class="cnc-part-box {% if box.rotated %}rotated{% endif %}" style="left:{{ box.left }}%;top:{{ box.top }}%;width:{{ box.width }}%;height:{{ box.height }}%" title="{{ box.label }}{% if box.rotated %} · چرخش ۹۰°{% endif %}"><span>{{ box.label }}</span></div>{% endfor %}
+          </div>
+          <div class="cnc-program-meta"><span><i class="bi bi-aspect-ratio"></i> {{ plan.width }} × {{ plan.height }}</span><span><i class="bi bi-boxes"></i> {{ plan.layout.parts|length }} قطعه</span><span><i class="bi bi-calendar3"></i> {{ plan.created_at }}</span></div>
+          {% if plan.orders %}<div class="cnc-orders">سفارش‌ها: {% for o in plan.orders %}<b>#{{ o }}</b>{% if not forloop.last %}، {% endif %}{% endfor %}</div>{% endif %}
+          {% if plan.status == 'planned' %}<div class="cnc-program-actions"><a class="btn btn-success flex-grow-1" href="{% url 'cnc_resizer:download_sheet_plan' plan.id %}"><i class="bi bi-download"></i> دانلود G-code کل ورق</a><form method="post" action="{% url 'cnc_resizer:cancel_sheet_plan' plan.id %}" onsubmit="return confirm('این برنامه لغو و ورق و قطعات آن آزاد شوند؟')">{% csrf_token %}<button class="btn btn-outline-danger" title="لغو و آزادسازی" aria-label="لغو برنامه {{ plan.id }}"><i class="bi bi-x-lg"></i></button></form></div>{% else %}<div class="cnc-cancelled-note"><i class="bi bi-slash-circle"></i> این برنامه لغو شده و دیگر قابل اجرا نیست.</div>{% endif %}
+        </article>
+        {% empty %}<div class="cnc-empty"><i class="bi bi-layers"></i><h3>هنوز برنامه‌ای ساخته نشده است</h3><p>از صف برش، حالت «تفکیک CNC» را انتخاب کنید تا برنامهٔ ورق ایجاد شود.</p><a class="btn btn-primary" href="{% url 'cutting:planner' %}">رفتن به برنامه‌ریزی</a></div>{% endfor %}
+      </div>
+    </section>
+    <aside class="cnc-side-panel"><div class="cnc-side-head"><div><div class="cnc-section-kicker">QUALITY CONTROL</div><h2>موارد نیازمند بررسی</h2></div><span class="cnc-issue-count">{{ issues|length }}</span></div><p class="cnc-side-help">قطعاتی که در این اجرا وارد G-code نشده‌اند، اینجا ثبت می‌شوند.</p><div class="cnc-issues">{% for issue in issues %}<div class="cnc-issue"><div class="cnc-issue-top"><b>#{{ issue.task_id|default:'-' }} · سفارش #{{ issue.order_id|default:'-' }}</b><span>{{ issue.get_mode_display }}</span></div><strong>{{ issue.part.name|default:issue.part.f3|default:'قطعه نامشخص' }}</strong><div class="small text-muted">{% if issue.part %}{{ issue.part.width }} × {{ issue.part.length }} mm{% endif %}</div><div class="cnc-issue-reason"><i class="bi bi-exclamation-circle"></i>{{ issue.reason }}</div></div>{% empty %}<div class="cnc-no-issues"><i class="bi bi-shield-check"></i><span>خطای ثبت‌شده‌ای وجود ندارد.</span></div>{% endfor %}</div></aside>
+  </main>
+</div>
+{% endblock %}

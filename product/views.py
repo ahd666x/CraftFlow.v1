@@ -1136,7 +1136,10 @@ def order_generate_tasks(request, order_id):
     order = get_object_or_404(Order, pk=order_id)
     result = order.generate_tasks()
     if result.get('success'):
-        return JsonResponse({'success': True})
+        return JsonResponse({
+            'success': True,
+            'cnc_warnings': result.get('cnc_warnings', []),
+        })
     return JsonResponse({'success': False, 'error': result.get('error', 'تسک‌ها قبلاً ایجاد شده‌اند.')})
 
 
@@ -2093,18 +2096,17 @@ def scan_part_cnc(request):
         'completed_quantity': task.completed_quantity,
         'quantity': task.quantity,
         'item_tasks': get_item_task_progress_for_station(task.order_item_id, 'cnc'),
+        'cnc_config_url': f"{reverse('cnc_resizer:index')}?part_id={part.id}",
     }
 
     if is_first_scan:
-        source_dir = getattr(settings, 'CNC_SOURCE_DIR', '')
-        extension = getattr(settings, 'CNC_FILE_EXTENSION', '.cnc')
         file_barcode = re.sub(r'\.item\d+$', '', part.f3)
-        filename = f"{file_barcode}{extension}"
-        file_path = os.path.join(source_dir, filename)
-        if os.path.exists(file_path):
+        try:
+            from cnc_resizer.services import resolve_cnc_file
+            cnc_file = resolve_cnc_file(part, request.user)
             response_data['download_url'] = reverse('download_cnc_file', args=[file_barcode])
-        else:
-            response_data['message'] = f"✅  CNC تکمیل شد، اما فایل '{filename}' در سرور یافت نشد."
+        except Exception as exc:
+            response_data['message'] = f"✅  CNC تکمیل شد، اما فایل CNC آماده نشد: {exc}"
 
     return JsonResponse(response_data)
 
@@ -2123,15 +2125,14 @@ def download_cnc_file(request, barcode):
     if not part:
         raise Http404(f"قطعه‌ای با بارکد '{barcode}' یافت نشد.")
 
-    # حذف .itemX برای ساخت نام فایل
     file_barcode = re.sub(r'\.item\d+$', '', clean_barcode)
-    source_dir = getattr(settings, 'CNC_SOURCE_DIR', '')
-    extension = getattr(settings, 'CNC_FILE_EXTENSION', '.cnc')
-    filename = f"{file_barcode}{extension}"
-    file_path = os.path.join(source_dir, filename)
-
-    if not os.path.exists(file_path):
-        raise Http404(f"فایل CNC با نام '{filename}' یافت نشد.")
+    try:
+        from cnc_resizer.services import resolve_cnc_file
+        cnc_file = resolve_cnc_file(part, request.user)
+    except Exception as exc:
+        raise Http404(f"فایل CNC برای «{file_barcode}» آماده نشد: {exc}")
+    file_path = cnc_file.path
+    filename = os.path.basename(file_path)
 
     with open(file_path, 'rb') as f:
         response = HttpResponse(f.read(), content_type='application/octet-stream')
@@ -2198,9 +2199,14 @@ def scan_part_dr(request):
         file_barcode = re.sub(r'\.item\d+$', '', part.f3)
         filename = f"{file_barcode}{extension}"
         file_path = os.path.join(source_dir, filename)
-        download_url = reverse('download_dr_file', args=[file_barcode])
-        response_data['download_url'] = download_url
-        if not os.path.exists(file_path):
+        if part.base_part_id and part.base_part and part.length != part.base_part.length:
+            response_data['message'] = (
+                f"✅  سوراخکاری ثبت شد، اما برای قطعهٔ تغییراندازه‌یافته فایل DR مستقل تولید نشده است؛ "
+                f"فایل '{filename}' ممکن است با طول پایه ناسازگار باشد."
+            )
+        if os.path.exists(file_path):
+            response_data['download_url'] = reverse('download_dr_file', args=[file_barcode])
+        elif 'message' not in response_data:
             response_data['message'] = f"✅  سوراخکاری تکمیل شد، اما فایل '{filename}' در سرور یافت نشد."
 
     return JsonResponse(response_data)
@@ -2220,7 +2226,7 @@ def download_dr_file(request, barcode):
 
     file_barcode = re.sub(r'\.item\d+$', '', clean_barcode)
     source_dir = getattr(settings, 'DR_SOURCE_DIR', '')
-    extension = getattr(settings, 'DR_FILE_EXTENSION', '.xml')
+    extension = getattr(settings, 'DR_FILE_EXTENSION', '.scx')
     filename = f"{file_barcode}{extension}"
     file_path = os.path.join(source_dir, filename)
 

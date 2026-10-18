@@ -164,6 +164,9 @@ function renderItemTasks(itemTasks) {
                 </a>
             `;
         }
+        if (workerStage === 'cnc' && t.cnc_config_url) {
+            actions += `<a href="${t.cnc_config_url}" target="_blank" class="btn btn-sm btn-outline-warning ms-1">مشاهده و تنظیم CNC</a>`;
+        }
         actions += `
             <button class="btn btn-sm btn-outline-success ms-1 mark-done-btn" data-task-id="${t.task_id}">
                 <i class="fas fa-check"></i> انجام شد
@@ -217,7 +220,10 @@ function refreshCurrentView() {
 function handleScanResponse(data) {
     const feedback = document.getElementById('scan-feedback');
     if (data.success) {
-        feedback.innerHTML = `<div class="alert alert-success py-2">${data.message}</div>`;
+        const cncLink = data.cnc_config_url
+            ? `<a href="${data.cnc_config_url}" target="_blank" class="btn btn-sm btn-warning ms-2">مشاهده و تنظیم الگوی CNC</a>`
+            : '';
+        feedback.innerHTML = `<div class="alert alert-success py-2">${data.message} ${cncLink}</div>`;
         if (data.download_url) {
             window.open(data.download_url, '_blank');
         }

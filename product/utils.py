@@ -2027,7 +2027,7 @@ def _create_and_schedule_items_for_date(item_ids, target_date=None):
         _sync_queue_for_task_ids(scheduled_task_ids)
         return {
             'scheduled_count': cnt,
-            'scheduled_date': last_date or target_date,
+            'scheduled_date': target_date,
             'created_items': created_items,
             'skipped': skipped
         }
@@ -2431,6 +2431,7 @@ def get_item_task_progress_for_station(order_item_id, station_name):
             'order_item_id': task.order_item_id,
             'label': label,
             'download_label': (task.part.f3 or '') if task.part else '',
+            'cnc_config_url': f"/cnc/?part_id={task.part_id}" if task.station_name == 'cnc' and task.part_id else '',
             'completed_quantity': task.completed_quantity,
             'quantity': task.quantity,
             'status': task.status,

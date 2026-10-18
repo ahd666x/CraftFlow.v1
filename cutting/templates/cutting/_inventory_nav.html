@@ -2,11 +2,11 @@
 <link rel="stylesheet" href="{% static 'cutting/cutting.css' %}">
 <nav class="cutting-nav mb-4" aria-label="بخش‌های برش">
   <ul class="nav nav-tabs">
-    {% if can_operate %}<li class="nav-item"><a class="nav-link {% if cut_section == 'cut' %}active{% endif %}" href="{% url 'cutting:planner' %}">برش</a></li>{% endif %}
+    {% if can_operate %}<li class="nav-item"><a class="nav-link {% if cut_section == 'cut' %}active{% endif %}" {% if cut_section == 'cut' %}aria-current="page"{% endif %} href="{% url 'cutting:planner' %}">برش</a></li><li class="nav-item"><a class="nav-link" href="{% url 'cnc_resizer:sheet_plans' %}">خروجی ورق CNC</a></li>{% endif %}
     {% if can_inventory %}
-      <li class="nav-item"><a class="nav-link {% if cut_section == 'stock' %}active{% endif %}" href="{% url 'cutting:inventory' %}">انبار ورق</a></li>
-      <li class="nav-item"><a class="nav-link {% if cut_section == 'history' %}active{% endif %}" href="{% url 'cutting:history' %}">تاریخچه</a></li>
-      <li class="nav-item"><a class="nav-link {% if cut_section == 'settings' %}active{% endif %}" href="{% url 'cutting:size_specs' %}">تنظیمات</a></li>
+      <li class="nav-item"><a class="nav-link {% if cut_section == 'stock' %}active{% endif %}" {% if cut_section == 'stock' %}aria-current="page"{% endif %} href="{% url 'cutting:inventory' %}">انبار ورق</a></li>
+      <li class="nav-item"><a class="nav-link {% if cut_section == 'history' %}active{% endif %}" {% if cut_section == 'history' %}aria-current="page"{% endif %} href="{% url 'cutting:history' %}">تاریخچه</a></li>
+      <li class="nav-item"><a class="nav-link {% if cut_section == 'settings' %}active{% endif %}" {% if cut_section == 'settings' %}aria-current="page"{% endif %} href="{% url 'cutting:size_specs' %}">تنظیمات</a></li>
     {% endif %}
   </ul>
   {% if cut_section == 'cut' %}

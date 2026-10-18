@@ -380,9 +380,9 @@ $(function () {
                 if (data.success) {
                     $('#warningsBox').addClass('success').text(data.message || 'با موفقیت انجام شد.');
                     if (data.redirect) {
-                        window.location.href = data.redirect;
+                        setTimeout(function(){ window.location.href = data.redirect; }, 1500);
                     } else {
-                        window.location.href = '{% url "painting_schedule" %}';
+                        setTimeout(function(){ window.location.href = '{% url "painting_schedule" %}'; }, 1500);
                     }
                 } else {
                     $('#warningsBox').addClass('error').text(data.error || 'خطا در انجام عملیات.');

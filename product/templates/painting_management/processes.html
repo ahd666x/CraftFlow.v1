@@ -10,7 +10,7 @@
 {% block painting_content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
         <h2>📋 مدیریت روندهای نقاشی</h2>
-        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#processModal">
+        <button class="btn btn-primary" id="newProcessBtn" data-bs-toggle="modal" data-bs-target="#processModal">
             <i class="bi bi-plus-circle"></i> روند جدید
         </button>
     </div>
@@ -516,6 +516,14 @@ $(function () {
             },
             error: function () { alert('خطای ارتباط با سرور'); }
         });
+    });
+
+// ریست فرم برای «جدید»
+    $('#newProcessBtn').on('click', function () {
+        $('#modalTitle').text('روند جدید');
+        $('#formAction').val('create');
+        $('#processId').val('');
+        $('#processForm')[0].reset();
     });
 
     // ویرایش

@@ -9,6 +9,7 @@
   const status = document.getElementById('order-status');
   const clearFilters = document.getElementById('clear-order-filters');
   const kerf = document.getElementById('kerf');
+  const planningModes = [...document.querySelectorAll('input[name="planning_mode"]')];
   const submit = document.getElementById('plan-submit');
   let timer = null;
   let controller = null;
@@ -28,6 +29,8 @@
       const matches = (!query || (row.dataset.search || '').toLocaleLowerCase().includes(query))
         && (!selectedStatus || row.dataset.status === selectedStatus);
       row.hidden = !matches;
+      const box = row.querySelector('.order-select');
+      row.classList.toggle('order-selected', Boolean(box?.checked));
       if (matches) visibleCount += 1;
     });
     document.getElementById('client-empty').hidden = visibleCount !== 0;
@@ -108,6 +111,8 @@
       const params = new URLSearchParams();
       ids.forEach(id => params.append('order_ids', id));
       if (kerf.value) params.set('kerf', kerf.value);
+      const selectedMode = planningModes.find(input => input.checked);
+      if (selectedMode) params.set('planning_mode', selectedMode.value);
       try {
         const response = await fetch(`${form.dataset.previewUrl}?${params}`, {
           headers: { 'X-Requested-With': 'XMLHttpRequest' },
@@ -140,10 +145,12 @@
     filterRows();
   });
   boxes.forEach(box => box.addEventListener('change', () => {
+    box.closest('.order-row')?.classList.toggle('order-selected', box.checked);
     filterRows();
     updatePreview();
   }));
   kerf.addEventListener('input', updatePreview);
+  planningModes.forEach(input => input.addEventListener('change', updatePreview));
   form.addEventListener('submit', () => {
     submit.disabled = true;
     submit.querySelector('.spinner-border').hidden = false;

@@ -237,6 +237,7 @@ class Order(models.Model):
         from .models import ProductionTask
 
         tasks_to_create = []
+        cnc_warnings = []
         has_bom = False
         with transaction.atomic():
             # Phase 1: regular station tasks per BOM part (global sequential step_order)
@@ -367,6 +368,25 @@ class Order(models.Model):
 
                     stations = [s.strip() for s in dynamic_part.routing_code.split('.') if s.strip()]
                     stations.insert(0, "cut")
+                    if 'cnc' in {station.lower() for station in stations}:
+                        try:
+                            from cnc_resizer.models import CncPartProfile
+                            from cnc_resizer.services import resolve_cnc_file
+                            profile = CncPartProfile.objects.filter(part=dynamic_part, approved=True).first()
+                            if not profile and dynamic_part.base_part_id:
+                                profile = CncPartProfile.objects.filter(
+                                    part_id=dynamic_part.base_part_id, approved=True
+                                ).first()
+                            if profile:
+                                resolve_cnc_file(dynamic_part, self.user)
+                            else:
+                                cnc_warnings.append(
+                                    f"{dynamic_part.f3}: ابتدا الگوی CNC را از صفحهٔ اسکن ثبت و تأیید کنید"
+                                )
+                        except Exception as exc:
+                            cnc_warnings.append(
+                                f"{dynamic_part.f3}: فایل CNC آماده نشد — {exc}"
+                            )
                     for idx, station_name in enumerate(stations):
                         current_step += 1
                         tasks_to_create.append(
@@ -388,7 +408,7 @@ class Order(models.Model):
                 ProductionTask.objects.bulk_create(tasks_to_create)
                 self.status = 'planned'
                 self.save()
-                return {'success': True}
+                return {'success': True, 'cnc_warnings': cnc_warnings}
             elif not has_bom:
                 return {'success': False, 'error': 'محصولات این سفارش فرمول ساخت (BOM) ندارند. ابتدا در ویرایش محصول قطعات را اضافه کنید.'}
             else:
@@ -836,7 +856,6 @@ class ProductBOM(models.Model):
         verbose_name="قانون تغییر اندازه",
         help_text="مثال: length+length_diff, length+width_diff ; width+width_diff"
     )
-
     def __str__(self):
         return f"{self.product.name}: {self.quantity}x {self.part.name}"
 

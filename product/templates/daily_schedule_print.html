@@ -605,7 +605,7 @@
         {% endfor %}
     </div>
     <div class="footer">
-        تاریخ چاپ: {{ today_str }} | ساعت: {% now "H:i" %}
+تاریخ چاپ: {{ selected_date|date:"Y/m/d" }} | ساعت: {% now "H:i" %}
     </div>
     {% endif %}
 
