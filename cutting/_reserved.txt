@@ -15,6 +15,31 @@ def _reserved_counts(stock_ids=None):
     return result
 
 
+def _reserved_breakdown(stock_ids=None):
+    """Per-stock reservation split by source: CUT (.CUT) vs CNC (G-code).
+
+    Returns ``{stock_id: {'cut': int, 'cnc': int, 'locked': bool}}``.  A sheet is
+    *locked* when a CNC plan holds it, because the operator can only release it
+    from the CNC workbench, not from the standard cutting screen.
+    """
+    cut_qs = CutPlanSheet.objects.filter(outcome='reserved', plan__status='planned')
+    cnc_qs = None
+    if stock_ids is not None:
+        cut_qs = cut_qs.filter(source_stock_id__in=stock_ids)
+    from cnc_resizer.models import CncSheetPlan
+    cnc_qs = CncSheetPlan.objects.filter(status='planned')
+    if stock_ids is not None:
+        cnc_qs = cnc_qs.filter(source_stock_id__in=stock_ids)
+    result = {}
+    for stock_id in cut_qs.values_list('source_stock_id', flat=True):
+        row = result.setdefault(stock_id, {'cut': 0, 'cnc': 0, 'locked': False})
+        row['cut'] += 1
+    for stock_id in cnc_qs.values_list('source_stock_id', flat=True):
+        row = result.setdefault(stock_id, {'cut': 0, 'cnc': 0, 'locked': True})
+        row['cnc'] += 1
+    return result
+
+
 def _has_planned_cnc_reservation(stock_id):
     from cnc_resizer.models import CncSheetPlan
     return CncSheetPlan.objects.filter(source_stock_id=stock_id, status='planned').exists()

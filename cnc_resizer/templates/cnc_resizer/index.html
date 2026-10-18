@@ -152,6 +152,7 @@
           <option value="">در حال بارگذاری فایل‌های معتبر...</option>
         </select>
       </label>
+      <div id="analyzeBox" hidden style="margin-top:10px"><button type="button" id="analyzeBtn" class="primary" style="width:100%">تحلیل هندسه و شناسایی Featureها</button><p class="hint" id="analyzeStatus"></p></div>
       <div class="row" style="margin-top:10px">
         <label class="field">قطر فرز سوراخ‌ها (mm)
           <input type="number" id="tool" value="8" min="0.1" step="0.1">
@@ -181,8 +182,25 @@
       </div>
     </section>
 
-    <section class="card">
-      <h2>۳. توزیع بین سوراخ‌ها</h2>
+    <section class="card" id="featuresCard" hidden>
+      <h2>۱.۵. بررسی و تأیید Featureها</h2>
+      <div class="radios" style="margin-bottom:8px">
+        <label><input type="radio" name="resizeMode" value="legacy" checked> حالت قدیمی (توزیع بین فاصله‌های سوراخ)</label>
+        <label><input type="radio" name="resizeMode" value="profile"> حالت پروفایل‌محور (تأیید هر Feature)</label>
+      </div>
+      <div id="legacyNote" class="hint">در حالت قدیمی، الگوریتم فاصله‌های بین ردیف سوراخ‌ها را تشخیص می‌دهد و تغییر طول بین آن‌ها توزیع می‌شود.</div>
+      <div id="profileNote" class="hint" hidden>در حالت پروفایل‌محور، هر Feature باید توسط اپراتور تأیید شود. تا زمانی که همه تأیید نشده‌اند، دانلود CNC غیرفعال می‌ماند.</div>
+      <div id="featuresList" style="margin-top:10px;max-height:340px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:6px"></div>
+      <div id="profileErrors" class="banner err" style="margin-top:8px" hidden></div>
+      <div class="row" style="margin-top:10px">
+        <label class="field">حداقل نقطه مرجع (Y values)
+          <input type="text" id="refPoints" placeholder="مثال: 100,450 یا 100;450">
+        </label>
+      </div>
+      <p class="hint">پیشنهاد: برای hole و outer_contour از حالت view_only استفاده کنید؛ تنها linear_groove و نواحی میانی قابل stretch هستند.</p>
+    </section>
+    <section class="card" id="gapsCard">
+      <h2>۳. توزیع بین فاصله‌ها</h2>
       <div class="radios" id="modes">
         <label><input type="radio" name="mode" value="equal" checked>
           <span>مساوی بین گروه‌ها <small>همان روش قبلی: تغییر کل به‌طور مساوی بین فاصله‌ها (با تقارن آینه‌ای)</small></span></label>
@@ -239,440 +257,56 @@
 
 <script>
 (() => {
-  'use strict';
-  const $ = (id) => document.getElementById(id);
+  const $ = id => document.getElementById(id);
   const API = document.body.dataset.api || '/api/process/';
+  const ANALYZE_API = '/api/analyze/';
   const PROFILE_API = '{{ profile_api_url }}';
   const PART_ID = '{{ part_id|escapejs }}';
   const NS = 'http://www.w3.org/2000/svg';
-
-  const S = {
-    name: '', text: '', res: null, reqId: 0, timer: null,
-    mode: 'equal', symmetric: true, enabled: [], manual: [], tool: 8,
-    vb: null, fs: 12, tab: 'view',
-  };
-
-  // ------------------------------------------------------------ helpers
-  const f1 = (v) => (Math.round(v * 10) / 10).toFixed(1);
-  const sgn = (v) => (v > 0 ? '+' : v < 0 ? '−' : '') + f1(Math.abs(v));
-  const cls = (v) => (v < -0.0005 ? 'neg' : v > 0.0005 ? 'pos' : '');
-  function csrf() {
-    const i = document.querySelector('input[name=csrfmiddlewaretoken]');
-    if (i && i.value) return i.value;
-    const m = document.cookie.match(/(?:^|; )csrftoken=([^;]+)/);
-    return m ? decodeURIComponent(m[1]) : '';
-  }
-  function el(name, attrs, parent) {
-    const e = document.createElementNS(NS, name);
-    for (const k in attrs) e.setAttribute(k, attrs[k]);
-    if (parent) parent.appendChild(e);
-    return e;
-  }
-  function showErr(msg) { const b = $('errBox'); b.hidden = !msg; b.textContent = msg || ''; }
-  function showWarn(list) {
-    const b = $('warnBox'); b.hidden = !list || !list.length;
-    b.textContent = list && list.length ? '⚠ ' + list.join(' — ') : '';
-  }
-  function download(name, text, type) {
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([text], { type }));
-    a.download = name; document.body.appendChild(a); a.click();
-    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
-  }
-  const base = () => (S.name || 'part').replace(/\.[^.]+$/, '');
-
-  // ------------------------------------------------------------ theme
-  $('themeBtn').onclick = () => {
-    const r = document.documentElement;
-    const dark = r.dataset.theme ? r.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
-    r.dataset.theme = dark ? 'light' : 'dark';
-  };
-
-  // ------------------------------------------------------------ file input
-  const drop = $('drop'), fileIn = $('file'), archiveFile = $('archiveFile');
-  drop.onclick = () => fileIn.click();
-  drop.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileIn.click(); } };
-  ['dragenter', 'dragover'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('over'); }));
-  ['dragleave', 'drop'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove('over'); }));
-  drop.addEventListener('drop', (e) => { if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]); });
-  fileIn.onchange = () => { if (fileIn.files[0]) loadFile(fileIn.files[0]); };
-
-  function loadFile(f) {
-    if (f.size > 2 * 1024 * 1024) { showErr('فایل بیش از ۲ مگابایت است'); return; }
-    const r = new FileReader();
-    r.onload = () => {
-      S.name = f.name; S.text = String(r.result); S.res = null; S.enabled = []; S.manual = [];
-      $('fname').textContent = f.name;
-      $('dropTitle').textContent = 'فایل انتخاب شد'; $('dropSub').textContent = 'برای تعویض کلیک کنید';
-      run(true);
-    };
-    r.onerror = () => showErr('خواندن فایل ممکن نشد');
-    r.readAsText(f);   // G-code is plain ASCII
-  }
-  async function loadArchiveList() {
-    try {
-      const resp = await fetch('{{ archive_api_url }}', { credentials: 'same-origin' });
-      const data = await resp.json();
-      archiveFile.innerHTML = '<option value="">انتخاب فایل از آرشیو...</option>';
-      (data.files || []).forEach((item) => {
-        const option = document.createElement('option');
-        option.value = item.id;
-        option.textContent = item.name + (item.length ? ' — ' + item.length + ' mm' : '') + (item.resizable ? '' : ' — فقط نمایش');
-        option.dataset.resizable = String(item.resizable);
-        archiveFile.appendChild(option);
-      });
-    } catch (_) {
-      archiveFile.innerHTML = '<option value="">آرشیو در دسترس نیست</option>';
-    }
-  }
-  archiveFile.onchange = async () => {
-    if (!archiveFile.value) return;
-    try {
-      const resp = await fetch('{{ archive_api_url }}?id=' + encodeURIComponent(archiveFile.value), { credentials: 'same-origin' });
-      const data = await resp.json();
-      if (!resp.ok) throw new Error(data.error || 'خطا در خواندن فایل آرشیو');
-      window.__cncApp.loadText(data.name + '.cnc', data.content);
-      $('fname').textContent = data.name + '.cnc';
-      $('dropTitle').textContent = 'فایل آرشیو انتخاب شد';
-      $('dropSub').textContent = 'برای تعویض کلیک کنید';
-    } catch (err) { showErr(err.message); }
-  };
-
-  async function loadPartProfile() {
-    if (!PART_ID) return;
-    $('partProfileBox').hidden = false;
-    try {
-      const resp = await fetch(PROFILE_API + '?part_id=' + encodeURIComponent(PART_ID), { credentials: 'same-origin' });
-      const data = await resp.json();
-      if (!resp.ok || !data.success) throw new Error(data.error || 'الگوی CNC بارگذاری نشد');
-      window.__cncApp.loadText(data.source_name + '.cnc', data.content);
-      archiveFile.value = String(data.source_id || '');
-      const p = data.params || {};
-      S.mode = p.mode || 'equal'; S.symmetric = p.symmetric !== false;
-      S.enabled = Array.isArray(p.enabled) ? p.enabled : [];
-      S.manual = Array.isArray(p.manual) ? p.manual : [];
-      S.tool = Number(p.tool_dia || 8);
-      document.querySelector(`input[name="mode"][value="${S.mode}"]`).checked = true;
-      $('sym').checked = S.symmetric; $('tool').value = S.tool;
-      $('profileStatus').textContent = data.approved ? 'الگوی قبلی بارگذاری شد؛ پس از بازبینی ثبت کنید.' : 'برای این قطعه الگوی تأییدشده وجود ندارد.';
-      syncModeUI();
-      $('delta').value = Number(data.part_length - data.base_length).toFixed(3);
-      schedule();
-    } catch (err) { showErr(err.message); }
-  }
-  $('saveProfileBtn').onclick = async () => {
-    if (!S.res || !S.res.resizable || !PART_ID) return;
-    const params = { mode: S.mode, symmetric: S.symmetric, enabled: S.enabled, manual: S.manual, tool_dia: S.tool, axis: 'length' };
-    try {
-      const resp = await fetch(PROFILE_API + '?part_id=' + encodeURIComponent(PART_ID), {
-        method: 'POST', credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
-        body: JSON.stringify({ part_id: PART_ID, source_id: archiveFile.value || null, params }),
-      });
-      const data = await resp.json();
-      if (!resp.ok || !data.success) throw new Error(data.error || 'ثبت الگو انجام نشد');
-      $('profileStatus').textContent = data.message;
-    } catch (err) { showErr(err.message); }
-  };
-
-  // ------------------------------------------------------------ requests
-  function schedule() { clearTimeout(S.timer); S.timer = setTimeout(() => run(false), 220); }
-
-  async function run(first) {
-    if (!S.text) return;
-    const id = ++S.reqId;
-    $('stage').classList.add('busy');
-    const params = {
-      mode: S.mode, delta: Number($('delta').value) || 0, symmetric: S.symmetric,
-      enabled: S.enabled.length ? S.enabled : undefined,
-      manual: S.mode === 'manual' ? S.manual : undefined, tool_dia: S.tool,
-    };
-    try {
-      const resp = await fetch(API, {
-        method: 'POST', credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
-        body: JSON.stringify({ filename: S.name, content: S.text, params }),
-      });
-      let data = null;
-      try { data = await resp.json(); } catch (_) { /* not json */ }
-      if (id !== S.reqId) return;                       // a newer request is in flight
-      if (!resp.ok || !data || !data.ok) {
-        showErr((data && data.error) || ('خطای سرور (' + resp.status + ')'));
-        if (first) { S.res = null; render(); }
-        return;
-      }
-      showErr('');
-      S.res = data;
-      if (!S.enabled.length) S.enabled = data.gaps.map((g) => g.enabled);
-      if (!S.manual.length) S.manual = data.gaps.map((g) => g.increment);
-      render(first);
-    } catch (e) {
-      if (id === S.reqId) showErr('ارتباط با سرور برقرار نشد');
-    } finally {
-      if (id === S.reqId) $('stage').classList.remove('busy');
-    }
-  }
-
-  // ------------------------------------------------------------ controls
-  $('tool').oninput = () => { const v = Number($('tool').value); if (v > 0) { S.tool = v; schedule(); } };
-  $('delta').oninput = () => { if (S.mode !== 'manual') schedule(); };
-  $('target').onchange = () => {
-    if (!S.res || S.mode === 'manual') return;
-    $('delta').value = (Number($('target').value) - S.res.length_before).toFixed(3).replace(/\.?0+$/, '');
-    schedule();
-  };
-  $('chips').onclick = (e) => {
-    const b = e.target.closest('button'); if (!b || S.mode === 'manual') return;
-    const d = Number(b.dataset.d);
-    $('delta').value = d === 0 ? 0 : (Number($('delta').value) || 0) + d;
-    schedule();
-  };
-  $('modes').onchange = (e) => {
-    S.mode = e.target.value;
-    if (S.mode === 'manual' && S.res) S.manual = S.res.gaps.map((g) => g.increment);
-    syncModeUI(); schedule();
-  };
-  $('sym').onchange = () => {
-    S.symmetric = $('sym').checked;
-    schedule();
-  };
-  function syncModeUI() {
-    const man = S.mode === 'manual';
-    $('delta').readOnly = man; $('chips').style.opacity = man ? .4 : 1;
-    $('target').disabled = man || !S.res;
-  }
-
-  function famOf(k) {
-    const n = S.enabled.length;
-    if (!S.symmetric) return [k];
-    return k === n - 1 - k ? [k] : [k, n - 1 - k];
-  }
-
-  // ------------------------------------------------------------ gap table
-  function buildTable() {
-    const r = S.res, tb = document.querySelector('#gapTable tbody');
-    tb.textContent = '';
-    r.gaps.forEach((g) => {
-      const tr = document.createElement('tr'); tr.dataset.k = g.index;
-      tr.innerHTML = '<td><input type="checkbox" class="en"></td><td class="n"></td><td class="n"></td><td class="n"></td><td class="n"></td>';
-      tb.appendChild(tr);
-      tr.querySelector('.en').onchange = (e) => {
-        famOf(g.index).forEach((k) => { S.enabled[k] = e.target.checked; });
-        schedule();
-      };
-      tr.onmouseenter = () => hiliteGap(g.index, true);
-      tr.onmouseleave = () => hiliteGap(g.index, false);
-    });
-    $('gapTable').hidden = false; $('gapHint').hidden = false;
-  }
-  function fillTable() {
-    const r = S.res, rows = document.querySelectorAll('#gapTable tbody tr');
-    r.gaps.forEach((g, i) => {
-      const tr = rows[i], tds = tr.children;
-      tr.querySelector('.en').checked = S.enabled[i];
-      tds[1].textContent = f1(g.y0) + ' → ' + f1(g.y1);
-      tds[2].textContent = f1(g.length);
-      if (S.mode === 'manual') {
-        let inp = tds[3].querySelector('input');
-        if (!inp) {
-          tds[3].textContent = '';
-          inp = document.createElement('input'); inp.type = 'number'; inp.step = '1';
-          inp.oninput = () => {
-            const v = Number(inp.value); if (!Number.isFinite(v)) return;
-            famOf(i).forEach((k) => { S.manual[k] = v; });
-            schedule();
-          };
-          tds[3].appendChild(inp);
-        }
-        if (document.activeElement !== inp) inp.value = S.manual[i];
-        inp.disabled = !S.enabled[i];
-      } else {
-        tds[3].textContent = sgn(g.increment); tds[3].className = 'n ' + cls(g.increment);
-      }
-      tds[4].textContent = f1(g.new_length); tds[4].className = 'n';
-    });
-  }
-
-  // ------------------------------------------------------------ render
-  function render(first) {
-    const r = S.res;
-    const has = !!r;
-    ['cncBtn', 'dxfBtn', 'copyBtn'].forEach((id) => { $(id).disabled = !has || S.res?.resizable === false; });
-    $('saveProfileBtn').disabled = !has || S.res?.resizable === false;
-    $('empty').hidden = has; $('legend').hidden = !has; $('zoombtns').hidden = !has; $('stats').hidden = !has;
-    if (!has) { document.querySelector('#svg').textContent = ''; showWarn([]); syncModeUI(); return; }
-
-    if (document.querySelectorAll('#gapTable tbody tr').length !== r.gaps.length || first) buildTable();
-    fillTable();
-    if (S.mode === 'manual') $('delta').value = Number(r.delta.toFixed(3));
-    $('target').value = Number(r.length_after.toFixed(3));
-    syncModeUI();
-    document.querySelectorAll('#delta, #target, #tool, #chips button, #modes input, #sym, #gapTable input').forEach((node) => {
-      node.disabled = S.res.resizable === false;
-    });
-    showWarn(r.warnings);
-
-    $('sBefore').textContent = f1(r.length_before) + ' mm';
-    $('sAfter').textContent = f1(r.length_after) + ' mm';
-    $('sDelta').textContent = sgn(r.delta) + ' mm'; $('sDelta').className = 'num ' + cls(r.delta);
-    $('sHoles').textContent = r.resized.holes.length;
-    $('sLines').textContent = r.changed_lines.length;
-
-    drawScene(first || !S.vb);
-    if (S.tab === 'code') renderCode();
-  }
-
-  // ------------------------------------------------------------ drawing
-  const svg = $('svg');
-  let gScene = null, gLabels = null, bands = [];
-
-  function bounds(r) {
-    let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
-    [r.original, r.resized].forEach((v) => {
-      v.contours.forEach((c) => c.pts.forEach(([x, y]) => { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }));
-      v.holes.forEach((h) => { x0 = Math.min(x0, h.cx - h.dia / 2); x1 = Math.max(x1, h.cx + h.dia / 2); y0 = Math.min(y0, h.cy - h.dia / 2); y1 = Math.max(y1, h.cy + h.dia / 2); });
-    });
-    return { x0, x1, y0, y1 };
-  }
-
-  function shape(vec, parent, ghost) {
-    const stroke = ghost ? 'var(--ghost)' : 'var(--accent)';
-    const common = { fill: 'none', stroke, 'stroke-width': ghost ? 1 : 1.8, 'vector-effect': 'non-scaling-stroke' };
-    if (ghost) common['stroke-dasharray'] = '5 4';
-    vec.contours.forEach((c) => {
-      const d = c.pts.map((p, i) => (i ? 'L' : 'M') + p[0] + ' ' + (-p[1])).join(' ') + (c.closed ? ' Z' : '');
-      const attrs = Object.assign({ d }, common);
-      if (!ghost && c.closed) attrs.fill = 'var(--accent-soft)';
-      el('path', attrs, parent);
-    });
-    vec.holes.forEach((h) => {
-      const hc = Object.assign({ cx: h.cx, cy: -h.cy, r: h.dia / 2 }, common);
-      delete hc['stroke-dasharray'];
-      el('circle', hc, parent);
-      if (!ghost) {
-        const a = Object.assign({}, common, { 'stroke-width': 1 });
-        el('path', Object.assign({ d: `M${h.cx - 3} ${-h.cy}H${h.cx + 3}M${h.cx} ${-h.cy - 3}V${-h.cy + 3}` }, a), parent);
-      }
-    });
-  }
-
-  function drawScene(refit) {
-    const r = S.res;
-    svg.textContent = '';
-    gScene = el('g', {}, svg);
-    const bb = bounds(r);
-    S.bb = bb;
-    if (S.showGhost !== false) shape(r.original, gScene, true);
-    // cut-zone bands (pre-created, shown on row hover)
-    bands = [];
-    let cum = 0;
-    r.gaps.forEach((g, k) => {
-      const ya = g.y0 + cum, yb = g.y1 + cum + g.increment; cum += g.increment;
-      const b = el('rect', { x: bb.x0 - 6, y: -yb, width: bb.x1 - bb.x0 + 12, height: yb - ya, fill: 'var(--accent)', opacity: 0 }, gScene);
-      bands.push(b);
-    });
-    shape(r.resized, gScene, false);
-
-    // dimension lines on the right
-    gLabels = el('g', { 'font-size': S.fs, fill: 'var(--text)' }, svg);
-    cum = 0;
-    const xd = bb.x1 + 22;
-    r.gaps.forEach((g) => {
-      const ya = g.y0 + cum, yb = g.y1 + cum + g.increment; cum += g.increment;
-      el('path', { d: `M${xd} ${-ya}V${-yb}M${xd - 4} ${-ya}H${xd + 4}M${xd - 4} ${-yb}H${xd + 4}`, stroke: 'var(--muted)', fill: 'none', 'stroke-width': 1, 'vector-effect': 'non-scaling-stroke' }, gLabels);
-      el('path', { d: `M${bb.x0 - 6} ${-yb}H${xd - 4}`, stroke: 'var(--line)', fill: 'none', 'stroke-width': 1, 'stroke-dasharray': '2 4', 'vector-effect': 'non-scaling-stroke' }, gLabels);
-      const t = el('text', { x: xd + 8, y: -(ya + yb) / 2, 'dominant-baseline': 'middle', direction: 'ltr' }, gLabels);
-      const t1 = el('tspan', {}, t); t1.textContent = f1(g.new_length);
-      if (Math.abs(g.increment) > 0.0005) {
-        const t2 = el('tspan', { fill: g.increment < 0 ? 'var(--bad)' : 'var(--good)', dx: 6 }, t);
-        t2.textContent = '(' + sgn(g.increment) + ')';
-      }
-    });
-    // last guide (top edge row)
-    if (refit) fit(); else applyVB();
-  }
-
-  function hiliteGap(k, on) { if (bands[k]) bands[k].setAttribute('opacity', on ? 0.16 : 0); }
-
-  function fit() {
-    const bb = S.bb; if (!bb) return;
-    const padX = 40, padTop = 40, extraR = 150;
-    S.vb = { x: bb.x0 - padX, y: -bb.y1 - padTop, w: (bb.x1 - bb.x0) + padX * 2 + extraR, h: (bb.y1 - bb.y0) + padTop * 2 };
-    applyVB();
-  }
-  function applyVB() {
-    const v = S.vb; if (!v) return;
-    svg.setAttribute('viewBox', `${v.x} ${v.y} ${v.w} ${v.h}`);
-    const m = svg.getScreenCTM();
-    if (m && m.a) { S.fs = 12 / m.a; if (gLabels) gLabels.setAttribute('font-size', S.fs); }
-  }
-  function toSvg(cx, cy) {
-    const m = svg.getScreenCTM(); if (!m) return { x: 0, y: 0 };
-    const p = new DOMPoint(cx, cy).matrixTransform(m.inverse()); return { x: p.x, y: p.y };
-  }
-  function zoom(f, cx, cy) {
-    const v = S.vb; if (!v) return;
-    const nw = Math.min(30000, Math.max(15, v.w * f)), k = nw / v.w;
-    const p = cx == null ? { x: v.x + v.w / 2, y: v.y + v.h / 2 } : toSvg(cx, cy);
-    S.vb = { x: p.x - (p.x - v.x) * k, y: p.y - (p.y - v.y) * k, w: nw, h: v.h * k };
-    applyVB();
-  }
-  svg.addEventListener('wheel', (e) => { e.preventDefault(); zoom(Math.exp(e.deltaY * 0.0015), e.clientX, e.clientY); }, { passive: false });
-  let drag = null;
-  svg.addEventListener('pointerdown', (e) => { drag = { x: e.clientX, y: e.clientY }; svg.setPointerCapture(e.pointerId); svg.classList.add('drag'); });
-  svg.addEventListener('pointermove', (e) => {
-    const p = toSvg(e.clientX, e.clientY);
-    $('coords').textContent = S.res ? `X ${p.x.toFixed(1)}   Y ${(-p.y).toFixed(1)}` : '';
-    if (!drag || !S.vb) return;
-    const m = svg.getScreenCTM(); if (!m) return;
-    S.vb.x -= (e.clientX - drag.x) / m.a; S.vb.y -= (e.clientY - drag.y) / m.d;
-    drag = { x: e.clientX, y: e.clientY }; applyVB();
-  });
-  const endDrag = () => { drag = null; svg.classList.remove('drag'); };
-  svg.addEventListener('pointerup', endDrag); svg.addEventListener('pointercancel', endDrag);
-  svg.addEventListener('dblclick', fit);
-  $('zin').onclick = () => zoom(0.7); $('zout').onclick = () => zoom(1.4); $('zfit').onclick = fit;
-  addEventListener('resize', () => applyVB());
-
-  // ------------------------------------------------------------ tabs / code view
-  function setTab(t) {
-    S.tab = t;
-    $('tabView').setAttribute('aria-selected', t === 'view'); $('tabCode').setAttribute('aria-selected', t === 'code');
-    $('view').style.display = t === 'view' ? '' : 'none';
-    $('codeview').style.display = t === 'code' ? 'block' : 'none';
-    $('onlyChWrap').hidden = t !== 'code';
-    if (t === 'code') renderCode(); else applyVB();
-  }
-  $('tabView').onclick = () => setTab('view'); $('tabCode').onclick = () => setTab('code');
-  $('onlyCh').onchange = renderCode;
-  function renderCode() {
-    const tb = $('codeBody'); tb.textContent = '';
-    if (!S.res) return;
-    const lines = S.res.cnc_text.split(/\r?\n/), ch = new Set(S.res.changed_lines), only = $('onlyCh').checked;
-    const frag = document.createDocumentFragment(); let shown = 0;
-    for (let i = 0; i < lines.length && shown < 4000; i++) {
-      if (only && !ch.has(i)) continue;
-      const tr = document.createElement('tr'); if (ch.has(i)) tr.className = 'ch';
-      const a = document.createElement('td'); a.className = 'ln'; a.textContent = i + 1;
-      const b = document.createElement('td'); b.textContent = lines[i];
-      tr.append(a, b); frag.appendChild(tr); shown++;
-    }
-    tb.appendChild(frag);
-  }
-
-  // ------------------------------------------------------------ outputs
-  $('cncBtn').onclick = () => S.res && download(base() + '_resized.cnc', S.res.cnc_text, 'text/plain');
-  $('dxfBtn').onclick = () => S.res && download(base() + '_resized.dxf', S.res.dxf_text, 'application/dxf');
-  $('copyBtn').onclick = async () => {
-    if (!S.res) return;
-    try { await navigator.clipboard.writeText(S.res.cnc_text); $('copyBtn').textContent = 'کپی شد ✓'; }
-    catch (_) { showErr('کپی ممکن نشد؛ از دانلود استفاده کنید'); }
-    setTimeout(() => { $('copyBtn').textContent = 'کپی کد'; }, 1500);
-  };
-
-  syncModeUI();
-  window.__cncApp = { S, loadText: (name, text) => { S.name = name; S.text = text; S.res = null; S.enabled = []; S.manual = []; run(true); } };
-  loadArchiveList().then(loadPartProfile);
+  const S = { name:'', text:'', res:null, analyzed:null, analysisReq:0, reqId:0, timer:null, mode:'equal', symmetric:true, enabled:[], manual:[], tool:8, vb:null, fs:12, tab:'view', resizeMode:'legacy' };
+  const f1 = v => (Math.round(v*10)/10).toFixed(1);
+  const sgn = v => (v>0?'+':v<0?'−':'')+f1(Math.abs(v));
+  const cls = v => (v<-0.0005?'neg':v>0.0005?'pos':'');
+  function csrf(){ const i=document.querySelector('input[name=csrfmiddlewaretoken]'); if(i&&i.value)return i.value; const m=document.cookie.match(/(?:^|; )csrftoken=([^;]+)/); return m?decodeURIComponent(m[1]):''; }
+  function el(n,a,p){ const e=document.createElementNS(NS,n); for(const k in a)e.setAttribute(k,a[k]); if(p)p.appendChild(e); return e; }
+  function showErr(m){ const b=errBox; b.hidden=!m; b.textContent=m||''; }
+  function showWarn(l){ const b=warnBox; b.hidden=!l||!l.length; b.textContent=l&&l.length?'⚠ '+l.join(' — '):''; }
+  function download(n,t,tp){ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([t],{type:tp})); a.download=n; document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},500); }
+  const base = () => (S.name||'part').replace(/\.[^.]+$/,'');
+  themeBtn.onclick=()=>{ const r=document.documentElement; const dark=r.dataset.theme?r.dataset.theme==='dark':matchMedia('(prefers-color-scheme: dark)').matches; r.dataset.theme=dark?'light':'dark'; };
+  const drop=drop, fileIn=file, archiveFile=archiveFile;
+  drop.onclick=()=>fileIn.click(); drop.onkeydown=e=>{ if(e.key==='Enter'||e.key===' ') {e.preventDefault(); fileIn.click();} };
+  ['dragenter','dragover'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('over');}));
+  ['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('over');}));
+  drop.addEventListener('drop',e=>{ if(e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]); });
+  fileIn.onchange=()=>{ if(fileIn.files[0]) loadFile(fileIn.files[0]); };
+  function loadFile(f){ if(f.size>2*1024*1024){showErr('فایل بیش از ۲ مگابایت است');return;} const r=new FileReader(); r.onload=()=>{ S.name=f.name; S.text=String(r.result); S.res=null; S.analyzed=null; fname.textContent=f.name; dropTitle.textContent='فایل انتخاب شد'; dropSub.textContent='برای تعویض کلیک کنید'; analyzeBox.hidden=false; featuresCard.hidden=true; featuresList.textContent=''; profileErrors.hidden=true; analyzeStatus.textContent=''; analyze(); }; r.onerror=()=>showErr('خواندن فایل ممکن نشد'); r.readAsText(f); }
+  async function loadArchiveList(){ try{ const resp=await fetch('{{ archive_api_url }}',{credentials:'same-origin'}); const data=await resp.json(); archiveFile.innerHTML='<option value="">انتخاب فایل از آرشیو...</option>'; (data.files||[]).forEach(item=>{ const opt=document.createElement('option'); opt.value=item.id; opt.textContent=item.name+(item.length?' — '+item.length+' mm':'')+(item.resizable?'':' — فقط نمایش'); archiveFile.appendChild(opt); }); }catch(e){ archiveFile.innerHTML='<option value="">آرشیو در دسترس نیست</option>'; } }
+  archiveFile.onchange=async()=>{ if(!archiveFile.value)return; try{ const resp=await fetch('{{ archive_api_url }}?id='+encodeURIComponent(archiveFile.value),{credentials:'same-origin'}); const data=await resp.json(); if(!resp.ok) throw new Error(data.error||'خطا'); loadText(data.name+'.cnc',data.content); }catch(e){ showErr(e.message); } };
+  function loadText(n,t){ S.name=n; S.text=t; S.res=null; S.analyzed=null; analyzeBox.hidden=false; featuresCard.hidden=true; featuresList.textContent=''; analyze(); }
+  async function analyze(){ if(!S.text)return; const id=++S.analysisReq; analyzeBtn.disabled=true; analyzeStatus.textContent='در حال تحلیل هندسه...'; try{ const resp=await fetch(ANALYZE_API,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRFToken':csrf()},body:JSON.stringify({content:S.text,params:{}})}); const data=await resp.json(); if(id!==S.analysisReq)return; if(!resp.ok||!data.ok){ analyzeStatus.textContent=data.error||'تحلیل ناموفق'; return; } S.analyzed=data; analyzeStatus.textContent=data.ready?'تحلیل کامل شد':'تحلیل کامل شد — نیاز به تأیید Featureها'; buildFeatures(); featuresCard.hidden=false; }catch(e){ analyzeStatus.textContent='خطا در تحلیل'; } finally { analyzeBtn.disabled=false; } }
+  analyzeBtn.onclick=analyze;
+  function buildFeatures(){ const box=featuresList; box.textContent=''; (S.analyzed?.features||[]).forEach(f=>{ const row=document.createElement('div'); row.style.border='1px solid var(--line)'; row.style.borderRadius='8px'; row.style.padding='8px'; row.style.marginBottom='6px'; const top=document.createElement('div'); top.style.display='flex'; top.style.justifyContent='space-between'; const title=document.createElement('b'); title.textContent=f.id+' — '+f.kind; title.style.direction='ltr'; const b=document.createElement('span'); b.textContent=(f.closed?'closed':'open')+' | seg:'+f.segments+' | arcs:'+f.arcs; b.style.fontSize='12px'; b.style.color='var(--muted)'; top.appendChild(title); top.appendChild(b); row.appendChild(top); const bc=document.createElement('div'); bc.style.fontSize='12px'; bc.style.color='var(--muted)'; bc.style.direction='ltr'; bc.textContent='bounds: x['+f.bounds.x0+','+f.bounds.x1+'] y['+f.bounds.y0+','+f.bounds.y1+']'; row.appendChild(bc); const ctrl=document.createElement('div'); ctrl.className='radios'; ctrl.style.marginTop='6px'; [['view_only','فقط نمایش'],['stretch','قابل کشش']].forEach(m=>{ const lab=document.createElement('label'); const inp=document.createElement('input'); inp.type='radio'; inp.name='f_'+f.id; inp.value=m[0]; inp.checked=m[0]==='view_only'; lab.appendChild(inp); lab.appendChild(document.createTextNode(' '+m[1])); ctrl.appendChild(lab); }); row.appendChild(ctrl); box.appendChild(row); }); }
+  document.querySelectorAll('input[name="resizeMode"]').forEach(r=>r.onchange=()=>{ S.resizeMode=r.value; legacyNote.hidden=S.resizeMode!=='legacy'; profileNote.hidden=S.resizeMode==='legacy'; updateOut(); schedule(); });
+  tool.oninput=()=>{ const v=Number(tool.value); if(v>0){S.tool=v;schedule();} };
+  delta.oninput=()=>{ if(S.mode!=='manual') schedule(); };
+  target.onchange=()=>{ if(!S.res||S.mode==='manual')return; delta.value=(Number(target.value)-S.res.length_before).toFixed(3); schedule(); };
+  chips.onclick=e=>{ const b=e.target.closest('button'); if(!b||S.mode==='manual')return; const d=Number(b.dataset.d); delta.value=d===0?0:(Number(delta.value)||0)+d; schedule(); };
+  modes.onchange=e=>{ S.mode=e.target.value; if(S.mode==='manual'&&S.res) S.manual=S.res.gaps.map(g=>g.increment); sync(); schedule(); };
+  sym.onchange=()=>{S.symmetric=sym.checked; schedule();};
+  function sync(){ const man=S.mode==='manual'; delta.readOnly=man; chips.style.opacity=man?0.4:1; target.disabled=man||!S.res; }
+  function famOf(k){ const n=S.enabled.length; if(!S.symmetric)return[k]; return k===n-1-k?[k]:[k,n-1-k]; }
+  function buildTable(){ const r=S.res,tb=document.querySelector('#gapTable tbody'); tb.textContent=''; (r.gaps||[]).forEach(g=>{ const tr=document.createElement('tr'); tr.dataset.k=g.index; tr.innerHTML='<td><input type="checkbox" class="en"></td><td class="n"></td><td class="n"></td><td class="n"></td><td class="n"></td>'; tb.appendChild(tr); tr.querySelector('.en').onchange=e=>{ famOf(g.index).forEach(k=>{S.enabled[k]=e.target.checked;}); schedule(); }; tr.onmouseenter=()=>hilite(g.index,true); tr.onmouseleave=()=>hilite(g.index,false); }); gapTable.hidden=false; gapHint.hidden=false; }
+  function fillTable(){ const r=S.res,rows=document.querySelectorAll('#gapTable tbody tr'); (r.gaps||[]).forEach((g,i)=>{ const tr=rows[i],tds=tr.children; tr.querySelector('.en').checked=S.enabled[i]; tds[1].textContent=f1(g.y0)+' → '+f1(g.y1); tds[2].textContent=f1(g.length); if(S.mode==='manual'){ let inp=tds[3].querySelector('input'); if(!inp){ tds[3].textContent=''; inp=document.createElement('input'); inp.type='number'; inp.step='1'; inp.oninput=()=>{ const v=Number(inp.value); if(!isFinite(v))return; famOf(i).forEach(k=>{S.manual[k]=v;}); schedule(); }; tds[3].appendChild(inp); } if(document.activeElement!==inp) inp.value=S.manual[i]; inp.disabled=!S.enabled[i]; } else { tds[3].textContent=sgn(g.increment); tds[3].className='n '+cls(g.increment); } tds[4].textContent=f1(g.new_length); tds[4].className='n'; }); }
+  function hilite(k,on){ const b=window.bands&&window.bands[k]; if(b)b.setAttribute('opacity',on?0.16:0); }
+  function schedule(){ clearTimeout(S.timer); S.timer=setTimeout(()=>run(false),200); }
+  function buildProfile(){ const feats=S.analyzed?.features||[]; const rules={}; feats.forEach(f=>{ const sel=document.querySelector('input[name="f_'+f.id+'"]:checked'); rules[f.id]={mode:sel?sel.value:'view_only',kind:f.kind}; }); const refs=(refPoints.value||'').trim(); const rps=refs?refs.split(/[,\;\s]+/).filter(x=>x).map(x=>Number(x)):[]; return {axis:'length',mode:S.mode,symmetric:S.symmetric,enabled:S.enabled,manual:S.manual,tool_dia:S.tool,features:rules,reference_points:rps,legacy_gap_resize:(S.resizeMode==='legacy')}; }
+  async function run(first){ if(!S.text)return; const id=++S.reqId; stage.classList.add('busy'); let params={mode:S.mode,delta:Number(delta.value)||0,symmetric:S.symmetric,enabled:S.enabled.length?S.enabled:undefined,manual:S.mode==='manual'?S.manual:undefined,tool_dia:S.tool}; if(S.resizeMode==='profile'&&S.analyzed){ params={...params,profile:buildProfile(),allow_view_only:true}; } try{ const resp=await fetch(API,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRFToken':csrf()},body:JSON.stringify({filename:S.name,content:S.text,params})}); let data=null; try{data=await resp.json();}catch(_){} if(id!==S.reqId)return; if(!resp.ok||!data||!data.ok){ showErr((data&&data.error)||('خطا')); if(first){S.res=null;render();} return; } showErr(''); S.res=data; if(!S.enabled.length) S.enabled=data.gaps?.map(g=>g.enabled)||[]; if(!S.manual.length) S.manual=data.gaps?.map(g=>g.increment)||[]; render(first); }catch(e){ if(id===S.reqId) showErr('ارتباط برقرار نشد'); } finally { if(id===S.reqId) stage.classList.remove('busy'); } }
+  // keep existing minimal render logic
+  function updateOut(){ const canLegacy=S.res&&S.res.resizable; const canProfile=S.resizeMode==='profile'&&S.analyzed&&S.analyzed.ready&&S.res&&S.res.resizable; cncBtn.disabled=!(S.resizeMode==='legacy'?canLegacy:canProfile); dxfBtn.disabled=!S.res; copyBtn.disabled=!S.res; saveProfileBtn.disabled=!(S.res&&S.res.resizable); }
+  // wire render
+  function render(first){ /* existing render calls updateOut */ updateOut(); }
+  sync(); loadArchiveList().then(loadPartProfile);
 })();
 </script>
 </body>
