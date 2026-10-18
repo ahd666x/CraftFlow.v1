@@ -37,3 +37,20 @@ class ViewOnlyTests(unittest.TestCase):
         self.assertFalse(data["resizable"])
         status, data = core.handle_request(json.dumps({"content": "hello world"}).encode())
         self.assertEqual(status, 400)
+
+    def test_feature_inventory_is_tool_agnostic(self):
+        result = core.analyze(TAPERED)
+        self.assertTrue(result['ok'])
+        self.assertTrue(result['features'])
+        self.assertIn(result['features'][0]['kind'], {'raster_or_area', 'unknown'})
+
+    def test_unapproved_profile_is_view_only(self):
+        profile = {
+            'axis': 'length',
+            'reference_points': {'start': 0, 'end': 400},
+            'features': {'feature-1': {'mode': 'view_only'}},
+        }
+        result = core.process(TAPERED, {'profile': profile, 'delta': 100})
+        self.assertTrue(result['profile_mode'])
+        self.assertFalse(result['resizable'])
+        self.assertEqual(result['cnc_text'], TAPERED)

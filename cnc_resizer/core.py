@@ -388,6 +388,35 @@ def process(text, params=None):
     if not any(re.search(r'G[0-3](?!\d)', l) for l in lines):
         raise CncError("این فایل شبیه G-code نیست")
 
+    profile = params.get('profile') or params.get('feature_profile')
+    if profile is not None:
+        inventory = analyze_program(lines)
+        errors = validate_profile(profile, inventory)
+        vectors = extract_vectors(lines, float(params.get('tool_dia', 8.0)))
+        shown = vectors_for_json(vectors)
+        a, b = _span(vectors)
+        if errors:
+            return dict(ok=True, resizable=False, profile_mode=True, profile_errors=errors,
+                        features=inventory, original=shown, resized=shown,
+                        length_before=round(b-a,3), length_after=round(b-a,3), delta=0.0,
+                        warnings=['این فایل فقط نمایش داده می‌شود تا همهٔ featureها تأیید شوند.'],
+                        changed_lines=[], cnc_text=text, dxf_text=to_dxf(vectors))
+        # Safe default: approved profiles still need explicit legacy opt-in until
+        # segment-level stretch rules are saved; this prevents arc distortion.
+        if not profile.get('legacy_gap_resize'):
+            return dict(ok=True, resizable=False, profile_mode=True, profile_errors=[
+                        'ناحیهٔ خطوط صاف قابل تغییر هنوز در پروفایل ثبت نشده است'],
+                        features=inventory, original=shown, resized=shown,
+                        length_before=round(b-a,3), length_after=round(b-a,3), delta=0.0,
+                        warnings=['برای فعال‌سازی تولید، نقاط شروع و پایان ناحیهٔ کشش را ثبت کنید.'],
+                        changed_lines=[], cnc_text=text, dxf_text=to_dxf(vectors))
+        legacy = dict(params)
+        legacy.pop('profile', None); legacy.pop('feature_profile', None)
+        result = process(text, legacy)
+        result.update(profile_mode=True, features=inventory, profile_errors=[])
+        result['warnings'].append('پروفایل اجرا شد؛ Z/Feed/Spindle و شعاع منحنی‌ها تغییر داده نشدند.')
+        return result
+
     mode = params.get('mode', 'equal')
     if mode not in ('equal', 'proportional', 'manual'):
         raise CncError("روش توزیع نامعتبر است")
@@ -462,12 +491,84 @@ def handle_request(raw):
         text, params = payload['content'], payload.get('params') or {}
         if not isinstance(params, dict):
             raise ValueError
+        action = payload.get('action')
     except Exception:
         return 400, dict(ok=False, error="درخواست نامعتبر است")
     try:
+        if action == 'analyze':
+            return 200, analyze(text, params)
         return 200, process(text, {**params, 'allow_view_only': True})
     except CncError as e:
         return 400, dict(ok=False, error=str(e))
     except Exception:
         log.exception("cnc_resizer: unexpected error")
         return 500, dict(ok=False, error="خطای غیرمنتظره در پردازش فایل")
+
+# --- Generic operator-approved feature profiles ----------------------------
+def analyze_program(lines):
+    """Build a conservative geometry inventory; tool numbers are metadata only."""
+    out = []
+    for idx, block in enumerate(_blocks(lines), 1):
+        segs = block.get('segs', [])
+        if not segs:
+            continue
+        pts = _sample(segs, block['start'])
+        xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+        w, h = max(xs)-min(xs), max(ys)-min(ys)
+        closed = math.hypot(pts[-1][0]-pts[0][0], pts[-1][1]-pts[0][1]) < 1e-3
+        arcs = sum(s['type'] == 'A' for s in segs)
+        if closed and w <= HOLE_MAX_SIZE and h <= HOLE_MAX_SIZE:
+            kind = 'hole'
+        elif closed and arcs and w > 100 and h > 100:
+            kind = 'outer_contour'
+        elif w > 100 and h > 100:
+            kind = 'raster_or_area'
+        elif max(w, h) > 50:
+            kind = 'linear_groove'
+        else:
+            kind = 'unknown'
+        out.append({'id': f'feature-{idx}', 'kind': kind,
+                    'bounds': {'x0': round(min(xs),3), 'y0': round(min(ys),3),
+                               'x1': round(max(xs),3), 'y1': round(max(ys),3)},
+                    'closed': closed, 'segments': len(segs), 'arcs': arcs,
+                    'start': [round(v,3) for v in block['start']]})
+    return out
+
+
+def validate_profile(profile, inventory):
+    if not isinstance(profile, dict):
+        return ['پروفایل هندسی وجود ندارد']
+    errors = []
+    if profile.get('axis', 'length') != 'length':
+        errors.append('محور تغییر CNC باید length باشد؛ طول روی Y قرار دارد')
+    rules = profile.get('features') or {}
+    known = {f['id'] for f in inventory}
+    for fid in rules:
+        if fid not in known:
+            errors.append(f'feature ناشناخته در پروفایل: {fid}')
+    for item in inventory:
+        rule = rules.get(item['id'])
+        mode = rule.get('mode') if isinstance(rule, dict) else None
+        if not rule or mode in (None, 'view_only', 'unknown'):
+            errors.append(f"feature {item['id']} هنوز توسط اپراتور تأیید نشده است")
+        if item['kind'] in ('outer_contour', 'hole') and mode == 'stretch':
+            errors.append(f"تغییر مستقیم {item['kind']} مجاز نیست؛ فقط خطوط صاف میانی را انتخاب کنید")
+    if not profile.get('reference_points'):
+        errors.append('حداقل یک نقطهٔ مرجع اپراتور ثبت نشده است')
+    return errors
+
+
+def analyze(text, params=None):
+    params = params or {}
+    if not isinstance(text, str) or not text.strip():
+        raise CncError('فایل خالی است')
+    if len(text) > MAX_BYTES:
+        raise CncError('فایل بیش از حد بزرگ است')
+    lines, _ = split_lines(text)
+    if not any(re.search(r'G[0-3](?!\d)', l) for l in lines):
+        raise CncError('این فایل شبیه G-code نیست')
+    inventory = analyze_program(lines)
+    profile = params.get('profile') or params.get('feature_profile')
+    errors = validate_profile(profile, inventory) if profile else []
+    return {'ok': True, 'features': inventory, 'profile_errors': errors,
+            'ready': bool(profile and not errors), 'warnings': []}

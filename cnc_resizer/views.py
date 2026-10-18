@@ -55,6 +55,21 @@ def process(request):
 
 @login_required
 @cnc_operator_required
+@require_POST
+def analyze(request):
+    """Inventory G-code features for operator profile authoring."""
+    import json
+    try:
+        payload = json.loads(request.body.decode('utf-8'))
+        result = core.analyze(payload['content'], payload.get('params') or {})
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError, core.CncError) as exc:
+        return JsonResponse({'ok': False, 'error': str(exc)}, status=400,
+                            json_dumps_params={'ensure_ascii': False})
+    return JsonResponse(result, json_dumps_params={'ensure_ascii': False})
+
+
+@login_required
+@cnc_operator_required
 @require_GET
 def archive_files(request):
     record_id = request.GET.get("id")
