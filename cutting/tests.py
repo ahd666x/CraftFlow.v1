@@ -372,6 +372,62 @@ class InventoryAndCutFlowTests(TestCase):
         self.assertEqual(stock.quantity, 2)
         self.assertEqual(CutPlan.objects.count(), 0)
 
+    def test_cnc_mode_preview_includes_cnc_only_orders(self):
+        self.add_stock()
+        self.part.routing_code = 'cnc.cut'
+        self.part.save(update_fields=['routing_code'])
+        response = self.client.get(reverse('cutting:planner_preview'), {
+            'order_ids': [self.order.pk], 'planning_mode': 'cnc_sheets', 'kerf': '4',
+        })
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['piece_count'], 1)
+        self.assertEqual(len(data['materials']), 1)
+        self.assertEqual(data['materials'][0]['piece_count'], 1)
+
+    def test_standard_planner_does_not_duplicate_pieces_reserved_by_cnc(self):
+        stock = self.add_stock(quantity=2)
+        self.part.routing_code = 'cnc.cut'
+        self.part.save(update_fields=['routing_code'])
+        self.task.quantity = 2
+        self.task.save(update_fields=['quantity'])
+        CncSheetPlan.objects.create(
+            material=self.material, source_stock=stock, sheet_index=0,
+            width=stock.width, height=stock.height,
+            layout={'parts': [{'task_id': self.task.pk}]}, gcode='G-code', created_by=self.user,
+        )
+        response = self.client.post(reverse('cutting:planner'), {
+            'action': 'plan', 'order_ids': [self.order.pk], 'kerf': '4.0',
+        })
+        self.assertEqual(response.status_code, 302)
+        cut_plan = CutPlan.objects.get()
+        self.assertEqual(cut_plan.planned_tasks.get().quantity, 1)
+
+    def test_cnc_plan_download_and_cancel_are_owner_or_manager_only(self):
+        stock = self.add_stock()
+        plan = CncSheetPlan.objects.create(
+            material=self.material, source_stock=stock, sheet_index=0,
+            width=stock.width, height=stock.height, layout={'parts': []},
+            gcode='G-code', created_by=self.user,
+        )
+        operator = User.objects.create_user(username='cnc-other-operator', password='test')
+        operator.groups.add(Group.objects.get_or_create(name='1')[0])
+        self.client.force_login(operator)
+        self.assertEqual(self.client.get(reverse('cnc_resizer:download_sheet_plan', args=[plan.pk])).status_code, 403)
+        self.assertEqual(self.client.post(reverse('cnc_resizer:cancel_sheet_plan', args=[plan.pk])).status_code, 403)
+        plan.refresh_from_db()
+        self.assertEqual(plan.status, 'planned')
+
+    def test_part_profile_rejects_unsupported_http_methods(self):
+        response = self.client.put(reverse('cnc_resizer:part_profile'), data='{}', content_type='application/json')
+        self.assertEqual(response.status_code, 405)
+
+    def test_cnc_sheet_page_renders_cutting_navigation(self):
+        response = self.client.get(reverse('cnc_resizer:sheet_plans'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'class="cutting-nav')
+        self.assertContains(response, 'خروجی ورق CNC')
+
     def test_history_filters_by_event_type_text_and_date_range(self):
         event = SheetStockEvent.objects.create(
             material=self.material, event_type='receive', quantity_delta=2,
@@ -414,6 +470,7 @@ class InventoryAndCutFlowTests(TestCase):
         representative.groups.add(Group.objects.get_or_create(name='نماینده')[0])
         self.client.force_login(representative)
         self.assertEqual(self.client.get(reverse('cutting:planner')).status_code, 403)
+        self.assertEqual(self.client.get(reverse('cnc_resizer:index')).status_code, 403)
         self.assertEqual(self.client.get(reverse('cutting:plan_detail', args=[plan.pk])).status_code, 403)
         sheet = plan.planned_sheets.get()
         self.assertEqual(self.client.post(reverse('cutting:mark_cut', args=[plan.pk]), {f'outcome_{sheet.pk}': 'used'}).status_code, 403)

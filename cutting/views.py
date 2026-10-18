@@ -174,6 +174,15 @@ def planner(request):
                 if cnc_sheet_mode:
                     task_query = task_query.exclude(part__routing_code__iregex=r'^\s*cnc(?:\.|$)')
                 tasks = list(task_query.select_related('part__material', 'order', 'order__customer').order_by('pk'))
+                planned_cnc_counts = {}
+                if not cnc_sheet_mode:
+                    from cnc_resizer.sheet_nesting import _planned_piece_counts
+                    planned_cnc_counts = _planned_piece_counts()
+                remaining_by_task = {
+                    task.pk: max(0, task.quantity - task.completed_quantity - planned_cnc_counts.get(task.pk, 0))
+                    for task in tasks
+                }
+                tasks = [task for task in tasks if remaining_by_task[task.pk] > 0]
                 if not tasks:
                     if cnc_sheet_plans or cnc_issues:
                         return redirect('cnc_resizer:sheet_plans')
@@ -207,7 +216,7 @@ def planner(request):
                             details={'stage': 'dimensions'}, created_by=request.user,
                         )
                         continue
-                    remaining_quantity = task.quantity - task.completed_quantity
+                    remaining_quantity = remaining_by_task[task.pk]
                     for _ in range(remaining_quantity):
                         grouped[part.material_id].append({
                             # CUT convention: X = Part.length, Y = Part.width.
@@ -385,9 +394,25 @@ def planner_preview(request):
     ).exclude(order_id__in=reserved_order_ids).select_related(
         'part__material', 'order', 'order__customer',
     ).order_by('pk'))
-    if request.GET.get('planning_mode') == 'cnc_sheets':
-        tasks = [task for task in tasks if not (task.part.routing_code or '').strip().lower().split('.')[0:1] == ['cnc']]
-    total_pieces = sum(task.quantity - task.completed_quantity for task in tasks)
+    cnc_mode = request.GET.get('planning_mode') == 'cnc_sheets'
+    if cnc_mode:
+        tasks = [task for task in tasks if (task.part.routing_code or '').strip().lower().split('.')[0:1] == ['cnc']]
+        from cnc_resizer.sheet_nesting import _planned_piece_counts
+        already_planned = _planned_piece_counts()
+        piece_quantities = {
+            task.pk: max(0, task.quantity - task.completed_quantity - already_planned.get(task.pk, 0))
+            for task in tasks
+        }
+        tasks = [task for task in tasks if piece_quantities[task.pk] > 0]
+    else:
+        from cnc_resizer.sheet_nesting import _planned_piece_counts
+        already_planned = _planned_piece_counts()
+        piece_quantities = {
+            task.pk: max(0, task.quantity - task.completed_quantity - already_planned.get(task.pk, 0))
+            for task in tasks
+        }
+        tasks = [task for task in tasks if piece_quantities[task.pk] > 0]
+    total_pieces = sum(piece_quantities[task.pk] for task in tasks)
     invalid_part = next((task.part for task in tasks if task.part.length <= 0 or task.part.width <= 0), None)
     if invalid_part:
         return JsonResponse({'error': f'ابعاد قطعه «{invalid_part.name}» باید مثبت باشند.'}, status=400)
@@ -401,7 +426,7 @@ def planner_preview(request):
     reserved = _reserved_counts([stock.pk for stock in stocks])
     stock_by_material = defaultdict(list)
     for stock in stocks:
-        if setting.strategy == 'full_only' and stock.is_offcut:
+        if (cnc_mode or setting.strategy == 'full_only') and stock.is_offcut:
             continue
         for _ in range(max(0, stock.quantity - reserved[stock.pk])):
             stock_by_material[stock.material_id].append({
@@ -413,11 +438,12 @@ def planner_preview(request):
     grouped = defaultdict(list)
     for task in tasks:
         part = task.part
-        for _ in range(task.quantity - task.completed_quantity):
+        for _ in range(piece_quantities[task.pk]):
+            part_width, part_height = (part.width, part.length) if cnc_mode else (part.length, part.width)
             grouped[part.material_id].append({
-                # CUT convention: X = Part.length, Y = Part.width.
-                'width': part.length, 'height': part.width, 'orig_width': part.length,
-                'orig_height': part.width, 'turn': part.turn, 'grain': part.grain,
+                # CNC convention: X = Part.width, Y = Part.length; CUT uses the reverse.
+                'width': part_width, 'height': part_height, 'orig_width': part_width,
+                'orig_height': part_height, 'turn': part.turn, 'grain': part.grain,
                 'label': f'{part.name} / سفارش {task.order_id}', 'uid': len(grouped[part.material_id]),
                 'task_id': task.pk,
             })

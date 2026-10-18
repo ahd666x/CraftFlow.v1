@@ -13,9 +13,17 @@ SECTION_BY_URL = {
 
 def cutting_nav(request):
     match = getattr(request, 'resolver_match', None)
-    if not match or match.app_name != 'cutting':
+    if not match or match.app_name not in ('cutting', 'cnc_resizer'):
         return {}
     user = request.user
+    if match.app_name == 'cnc_resizer':
+        return {
+            'cut_section': 'cut',
+            'cut_url_name': match.url_name,
+            'can_operate': True,
+            'can_inventory': can_inventory(user),
+            'can_manage': can_manage(user),
+        }
     return {
         'cut_section': SECTION_BY_URL.get(match.url_name, ''),
         'cut_url_name': match.url_name,

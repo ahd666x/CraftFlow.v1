@@ -21,7 +21,7 @@
   </div>
   <section class="cnc-kpis" aria-label="خلاصهٔ برنامه‌های CNC">
     <div class="cnc-kpi"><span class="cnc-kpi-icon blue"><i class="bi bi-files"></i></span><div><span>کل برنامه‌ها</span><strong>{{ plans|length }}</strong></div></div>
-    <div class="cnc-kpi"><span class="cnc-kpi-icon green"><i class="bi bi-check2-circle"></i></span><div><span>آمادهٔ اجرا</span><strong>{% with active_count=plans|length %}{{ active_count }}{% endwith %}</strong></div></div>
+    <div class="cnc-kpi"><span class="cnc-kpi-icon green"><i class="bi bi-check2-circle"></i></span><div><span>آمادهٔ اجرا</span><strong>{{ active_count }}</strong></div></div>
     <div class="cnc-kpi"><span class="cnc-kpi-icon amber"><i class="bi bi-exclamation-triangle"></i></span><div><span>موارد نیازمند بررسی</span><strong>{{ issues|length }}</strong></div></div>
     <div class="cnc-kpi cnc-kpi-note"><i class="bi bi-info-circle"></i><span>هر برنامه یک فایل G-code کامل برای یک ورق است؛ طول قطعه روی محور Y قرار می‌گیرد.</span></div>
   </section>

@@ -1,8 +1,9 @@
 from django.http import JsonResponse
+from django.core.exceptions import PermissionDenied
 from django.shortcuts import render
 from django.urls import reverse
 from django.contrib.auth.decorators import login_required
-from django.views.decorators.http import require_GET, require_POST
+from django.views.decorators.http import require_GET, require_POST, require_http_methods
 from django.http import Http404
 
 from product.decorators import admin_or_manager_required
@@ -18,14 +19,15 @@ def cnc_operator_required(view_func):
     @wraps(view_func)
     def wrapped(request, *args, **kwargs):
         user = request.user
-        allowed = user.is_superuser or user.groups.filter(
-            name__in=['1', '2', '3', 'نماینده']
-        ).exists()
+        from cutting.permissions import can_operate
+        allowed = can_operate(user)
         try:
             allowed = allowed or user.workerprofile.stage == 'cnc'
         except Exception:
             pass
         if not allowed:
+            if view_func.__name__ == 'index':
+                raise PermissionDenied
             return JsonResponse({'success': False, 'error': 'دسترسی به ابزار CNC مجاز نیست.'}, status=403)
         return view_func(request, *args, **kwargs)
     return wrapped
@@ -80,8 +82,8 @@ def archive_files(request):
         try:
             with open(record.path, "r", encoding="utf-8-sig") as stream:
                 content = stream.read(core.MAX_BYTES + 1)
-        except OSError as exc:
-            raise Http404(f"خواندن فایل CNC ممکن نیست: {exc}")
+        except OSError:
+            raise Http404("خواندن فایل CNC ممکن نیست")
         return JsonResponse({
             "id": record.id,
             "name": record.barcode_key,
@@ -107,6 +109,7 @@ def archive_files(request):
 
 @login_required
 @cnc_operator_required
+@require_http_methods(['GET', 'POST'])
 def part_profile(request):
     part_id = request.GET.get('part_id') or request.POST.get('part_id')
     part = Part.objects.filter(pk=part_id).select_related('base_part').first()
@@ -173,13 +176,17 @@ def _layout_preview(plan):
 @cnc_operator_required
 @require_GET
 def sheet_plans(request):
-    plans = list(CncSheetPlan.objects.filter(created_by=request.user).select_related('material', 'source_stock')[:100])
+    from cutting.permissions import can_manage
+    can_view_all = request.user.is_staff or request.user.is_superuser or can_manage(request.user)
+    plan_query = CncSheetPlan.objects.all() if can_view_all else CncSheetPlan.objects.filter(created_by=request.user)
+    plans = list(plan_query.select_related('material', 'source_stock')[:100])
     for plan in plans:
         plan.preview = _layout_preview(plan)
         plan.orders = sorted({p.get('order_id') for p in (plan.layout or {}).get('parts', []) if p.get('order_id')})
-        plan.aspect = round(float(plan.height) / float(plan.width) * 100, 2) if plan.width else 50
+        plan.aspect = round(float(plan.height) / float(plan.width), 4) if plan.width else 1
     issues = CncPlanningIssue.objects.filter(created_by=request.user).select_related('task', 'order', 'part')[:100]
-    return render(request, 'cnc_resizer/sheet_plans.html', {'plans': plans, 'issues': issues})
+    active_count = sum(plan.status == 'planned' for plan in plans)
+    return render(request, 'cnc_resizer/sheet_plans.html', {'plans': plans, 'issues': issues, 'active_count': active_count})
 
 
 @login_required
@@ -190,6 +197,8 @@ def cancel_sheet_plan(request, plan_id):
     from django.contrib import messages
     from django.shortcuts import get_object_or_404, redirect
     plan = get_object_or_404(CncSheetPlan, pk=plan_id, status='planned')
+    if not _may_access_sheet_plan(request.user, plan):
+        raise PermissionDenied
     plan.status = 'cancelled'
     plan.save(update_fields=['status'])
     messages.success(request, f'برنامه ورق #{plan.pk} لغو شد و ورق و قطعات آن آزاد شدند.')
@@ -202,7 +211,19 @@ def cancel_sheet_plan(request, plan_id):
 def download_sheet_plan(request, plan_id):
     from django.shortcuts import get_object_or_404
     plan = get_object_or_404(CncSheetPlan, pk=plan_id)
+    if not _may_access_sheet_plan(request.user, plan):
+        raise PermissionDenied
+    if plan.status == 'cancelled':
+        raise Http404("برنامهٔ CNC قابل دانلود نیست")
     from django.http import HttpResponse
     response = HttpResponse(plan.gcode, content_type='text/plain; charset=utf-8')
     response['Content-Disposition'] = f'attachment; filename="craftflow_cnc_sheet_{plan.pk}.nc"'
     return response
+
+
+def _may_access_sheet_plan(user, plan):
+    from cutting.permissions import can_manage
+    return bool(
+        user.is_superuser or user.is_staff or plan.created_by_id == user.pk
+        or can_manage(user)
+    )

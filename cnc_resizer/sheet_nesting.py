@@ -5,7 +5,7 @@ from decimal import Decimal
 from django.db import transaction
 from django.db.models import F
 
-from cutting.models import CutPlanSheet, SheetStock
+from cutting.models import CutPlanSheet, CutPlanTask, SheetStock
 from cutting.optimizer import optimize
 from product.models import ProductionTask
 from .models import CncPlanningIssue, CncSheetPlan
@@ -58,10 +58,12 @@ def create_cnc_sheet_plans(order_ids, user, kerf=Decimal('4.0')):
     """Nest every CNC-first part of the same material together and build ONE
     complete G-code program per full sheet. Pieces already placed on a planned
     sheet are not planned twice, and reserved sheets are not reused."""
-    tasks = list(ProductionTask.objects.filter(
+    tasks = list(ProductionTask.objects.select_for_update().filter(
         order_id__in=order_ids, station_name='cut', status='pending', part__isnull=False,
         quantity__gt=F('completed_quantity'),
-    ).select_related('part__material', 'order'))
+    ).exclude(
+        pk__in=CutPlanTask.objects.filter(plan__status='planned').values('task_id')
+    ).select_related('part__material', 'order').order_by('pk'))
     tasks = [t for t in tasks if is_cnc_first(t.part)]
     if not tasks:
         return [], []
@@ -95,7 +97,7 @@ def create_cnc_sheet_plans(order_ids, user, kerf=Decimal('4.0')):
 
     result = []
     for material_id, pieces in grouped.items():
-        stock_rows = list(SheetStock.objects.filter(
+        stock_rows = list(SheetStock.objects.select_for_update().filter(
             material_id=material_id, active=True, quantity__gt=0, is_offcut=False,
         ).select_related('material').order_by('priority', 'width', 'height', 'pk'))
         if not stock_rows:
