@@ -215,17 +215,34 @@ class ParametricPreviewTests(unittest.TestCase):
         lower, dependent, anchor = features
         preview = preview_resize(program, {
             "axis": "y", "target_dimension": 125, "reference_start": 0, "reference_end": 80,
-            "features": {
-                lower["id"]: "fixed",
-                dependent["id"]: {"mode": "dependent_feature", "anchor_feature_id": anchor["id"]},
-                anchor["id"]: "dependent_end",
-            },
+                "features": {
+                    lower["id"]: "fixed",
+                    dependent["id"]: {"mode": "dependent_feature", "anchor_feature_id": anchor["id"],
+                                       "basis": "center_to_center"},
+                    anchor["id"]: "dependent_end",
+                },
         })
         self.assertTrue(preview["validation"]["passed"], preview["validation"]["errors"])
         constraints = {item["feature_id"]: item for item in preview["constraints"]}
+        self.assertEqual(constraints[dependent["id"]]["basis"], "center_to_center")
         self.assertEqual(constraints[dependent["id"]]["offset"], -10)
         self.assertAlmostEqual(constraints[anchor["id"]]["translation"], 30)
         self.assertTrue(constraints[dependent["id"]]["offset_preserved"])
+
+    def test_unknown_dependent_feature_basis_is_rejected(self):
+        text = "\n".join(["G21 G90 G17", "G0 X0 Y0 Z5", "G1 Z-2", "G1 X10 Y10",
+                           "G0 X20 Y20", "G1 X30 Y30", ""])
+        program = parse_program(text)
+        features = recognize(program)["features"]
+        with self.assertRaisesRegex(TransformError, "Unsupported feature modes"):
+            preview_resize(program, {
+                "axis": "y", "target_dimension": 35, "reference_start": 10, "reference_end": 30,
+                "features": {
+                    features[0]["id"]: {"mode": "dependent_feature", "anchor_feature_id": features[1]["id"],
+                                        "basis": "nearest_edge"},
+                    features[1]["id"]: "fixed",
+                },
+            })
 
     def test_dependent_feature_cycle_is_rejected(self):
         text = "\n".join(["G21 G90 G17", "G0 X0 Y0 Z5", "G1 Z-2", "G1 X10 Y10",
@@ -240,6 +257,31 @@ class ParametricPreviewTests(unittest.TestCase):
                     features[1]["id"]: {"mode": "dependent_feature", "anchor_feature_id": features[0]["id"]},
                 },
             })
+
+    def test_dependent_feature_distance_basis_changes_translation_as_documented(self):
+        text = "\n".join([
+            "G21 G90 G17", "G0 X0 Y0 Z5", "G1 Z-2", "G1 X10 Y0", "G1 Y100",
+            "G0 X20 Y20", "G1 X30 Y20", "G1 Y80",
+            "G0 X40 Y30", "G1 X50 Y30", "G1 Y40", "",
+        ])
+        program = parse_program(text)
+        features = recognize(program)["features"]
+        by_block = {feature["block_id"]: feature["id"] for feature in features}
+        translations = {}
+        for basis in ("min_to_min", "max_to_max", "center_to_center"):
+            preview = preview_resize(program, {
+                "axis": "y", "target_dimension": 120, "reference_start": 0, "reference_end": 100,
+                "features": {
+                    by_block["block-0001"]: "middle_scale",
+                    by_block["block-0002"]: "middle_scale",
+                    by_block["block-0003"]: {"mode": "dependent_feature",
+                                               "anchor_feature_id": by_block["block-0002"], "basis": basis},
+                },
+            })
+            self.assertTrue(preview["validation"]["passed"], preview["validation"]["errors"])
+            target_rule = next(item for item in preview["constraints"] if item.get("feature_id") == by_block["block-0003"])
+            translations[basis] = target_rule["translation"]
+        self.assertEqual(translations, {"min_to_min": 4.0, "max_to_max": 16.0, "center_to_center": 10.0})
 
     def test_output_preflight_checks_limits_and_always_fails_closed(self):
         program = parse_program(self.text)

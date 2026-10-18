@@ -54,6 +54,19 @@ def _feature_axis_values(block: Any, axis: str) -> list[float]:
             for value in (getattr(point, axis),) if value is not None]
 
 
+def _feature_axis_measure(block: Any, axis: str, basis: str) -> float:
+    values = _feature_axis_values(block, axis)
+    if not values:
+        raise TransformError(f"Feature has unresolved {axis} coordinates")
+    if basis == "min_to_min":
+        return min(values)
+    if basis == "max_to_max":
+        return max(values)
+    if basis == "center_to_center":
+        return (min(values) + max(values)) / 2
+    raise TransformError(f"Unsupported dependency basis: {basis}")
+
+
 def _transform_feature(block: Any, axis: str, mapping) -> None:
     for move in block.motions:
         if move.motion not in ("linear", "arc_cw", "arc_ccw"):
@@ -122,6 +135,11 @@ def preview_resize(program: Program, request: dict[str, Any]) -> dict[str, Any]:
             if not isinstance(anchor, str) or anchor not in known_ids or anchor == feature_id:
                 invalid[feature_id] = "dependent_feature requires another known anchor_feature_id"
                 continue
+            basis = rule.get("basis", "min_to_min")
+            if basis not in ("min_to_min", "max_to_max", "center_to_center"):
+                invalid[feature_id] = "unsupported dependent-feature basis"
+                continue
+            rule = {**rule, "basis": basis}
             if "offset" in rule:
                 try:
                     rule = {**rule, "offset": _finite_number(rule["offset"], f"{feature_id}.offset")}
@@ -159,17 +177,18 @@ def preview_resize(program: Program, request: dict[str, Any]) -> dict[str, Any]:
             anchor_id = rule["anchor_feature_id"]
             apply_feature(anchor_id)
             anchor_block = transformed_blocks[feature_by_id[anchor_id]["block_id"]]
-            source_values = _feature_axis_values(block_by_id[feature["block_id"]], axis)
-            anchor_values = _feature_axis_values(anchor_block, axis)
-            if not source_values or not anchor_values:
-                raise TransformError(f"Feature {feature_id} or its anchor has unresolved {axis} coordinates")
-            original_offset = min(source_values) - min(_feature_axis_values(block_by_id[feature_by_id[anchor_id]["block_id"]], axis))
+            basis = rule["basis"]
+            original_offset = (
+                _feature_axis_measure(block_by_id[feature["block_id"]], axis, basis)
+                - _feature_axis_measure(block_by_id[feature_by_id[anchor_id]["block_id"]], axis, basis)
+            )
             offset = rule.get("offset", original_offset)
-            target_minimum = min(anchor_values) + offset
-            translation = target_minimum - min(_feature_axis_values(block, axis))
+            target_measure = _feature_axis_measure(anchor_block, axis, basis) + offset
+            translation = target_measure - _feature_axis_measure(block, axis, basis)
             _transform_feature(block, axis, lambda value: value + translation)
             constraints.append({"feature_id": feature_id, "rule": "dependent_feature", "anchor_feature_id": anchor_id,
-                                "offset": offset, "translation": translation, "offset_preserved": True})
+                                "basis": basis, "offset": offset, "translation": translation,
+                                "offset_preserved": True})
             if feature_id not in changed_features and abs(translation) > 1e-9:
                 changed_features.append(feature_id)
         elif mode == "dependent_end":

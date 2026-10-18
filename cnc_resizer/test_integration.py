@@ -45,6 +45,11 @@ class CncIntegrationTests(TestCase):
         page = self.client.get(reverse("cnc_resizer:engine_workbench"))
         self.assertEqual(page.status_code, 200)
         self.assertContains(page, "حالت ایمن و فقط پیش‌نمایش")
+        self.assertContains(page, "شروع ثابت، پایان جابه‌جا")
+        self.assertContains(page, "min_to_min")
+        self.assertContains(page, "center_to_center")
+        self.assertContains(page, "$('source').addEventListener('input'")
+        self.assertContains(page, "if(other.id===f.id||!other.bounds)continue")
         content = "\n".join(["G21 G90 G17", "G0 X0 Y0 Z5", "G1 Z-2", "G1 X10 Y0",
                               "G1 X10 Y100", "G1 X20 Y100", "G1 X20 Y0", ""])
         response = self.client.post(
