@@ -589,7 +589,15 @@ def plan_detail(request, plan_id):
                 part['no'] = number
                 part['label_x'] = Decimal(str(part['x'])) + Decimal(str(part['width'])) / 2
                 part['label_y'] = Decimal(str(part['y'])) + Decimal(str(part['height'])) / 2
-                part['dimension_y'] = part['label_y'] + Decimal(layout['dimension_font']) * Decimal('0.65')
+                # Font must fit inside the piece and the dimension line must sit
+                # fully BELOW the number glyph, never overlapping it (regression:
+                # dimension_y used dimension_font*0.65 which collided with the
+                # much taller number and produced unreadable garbled labels).
+                piece_font = max(16, min(layout['label_font'], int(min(Decimal(str(part['width'])), Decimal(str(part['height']))) / 3)))
+                dim_font = max(11, int(piece_font * 0.42))
+                part['font'] = piece_font
+                part['dimension_font'] = dim_font
+                part['dimension_y'] = part['label_y'] + Decimal(piece_font) * Decimal('0.62') + Decimal(dim_font) * Decimal('0.65')
                 task_id = part.get('task_id')
                 part['show_dimensions'] = (
                     Decimal(str(part['width'])) >= Decimal('250')

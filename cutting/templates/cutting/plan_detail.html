@@ -4,12 +4,12 @@
 {% block content %}
 <div class="station station-plan" dir="rtl" data-mode="layout">
   {% include 'cutting/_inventory_nav.html' %}
-  {% if plan.status == 'planned' %}{% include 'cutting/_flow_steps.html' with step=3 %}{% else %}{% include 'cutting/_flow_steps.html' with step=2 %}{% endif %}
 
   <header class="plan-bar">
     <div class="plan-bar-main">
       <div class="plan-title-row">
         <h1>برنامه برش <span class="num">#{{ plan.pk }}</span></h1>
+        {% if plan.status == 'planned' %}{% include 'cutting/_flow_steps.html' with step=3 compact=1 %}{% else %}{% include 'cutting/_flow_steps.html' with step=2 compact=1 %}{% endif %}
         <span class="cf-status {% if plan.status == 'planned' %}ready{% elif plan.status == 'cut' %}done{% elif plan.status == 'partial' %}warn{% else %}cancelled{% endif %}"><i class="dot"></i>{{ plan.get_status_display }}</span>
         <span class="plan-algo">الگوریتم: {{ plan.get_algorithm_display }}</span>
       </div>
@@ -91,13 +91,13 @@
             </div>
             <div class="small text-muted">بهره‌وری ورق <b class="num">{{ s.utilization_percent|floatformat:1 }}%</b> · <span class="num">{{ s.planned_piece_count }}</span> قطعه</div>
           </div>
-          <div class="sheet-map">
+          <div class="sheet-map" style="--map-w:{{ s.sheet.width }};--map-h:{{ s.sheet.height }}">
             <div class="canvas-frame">
               <div class="cut-map-wrap"><svg class="cut-map" viewBox="0 0 {{ s.sheet.width }} {{ s.sheet.height }}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="نقشه برش ورق {{ s.sheet.width }} در {{ s.sheet.height }} میلی‌متر">
                 <rect x="0" y="0" width="{{ s.sheet.width }}" height="{{ s.sheet.height }}" fill="#fffdf5" stroke="#94a3b8" stroke-width="4" />
                 <g transform="translate(5 5)">
-                  {% for part in s.parts %}<g data-sim-no="{{ part.no }}"><title>{{ part.label }} — {{ part.width }}×{{ part.height }} mm</title><rect x="{{ part.x }}" y="{{ part.y }}" width="{{ part.width }}" height="{{ part.height }}" fill="{{ part.color }}" fill-opacity=".28" stroke="{{ part.color }}" stroke-width="3"/><text x="{{ part.label_x }}" y="{{ part.label_y }}" font-size="{{ s.label_font }}" fill="#102a43" dominant-baseline="middle">{{ part.no }}</text>{% if part.show_dimensions %}<text x="{{ part.label_x }}" y="{{ part.dimension_y }}" font-size="{{ s.dimension_font }}" fill="#102a43" dominant-baseline="middle">{{ part.width }}×{{ part.height }}</text>{% endif %}</g>{% endfor %}
-                  {% for rem in s.expected_offcuts %}{% if rem.x is not None %}<rect x="{{ rem.x }}" y="{{ rem.y }}" width="{{ rem.width }}" height="{{ rem.height }}" fill="none" stroke="#a16207" stroke-width="3" stroke-dasharray="14 8"><title>پرت تخمینی {{ rem.width }}×{{ rem.height }}</title></rect>{% endif %}{% endfor %}
+                  {% for part in s.parts %}<g data-sim-no="{{ part.no }}"><title>{{ part.label }} — {{ part.width }}×{{ part.height }} mm</title><rect x="{{ part.x }}" y="{{ part.y }}" width="{{ part.width }}" height="{{ part.height }}" fill="{{ part.color }}" fill-opacity=".28" stroke="{{ part.color }}" stroke-width="3"/><text x="{{ part.label_x }}" y="{{ part.label_y }}" font-size="{{ part.font }}" fill="#102a43" dominant-baseline="middle">{{ part.no }}</text>{% if part.show_dimensions %}<text x="{{ part.label_x }}" y="{{ part.dimension_y }}" font-size="{{ part.dimension_font }}" fill="#334e68" dominant-baseline="middle">{{ part.width }}×{{ part.height }}</text>{% endif %}</g>{% endfor %}
+                  {% for rem in s.expected_offcuts %}{% if rem.x is not None %}<rect x="{{ rem.x }}" y="{{ rem.y }}" width="{{ rem.width }}" height="{{ rem.height }}" fill="#fbbf2422" stroke="#b45309" stroke-width="6" stroke-dasharray="18 10"><title>پرت تخمینی {{ rem.width }}×{{ rem.height }}</title></rect>{% endif %}{% endfor %}
                 </g>
               </svg></div>
             </div>

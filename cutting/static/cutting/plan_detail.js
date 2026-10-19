@@ -48,7 +48,10 @@
     const label = document.getElementById('sheet-progress-label');
     if (bar) { bar.style.width = `${percent}%`; bar.textContent = `${percent}%`; }
     if (label) label.textContent = `${completed} از ${total} ورق ثبت شده`;
-    document.querySelectorAll('[data-count]').forEach(node => { node.textContent = counts[node.dataset.count] || 0; });
+    document.querySelectorAll('[data-count]').forEach(node => {
+      node.textContent = counts[node.dataset.count] || 0;
+      node.closest('.status-pill')?.classList.toggle('is-zero', !(counts[node.dataset.count] || 0));
+    });
     const progress = bar?.closest('[role="progressbar"]');
     if (progress) progress.setAttribute('aria-valuenow', String(percent));
     updateMaterialProgress();
