@@ -2,6 +2,7 @@ from django.core.exceptions import ValidationError
 from django.db import models, transaction
 from django.contrib.auth.models import User
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.functional import cached_property
 import jdatetime
 from .fields import PersianDateField
@@ -154,6 +155,7 @@ class Order(models.Model):
     shipping_address = models.TextField(blank=True, verbose_name="آدرس ارسال نهایی")
     tracking_code = models.CharField(max_length=100, blank=True, verbose_name="کد رهگیری")
     paid_at = models.DateTimeField(null=True, blank=True, verbose_name="تاریخ پرداخت")
+    delivered_at = models.DateTimeField(null=True, blank=True, verbose_name="تاریخ تحویل")
     address = models.ForeignKey(
         'storefront.Address', on_delete=models.SET_NULL, null=True, blank=True,
         related_name='orders', verbose_name="آدرس انتخاب‌شده",
@@ -169,6 +171,20 @@ class Order(models.Model):
     class Meta:
         verbose_name = "سفارش"
         verbose_name_plural = "سفارش‌ها"
+
+    def save(self, *args, **kwargs):
+        # ثبت خودکار زمان تحویل: هر مسیری (ادمین، بسته‌بندی، ...) که وضعیت را
+        # `delivered` کند، delivered_at را همان لحظه پر می‌کند. مهلت ۷ روزهٔ
+        # مرجوعی (storefront.returns_views) روی همین فیلد حساب می‌شود؛ پیش از
+        # این فیلد اصلاً وجود نداشت و ثبت مرجوعی با AttributeError و 500
+        # شکست می‌خورد. اگر status دوباره به حالت قبل برگردد مقدار پاک
+        # نمی‌شود — تاریخ اولین تحویل مستند می‌ماند.
+        if self.status == 'delivered' and self.delivered_at is None:
+            self.delivered_at = timezone.now()
+            update_fields = kwargs.get('update_fields')
+            if update_fields is not None and 'delivered_at' not in update_fields:
+                kwargs['update_fields'] = [*update_fields, 'delivered_at']
+        super().save(*args, **kwargs)
     
     @property
     def total_price(self):
