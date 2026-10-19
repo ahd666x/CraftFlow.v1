@@ -2,6 +2,7 @@ import math
 from collections import Counter, defaultdict
 from decimal import Decimal
 
+from django.conf import settings
 from django.db import transaction
 from django.db.models import F
 
@@ -24,10 +25,42 @@ def is_cnc_first(part):
     return bool(stations and stations[0] == 'cnc')
 
 
+def _with_explicit_mm(text):
+    """Return ``(text, injected)`` with ``G21`` pinned before the first X/Y word.
+
+    For post-processors that never emit a modal unit word (G20/G21 absent).
+    A program that already declares G21 — or declares inches (G20, which the
+    caller rejects) — is returned unchanged. The injected line shifts no
+    geometry; it only makes the millimetre assumption explicit and machine
+    independent, so every downstream consumer (sheet output included) sees
+    an unambiguous program.
+    """
+    lines = text.splitlines(keepends=True)
+    for index, raw_line in enumerate(lines):
+        clean = gcode_sheet._clean(raw_line)
+        words = gcode_sheet._words(clean)
+        codes = [
+            int(value) for letter, value, _raw in words
+            if letter == 'G' and value.is_integer()
+        ]
+        if 20 in codes or 21 in codes:
+            return text, False
+        if any(letter in ('X', 'Y') for letter, _value, _raw in words):
+            newline = '\r\n' if raw_line.endswith('\r\n') else '\n'
+            lines.insert(index, 'G21' + newline)
+            return ''.join(lines), True
+    return text, False
+
+
 def _source_geometry(path):
     """Read a part program and measure its *cutting* geometry (arcs included)."""
     with open(path, 'r', encoding='utf-8-sig') as stream:
         text = stream.read()
+    implicit_mm = str(getattr(settings, 'CNC_RESIZER_IMPLICIT_UNITS', '') or '').strip().lower() == 'mm'
+    if implicit_mm:
+        text, units_injected = _with_explicit_mm(text)
+    else:
+        units_injected = False
     unit_mode = None
     distance_mode = None
     for raw_line in text.splitlines():
@@ -47,12 +80,16 @@ def _source_geometry(path):
         has_xy = any(letter in ('X', 'Y') for letter, _value, _raw in gcode_sheet._words(clean))
         if has_xy and 'G53' not in clean:
             if unit_mode != 'mm':
-                raise gcode_sheet.GcodeError('واحد فایل منبع باید پیش از نخستین حرکت صریحاً میلی‌متر (G21) باشد.')
+                raise gcode_sheet.GcodeError(
+                    'واحد فایل منبع باید پیش از نخستین حرکت صریحاً میلی‌متر (G21) باشد؛ '
+                    'اگر پست‌پروسسور شما هرگز واحد نمی‌نویسد و قطعاً میلی‌متر است، '
+                    'CNC_RESIZER_IMPLICIT_UNITS=mm را در تنظیمات فعال کنید.'
+                )
             if distance_mode != 'absolute':
                 raise gcode_sheet.GcodeError('مختصات فایل منبع باید پیش از نخستین حرکت صریحاً مطلق (G90) باشد.')
     _pre, body, _post = gcode_sheet.split_program(text)
     min_x, min_y, max_x, max_y = gcode_sheet.source_bounds(body)
-    return text, min_x, min_y, max_x, max_y
+    return text, units_injected, min_x, min_y, max_x, max_y
 
 
 def _planned_piece_counts():
@@ -125,7 +162,7 @@ def create_cnc_sheet_plans(order_ids, user, kerf=Decimal('4.0')):
             continue
         try:
             record = resolve_cnc_file(task.part, user)
-            text, min_x, min_y, max_x, max_y = _source_geometry(record.path)
+            text, units_injected, min_x, min_y, max_x, max_y = _source_geometry(record.path)
         except (CncResolutionError, OSError, gcode_sheet.GcodeError, ValueError) as exc:
             register_issue(task, exc, stage='source_or_geometry', quantity=pending)
             continue
@@ -133,7 +170,7 @@ def create_cnc_sheet_plans(order_ids, user, kerf=Decimal('4.0')):
             grouped[task.part.material_id].append({
                 'task_id': task.id, 'part_id': task.part_id, 'label': task.part.f2 or task.part.name or task.part.f3,
                 'f3': task.part.f3, 'width': _ceil_tenth(max_x - min_x),
-                'height': _ceil_tenth(max_y - min_y), 'text': text,
+                'height': _ceil_tenth(max_y - min_y), 'text': text, 'units_injected': units_injected,
                 'min_x': min_x, 'min_y': min_y, 'max_x': max_x, 'max_y': max_y,
                 'turn': bool(task.part.turn), 'order_id': task.order_id,
                 'task_quantity': task.quantity, 'completed_before': task.completed_quantity,
@@ -198,7 +235,8 @@ def create_cnc_sheet_plans(order_ids, user, kerf=Decimal('4.0')):
                                      'f3': p['f3'], 'order_id': p['order_id'],
                                      'x': str(placed['x']), 'y': str(placed['y']),
                                      'width': str(placed['width']), 'height': str(placed['height']),
-                                     'rotated': rotated, 'task_quantity': p['task_quantity'],
+                                     'rotated': rotated, 'units_injected': p['units_injected'],
+                                     'task_quantity': p['task_quantity'],
                                      'completed_before': p['completed_before']})
             task_piece_counts = Counter(piece['task_id'] for piece in output_parts)
             for task_id, quantity in task_piece_counts.items():

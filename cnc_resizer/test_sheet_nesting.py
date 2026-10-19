@@ -3,7 +3,7 @@ import tempfile
 from decimal import Decimal
 
 from django.contrib.auth.models import User
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from cutting.models import SheetStock
@@ -11,7 +11,7 @@ from product.models import Customer, Material, Order, Part, ProductionTask
 
 from .models import CncSheetPlan
 from .services import register_base_file
-from .sheet_nesting import create_cnc_sheet_plans
+from .sheet_nesting import create_cnc_sheet_plans, _source_geometry, _with_explicit_mm
 from .tests import SAMPLE
 
 
@@ -65,9 +65,49 @@ class CncSheetNestingTests(TestCase):
 
     def test_source_without_explicit_millimetre_units_is_rejected(self):
         from .gcode_sheet import GcodeError
-        from .sheet_nesting import _source_geometry
         with self.assertRaisesRegex(GcodeError, 'G21'):
             _source_geometry(SAMPLE)
+
+    def test_g21_is_injected_before_first_xy_move_and_is_idempotent(self):
+        text, injected = _with_explicit_mm("%\r\nN10G90G54\r\nN20G0X1Y1\r\nM30\r\n%\r\n")
+        self.assertTrue(injected)
+        self.assertEqual(text.splitlines()[2], 'G21')
+        self.assertIn('N20G0X1Y1', text)
+        declared, not_injected = _with_explicit_mm("%\nN10G21G90G54\nN20G0X1Y1\n")
+        self.assertFalse(not_injected)
+        self.assertEqual(declared, "%\nN10G21G90G54\nN20G0X1Y1\n")
+
+    def test_implicit_mm_setting_normalises_source_and_plans(self):
+        register_base_file(SAMPLE, self.cnc_part.f3, self.user)
+        with override_settings(CNC_RESIZER_IMPLICIT_UNITS='mm'):
+            plans, issues = create_cnc_sheet_plans([self.order.pk], self.user)
+        self.assertEqual(len(plans), 1)
+        pieces = plans[0].layout['parts']
+        self.assertEqual(len(pieces), 3)
+        self.assertTrue(all(piece['units_injected'] for piece in pieces))
+        self.assertEqual(issues[0].details, {'stage': 'output_blocked', 'quantity': 3})
+
+    def test_implicit_mm_leaves_known_mm_sources_untouched(self):
+        with override_settings(CNC_RESIZER_IMPLICIT_UNITS='mm'):
+            _text, injected, *_rest = _source_geometry(self.known_mm_path)
+        self.assertFalse(injected)
+
+    def test_implicit_mm_still_rejects_inch_and_relative_sources(self):
+        from .gcode_sheet import GcodeError
+        archive = tempfile.TemporaryDirectory()
+        self.addCleanup(archive.cleanup)
+        inch_path = os.path.join(archive.name, 'inch.cnc')
+        with open(inch_path, 'w', encoding='utf-8') as stream:
+            stream.write("%\nN10G20G90\nN20G0X1Y1\n")
+        with override_settings(CNC_RESIZER_IMPLICIT_UNITS='mm'):
+            with self.assertRaisesRegex(GcodeError, 'G20'):
+                _source_geometry(inch_path)
+        relative_path = os.path.join(archive.name, 'relative.cnc')
+        with open(relative_path, 'w', encoding='utf-8') as stream:
+            stream.write("%\nN10G91\nN20G0X1Y1\n")
+        with override_settings(CNC_RESIZER_IMPLICIT_UNITS='mm'):
+            with self.assertRaisesRegex(GcodeError, 'G91'):
+                _source_geometry(relative_path)
 
     def test_source_failure_issue_is_not_duplicated_on_repeated_attempt(self):
         register_base_file(SAMPLE, self.cnc_part.f3, self.user)
