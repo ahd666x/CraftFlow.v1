@@ -402,6 +402,9 @@ def sheet_plans(request):
         plan.orders = sorted({p.get('order_id') for p in (plan.layout or {}).get('parts', []) if p.get('order_id')})
         plan.aspect = round(float(plan.height) / float(plan.width), 4) if plan.width else 1
         plan.unused_area = max(0, plan.width * plan.height - plan.planned_area)
+        total_area = float(plan.width) * float(plan.height)
+        plan.utilization = round(float(plan.planned_area) / total_area * 100, 1) if total_area else 0
+        plan.unused_area_m2 = round(plan.unused_area / 1_000_000, 2)
         plan.output_status = 'فایل دستگاه تأییدشده' if plan.output_verified and plan.gcode.strip() else 'نوع خروجی نامشخص؛ فایل تولید نشده'
     issue_query = CncPlanningIssue.objects.all() if can_view_all else CncPlanningIssue.objects.filter(created_by=request.user)
     issues = issue_query.select_related('task', 'order', 'part', 'resolved_by')[:100]

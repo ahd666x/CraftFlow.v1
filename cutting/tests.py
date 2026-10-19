@@ -180,7 +180,7 @@ class InventoryAndCutFlowTests(TestCase):
         )
         response = self.client.get(reverse('cutting:inventory'))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'شامل برنامه‌های CUT و CNC')
+        self.assertContains(response, 'CUT و CNC')
         self.assertContains(response, 'رزرو شده؛ قفل')
         self.assertEqual(response.context['reserved_count'], 1)
         blocked = self.client.post(reverse('cutting:stock_deactivate', args=[stock.pk]), {'reason': 'تست'})
@@ -305,7 +305,7 @@ class InventoryAndCutFlowTests(TestCase):
         self.assertEqual(plan.planned_sheets.get().outcome, 'released')
         self.assertTrue(SheetStockEvent.objects.filter(event_type='release', plan=plan).exists())
         self.assertFalse(SheetStockEvent.objects.filter(event_type='untouched', plan=plan).exists())
-        self.assertContains(self.client.get(reverse('cutting:plan_detail', args=[plan.pk])), 'این برنامه لغو شده است')
+        self.assertContains(self.client.get(reverse('cutting:plan_detail', args=[plan.pk])), 'این برنامه لغو شده و رزروها آزاد شدند')
         self.assertEqual(self.client.post(reverse('cutting:planner'), {'action':'plan','order_ids':[self.order.pk],'kerf':'4'}).status_code, 302)
 
     def test_changed_task_or_invalid_actual_remainder_rolls_back(self):
@@ -372,7 +372,7 @@ class InventoryAndCutFlowTests(TestCase):
         order = response.context['orders'][0]
         self.assertEqual((order.cut_task_count, order.remaining_pieces), (1, 1))
         self.assertContains(response, 'name="order_ids"')
-        self.assertContains(response, 'انتخاب موارد نمایان')
+        self.assertContains(response, 'انتخاب نمایان‌ها')
         self.assertContains(response, 'پیش‌نمایش نیاز مواد')
 
     def test_live_material_preview_uses_optimizer_without_reserving_or_consuming_stock(self):
@@ -595,7 +595,7 @@ class InventoryAndCutFlowTests(TestCase):
         response = self.client.get(reverse('cnc_resizer:sheet_plans'))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, reverse('cnc_resizer:complete_sheet_plan', args=[plan.pk]))
-        self.assertContains(response, 'ثبت نتیجهٔ واقعی اجرا')
+        self.assertContains(response, 'ثبت نتیجهٔ اجرا')
         self.assertContains(response, reverse('cnc_resizer:update_planning_issue', args=[issue.pk]))
         self.assertContains(response, 'نادیده‌گرفتن')
 
@@ -762,13 +762,13 @@ class InventoryAndCutFlowTests(TestCase):
         response = self.client.get(reverse('cutting:plan_detail', args=[plan.pk]))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'class="cut-map"')
-        self.assertContains(response, 'پذیرش آن روی کنترلر دستگاه شما تأیید نشده است')
+        self.assertContains(response, 'پذیرش این فایل روی کنترلر دستگاه تأیید نشده')
         self.assertContains(response, 'نتیجه واقعی این ورق')
         self.assertContains(response, f'name="outcome_{sheet.pk}"')
         self.assertContains(response, 'type="radio"')
         self.assertContains(response, '>1</text>')
-        self.assertContains(response, 'بهره‌وری سطحی')
-        self.assertContains(response, 'همه ورق‌ها مصرف شدند')
+        self.assertContains(response, 'بهره‌وری')
+        self.assertContains(response, 'همه مصرف شدند')
         download = self.client.get(reverse('cutting:download_cut', args=[plan.pk]))
         self.assertEqual(download.status_code, 200)
         import xml.etree.ElementTree as ET

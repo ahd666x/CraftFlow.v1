@@ -36,7 +36,7 @@
     });
     document.getElementById('client-empty').hidden = visibleCount !== 0;
     const visibleCountLabel = document.getElementById('visible-order-count');
-    if (visibleCountLabel) visibleCountLabel.textContent = `${fmt(visibleCount)} سفارش نمایش داده می‌شود`;
+    if (visibleCountLabel) visibleCountLabel.textContent = `${fmt(visibleCount)} سفارش`;
     const visible = visibleBoxes();
     all.checked = visible.length > 0 && visible.every(box => box.checked);
     all.indeterminate = visible.some(box => box.checked) && !all.checked;

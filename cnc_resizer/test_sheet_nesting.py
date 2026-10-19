@@ -145,7 +145,7 @@ class CncSheetNestingTests(TestCase):
         self.assertIn(self.plain_task.pk, planned_task_ids)
         self.assertNotIn(self.cnc_task.pk, planned_task_ids)
         page = self.client.get(reverse("cnc_resizer:sheet_plans"))
-        self.assertContains(page, "فایل دستگاه تولید نشده")
+        self.assertContains(page, "فایل دستگاه تأیید نشده")
         plan = CncSheetPlan.objects.get()
         self.assertNotContains(page, reverse('cnc_resizer:download_sheet_plan', args=[plan.pk]))
 
