@@ -29,7 +29,7 @@
 .cut-map text{font-family:system-ui,sans-serif;font-weight:600;text-anchor:middle}
 .sheet-panel.d-none{display:none!important}
 .result-entry{scroll-margin-top:1rem}
-.cut-result-actions{position:sticky;bottom:6rem;z-index:20;box-shadow:0 4px 18px #0001}
+.cut-result-actions{position:sticky;bottom:.5rem;z-index:20;box-shadow:0 4px 18px #0001}
 .remnant-row .form-control{min-height:48px}
 .sheet-selector .btn{min-width:44px;min-height:44px}
 .sheet-navigation .btn,.outcome-group .btn{min-height:48px}
@@ -233,3 +233,35 @@
   .cutting-page .card-footer > div { max-width: 100%; flex-wrap: wrap; }
   .cutting-stock-form-page .btn-lg { min-height: 46px; }
 }
+
+
+/* plan_detail: AutoSAW-style workspace */
+.plan-bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.75rem;background:#fff;border:1px solid #dbe3ec;border-radius:.75rem;padding:.75rem 1rem;margin-bottom:.75rem}
+.plan-bar-stats{display:flex;gap:.5rem}
+.plan-chip{border:1px solid #e2e8f0;border-radius:.5rem;padding:.3rem .7rem;text-align:center;background:#f8fafc}
+.plan-chip span{display:block;font-size:.68rem;color:#64748b}
+.plan-chip b{font-size:1.1rem}
+.plan-bar-actions{display:flex;flex-wrap:wrap;gap:.5rem}
+.plan-progress-card{background:#fff;border:1px solid #dbe3ec;border-radius:.75rem;padding:.6rem 1rem;margin-bottom:.75rem}
+.material-tabs{display:flex;gap:.5rem;overflow-x:auto;padding-bottom:.4rem;margin-bottom:.75rem}
+.material-tab{display:flex;flex-direction:column;align-items:flex-start;gap:.1rem;min-width:11rem;padding:.55rem .85rem;border:1px solid #cbd5e1;border-radius:.65rem;background:#fff;color:#334155;text-align:start}
+.material-tab.active{border-color:#2563eb;background:#eff6ff;box-shadow:inset 0 -3px #2563eb;color:#1d4ed8}
+.material-tab.complete .mat-progress{color:#166534}
+.material-tab .mat-progress{font-size:.75rem;font-weight:700}
+.material-tab:focus-visible{outline:3px solid #93c5fd;outline-offset:2px}
+.sheet-panel{display:grid;grid-template-columns:minmax(0,1fr);gap:.75rem;grid-template-areas:"head" "map" "side" "info" "nav"}
+.sheet-panel.has-side{grid-template-columns:minmax(0,1fr) 23rem;grid-template-areas:"head head" "map side" "info side" "nav nav"}
+.sheet-panel > .sheet-head{grid-area:head}
+.sheet-panel > .sheet-map{grid-area:map;min-width:0}
+.sheet-panel > .sheet-info{grid-area:info}
+.sheet-panel > .result-entry{grid-area:side;align-self:start;position:sticky;top:.5rem;max-height:calc(100vh - 7rem);overflow:auto;border:1px solid #dbe3ec;border-radius:.65rem;padding:.9rem;background:#fff}
+.sheet-panel > .sheet-navigation{grid-area:nav}
+.sheet-panel .cut-map{max-height:calc(100vh - 21rem);min-height:260px}
+.sheet-panel.d-none{display:none!important}
+@media(max-width:991.98px){
+  .sheet-panel.has-side{grid-template-columns:minmax(0,1fr);grid-template-areas:"head" "map" "side" "info" "nav"}
+  .sheet-panel > .result-entry{position:static;max-height:none}
+  .sheet-panel .cut-map{max-height:none}
+  .plan-bar-stats{width:100%}
+}
+@media print{.material-section.d-none{display:block!important}.plan-bar-actions,.material-tabs,.plan-progress-card{display:none!important}.sheet-panel{display:block!important}}

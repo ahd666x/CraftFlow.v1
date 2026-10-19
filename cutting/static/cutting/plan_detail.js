@@ -3,6 +3,8 @@
   const panels = [...document.querySelectorAll('[data-sheet-panel]')];
   const tabs = [...document.querySelectorAll('.sheet-tab')];
   const groups = [...document.querySelectorAll('.outcome-group')];
+  const sections = [...document.querySelectorAll('[data-material-section]')];
+  const materialTabs = [...document.querySelectorAll('.material-tab')];
   const number = value => Number(String(value || '').replace(',', '.')) || 0;
   const fmt = value => Number(value || 0).toLocaleString('en-US');
   const outcomeOf = id => document.querySelector(`input[name="outcome_${id}"]:checked`)?.value || '';
@@ -25,6 +27,17 @@
     });
   }
 
+  function updateMaterialProgress() {
+    sections.forEach(section => {
+      const own = panels.filter(panel => section.contains(panel));
+      const done = own.filter(panel => storedOutcome(panel) !== 'none').length;
+      const key = section.dataset.materialSection;
+      const label = document.querySelector(`[data-material-progress="${key}"]`);
+      if (label) label.textContent = `${done}/${own.length}`;
+      const tab = materialTabs.find(item => item.dataset.materialTab === key);
+      if (tab) tab.classList.toggle('complete', own.length > 0 && done === own.length);
+    });
+  }
   function updateProgress() {
     const counts = { reserved: 0, used: 0, untouched: 0, scrapped: 0 };
     panels.forEach(panel => { counts[storedOutcome(panel)] = (counts[storedOutcome(panel)] || 0) + 1; });
@@ -38,10 +51,18 @@
     document.querySelectorAll('[data-count]').forEach(node => { node.textContent = counts[node.dataset.count] || 0; });
     const progress = bar?.closest('[role="progressbar"]');
     if (progress) progress.setAttribute('aria-valuenow', String(percent));
+    updateMaterialProgress();
   }
 
   function showPanel(panel) {
     if (!panel || !panels.length) return;
+    const section = panel.closest('[data-material-section]');
+    sections.forEach(item => item.classList.toggle('d-none', item !== section));
+    materialTabs.forEach(tab => {
+      const active = Boolean(section) && tab.dataset.materialTab === section.dataset.materialSection;
+      tab.classList.toggle('active', active);
+      tab.setAttribute('aria-selected', String(active));
+    });
     panels.forEach(item => item.classList.toggle('d-none', item !== panel));
     tabs.forEach(tab => {
       const active = tab.dataset.sheetPk === panel.dataset.sheetPk;
@@ -216,6 +237,11 @@
   document.querySelectorAll('.sheet-tab').forEach(tab => tab.addEventListener('click', () => {
     const panel = panels.find(item => item.dataset.sheetPk === tab.dataset.sheetPk);
     showPanel(panel);
+  }));
+  materialTabs.forEach(tab => tab.addEventListener('click', () => {
+    const section = sections.find(item => item.dataset.materialSection === tab.dataset.materialTab);
+    const own = panels.filter(panel => section && section.contains(panel));
+    showPanel(own.find(panel => storedOutcome(panel) === 'none') || own[0]);
   }));
   panels.forEach(panel => {
     panel.querySelector('.previous-sheet')?.addEventListener('click', () => showPanel(panels[panels.indexOf(panel) - 1]));

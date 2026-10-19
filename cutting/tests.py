@@ -695,6 +695,16 @@ class InventoryAndCutFlowTests(TestCase):
         self.assertEqual(setting.default_kerf, Decimal('3.5'))
         self.assertContains(self.client.get(reverse('cutting:planner')), 'value="3.5"')
 
+    def test_plan_detail_has_material_tabs_when_multiple_materials(self):
+        other = Material.objects.create(name='MDF دوم', thickness=Decimal('18.0'))
+        part2 = Part.objects.create(material=other, name='کف', length=Decimal('300.0'), width=Decimal('200.0'), pname='کمد', routing_code='cut', turn=True)
+        ProductionTask.objects.create(order=self.order, part=part2, station_name='cut', step_order=2, quantity=1, status='pending')
+        self.add_stock()
+        SheetStock.objects.create(material=other, width=Decimal('1830.0'), height=Decimal('3660.0'), quantity=1, created_by=self.user)
+        plan = self.make_plan()
+        response = self.client.get(reverse('cutting:plan_detail', args=[plan.pk]))
+        self.assertContains(response, 'data-material-tab="1"')
+
     def test_plan_detail_renders_and_downloads_the_cut_file(self):
         self.add_stock()
         plan = self.make_plan()
