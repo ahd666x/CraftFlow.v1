@@ -41,7 +41,13 @@ class CncSheetPlanAdmin(admin.ModelAdmin):
     list_display = ("id", "material", "source_stock", "sheet_index", "status", "result_outcome", "completed_by", "completed_at", "created_at")
     list_filter = ("status", "result_outcome", "material")
     search_fields = ("material__name",)
-    readonly_fields = ("created_at",)
+    readonly_fields = tuple(field.name for field in CncSheetPlan._meta.fields)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(CncPlanningIssue)

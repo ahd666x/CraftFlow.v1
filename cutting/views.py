@@ -148,9 +148,9 @@ def planner(request):
                     order_ids, request.user, kerf=kerf,
                 )
                 if cnc_sheet_plans:
-                    messages.success(request, f'{len(cnc_sheet_plans)} فایل G-code برای ورق‌های CNC ساخته شد.')
+                    messages.success(request, f'{len(cnc_sheet_plans)} چیدمان ورق CNC ذخیره شد؛ فایل اجرایی تا تأیید کنترلر مقصد تولید نمی‌شود.')
                 if cnc_issues:
-                    messages.warning(request, f'{len(cnc_issues)} قطعه به‌دلیل خطا از برنامه عبور داده شد؛ فهرست خطاها در صفحه خروجی‌های ورق CNC ثبت شده است.')
+                    messages.warning(request, f'{len(cnc_issues)} مورد نیازمند بررسی یا تأیید خروجی است؛ جزئیات در صفحهٔ برنامه‌های CNC ثبت شده است.')
             except (ValueError, OSError) as exc:
                 messages.error(request, str(exc)); return redirect('cutting:planner')
             except Exception as exc:
@@ -171,9 +171,9 @@ def planner(request):
                     order_id__in=order_ids, station_name='cut', status='pending', part__isnull=False,
                     quantity__gt=F('completed_quantity'),
                 )
-                if cnc_sheet_mode:
-                    task_query = task_query.exclude(part__routing_code__iregex=r'^\s*cnc(?:\.|$)')
                 tasks = list(task_query.select_related('part__material', 'order', 'order__customer').order_by('pk'))
+                from cnc_resizer.sheet_nesting import is_cnc_first
+                tasks = [task for task in tasks if not is_cnc_first(task.part)]
                 planned_cnc_counts = {}
                 if not cnc_sheet_mode:
                     from cnc_resizer.sheet_nesting import _planned_piece_counts
@@ -295,6 +295,10 @@ def planner(request):
                         sheet_record = CutPlanSheet.objects.create(
                             plan=plan, source_stock=source, material_id=row['material_id'],
                             layout_index=index, width=source.width, height=source.height,
+                            planned_area=sum(
+                                (Decimal(str(piece['width'])) * Decimal(str(piece['height']))
+                                 for piece in layout['parts']), Decimal('0'),
+                            ),
                             was_offcut=source.is_offcut,
                         )
                         stock_data['plan_sheet_id'] = sheet_record.pk
@@ -395,8 +399,9 @@ def planner_preview(request):
         'part__material', 'order', 'order__customer',
     ).order_by('pk'))
     cnc_mode = request.GET.get('planning_mode') == 'cnc_sheets'
+    from cnc_resizer.sheet_nesting import is_cnc_first
     if cnc_mode:
-        tasks = [task for task in tasks if (task.part.routing_code or '').strip().lower().split('.')[0:1] == ['cnc']]
+        tasks = [task for task in tasks if is_cnc_first(task.part)]
         from cnc_resizer.sheet_nesting import _planned_piece_counts
         already_planned = _planned_piece_counts()
         piece_quantities = {
@@ -405,6 +410,7 @@ def planner_preview(request):
         }
         tasks = [task for task in tasks if piece_quantities[task.pk] > 0]
     else:
+        tasks = [task for task in tasks if not is_cnc_first(task.part)]
         from cnc_resizer.sheet_nesting import _planned_piece_counts
         already_planned = _planned_piece_counts()
         piece_quantities = {
@@ -631,8 +637,11 @@ def _parse_sheet_result(request, sheet):
         if width > sheet.width or height > sheet.height:
             raise ValueError('ابعاد پرت نمی‌تواند از ابعاد ورق اولیه بزرگ‌تر باشد.')
         remnants.append({'width': format(width, 'f'), 'height': format(height, 'f')})
-    if sum(Decimal(item['width']) * Decimal(item['height']) for item in remnants) > sheet.width * sheet.height:
+    remnant_area = sum((Decimal(item['width']) * Decimal(item['height']) for item in remnants), Decimal('0'))
+    if remnant_area > sheet.width * sheet.height:
         raise ValueError('مجموع مساحت پرت‌های واردشده از مساحت ورق مبدأ بیشتر است.')
+    if remnants and (sheet.planned_area <= 0 or remnant_area > sheet.width * sheet.height - sheet.planned_area):
+        raise ValueError('مجموع مساحت پرت‌ها از فضای باقی‌مانده پس از قطعات برنامه بیشتر است؛ نتیجه ثبت نشد.')
     return outcome, remnants
 
 

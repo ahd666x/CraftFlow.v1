@@ -122,8 +122,12 @@
   }
 
 /* Responsive UI consistency for the standalone CNC workbench. */
-:root { color-scheme: light; }
-body { color: #1e293b; line-height: 1.55; }
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { color-scheme: dark; }
+}
+body { color: var(--text); line-height: 1.55; }
 button, input, select, textarea { font: inherit; }
 button { cursor: pointer; }
 input, select, textarea { max-width: 100%; min-width: 0; }

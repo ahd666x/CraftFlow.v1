@@ -1,8 +1,8 @@
-"""Pure-Python (Django-free) helpers that merge several single-part CNC programs
-into ONE program for a whole sheet.
+"""Legacy generic sheet-program prototype and geometry helpers.
 
-Coordinates: G90 absolute X/Y; arc centres I/J are incremental (relative to the
-arc start), which is what the CNC post-processor of this project emits.
+``build_sheet_program`` assumes G90 absolute X/Y and incremental I/J arc centres.
+Those assumptions have not been tied to an approved destination controller, so
+the production planner must not use this builder as a machine postprocessor.
 """
 import math
 import re

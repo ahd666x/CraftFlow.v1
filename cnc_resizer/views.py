@@ -383,7 +383,8 @@ def _layout_preview(plan):
         boxes.append({
             'left': round(x / sheet_w * 100, 3), 'width': round(w / sheet_w * 100, 3),
             'top': round((sheet_h - y - h) / sheet_h * 100, 3), 'height': round(h / sheet_h * 100, 3),
-            'label': piece.get('f3') or piece.get('label') or '', 'rotated': piece.get('rotated', False),
+            'label': piece.get('f3') or piece.get('label') or '',
+            'width_mm': w, 'height_mm': h, 'rotated': piece.get('rotated', False),
         })
     return boxes
 
@@ -400,10 +401,18 @@ def sheet_plans(request):
         plan.preview = _layout_preview(plan)
         plan.orders = sorted({p.get('order_id') for p in (plan.layout or {}).get('parts', []) if p.get('order_id')})
         plan.aspect = round(float(plan.height) / float(plan.width), 4) if plan.width else 1
+        plan.unused_area = max(0, plan.width * plan.height - plan.planned_area)
+        plan.output_status = 'فایل دستگاه تأییدشده' if plan.output_verified and plan.gcode.strip() else 'نوع خروجی نامشخص؛ فایل تولید نشده'
     issue_query = CncPlanningIssue.objects.all() if can_view_all else CncPlanningIssue.objects.filter(created_by=request.user)
     issues = issue_query.select_related('task', 'order', 'part', 'resolved_by')[:100]
-    active_count = sum(plan.status == 'planned' for plan in plans)
-    return render(request, 'cnc_resizer/sheet_plans.html', {'plans': plans, 'issues': issues, 'active_count': active_count})
+    issue_count = issue_query.count()
+    total_count = plan_query.count()
+    active_count = plan_query.filter(status='planned').count()
+    used_count = plan_query.filter(status='done', result_outcome='used').count()
+    return render(request, 'cnc_resizer/sheet_plans.html', {
+        'plans': plans, 'issues': issues, 'total_count': total_count, 'issue_count': issue_count,
+        'active_count': active_count, 'used_count': used_count,
+    })
 
 
 @login_required
@@ -414,11 +423,23 @@ def cancel_sheet_plan(request, plan_id):
     from django.contrib import messages
     from django.shortcuts import get_object_or_404, redirect
     with transaction.atomic():
-        plan = get_object_or_404(CncSheetPlan.objects.select_for_update(), pk=plan_id, status='planned')
+        plan = get_object_or_404(CncSheetPlan.objects.select_for_update().select_related('source_stock', 'material'), pk=plan_id)
         if not _may_access_sheet_plan(request.user, plan):
             raise PermissionDenied
+        if plan.status == 'cancelled':
+            messages.info(request, f'برنامه CNC #{plan.pk} قبلاً لغو شده است؛ موجودی تغییری نکرد.')
+            return redirect('cnc_resizer:sheet_plans')
+        if plan.status != 'planned':
+            messages.info(request, f'برنامه CNC #{plan.pk} نهایی شده و قابل لغو نیست.')
+            return redirect('cnc_resizer:sheet_plans')
         plan.status = 'cancelled'
         plan.save(update_fields=['status'])
+        from cutting.models import SheetStockEvent
+        SheetStockEvent.objects.create(
+            stock=plan.source_stock, material=plan.material, cnc_plan=plan,
+            event_type='release', quantity_delta=0, width=plan.width, height=plan.height,
+            is_offcut=False, note=f'لغو برنامه CNC #{plan.pk}', created_by=request.user,
+        )
     messages.success(request, f'برنامه ورق #{plan.pk} لغو شد و ورق و قطعات آن آزاد شدند.')
     return redirect('cnc_resizer:sheet_plans')
 
@@ -439,10 +460,17 @@ def complete_sheet_plan(request, plan_id):
         with transaction.atomic():
             plan = get_object_or_404(
                 CncSheetPlan.objects.select_for_update().select_related('material'),
-                pk=plan_id, status='planned',
+                pk=plan_id,
             )
             if not _may_access_sheet_plan(request.user, plan):
                 raise PermissionDenied
+            if plan.status == 'done':
+                messages.info(request, f'نتیجهٔ برنامه CNC #{plan.pk} قبلاً ثبت شده است؛ موجودی دوباره تغییر نکرد.')
+                return redirect('cnc_resizer:sheet_plans')
+            if plan.status != 'planned':
+                raise ValueError('برنامهٔ لغوشده قابل ثبت نتیجه نیست.')
+            if not plan.output_verified or not plan.gcode.strip():
+                raise ValueError('فایل خروجی تأییدشده‌ای برای این برنامه وجود ندارد؛ ثبت نتیجه و مصرف موجودی مسدود شد.')
             outcome = request.POST.get('outcome', '')
             note = request.POST.get('note', '').strip()[:255]
             if outcome not in ('used', 'untouched', 'scrapped'):
@@ -470,8 +498,11 @@ def complete_sheet_plan(request, plan_id):
                     if width.quantize(Decimal('0.1')) != width or height.quantize(Decimal('0.1')) != height:
                         raise ValueError('ابعاد پرت حداکثر یک رقم اعشار می‌پذیرند.')
                     remnants.append({'width': format(width, 'f'), 'height': format(height, 'f')})
-                if sum(Decimal(r['width']) * Decimal(r['height']) for r in remnants) > plan.width * plan.height:
+                remnant_area = sum((Decimal(r['width']) * Decimal(r['height']) for r in remnants), Decimal('0'))
+                if remnant_area > plan.width * plan.height:
                     raise ValueError('مجموع مساحت پرت‌ها از مساحت ورق مبدأ بیشتر است.')
+                if remnants and (plan.planned_area <= 0 or remnant_area > plan.width * plan.height - plan.planned_area):
+                    raise ValueError('مجموع مساحت پرت‌ها از فضای باقی‌مانده پس از قطعات برنامه بیشتر است؛ نتیجه ثبت نشد.')
 
             source = get_object_or_404(SheetStock.objects.select_for_update(), pk=plan.source_stock_id)
             if not source.active or source.quantity < 1:
@@ -483,9 +514,21 @@ def complete_sheet_plan(request, plan_id):
                     raise ValueError('کسر این ورق باعث کمبود رزرو برنامهٔ دیگری می‌شود.')
 
             piece_counts = Counter()
+            piece_snapshots = {}
             for piece in (plan.layout or {}).get('parts', []):
                 if piece.get('task_id') is not None:
-                    piece_counts[int(piece['task_id'])] += 1
+                    task_id = int(piece['task_id'])
+                    piece_counts[task_id] += 1
+                    snapshot = {
+                        'part_id': piece.get('part_id'), 'order_id': piece.get('order_id'),
+                        'task_quantity': piece.get('task_quantity'),
+                        'completed_before': piece.get('completed_before'),
+                    }
+                    if outcome == 'used' and any(value is None for value in snapshot.values()):
+                        raise ValueError('برنامهٔ CNC تصویر ثابت کامل تسک‌های زمان برنامه‌ریزی را ندارد؛ نتیجه ثبت نشد.')
+                    if outcome == 'used' and task_id in piece_snapshots and piece_snapshots[task_id] != snapshot:
+                        raise ValueError('تصویر ثابت تسک در برنامه CNC ناسازگار است؛ نتیجه ثبت نشد.')
+                    piece_snapshots[task_id] = snapshot
             if outcome == 'used' and not piece_counts:
                 raise ValueError('هیچ تسک معتبری در برنامه پیدا نشد؛ نتیجه و موجودی تغییر نکرد.')
             tasks = {
@@ -497,7 +540,11 @@ def complete_sheet_plan(request, plan_id):
                     raise ValueError('برخی از تسک‌های برنامه دیگر موجود نیستند؛ نتیجه ثبت نشد.')
                 for task_id, count in piece_counts.items():
                     task = tasks[task_id]
-                    if task.status != 'pending' or task.completed_quantity + count > task.quantity:
+                    snapshot = piece_snapshots[task_id]
+                    if (task.status != 'pending' or task.part_id != snapshot['part_id']
+                            or task.order_id != snapshot['order_id'] or task.quantity != snapshot['task_quantity']
+                            or task.completed_quantity != snapshot['completed_before']
+                            or task.completed_quantity + count > task.quantity):
                         raise ValueError('تسک‌های این برنامه از زمان برنامه‌ریزی تغییر کرده‌اند؛ نتیجه ثبت نشد.')
 
             if outcome != 'untouched':
@@ -581,8 +628,12 @@ def download_sheet_plan(request, plan_id):
     plan = get_object_or_404(CncSheetPlan, pk=plan_id)
     if not _may_access_sheet_plan(request.user, plan):
         raise PermissionDenied
-    if plan.status == 'cancelled':
-        raise Http404("برنامهٔ CNC قابل دانلود نیست")
+    if plan.status == 'cancelled' or not plan.output_verified or not plan.gcode.strip():
+        from django.http import HttpResponse
+        return HttpResponse(
+            'فایل خروجی CNC معتبر و تأییدشده‌ای برای این برنامه وجود ندارد.',
+            status=409, content_type='text/plain; charset=utf-8',
+        )
     from django.http import HttpResponse
     response = HttpResponse(plan.gcode, content_type='text/plain; charset=utf-8')
     response['Content-Disposition'] = f'attachment; filename="craftflow_cnc_sheet_{plan.pk}.nc"'

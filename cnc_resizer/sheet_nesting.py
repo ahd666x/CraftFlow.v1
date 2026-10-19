@@ -5,11 +5,11 @@ from decimal import Decimal
 from django.db import transaction
 from django.db.models import F
 
-from cutting.models import CutPlanSheet, CutPlanTask, SheetStock
+from cutting.models import CutPlanSheet, CutPlanTask, SheetStock, SheetStockEvent
 from cutting.optimizer import optimize
 from product.models import ProductionTask
 from .models import CncPlanningIssue, CncSheetPlan
-from .services import resolve_cnc_file
+from .services import CncResolutionError, resolve_cnc_file
 
 from . import gcode_sheet
 
@@ -28,6 +28,28 @@ def _source_geometry(path):
     """Read a part program and measure its *cutting* geometry (arcs included)."""
     with open(path, 'r', encoding='utf-8-sig') as stream:
         text = stream.read()
+    unit_mode = None
+    distance_mode = None
+    for raw_line in text.splitlines():
+        clean = gcode_sheet._clean(raw_line)
+        codes = [
+            int(value) for letter, value, _raw in gcode_sheet._words(clean)
+            if letter == 'G' and value.is_integer()
+        ]
+        if 20 in codes:
+            raise gcode_sheet.GcodeError('فایل منبع شامل واحد اینچ (G20) است؛ تبدیل به ابعاد میلی‌متری رد شد.')
+        if 91 in codes:
+            raise gcode_sheet.GcodeError('فایل منبع شامل مختصات نسبی (G91) است؛ اندازه‌گیری هندسه رد شد.')
+        if 21 in codes:
+            unit_mode = 'mm'
+        if 90 in codes:
+            distance_mode = 'absolute'
+        has_xy = any(letter in ('X', 'Y') for letter, _value, _raw in gcode_sheet._words(clean))
+        if has_xy and 'G53' not in clean:
+            if unit_mode != 'mm':
+                raise gcode_sheet.GcodeError('واحد فایل منبع باید پیش از نخستین حرکت صریحاً میلی‌متر (G21) باشد.')
+            if distance_mode != 'absolute':
+                raise gcode_sheet.GcodeError('مختصات فایل منبع باید پیش از نخستین حرکت صریحاً مطلق (G90) باشد.')
     _pre, body, _post = gcode_sheet.split_program(text)
     min_x, min_y, max_x, max_y = gcode_sheet.source_bounds(body)
     return text, min_x, min_y, max_x, max_y
@@ -55,9 +77,11 @@ def _cut_reserved_counts(stock_ids):
 
 @transaction.atomic
 def create_cnc_sheet_plans(order_ids, user, kerf=Decimal('4.0')):
-    """Nest every CNC-first part of the same material together and build ONE
-    complete G-code program per full sheet. Pieces already placed on a planned
-    sheet are not planned twice, and reserved sheets are not reused."""
+    """Nest CNC-first parts into saved sheet layouts without guessing a controller.
+
+    Executable output remains blocked until a verified controller-specific sheet
+    adapter is implemented; this function records the layout and reservation only.
+    """
     tasks = list(ProductionTask.objects.select_for_update().filter(
         order_id__in=order_ids, station_name='cut', status='pending', part__isnull=False,
         quantity__gt=F('completed_quantity'),
@@ -72,28 +96,48 @@ def create_cnc_sheet_plans(order_ids, user, kerf=Decimal('4.0')):
     issues = []
 
     def register_issue(task, reason, **details):
-        issue = CncPlanningIssue.objects.create(
-            task=task, order=task.order, part=task.part, mode='cnc_sheets',
-            reason=str(reason)[:10000], details=details, created_by=user,
-        )
-        issues.append(issue)
+        reason_text = str(reason)[:10000]
+        stage = details.get('stage')
+        issue = CncPlanningIssue.objects.filter(
+            task=task, mode='cnc_sheets', status='open', reason=reason_text,
+            details__stage=stage,
+        ).order_by('-pk').first()
+        if issue:
+            old_quantity = int((issue.details or {}).get('quantity', 0) or 0)
+            new_quantity = int(details.get('quantity', 0) or 0)
+            if new_quantity:
+                details['quantity'] = max(old_quantity, new_quantity) if stage == 'source_or_geometry' else old_quantity + new_quantity
+            issue.details = {**(issue.details or {}), **details}
+            issue.save(update_fields=('details',))
+        else:
+            issue = CncPlanningIssue.objects.create(
+                task=task, order=task.order, part=task.part, mode='cnc_sheets',
+                reason=reason_text, details=details, created_by=user,
+            )
+        if all(existing.pk != issue.pk for existing in issues):
+            issues.append(issue)
 
     already_planned = _planned_piece_counts()
     for task in tasks:
         pending = task.quantity - task.completed_quantity - already_planned.get(task.id, 0)
-        for _ in range(max(0, pending)):
-            try:
-                record = resolve_cnc_file(task.part, user)
-                text, min_x, min_y, max_x, max_y = _source_geometry(record.path)
-                grouped[task.part.material_id].append({
-                    'task_id': task.id, 'part_id': task.part_id, 'label': task.part.f2 or task.part.name or task.part.f3,
-                    'f3': task.part.f3, 'width': _ceil_tenth(max_x - min_x),
-                    'height': _ceil_tenth(max_y - min_y), 'text': text,
-                    'min_x': min_x, 'min_y': min_y, 'max_x': max_x, 'max_y': max_y,
-                    'turn': bool(task.part.turn), 'order_id': task.order_id,
-                })
-            except Exception as exc:
-                register_issue(task, exc, stage='source_or_geometry')
+        pending = max(0, pending)
+        if not pending:
+            continue
+        try:
+            record = resolve_cnc_file(task.part, user)
+            text, min_x, min_y, max_x, max_y = _source_geometry(record.path)
+        except (CncResolutionError, OSError, gcode_sheet.GcodeError, ValueError) as exc:
+            register_issue(task, exc, stage='source_or_geometry', quantity=pending)
+            continue
+        for _ in range(pending):
+            grouped[task.part.material_id].append({
+                'task_id': task.id, 'part_id': task.part_id, 'label': task.part.f2 or task.part.name or task.part.f3,
+                'f3': task.part.f3, 'width': _ceil_tenth(max_x - min_x),
+                'height': _ceil_tenth(max_y - min_y), 'text': text,
+                'min_x': min_x, 'min_y': min_y, 'max_x': max_x, 'max_y': max_y,
+                'turn': bool(task.part.turn), 'order_id': task.order_id,
+                'task_quantity': task.quantity, 'completed_before': task.completed_quantity,
+            })
 
     result = []
     for material_id, pieces in grouped.items():
@@ -146,36 +190,35 @@ def create_cnc_sheet_plans(order_ids, user, kerf=Decimal('4.0')):
             stock = SheetStock.objects.get(pk=layout['sheet']['stock_id'])
             last = CncSheetPlan.objects.filter(source_stock=stock, created_by=user).order_by('-sheet_index').first()
             sheet_index = (last.sheet_index + 1) if last else 0
-            placements = []
             output_parts = []
             for placed in layout['parts']:
                 p = pieces[placed['uid']]
                 rotated = bool(placed.get('rotated'))
-                # The optimizer works inside a 5 mm trimmed border (see cutting.optimizer).
-                placements.append({
-                    'text': p['text'], 'rotated': rotated, 'name': f'{p["f3"]} ORDER {p["order_id"]} TASK {p["task_id"]}',
-                    'place_x': float(placed['x']) + 5, 'place_y': float(placed['y']) + 5,
-                })
                 output_parts.append({'task_id': p['task_id'], 'part_id': p['part_id'], 'label': p['label'],
                                      'f3': p['f3'], 'order_id': p['order_id'],
                                      'x': str(placed['x']), 'y': str(placed['y']),
                                      'width': str(placed['width']), 'height': str(placed['height']),
-                                     'rotated': rotated})
-            try:
-                program = gcode_sheet.build_sheet_program(
-                    f'CraftFlow CNC {stock.material.name} {stock.width}x{stock.height} sheet {sheet_index + 1}',
-                    placements,
+                                     'rotated': rotated, 'task_quantity': p['task_quantity'],
+                                     'completed_before': p['completed_before']})
+            task_piece_counts = Counter(piece['task_id'] for piece in output_parts)
+            for task_id, quantity in task_piece_counts.items():
+                task = next(task for task in tasks if task.id == task_id)
+                register_issue(
+                    task,
+                    'خروجی دستگاه تولید نشد: کنترلر مقصد و پست‌پروسسور مخصوص ورق در مخزن تأیید نشده است.',
+                    stage='output_blocked', quantity=quantity,
                 )
-            except gcode_sheet.GcodeError as exc:
-                for piece in output_parts:
-                    task = next(task for task in tasks if task.id == piece['task_id'])
-                    register_issue(task, exc, stage='gcode')
-                continue
             plan = CncSheetPlan.objects.create(
                 material=stock.material, source_stock=stock, sheet_index=sheet_index,
                 width=stock.width, height=stock.height, kerf=kerf,
+                planned_area=sum((Decimal(piece['width']) * Decimal(piece['height']) for piece in output_parts), Decimal('0')),
                 layout={'parts': output_parts, 'material_id': material_id},
-                gcode=program, created_by=user,
+                gcode='', output_verified=False, created_by=user,
+            )
+            SheetStockEvent.objects.create(
+                stock=stock, material=stock.material, cnc_plan=plan, event_type='reserve',
+                quantity_delta=0, width=stock.width, height=stock.height, is_offcut=False,
+                note=f'رزرو در برنامه CNC #{plan.pk}', created_by=user,
             )
             result.append(plan)
     return result, issues
