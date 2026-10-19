@@ -128,3 +128,21 @@ body.admin-panel, body.inventory-panel, body.painting-panel {
     scroll-behavior: auto !important;
   }
 }
+
+
+/* Shop-panel compatibility: this older panel shares the shell but has its own body class. */
+body.shop-panel { background: var(--cf-page); color: var(--cf-ink); }
+.shop-panel .container-fluid { max-width: 1800px; margin-inline: auto; }
+.shop-panel .card { border: 1px solid var(--cf-line); border-radius: var(--cf-radius); box-shadow: var(--cf-shadow); }
+.shop-panel .card-header { padding: .75rem 1rem; border-bottom-color: var(--cf-line); }
+.shop-panel .card-body { padding: 1rem; }
+.shop-panel .form-label { color: #475569; font-size: .875rem; font-weight: 600; margin-bottom: .35rem; }
+.shop-panel .form-control, .shop-panel .form-select { min-height: 40px; border-color: #d8dee8; border-radius: 8px; }
+.shop-panel .btn { border-radius: 8px; box-shadow: none; font-weight: 600; }
+.shop-panel .table-responsive { border: 1px solid var(--cf-line); border-radius: 9px; background: #fff; }
+.shop-panel .table { margin-bottom: 0; }
+.shop-panel .table thead th { background: #f8fafc; color: #475569; font-size: .82rem; white-space: nowrap; }
+@media (max-width: 768px) {
+  .shop-panel .card-body { padding: .8rem; }
+  .shop-panel .table > :not(caption) > * > * { padding: .5rem; }
+}
