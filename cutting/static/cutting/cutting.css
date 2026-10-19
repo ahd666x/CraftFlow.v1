@@ -177,3 +177,30 @@
 @media (prefers-reduced-motion: reduce) {
   .cutting-nav *, .planner-page *, .cut-plan-page * { scroll-behavior: auto !important; transition-duration: .01ms !important; }
 }
+
+
+/* Make the planning mode choice explicit for operators. */
+.planning-mode-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .65rem; }
+.planning-mode-option {
+  display: flex; align-items: flex-start; gap: .65rem; min-width: 0;
+  border: 1px solid #dbe3ec; border-radius: .75rem; padding: .85rem;
+  background: #fff; cursor: pointer; transition: border-color .15s ease, background-color .15s ease;
+}
+.planning-mode-option .form-check-input { flex: 0 0 auto; margin-top: .2rem; }
+.planning-mode-option:has(.form-check-input:checked) {
+  border-color: #2563eb; background: #eff6ff; box-shadow: inset 0 0 0 1px #2563eb;
+}
+.planning-mode-copy { display: grid; gap: .3rem; min-width: 0; }
+.planning-mode-copy b { line-height: 1.4; }
+.planning-mode-copy small { color: #64748b; line-height: 1.55; font-weight: 400; }
+#visible-order-count { min-height: 1.1rem; }
+@media (max-width: 767.98px) {
+  .planning-mode-options { grid-template-columns: 1fr; }
+  .planning-mode-option { padding: .75rem; }
+  .cutting-sticky-bar > .container-fluid { align-items: stretch !important; }
+  .cutting-sticky-bar > .container-fluid > div:last-child { justify-content: space-between; }
+  .cutting-sticky-bar #plan-submit { min-height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .planning-mode-option { transition: none; }
+}
