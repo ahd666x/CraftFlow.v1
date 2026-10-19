@@ -250,6 +250,49 @@
 .cut-map text{font-family:system-ui,sans-serif;font-weight:600;text-anchor:middle}
 .canvas-frame{position:relative;background:var(--st-canvas);border:1px solid var(--st-line);border-radius:.7rem;padding:.9rem;overflow:hidden}
 
+/* ---------- AutoSAW process view: Verlist sidebar + drawing pane ---------- */
+.saw-grid{display:grid;grid-template-columns:minmax(220px,260px) minmax(0,1fr);gap:.8rem;align-items:start}
+@media (max-width:991.98px){.saw-grid{grid-template-columns:1fr}}
+.verlist{background:var(--st-panel);border:1px solid var(--st-line);border-radius:.65rem;overflow:hidden;position:sticky;top:.8rem}
+.verlist-head{display:flex;align-items:center;gap:.4rem;padding:.5rem .75rem;background:var(--st-panel-2);border-bottom:1px solid var(--st-line-soft);font-weight:800;font-size:.78rem;color:var(--st-ink)}
+.verlist-head i{color:var(--st-accent)}
+.verlist-count{margin-inline-start:auto;font-size:.7rem;background:var(--st-accent-soft);color:var(--st-accent);border-radius:999px;padding:.05rem .5rem}
+.verlist-rows{max-height:min(56vh,540px);overflow:auto}
+.verlist-row{display:flex;align-items:center;gap:.5rem;padding:.4rem .7rem;border-bottom:1px solid var(--st-line-soft)}
+.verlist-row:last-child{border-bottom:0}
+.verlist-row.done{opacity:.55}
+.vl-code{font-weight:800;font-size:.72rem;background:var(--st-accent-soft);color:var(--st-accent);border-radius:.35rem;padding:.12rem .3rem;min-width:2.7rem;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:5.5rem}
+.vl-main{display:flex;flex-direction:column;min-width:0;flex:1}
+.vl-name{font-size:.75rem;font-weight:600;color:var(--st-ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vl-dims{font-size:.7rem;color:var(--st-muted)}
+.vl-counts{display:flex;flex-direction:column;align-items:center;line-height:1.15;flex:none}
+.vl-need{font-weight:800;font-size:.86rem;color:var(--st-ink)}
+.vl-cut{font-size:.68rem;font-weight:800;color:var(--st-green)}
+.verlist-legend{display:flex;align-items:center;gap:.9rem;padding:.4rem .75rem;background:var(--st-panel-2);border-top:1px solid var(--st-line-soft);font-size:.68rem;color:var(--st-muted)}
+.vl-sw{width:10px;height:10px;border-radius:2px;display:inline-block;margin-inline-end:.28rem;vertical-align:-1px}
+.verlist-cols-hint{margin-inline-start:auto;color:var(--st-faint)}
+.draw-pane{min-width:0}
+.boards-bar{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem;padding:.4rem .6rem;background:var(--st-panel-2);border:1px solid var(--st-line);border-radius:.6rem;margin-bottom:.8rem}
+.boards-label{font-weight:800;font-size:.8rem;color:var(--st-ink);white-space:nowrap}
+.boards-label i{color:var(--st-faint);margin-inline-end:.25rem}
+.boards-bar .sheet-selector{flex:1;min-width:0}
+.boards-progress{width:90px;height:8px;background:var(--st-sunken);border-radius:999px;overflow:hidden;flex:none}
+.boards-progress i{display:block;height:100%;width:0;background:var(--st-accent);transition:width .3s}
+.boards-bar .mat-count{font-size:.72rem;font-weight:800;color:var(--st-muted);flex:none}
+
+/* AutoSAW piece rendering (SVG): green = consumed, periwinkle = waiting */
+.sheet-bg{fill:#fff;stroke:#94a3b8;stroke-width:3}
+.trim-strip{fill:#f1f5f9;stroke:#cbd5e1;stroke-width:2;stroke-dasharray:14 8}
+.trim-label{fill:#94a3b8;font-weight:700;text-anchor:start}
+.cut-piece .piece-rect{fill:#6666c8;stroke:#111827;stroke-width:4}
+.cut-piece.used .piece-rect{fill:#16a34a}
+.cut-piece.scrapped .piece-rect{fill:#e11d48}
+.cut-piece text{fill:#fff}
+.cut-piece .piece-no{font-weight:800}
+.cut-piece .piece-dims{opacity:.92;font-weight:600}
+.offcut-box{fill:#fbbf2414;stroke:#d97706;stroke-width:4;stroke-dasharray:16 10}
+.sim-cut-arrow{fill:#e11d1d;filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))}
+
 .legend-swatch{width:12px;height:12px;border-radius:3px;display:inline-block;flex:none;border:1px solid rgba(15,23,42,.2)}
 .sheet-info{background:var(--st-panel);border:1px solid var(--st-line);border-radius:.65rem;padding:.7rem .85rem}
 .sheet-info ol{color:var(--st-muted)}

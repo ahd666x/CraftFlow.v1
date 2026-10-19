@@ -34,6 +34,8 @@
       const key = section.dataset.materialSection;
       const label = document.querySelector(`[data-material-progress="${key}"]`);
       if (label) label.textContent = `${done}/${own.length}`;
+      const bar = document.querySelector(`[data-material-bar="${key}"]`);
+      if (bar) bar.style.width = `${own.length ? Math.round(done * 100 / own.length) : 0}%`;
       const tab = materialTabs.find(item => item.dataset.materialTab === key);
       if (tab) tab.classList.toggle('complete', own.length > 0 && done === own.length);
     });
@@ -166,6 +168,12 @@
 
   function syncOutcome(sheet) {
     const outcome = outcomeOf(sheet);
+    const panel = panels.find(item => item.dataset.sheetPk === sheet);
+    if (panel) panel.querySelectorAll('.cut-piece').forEach(piece => {
+      piece.classList.remove('used', 'scrapped');
+      if (outcome === 'used') piece.classList.add('used');
+      if (outcome === 'scrapped') piece.classList.add('scrapped');
+    });
     const container = document.getElementById(`remnants-${sheet}`);
     const note = document.getElementById(`note-${sheet}`);
     if (note) note.required = outcome === 'scrapped';

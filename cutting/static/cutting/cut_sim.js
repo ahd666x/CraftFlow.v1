@@ -84,7 +84,16 @@
     const sheetW = number(data.w);
     const sheetH = number(data.h);
     const partByNo = {};
-    (data.parts || []).forEach(part => { partByNo[number(part.no)] = part; });
+    (data.parts || []).forEach(part => {
+      // Coordinates arrive as JSON strings; concatenation like "0" + 610 must
+      // never leak into geometry (regression: cross-cut Y became "0610" and
+      // stretched the cut arrow far outside the viewBox).
+      partByNo[number(part.no)] = {
+        ...part,
+        x: number(part.x), y: number(part.y),
+        width: number(part.width), height: number(part.height),
+      };
+    });
     const cuts = (data.seq || []).map(cut => {
       const pieces = (cut.pieces || []).map(no => partByNo[number(no)]).filter(Boolean);
       const first = pieces[0];
@@ -129,23 +138,26 @@
     const resetBtn = dock.querySelector('[data-sim-reset]');
     const speedBtns = [...dock.querySelectorAll('[data-sim-speed]')];
 
-    let ghost = null, line = null, marks = [];
+    let ghost = null, line = null, arrow = null, marks = [];
     if (svg) {
       const ns = 'http://www.w3.org/2000/svg';
       ghost = document.createElementNS(ns, 'line');
       ghost.setAttribute('class', 'sim-line-ghost');
       line = document.createElementNS(ns, 'line');
       line.setAttribute('class', 'sim-line');
+      arrow = document.createElementNS(ns, 'path');
+      arrow.setAttribute('class', 'sim-cut-arrow');
       marks = cuts.map(() => {
         const rect = document.createElementNS(ns, 'rect');
         rect.setAttribute('class', 'sim-piece-hl');
         rect.style.display = 'none';
         return rect;
       });
-      const layer = svg.querySelector('g[transform]') || svg;
+      const layer = svg.querySelector('[data-sim-layer]') || svg;
       marks.forEach(rect => layer.appendChild(rect));
       layer.appendChild(ghost);
       layer.appendChild(line);
+      layer.appendChild(arrow);
     }
     [ghost, line].forEach(node => { if (node) { node.style.display = 'none'; node.setAttribute('x1', 0); node.setAttribute('x2', 0); node.setAttribute('y1', 0); node.setAttribute('y2', 0); } });
 
@@ -186,9 +198,23 @@
       const current = index > 0 ? cuts[index - 1] : null;
       const upcoming = cuts[index];
       if (ghost) ghost.style.display = upcoming ? '' : 'none';
-      if (upcoming) placeMarker(ghost, upcoming, true); 
+      if (upcoming) placeMarker(ghost, upcoming, true);
       if (line) line.style.display = current ? '' : 'none';
       if (current) placeMarker(line, current, false);
+      if (arrow) {
+        if (current) {
+          arrow.style.display = '';
+          const m = 70;
+          if (current.axis === 'x') {
+            arrow.setAttribute('d', `M${current.at + m},${current.y - m} L${current.at + m},${current.y + m} L${current.at},${current.y} Z`);
+          } else {
+            const ax = current.x ?? sheetW / 2;
+            arrow.setAttribute('d', `M${ax - m},${current.at + m} L${ax + m},${current.at + m} L${ax},${current.at} Z`);
+          }
+        } else {
+          arrow.style.display = 'none';
+        }
+      }
       const items = [...list.children];
       items.forEach((li, i) => {
         li.classList.toggle('current', i === index - 1);
@@ -270,7 +296,7 @@
 
     return {
       renderList, paint,
-      teardown() { stop(); marks.forEach(rect => rect.remove()); if (ghost) ghost.remove(); if (line) line.remove(); },
+      teardown() { stop(); marks.forEach(rect => rect.remove()); if (ghost) ghost.remove(); if (line) line.remove(); if (arrow) arrow.remove(); },
     };
   }
 

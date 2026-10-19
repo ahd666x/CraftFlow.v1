@@ -560,24 +560,44 @@ def plan_list(request):
 
 @cutting_operator
 def plan_detail(request, plan_id):
+    def mm_text(value):
+        """AutoSAW-style dimension text: 400 instead of 400.0."""
+        try:
+            number = Decimal(str(value))
+        except (InvalidOperation, TypeError):
+            return str(value)
+        if number == number.to_integral_value():
+            return str(int(number))
+        return format(number.normalize(), 'f')
+
     plan = get_object_or_404(CutPlan.objects.prefetch_related(
         'orders', 'planned_sheets__material', 'planned_sheets__source_stock', 'planned_sheets__task_counts',
     ), pk=plan_id)
     summaries = []
     planned_by_id = {s.pk: s for s in plan.planned_sheets.all()}
-    palette = ['#2563eb', '#dc2626', '#059669', '#7c3aed', '#d97706', '#0891b2', '#be185d', '#4d7c0f', '#9333ea', '#0f766e']
-    colors_by_task = {}
-    color_legend = []
+    # AutoSAW semantics: green = consumed, periwinkle = waiting, red = scrapped.
+    color_legend = [
+        {'color': '#16a34a', 'label': 'قطعهٔ مصرف‌شده'},
+        {'color': '#6666c8', 'label': 'در انتظار برش'},
+        {'color': '#e11d48', 'label': 'ورق اسقاطی'},
+    ]
     total_sheet_area = Decimal('0')
     total_piece_area = Decimal('0')
+    plan_trim = Decimal(str(plan.plan_data.get('trim') or '0'))
     for row in plan.plan_data.get('rows', []):
         row_piece_area = Decimal('0')
+        need_by_task = Counter(shape.get('task_id') for shape in row.get('shapes', []))
+        cut_by_task = Counter()
+        verlist, seen_tasks = [], set()
         for layout in row['sheets']:
             layout['sheet_record'] = planned_by_id.get(layout['sheet'].get('plan_sheet_id'))
             longest = max(Decimal(str(layout['sheet']['width'])), Decimal(str(layout['sheet']['height'])))
             layout['label_font'] = max(14, int(longest / 40))
             layout['dimension_font'] = max(10, int(layout['label_font'] * 0.3))
             layout['expected_offcuts_json'] = mark_safe(json.dumps(layout.get('expected_offcuts', []), default=str))
+            layout['trim_mm'] = plan_trim if plan_trim > 0 else None
+            if layout['trim_mm'] is not None:
+                layout['trim_label_font'] = int(min(plan_trim / Decimal('2'), Decimal('70')))
             sheet_area = Decimal(str(layout['sheet']['width'])) * Decimal(str(layout['sheet']['height']))
             piece_area = sum((Decimal(str(part['width'])) * Decimal(str(part['height'])) for part in layout['parts']), Decimal('0'))
             layout['sheet_area_mm2'] = sheet_area
@@ -585,29 +605,54 @@ def plan_detail(request, plan_id):
             layout['utilization_percent'] = (piece_area / sheet_area * 100) if sheet_area else Decimal('0')
             record = layout['sheet_record']
             layout['planned_piece_count'] = sum(snapshot.quantity for snapshot in record.task_counts.all()) if record else len(layout['parts'])
+            sheet_state = record.outcome if record else 'planned'
+            if record and record.outcome == 'used':
+                cut_by_task.update(part.get('task_id') for part in layout['parts'] if part.get('task_id') is not None)
+            # Machine frame: the saw cuts the trim head first, so display
+            # coordinates start below the strip while the stored/.CUT XML
+            # coordinates (usable-height frame, y=0 based) stay untouched.
+            if plan_trim > 0:
+                for part in layout['parts']:
+                    part['y'] = Decimal(str(part['y'])) + plan_trim
+                for rem in layout.get('expected_offcuts', []):
+                    if rem.get('y') is not None:
+                        rem['y'] = Decimal(str(rem['y'])) + plan_trim
             for number, part in enumerate(layout['parts'], 1):
                 part['no'] = number
-                part['label_x'] = Decimal(str(part['x'])) + Decimal(str(part['width'])) / 2
-                part['label_y'] = Decimal(str(part['y'])) + Decimal(str(part['height'])) / 2
-                # Font must fit inside the piece and the dimension line must sit
-                # fully BELOW the number glyph, never overlapping it (regression:
-                # dimension_y used dimension_font*0.65 which collided with the
-                # much taller number and produced unreadable garbled labels).
-                piece_font = max(16, min(layout['label_font'], int(min(Decimal(str(part['width'])), Decimal(str(part['height']))) / 3)))
-                dim_font = max(11, int(piece_font * 0.42))
-                part['font'] = piece_font
-                part['dimension_font'] = dim_font
-                part['dimension_y'] = part['label_y'] + Decimal(piece_font) * Decimal('0.62') + Decimal(dim_font) * Decimal('0.65')
-                task_id = part.get('task_id')
-                part['show_dimensions'] = (
-                    Decimal(str(part['width'])) >= Decimal('250')
-                    and Decimal(str(part['height'])) >= Decimal('150')
+                # Label geometry mirrors AutoSAW Process view: two white lines
+                # (piece number + W × H) centred in the piece, rotated 90° for
+                # portrait strips. Regression note: the old horizontal
+                # label_x/dimension_y pair overlapped on narrow pieces.
+                width = Decimal(str(part['width']))
+                height = Decimal(str(part['height']))
+                center_x = Decimal(str(part['x'])) + width / 2
+                center_y = Decimal(str(part['y'])) + height / 2
+                vertical = height > width
+                across, along = (width, height) if vertical else (height, width)
+                dims_text = f'{mm_text(part["width"])} × {mm_text(part["height"])}'
+                fit = min(
+                    across / Decimal('2.6'),
+                    along / (Decimal('0.64') * max(len(dims_text), 6)),
+                    Decimal('130'),
                 )
-                if task_id not in colors_by_task:
-                    color = palette[len(colors_by_task) % len(palette)]
-                    colors_by_task[task_id] = color
-                    color_legend.append({'color': color, 'label': part.get('label', f'تسک {task_id}')})
-                part['color'] = colors_by_task[task_id]
+                if min(width, height) < 150 or fit < 34:
+                    show_dims = False
+                    font = max(Decimal('24'), min(across / Decimal('2.2'), along / Decimal('3'), Decimal('150')))
+                else:
+                    show_dims = True
+                    font = fit
+                part['cx'] = center_x
+                part['cy'] = center_y
+                part['vtext'] = vertical
+                part['font'] = int(font)
+                part['dim_font'] = int(font * Decimal('0.6'))
+                part['dy1'] = int(-font * Decimal('0.55'))
+                part['dy2'] = int(font * Decimal('0.6') * Decimal('0.78'))
+                part['show_dims'] = show_dims
+                part['dims'] = dims_text
+                part['used'] = sheet_state == 'used'
+                part['scrapped'] = sheet_state == 'scrapped'
+                part['color'] = '#16a34a' if part['used'] else ('#e11d48' if part['scrapped'] else '#6666c8')
             no_by_uid = {part.get('uid'): part['no'] for part in layout['parts']}
             raw_sequence = list(record.cut_sequence or []) if record else []
             mapped_sequence = []
@@ -615,18 +660,33 @@ def plan_detail(request, plan_id):
                 pieces = [no_by_uid.get(uid) for uid in cut.get('pieces', [])]
                 pieces = [piece for piece in pieces if piece]
                 if pieces or cut.get('t') == 'trim':
+                    at = cut.get('at')
+                    if plan_trim > 0 and cut.get('t') != 'trim' and cut.get('axis', 'y') == 'y' and at is not None:
+                        at = Decimal(str(at)) + plan_trim
                     mapped_sequence.append({
                         't': cut.get('t', 'rip'), 'axis': cut.get('axis', 'y'),
-                        'at': cut.get('at'), 'pieces': pieces,
+                        'at': at, 'pieces': pieces,
                     })
             layout['cut_sim_seq'] = mark_safe(json.dumps(mapped_sequence, default=str)) if mapped_sequence else ''
             row_piece_area += piece_area
             total_sheet_area += sheet_area
             total_piece_area += piece_area
+        for shape in row.get('shapes', []):
+            task_id = shape.get('task_id')
+            if task_id in seen_tasks:
+                continue
+            seen_tasks.add(task_id)
+            verlist.append({
+                'code': shape.get('f3') or (shape.get('label') or '').split(' / ')[0],
+                'name': shape.get('f2') or shape.get('label') or '',
+                'width': mm_text(shape.get('width')), 'height': mm_text(shape.get('height')),
+                'need': need_by_task.get(task_id, 0), 'cut': cut_by_task.get(task_id, 0),
+            })
         summaries.append({
             'material': row['type'], 'thickness': row['thickness'],
             'sheet_count': len(row['sheets']), 'part_count': len(row['shapes']),
             'piece_area_mm2': row_piece_area, 'sheets': row['sheets'],
+            'verlist': verlist,
         })
     plan_metrics = {
         'sheet_count': sum(summary['sheet_count'] for summary in summaries),

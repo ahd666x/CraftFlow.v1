@@ -77,78 +77,111 @@
   {% for r in summaries %}
   <section class="card mb-3 material-section {% if not forloop.first %}d-none{% endif %}" data-material-section="{{ forloop.counter0 }}">
     <div class="card-body">
-      <div class="sheet-selector d-flex flex-wrap align-items-center gap-2 mb-3" role="tablist" aria-label="انتخاب ورق"><span class="small fw-bold text-muted">{{ r.material }} — ورق:</span>
-        {% for s in r.sheets %}{% with rec=s.sheet_record %}<button class="btn btn-sm sheet-tab" type="button" role="tab" aria-selected="false" aria-label="ورق {{ forloop.counter }} - {{ r.material }}" data-sheet-pk="{{ rec.pk }}" data-outcome="{% if rec %}{{ rec.outcome }}{% else %}none{% endif %}"><span class="sheet-tab-number">{{ forloop.counter }}</span>{% if s.sheet.is_offcut %} · پرت{% endif %}<span class="sheet-tab-status">{% if rec.outcome == 'used' %}مصرف‌شده{% elif rec.outcome == 'untouched' %}دست‌نخورده{% elif rec.outcome == 'scrapped' %}اسقاط{% else %}ثبت‌نشده{% endif %}</span></button>{% endwith %}{% endfor %}
-      </div>
-      <div class="sheet-panels">
-        {% for s in r.sheets %}{% with rec=s.sheet_record %}
-        <article class="sheet-panel {% if plan.status == 'planned' and rec %}has-side{% endif %} {% if not forloop.first %}d-none{% endif %}" data-sheet-panel data-sheet-pk="{{ rec.pk }}" data-piece-count="{{ s.planned_piece_count }}" data-outcome="{% if rec %}{{ rec.outcome }}{% else %}none{% endif %}">
-          <div class="sheet-head d-flex flex-wrap justify-content-between align-items-center gap-2">
-            <div class="d-flex flex-wrap align-items-center gap-2">
-              <h2 class="h6 mb-0">ورق {{ forloop.counter }} — <span class="num">{{ s.sheet.width }} × {{ s.sheet.height }} mm</span></h2>
-              <span class="sheet-kind {% if s.sheet.is_offcut %}offcut{% endif %}">{% if s.sheet.is_offcut %}پرت انبار{% else %}ورق کامل{% endif %}</span>
-              {% if rec and rec.outcome != 'reserved' %}<span class="cf-status {% if rec.outcome == 'used' %}ready{% elif rec.outcome == 'untouched' %}done{% elif rec.outcome == 'scrapped' %}cancelled{% endif %}"><i class="dot"></i>{{ rec.get_outcome_display }}</span>{% endif %}
+      <div class="saw-grid">
+        <aside class="verlist" aria-label="فهرست قطعات {{ r.material }}">
+          <div class="verlist-head"><i class="bi bi-list-check"></i>Verlist <span class="num">#{{ plan.pk }}</span><span class="verlist-count num">{{ r.verlist|length }}</span></div>
+          <div class="verlist-rows">
+            {% for item in r.verlist %}
+            <div class="verlist-row {% if item.need and item.cut >= item.need %}done{% endif %}">
+              <span class="vl-code num" title="{{ item.name }}">{{ item.code }}</span>
+              <div class="vl-main">
+                <span class="vl-name" title="{{ item.name }}">{{ item.name }}</span>
+                <span class="vl-dims num">{{ item.width }} × {{ item.height }}</span>
+              </div>
+              <div class="vl-counts" title="نیاز / بریده‌شده">
+                <span class="vl-need num">{{ item.need }}</span>
+                <span class="vl-cut num">{{ item.cut }}</span>
+              </div>
             </div>
-            <div class="small text-muted">بهره‌وری ورق <b class="num">{{ s.utilization_percent|floatformat:1 }}%</b> · <span class="num">{{ s.planned_piece_count }}</span> قطعه</div>
+            {% empty %}
+            <div class="verlist-row"><div class="vl-main"><span class="vl-name text-muted">قطعه‌ای در این متریال نیست.</span></div></div>
+            {% endfor %}
           </div>
-          <div class="sheet-map" style="--map-w:{{ s.sheet.width }};--map-h:{{ s.sheet.height }}">
-            <div class="canvas-frame">
-              <div class="cut-map-wrap"><svg class="cut-map" viewBox="0 0 {{ s.sheet.width }} {{ s.sheet.height }}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="نقشه برش ورق {{ s.sheet.width }} در {{ s.sheet.height }} میلی‌متر">
-                <rect x="0" y="0" width="{{ s.sheet.width }}" height="{{ s.sheet.height }}" fill="#fffdf5" stroke="#94a3b8" stroke-width="4" />
-                <g transform="translate(5 5)">
-                  {% for part in s.parts %}<g data-sim-no="{{ part.no }}"><title>{{ part.label }} — {{ part.width }}×{{ part.height }} mm</title><rect x="{{ part.x }}" y="{{ part.y }}" width="{{ part.width }}" height="{{ part.height }}" fill="{{ part.color }}" fill-opacity=".28" stroke="{{ part.color }}" stroke-width="3"/><text x="{{ part.label_x }}" y="{{ part.label_y }}" font-size="{{ part.font }}" fill="#102a43" dominant-baseline="middle">{{ part.no }}</text>{% if part.show_dimensions %}<text x="{{ part.label_x }}" y="{{ part.dimension_y }}" font-size="{{ part.dimension_font }}" fill="#334e68" dominant-baseline="middle">{{ part.width }}×{{ part.height }}</text>{% endif %}</g>{% endfor %}
-                  {% for rem in s.expected_offcuts %}{% if rem.x is not None %}<rect x="{{ rem.x }}" y="{{ rem.y }}" width="{{ rem.width }}" height="{{ rem.height }}" fill="#fbbf2422" stroke="#b45309" stroke-width="6" stroke-dasharray="18 10"><title>پرت تخمینی {{ rem.width }}×{{ rem.height }}</title></rect>{% endif %}{% endfor %}
-                </g>
-              </svg></div>
+          <div class="verlist-legend">
+            <span><i class="vl-sw" style="background:#16a34a"></i>بریده</span>
+            <span><i class="vl-sw" style="background:#6666c8"></i>مانده</span>
+            <span class="verlist-cols-hint">نیاز / برش</span>
+          </div>
+        </aside>
+        <div class="draw-pane">
+          <div class="boards-bar">
+            <span class="boards-label"><i class="bi bi-square"></i>{{ r.material }}</span>
+            <div class="sheet-selector d-flex flex-wrap align-items-center gap-2" role="tablist" aria-label="انتخاب ورق">
+              {% for s in r.sheets %}{% with rec=s.sheet_record %}<button class="btn btn-sm sheet-tab" type="button" role="tab" aria-selected="false" aria-label="ورق {{ forloop.counter }} - {{ r.material }}" data-sheet-pk="{{ rec.pk }}" data-outcome="{% if rec %}{{ rec.outcome }}{% else %}none{% endif %}"><span class="sheet-tab-number">{{ forloop.counter }}</span>{% if s.sheet.is_offcut %} · پرت{% endif %}<span class="sheet-tab-status">{% if rec.outcome == 'used' %}مصرف‌شده{% elif rec.outcome == 'untouched' %}دست‌نخورده{% elif rec.outcome == 'scrapped' %}اسقاط{% else %}ثبت‌نشده{% endif %}</span></button>{% endwith %}{% endfor %}
             </div>
+            <span class="boards-progress" aria-hidden="true"><i data-material-bar="{{ forloop.counter0 }}"></i></span>
+            <span class="mat-count num" data-material-progress="{{ forloop.counter0 }}">0/{{ r.sheet_count }}</span>
           </div>
-          <div class="sheet-info">
-            <details><summary class="small fw-semibold">فهرست قطعات و جهت چرخش</summary><ol class="small mb-0 mt-2">{% for part in s.parts %}<li><span class="legend-swatch d-inline-block" style="background:{{ part.color }}"></span> <b>{{ part.no }}.</b> {{ part.label }} — <span class="num">{{ part.width }}×{{ part.height }} mm</span> · {% if part.rotated %}چرخیده 90°{% else %}بدون چرخش{% endif %}</li>{% endfor %}</ol></details>
-            <details class="mt-1"><summary class="small fw-semibold">پرت‌های تخمینی</summary><div class="small text-muted mt-2">{% for rem in s.expected_offcuts %}<span class="badge bg-light me-1 num">{{ rem.width }}×{{ rem.height }}</span>{% empty %}پرت قابل‌استفاده‌ای برآورد نشد.{% endfor %}</div></details>
-          </div>
-          <div class="sim-dock">
-            <div class="sim-panel" data-sim data-sheet-pk="{{ rec.pk|default:'0' }}">
-              <div class="sim-toolbar">
-                <button type="button" class="sim-btn primary" data-sim-play><i class="bi bi-play-fill"></i> پخش</button>
-                <button type="button" class="sim-btn" data-sim-prev><i class="bi bi-skip-start-fill"></i> برش قبلی</button>
-                <button type="button" class="sim-btn" data-sim-next>برش بعدی <i class="bi bi-skip-end-fill"></i></button>
-                <button type="button" class="sim-btn" data-sim-reset>بازنشانی</button>
-                <div class="sim-speed" role="group" aria-label="سرعت پخش">
-                  <button type="button" class="sim-btn on" data-sim-speed="1">1×</button>
-                  <button type="button" class="sim-btn" data-sim-speed="2">2×</button>
-                  <button type="button" class="sim-btn" data-sim-speed="4">4×</button>
+          <div class="sheet-panels">
+            {% for s in r.sheets %}{% with rec=s.sheet_record %}
+            <article class="sheet-panel {% if plan.status == 'planned' and rec %}has-side{% endif %} {% if not forloop.first %}d-none{% endif %}" data-sheet-panel data-sheet-pk="{{ rec.pk }}" data-piece-count="{{ s.planned_piece_count }}" data-outcome="{% if rec %}{{ rec.outcome }}{% else %}none{% endif %}">
+              <div class="sheet-head d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                  <h2 class="h6 mb-0">ورق {{ forloop.counter }} — <span class="num">{{ s.sheet.width|floatformat:"-1" }} × {{ s.sheet.height|floatformat:"-1" }} mm</span></h2>
+                  <span class="sheet-kind {% if s.sheet.is_offcut %}offcut{% endif %}">{% if s.sheet.is_offcut %}پرت انبار{% else %}ورق کامل{% endif %}</span>
+                  {% if rec and rec.outcome != 'reserved' %}<span class="cf-status {% if rec.outcome == 'used' %}ready{% elif rec.outcome == 'untouched' %}done{% elif rec.outcome == 'scrapped' %}cancelled{% endif %}"><i class="dot"></i>{{ rec.get_outcome_display }}</span>{% endif %}
+                </div>
+                <div class="small text-muted">بهره‌وری <b class="num">{{ s.utilization_percent|floatformat:1 }}%</b> · <span class="num">{{ s.planned_piece_count }}</span> قطعه</div>
+              </div>
+              <div class="sheet-map" style="--map-w:{{ s.sheet.width }};--map-h:{{ s.sheet.height }}">
+                <div class="canvas-frame">
+                  <div class="cut-map-wrap"><svg class="cut-map" viewBox="0 0 {{ s.sheet.width }} {{ s.sheet.height }}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="نقشه برش ورق {{ s.sheet.width }} در {{ s.sheet.height }} میلی‌متر">
+                    <rect class="sheet-bg" x="0" y="0" width="{{ s.sheet.width }}" height="{{ s.sheet.height }}" rx="6"/>
+                    {% if s.trim_mm %}<rect class="trim-strip" x="0" y="0" width="{{ s.sheet.width }}" height="{{ s.trim_mm }}"/><text class="trim-label" x="24" y="{{ s.trim_mm }}" font-size="{{ s.trim_label_font }}" dominant-baseline="hanging">سربر {{ s.trim_mm }}</text>{% endif %}
+                    <g data-sim-layer>{% for part in s.parts %}<g class="cut-piece {% if part.used %}used{% elif part.scrapped %}scrapped{% endif %}" data-sim-no="{{ part.no }}"><title>{{ part.label }} — {{ part.width }}×{{ part.height }} mm</title><rect class="piece-rect" x="{{ part.x }}" y="{{ part.y }}" width="{{ part.width }}" height="{{ part.height }}"/>{% if part.vtext %}<g transform="rotate(90 {{ part.cx }} {{ part.cy }})"><text class="piece-no num" x="{{ part.cx }}" y="{{ part.cy }}" dy="{{ part.dy1 }}" font-size="{{ part.font }}" dominant-baseline="central">{{ part.no }}</text>{% if part.show_dims %}<text class="piece-dims num" x="{{ part.cx }}" y="{{ part.cy }}" dy="{{ part.dy2 }}" font-size="{{ part.dim_font }}" dominant-baseline="central">{{ part.dims }}</text>{% endif %}</g>{% else %}<text class="piece-no num" x="{{ part.cx }}" y="{{ part.cy }}" dy="{{ part.dy1 }}" font-size="{{ part.font }}" dominant-baseline="central">{{ part.no }}</text>{% if part.show_dims %}<text class="piece-dims num" x="{{ part.cx }}" y="{{ part.cy }}" dy="{{ part.dy2 }}" font-size="{{ part.dim_font }}" dominant-baseline="central">{{ part.dims }}</text>{% endif %}{% endif %}</g>{% endfor %}
+                    {% for rem in s.expected_offcuts %}{% if rem.x is not None %}<rect class="offcut-box" x="{{ rem.x }}" y="{{ rem.y }}" width="{{ rem.width }}" height="{{ rem.height }}"><title>پرت تخمینی {{ rem.width }}×{{ rem.height }}</title></rect>{% endif %}{% endfor %}</g>
+                  </svg></div>
                 </div>
               </div>
-              <div class="sim-readout" aria-live="polite">
-                <span class="sim-progress" data-sim-progress>آماده — «برش بعدی» یا «پخش» را بزنید</span>
-                <span>نوع: <span class="sim-cut-type trim" data-sim-type>—</span></span>
-                <span>X <b class="num" data-sim-x>—</b></span>
-                <span>Y <b class="num" data-sim-y>—</b></span>
-                <span>مانده ورق: <b class="num" data-sim-remnant>—</b></span>
+              <div class="sheet-info">
+                <details><summary class="small fw-semibold">فهرست قطعات و جهت چرخش</summary><ol class="small mb-0 mt-2">{% for part in s.parts %}<li><b>{{ part.no }}.</b> {{ part.label }} — <span class="num">{{ part.dims }} mm</span> · {% if part.rotated %}چرخیده 90°{% else %}بدون چرخش{% endif %}</li>{% endfor %}</ol></details>
+                <details class="mt-1"><summary class="small fw-semibold">پرت‌های تخمینی</summary><div class="small text-muted mt-2">{% for rem in s.expected_offcuts %}<span class="badge bg-light me-1 num">{{ rem.width }}×{{ rem.height }}</span>{% empty %}پرت قابل‌استفاده‌ای برآورد نشد.{% endfor %}</div></details>
               </div>
-              <ol class="sim-list" data-sim-list></ol>
-            </div>
+              <div class="sim-dock">
+                <div class="sim-panel" data-sim data-sheet-pk="{{ rec.pk|default:'0' }}">
+                  <div class="sim-toolbar">
+                    <button type="button" class="sim-btn primary" data-sim-play><i class="bi bi-play-fill"></i> پخش</button>
+                    <button type="button" class="sim-btn" data-sim-prev><i class="bi bi-skip-start-fill"></i> برش قبلی</button>
+                    <button type="button" class="sim-btn" data-sim-next>برش بعدی <i class="bi bi-skip-end-fill"></i></button>
+                    <button type="button" class="sim-btn" data-sim-reset>بازنشانی</button>
+                    <div class="sim-speed" role="group" aria-label="سرعت پخش">
+                      <button type="button" class="sim-btn on" data-sim-speed="1">1×</button>
+                      <button type="button" class="sim-btn" data-sim-speed="2">2×</button>
+                      <button type="button" class="sim-btn" data-sim-speed="4">4×</button>
+                    </div>
+                  </div>
+                  <div class="sim-readout" aria-live="polite">
+                    <span class="sim-progress" data-sim-progress>آماده — «برش بعدی» یا «پخش» را بزنید</span>
+                    <span>نوع: <span class="sim-cut-type trim" data-sim-type>—</span></span>
+                    <span>X <b class="num" data-sim-x>—</b></span>
+                    <span>Y <b class="num" data-sim-y>—</b></span>
+                    <span>مانده ورق: <b class="num" data-sim-remnant>—</b></span>
+                  </div>
+                  <ol class="sim-list" data-sim-list></ol>
+                </div>
+              </div>
+              {% if plan.status == 'planned' and rec %}
+              <div class="result-entry" data-sheet-result="{{ rec.pk }}">
+                <fieldset class="outcome-group" data-sheet="{{ rec.pk }}"><legend class="form-label fw-bold">نتیجه واقعی این ورق</legend><div class="d-grid gap-2">
+                  <input type="radio" class="btn-check cut-outcome" name="outcome_{{ rec.pk }}" id="o{{ rec.pk }}-used" value="used" data-sheet="{{ rec.pk }}" required><label class="btn btn-outline-success btn-lg" for="o{{ rec.pk }}-used">مصرف شد</label>
+                  <input type="radio" class="btn-check cut-outcome" name="outcome_{{ rec.pk }}" id="o{{ rec.pk }}-untouched" value="untouched" data-sheet="{{ rec.pk }}"><label class="btn btn-outline-secondary btn-lg" for="o{{ rec.pk }}-untouched">دست‌نخورده ماند</label>
+                  <input type="radio" class="btn-check cut-outcome" name="outcome_{{ rec.pk }}" id="o{{ rec.pk }}-scrapped" value="scrapped" data-sheet="{{ rec.pk }}"><label class="btn btn-outline-danger btn-lg" for="o{{ rec.pk }}-scrapped">اسقاط شد</label>
+                </div></fieldset>
+                <div class="mt-3"><label class="form-label small" for="note-{{ rec.pk }}">یادداشت نتیجه (برای اسقاط الزامی)</label><input class="form-control" id="note-{{ rec.pk }}" name="note_{{ rec.pk }}" maxlength="255" placeholder="مثلاً آسیب در لبه"></div>
+                <div class="remnant-fields mt-3" id="remnants-{{ rec.pk }}" data-sheet="{{ rec.pk }}" data-width="{{ rec.width }}" data-height="{{ rec.height }}" data-expected="{{ s.expected_offcuts_json }}">
+                  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2"><div><b>پرت‌های واقعی اندازه‌گیری‌شده</b><div class="small text-muted">پس از اندازه‌گیری؛ حداکثر ۵۰ ردیف.</div></div><span class="badge bg-light remnant-area-total">مساحت ثبت‌شده: 0 m²</span></div>
+                  <div class="remnant-rows"><div class="row g-2 align-items-end mb-2 remnant-row" data-remnant-row><div class="col-12 small fw-bold remnant-number">پرت 1</div><div class="col-5"><label class="form-label small">عرض (mm)</label><input class="form-control" type="number" inputmode="decimal" step="0.1" min="0.1" name="rem_{{ rec.pk }}_1_width" data-dimension="width" placeholder="اندازه‌گیری شود"></div><div class="col-5"><label class="form-label small">طول (mm)</label><input class="form-control" type="number" inputmode="decimal" step="0.1" min="0.1" name="rem_{{ rec.pk }}_1_height" data-dimension="height" placeholder="اندازه‌گیری شود"></div><div class="col-2"><button type="button" class="btn btn-outline-danger remove-remnant" aria-label="حذف پرت">×</button></div></div></div>
+                  <div class="d-flex flex-wrap gap-2 mt-2"><button type="button" class="btn btn-sm btn-outline-primary add-remnant" data-target="remnants-{{ rec.pk }}">افزودن پرت</button><button type="button" class="btn btn-sm btn-outline-secondary fill-predicted-offcuts" data-target="remnants-{{ rec.pk }}">پر کردن از پیش‌بینی</button></div>
+                  <div class="small text-danger remnant-validation mt-1" aria-live="polite"></div>
+                </div>
+              </div>
+              {% endif %}
+              <div class="sheet-navigation d-flex justify-content-between align-items-center gap-2"><button type="button" class="btn btn-outline-secondary btn-lg previous-sheet">→ قبلی</button><span class="sheet-position small text-muted" aria-live="polite"></span><button type="button" class="btn btn-primary btn-lg next-sheet">بعدی ←</button></div>
+              <script type="application/json" data-cut-sim data-sheet-pk="{{ rec.pk|default:'0' }}">{"w":"{{ s.sheet.width }}","h":"{{ s.sheet.height }}","kerf":"{{ plan.plan_data.kerf|default:'4' }}","parts":[{% for part in s.parts %}{"no":{{ part.no }},"x":"{{ part.x }}","y":"{{ part.y }}","width":"{{ part.width }}","height":"{{ part.height }}","rotated":{% if part.rotated %}true{% else %}false{% endif %},"label":"{{ part.label|escapejs }}"{% if part.color %},"color":"{{ part.color }}"{% endif %}}{% if not forloop.last %},{% endif %}{% endfor %}],"offcuts":{{ s.expected_offcuts_json|default:'[]' }},"seq":{{ s.cut_sim_seq|default:'[]' }},"trim":"{{ plan.plan_data.trim|default:'0' }}"}</script>
+            </article>
+            {% endwith %}{% endfor %}
           </div>
-          {% if plan.status == 'planned' and rec %}
-          <div class="result-entry" data-sheet-result="{{ rec.pk }}">
-            <fieldset class="outcome-group" data-sheet="{{ rec.pk }}"><legend class="form-label fw-bold">نتیجه واقعی این ورق</legend><div class="d-grid gap-2">
-              <input type="radio" class="btn-check cut-outcome" name="outcome_{{ rec.pk }}" id="o{{ rec.pk }}-used" value="used" data-sheet="{{ rec.pk }}" required><label class="btn btn-outline-success btn-lg" for="o{{ rec.pk }}-used">مصرف شد</label>
-              <input type="radio" class="btn-check cut-outcome" name="outcome_{{ rec.pk }}" id="o{{ rec.pk }}-untouched" value="untouched" data-sheet="{{ rec.pk }}"><label class="btn btn-outline-secondary btn-lg" for="o{{ rec.pk }}-untouched">دست‌نخورده ماند</label>
-              <input type="radio" class="btn-check cut-outcome" name="outcome_{{ rec.pk }}" id="o{{ rec.pk }}-scrapped" value="scrapped" data-sheet="{{ rec.pk }}"><label class="btn btn-outline-danger btn-lg" for="o{{ rec.pk }}-scrapped">اسقاط شد</label>
-            </div></fieldset>
-            <div class="mt-3"><label class="form-label small" for="note-{{ rec.pk }}">یادداشت نتیجه (برای اسقاط الزامی)</label><input class="form-control" id="note-{{ rec.pk }}" name="note_{{ rec.pk }}" maxlength="255" placeholder="مثلاً آسیب در لبه"></div>
-            <div class="remnant-fields mt-3" id="remnants-{{ rec.pk }}" data-sheet="{{ rec.pk }}" data-width="{{ rec.width }}" data-height="{{ rec.height }}" data-expected="{{ s.expected_offcuts_json }}">
-              <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2"><div><b>پرت‌های واقعی اندازه‌گیری‌شده</b><div class="small text-muted">پس از اندازه‌گیری؛ حداکثر ۵۰ ردیف.</div></div><span class="badge bg-light remnant-area-total">مساحت ثبت‌شده: 0 m²</span></div>
-              <div class="remnant-rows"><div class="row g-2 align-items-end mb-2 remnant-row" data-remnant-row><div class="col-12 small fw-bold remnant-number">پرت 1</div><div class="col-5"><label class="form-label small">عرض (mm)</label><input class="form-control" type="number" inputmode="decimal" step="0.1" min="0.1" name="rem_{{ rec.pk }}_1_width" data-dimension="width" placeholder="اندازه‌گیری شود"></div><div class="col-5"><label class="form-label small">طول (mm)</label><input class="form-control" type="number" inputmode="decimal" step="0.1" min="0.1" name="rem_{{ rec.pk }}_1_height" data-dimension="height" placeholder="اندازه‌گیری شود"></div><div class="col-2"><button type="button" class="btn btn-outline-danger remove-remnant" aria-label="حذف پرت">×</button></div></div></div>
-              <div class="d-flex flex-wrap gap-2 mt-2"><button type="button" class="btn btn-sm btn-outline-primary add-remnant" data-target="remnants-{{ rec.pk }}">افزودن پرت</button><button type="button" class="btn btn-sm btn-outline-secondary fill-predicted-offcuts" data-target="remnants-{{ rec.pk }}">پر کردن از پیش‌بینی</button></div>
-              <div class="small text-danger remnant-validation mt-1" aria-live="polite"></div>
-            </div>
-          </div>
-          {% endif %}
-          <div class="sheet-navigation d-flex justify-content-between align-items-center gap-2"><button type="button" class="btn btn-outline-secondary btn-lg previous-sheet">→ قبلی</button><span class="sheet-position small text-muted" aria-live="polite"></span><button type="button" class="btn btn-primary btn-lg next-sheet">بعدی ←</button></div>
-          <script type="application/json" data-cut-sim data-sheet-pk="{{ rec.pk|default:'0' }}">{"w":"{{ s.sheet.width }}","h":"{{ s.sheet.height }}","kerf":"{{ plan.plan_data.kerf|default:'4' }}","parts":[{% for part in s.parts %}{"no":{{ part.no }},"x":"{{ part.x }}","y":"{{ part.y }}","width":"{{ part.width }}","height":"{{ part.height }}","rotated":{% if part.rotated %}true{% else %}false{% endif %},"label":"{{ part.label|escapejs }}"{% if part.color %},"color":"{{ part.color }}"{% endif %}}{% if not forloop.last %},{% endif %}{% endfor %}],"offcuts":{{ s.expected_offcuts_json|default:'[]' }},"seq":{{ s.cut_sim_seq|default:'[]' }},"trim":"{{ plan.plan_data.trim|default:'0' }}"}</script>
-        </article>
-        {% endwith %}{% endfor %}
+        </div>
       </div>
     </div>
   </section>
