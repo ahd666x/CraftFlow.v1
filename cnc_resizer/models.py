@@ -149,6 +149,7 @@ class CncSheetPlan(models.Model):
     sheet_index = models.PositiveIntegerField(default=0)
     width = models.DecimalField(max_digits=10, decimal_places=1)
     height = models.DecimalField(max_digits=10, decimal_places=1)
+    planned_area = models.DecimalField(max_digits=20, decimal_places=2, default=0, editable=False)
     status = models.CharField(max_length=12, choices=STATUS, default="planned")
     RESULT_OUTCOMES = (("used", "مصرف شد"), ("untouched", "استفاده نشد"), ("scrapped", "اسقاط شد"))
     result_outcome = models.CharField(max_length=12, choices=RESULT_OUTCOMES, blank=True)
@@ -159,6 +160,7 @@ class CncSheetPlan(models.Model):
     kerf = models.DecimalField(max_digits=6, decimal_places=1, default=4)
     layout = models.JSONField(default=dict)
     gcode = models.TextField()
+    output_verified = models.BooleanField(default=False, editable=False)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="cnc_sheet_plans")
     created_at = models.DateTimeField(auto_now_add=True)
 
