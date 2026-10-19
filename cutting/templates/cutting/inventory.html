@@ -2,7 +2,7 @@
 {% load static %}
 {% block title %}مدیریت موجودی ورق{% endblock %}
 {% block content %}
-<div class="container-fluid py-4" dir="rtl">
+<div class="station" dir="rtl">
   <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3"><div><h1 class="mb-1">موجودی ورق MDF</h1><div class="text-muted small">آزاد = قابل استفاده برای برنامهٔ جدید</div></div><a class="btn btn-success" href="{% url 'cutting:stock_create' %}"><i class="bi bi-plus-lg"></i> ثبت موجودی</a></div>
   {% include 'cutting/_inventory_nav.html' %}
   {% include 'cutting/_messages.html' %}

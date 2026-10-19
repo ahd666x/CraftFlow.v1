@@ -1,24 +1,25 @@
 {% extends 'base.html' %}
 {% load static %}
-{% block title %}برنامه برش {{ plan.id }}{% endblock %}
+{% block title %}ایستگاه برش — برنامه {{ plan.id }}{% endblock %}
 {% block content %}
-<div class="container-fluid py-3 cut-plan-page" dir="rtl">
+<div class="station station-plan" dir="rtl" data-mode="{% if plan.status == 'planned' %}process{% else %}layout{% endif %}">
   {% include 'cutting/_inventory_nav.html' %}
   {% if plan.status == 'planned' %}{% include 'cutting/_flow_steps.html' with step=3 %}{% else %}{% include 'cutting/_flow_steps.html' with step=2 %}{% endif %}
 
   <header class="plan-bar">
     <div class="plan-bar-main">
       <div class="d-flex flex-wrap align-items-center gap-2">
-        <h1 class="h4 mb-0">برنامه برش #{{ plan.pk }}</h1>
-        <span class="badge {% if plan.status == 'cut' %}bg-success{% elif plan.status == 'partial' %}bg-warning text-dark{% elif plan.status == 'cancelled' %}bg-secondary{% else %}bg-primary{% endif %}">{{ plan.get_status_display }}</span>
-        <span class="badge bg-light text-dark border">سیاست مصرف: {{ plan.get_stock_policy_display }}</span>
+        <h1 class="h5 mb-0">برنامه برش <span class="num">#{{ plan.pk }}</span></h1>
+        <span class="badge {% if plan.status == 'cut' %}bg-success{% elif plan.status == 'partial' %}bg-warning{% elif plan.status == 'cancelled' %}bg-secondary{% else %}bg-primary{% endif %}">{{ plan.get_status_display }}</span>
+        <span class="badge bg-light">سیاست مصرف: {{ plan.get_stock_policy_display }}</span>
       </div>
-      <div class="small mt-1">سفارش‌ها: {% for o in plan.orders.all %}<span class="badge bg-light text-dark border">#{{ o.pk }}{% if o.number %} · {{ o.number }}{% endif %}</span> {% endfor %}</div>
+      <div class="small mt-1 text-muted">سفارش‌ها: {% for o in plan.orders.all %}<span class="badge bg-light num">#{{ o.pk }}{% if o.number %} · {{ o.number }}{% endif %}</span> {% endfor %}</div>
     </div>
     <div class="plan-bar-stats">
       <div class="plan-chip"><span>ورق</span><b class="num">{{ plan_metrics.sheet_count }}</b></div>
       <div class="plan-chip"><span>قطعه</span><b class="num">{{ plan_metrics.piece_count }}</b></div>
       <div class="plan-chip"><span>بهره‌وری</span><b class="num">{{ plan_metrics.utilization_percent|floatformat:1 }}%</b></div>
+      <div class="plan-chip"><span>پرت</span><b class="num">{{ plan_metrics.waste_area_m2|floatformat:2 }} m²</b></div>
     </div>
     <div class="plan-bar-actions">
       <a class="btn btn-primary" id="cut-download-trigger" href="{% url 'cutting:download_cut' plan.id %}">دانلود .CUT</a>
@@ -31,19 +32,11 @@
   {% if plan.status == 'cancelled' %}<div class="alert alert-secondary py-2">این برنامه لغو شده و رزروها آزاد شدند.</div>{% endif %}
   {% if plan.status == 'partial' %}<div class="alert alert-warning py-2"><b>بخشی از برنامه ثبت شده.</b> باقی‌مانده‌ها در برنامهٔ بعدی محاسبه می‌شوند:<ul class="mb-2 mt-1">{% for row in unfinished_tasks %}<li>{{ row.task }} — {{ row.task.completed_quantity }} از {{ row.task.quantity }}</li>{% endfor %}</ul><a class="btn btn-sm btn-warning" href="{% url 'cutting:planner' %}">برنامه‌ریزی باقی‌مانده‌ها</a></div>{% endif %}
 
-  <section class="plan-progress-card" aria-labelledby="sheet-progress-title">
-    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-1">
-      <span class="small fw-bold" id="sheet-progress-title">پیشرفت ثبت نتیجه</span>
-      <strong class="small" id="sheet-progress-label">{{ sheet_progress.completed }} از {{ sheet_progress.total }} ورق ثبت شده</strong>
-    </div>
-    <div class="progress mb-2" style="height:.6rem" role="progressbar" aria-label="پیشرفت ثبت نتیجهٔ ورق‌ها" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ sheet_progress.percent|floatformat:0 }}"><div class="progress-bar bg-success" id="sheet-progress-bar" style="width:{{ sheet_progress.percent|floatformat:0 }}%">{{ sheet_progress.percent|floatformat:0 }}%</div></div>
-    <div class="d-flex flex-wrap gap-2 small" id="sheet-progress-counts">
-      <span class="status-pill status-pill-pending"><b data-count="reserved">{{ sheet_progress.reserved }}</b> ثبت‌نشده</span>
-      <span class="status-pill status-pill-used"><b data-count="used">{{ sheet_progress.used }}</b> مصرف‌شده</span>
-      <span class="status-pill status-pill-untouched"><b data-count="untouched">{{ sheet_progress.untouched }}</b> دست‌نخورده</span>
-      <span class="status-pill status-pill-scrapped"><b data-count="scrapped">{{ sheet_progress.scrapped }}</b> اسقاط‌شده</span>
-    </div>
-  </section>
+  <div class="mode-tabs" role="tablist" aria-label="حالت ایستگاه">
+    <button type="button" class="mode-tab {% if plan.status != 'planned' %}active{% endif %}" data-station-mode="layout" aria-selected="{% if plan.status != 'planned' %}true{% else %}false{% endif %}"><i class="bi bi-grid-1x2"></i>چیدمان</button>
+    {% if plan.status == 'planned' %}<button type="button" class="mode-tab active" data-station-mode="process" aria-selected="true"><i class="bi bi-check2-square"></i>اجرا و ثبت نتیجه</button>{% endif %}
+    <button type="button" class="mode-tab" data-station-mode="sim" aria-selected="false"><i class="bi bi-play-fill"></i>شبیه‌سازی برش</button>
+  </div>
 
   {% if summaries|length > 1 %}
   <div class="material-tabs" role="tablist" aria-label="انتخاب متریال">
@@ -55,28 +48,55 @@
   {% for r in summaries %}
   <section class="card mb-3 material-section {% if not forloop.first %}d-none{% endif %}" data-material-section="{{ forloop.counter0 }}">
     <div class="card-body">
-      <div class="sheet-selector d-flex flex-wrap align-items-center gap-2 mb-3" role="tablist" aria-label="انتخاب ورق"><span class="small fw-bold">{{ r.material }} — ورق:</span>
+      <div class="sheet-selector d-flex flex-wrap align-items-center gap-2 mb-3" role="tablist" aria-label="انتخاب ورق"><span class="small fw-bold text-muted">{{ r.material }} — ورق:</span>
         {% for s in r.sheets %}{% with rec=s.sheet_record %}<button class="btn btn-sm sheet-tab" type="button" role="tab" aria-selected="false" aria-label="ورق {{ forloop.counter }} - {{ r.material }}" data-sheet-pk="{{ rec.pk }}" data-outcome="{% if rec %}{{ rec.outcome }}{% else %}none{% endif %}"><span class="sheet-tab-number">{{ forloop.counter }}</span>{% if s.sheet.is_offcut %} · پرت{% endif %}<span class="sheet-tab-status">{% if rec.outcome == 'used' %}مصرف‌شده{% elif rec.outcome == 'untouched' %}دست‌نخورده{% elif rec.outcome == 'scrapped' %}اسقاط{% else %}ثبت‌نشده{% endif %}</span></button>{% endwith %}{% endfor %}
       </div>
       <div class="sheet-panels">
         {% for s in r.sheets %}{% with rec=s.sheet_record %}
         <article class="sheet-panel {% if plan.status == 'planned' and rec %}has-side{% endif %} {% if not forloop.first %}d-none{% endif %}" data-sheet-panel data-sheet-pk="{{ rec.pk }}" data-piece-count="{{ s.planned_piece_count }}" data-outcome="{% if rec %}{{ rec.outcome }}{% else %}none{% endif %}">
           <div class="sheet-head d-flex flex-wrap justify-content-between align-items-start gap-2">
-            <div><h2 class="h5 mb-1">ورق {{ forloop.counter }} · {{ s.sheet.width }} × {{ s.sheet.height }} mm</h2><span class="badge {% if s.sheet.is_offcut %}bg-warning text-dark{% else %}bg-primary{% endif %}">{% if s.sheet.is_offcut %}پرت انبار{% else %}ورق کامل{% endif %}</span> <span class="badge bg-light text-dark border">{{ s.planned_piece_count }} قطعه</span>{% if rec and rec.outcome != 'reserved' %} <span class="badge bg-secondary">{{ rec.get_outcome_display }}</span>{% endif %}</div>
-            <div class="small text-muted">بهره‌وری این ورق: {{ s.utilization_percent|floatformat:1 }}%</div>
+            <div><h2 class="h5 mb-1">ورق {{ forloop.counter }} · <span class="num">{{ s.sheet.width }} × {{ s.sheet.height }} mm</span></h2><span class="badge {% if s.sheet.is_offcut %}bg-warning{% else %}bg-primary{% endif %}">{% if s.sheet.is_offcut %}پرت انبار{% else %}ورق کامل{% endif %}</span> <span class="badge bg-light num">{{ s.planned_piece_count }} قطعه</span>{% if rec and rec.outcome != 'reserved' %} <span class="badge bg-secondary">{{ rec.get_outcome_display }}</span>{% endif %}</div>
+            <div class="small text-muted">بهره‌وری این ورق: <b class="num">{{ s.utilization_percent|floatformat:1 }}%</b></div>
           </div>
           <div class="sheet-map">
-            <div class="cut-map-wrap"><svg class="cut-map" viewBox="0 0 {{ s.sheet.width }} {{ s.sheet.height }}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="نقشه برش ورق {{ s.sheet.width }} در {{ s.sheet.height }} میلی‌متر">
-              <rect x="0" y="0" width="{{ s.sheet.width }}" height="{{ s.sheet.height }}" fill="#fffdf5" stroke="#343a40" stroke-width="4" />
-              <g transform="translate(5 5)">
-                {% for part in s.parts %}<g><title>{{ part.label }} — {{ part.width }}×{{ part.height }} mm</title><rect x="{{ part.x }}" y="{{ part.y }}" width="{{ part.width }}" height="{{ part.height }}" fill="{{ part.color }}" fill-opacity=".28" stroke="{{ part.color }}" stroke-width="3"/><text x="{{ part.label_x }}" y="{{ part.label_y }}" font-size="{{ s.label_font }}" fill="#102a43" dominant-baseline="middle">{{ part.no }}</text>{% if part.show_dimensions %}<text x="{{ part.label_x }}" y="{{ part.dimension_y }}" font-size="{{ s.dimension_font }}" fill="#102a43" dominant-baseline="middle">{{ part.width }}×{{ part.height }}</text>{% endif %}</g>{% endfor %}
-                {% for rem in s.expected_offcuts %}{% if rem.x is not None %}<rect x="{{ rem.x }}" y="{{ rem.y }}" width="{{ rem.width }}" height="{{ rem.height }}" fill="none" stroke="#a16207" stroke-width="3" stroke-dasharray="14 8"><title>پرت تخمینی {{ rem.width }}×{{ rem.height }}</title></rect>{% endif %}{% endfor %}
-              </g>
-            </svg></div>
+            <div class="canvas-frame">
+              <span class="canvas-corner tl num">{{ s.sheet.width }} × {{ s.sheet.height }}</span>
+              <span class="canvas-corner br">تیغه {{ plan.plan_data.kerf|default:'4' }} mm · قطعه {{ s.planned_piece_count }}</span>
+              <div class="cut-map-wrap"><svg class="cut-map" viewBox="0 0 {{ s.sheet.width }} {{ s.sheet.height }}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="نقشه برش ورق {{ s.sheet.width }} در {{ s.sheet.height }} میلی‌متر">
+                <rect x="0" y="0" width="{{ s.sheet.width }}" height="{{ s.sheet.height }}" fill="#fffdf5" stroke="#94a3b8" stroke-width="4" />
+                <g transform="translate(5 5)">
+                  {% for part in s.parts %}<g data-sim-no="{{ part.no }}"><title>{{ part.label }} — {{ part.width }}×{{ part.height }} mm</title><rect x="{{ part.x }}" y="{{ part.y }}" width="{{ part.width }}" height="{{ part.height }}" fill="{{ part.color }}" fill-opacity=".28" stroke="{{ part.color }}" stroke-width="3"/><text x="{{ part.label_x }}" y="{{ part.label_y }}" font-size="{{ s.label_font }}" fill="#102a43" dominant-baseline="middle">{{ part.no }}</text>{% if part.show_dimensions %}<text x="{{ part.label_x }}" y="{{ part.dimension_y }}" font-size="{{ s.dimension_font }}" fill="#102a43" dominant-baseline="middle">{{ part.width }}×{{ part.height }}</text>{% endif %}</g>{% endfor %}
+                  {% for rem in s.expected_offcuts %}{% if rem.x is not None %}<rect x="{{ rem.x }}" y="{{ rem.y }}" width="{{ rem.width }}" height="{{ rem.height }}" fill="none" stroke="#a16207" stroke-width="3" stroke-dasharray="14 8"><title>پرت تخمینی {{ rem.width }}×{{ rem.height }}</title></rect>{% endif %}{% endfor %}
+                </g>
+              </svg></div>
+            </div>
           </div>
           <div class="sheet-info">
-            <details><summary class="small fw-semibold">فهرست قطعات و جهت چرخش</summary><ol class="small mb-0 mt-2">{% for part in s.parts %}<li><span class="legend-swatch d-inline-block" style="background:{{ part.color }}"></span> <b>{{ part.no }}.</b> {{ part.label }} — {{ part.width }}×{{ part.height }} mm · {% if part.rotated %}چرخیده 90°{% else %}بدون چرخش{% endif %}</li>{% endfor %}</ol></details>
-            <div class="mt-2"><div class="small fw-semibold">پرت‌های تخمینی (ثبت واقعی نیستند)</div><div class="small text-muted">{% for rem in s.expected_offcuts %}<span class="badge bg-light text-dark border me-1 num">{{ rem.width }}×{{ rem.height }}</span>{% empty %}پرت قابل‌استفاده‌ای برآورد نشد.{% endfor %}</div></div>
+            <details><summary class="small fw-semibold">فهرست قطعات و جهت چرخش</summary><ol class="small mb-0 mt-2">{% for part in s.parts %}<li><span class="legend-swatch d-inline-block" style="background:{{ part.color }}"></span> <b>{{ part.no }}.</b> {{ part.label }} — <span class="num">{{ part.width }}×{{ part.height }} mm</span> · {% if part.rotated %}چرخیده 90°{% else %}بدون چرخش{% endif %}</li>{% endfor %}</ol></details>
+            <div class="mt-2"><div class="small fw-semibold">پرت‌های تخمینی (ثبت واقعی نیستند)</div><div class="small text-muted">{% for rem in s.expected_offcuts %}<span class="badge bg-light me-1 num">{{ rem.width }}×{{ rem.height }}</span>{% empty %}پرت قابل‌استفاده‌ای برآورد نشد.{% endfor %}</div></div>
+          </div>
+          <div class="sim-dock">
+            <div class="sim-panel" data-sim data-sheet-pk="{{ rec.pk|default:'0' }}">
+              <div class="sim-toolbar">
+                <button type="button" class="sim-btn primary" data-sim-play><i class="bi bi-play-fill"></i> پخش</button>
+                <button type="button" class="sim-btn" data-sim-prev><i class="bi bi-skip-start-fill"></i> برش قبلی</button>
+                <button type="button" class="sim-btn" data-sim-next>برش بعدی <i class="bi bi-skip-end-fill"></i></button>
+                <button type="button" class="sim-btn" data-sim-reset>بازنشانی</button>
+                <div class="sim-speed" role="group" aria-label="سرعت پخش">
+                  <button type="button" class="sim-btn on" data-sim-speed="1">1×</button>
+                  <button type="button" class="sim-btn" data-sim-speed="2">2×</button>
+                  <button type="button" class="sim-btn" data-sim-speed="4">4×</button>
+                </div>
+              </div>
+              <div class="sim-readout" aria-live="polite">
+                <span class="sim-progress" data-sim-progress>آماده — «برش بعدی» یا «پخش» را بزنید</span>
+                <span>نوع: <span class="sim-cut-type trim" data-sim-type>—</span></span>
+                <span>X <b class="num" data-sim-x>—</b></span>
+                <span>Y <b class="num" data-sim-y>—</b></span>
+                <span>مانده ورق: <b class="num" data-sim-remnant>—</b></span>
+              </div>
+              <ol class="sim-list" data-sim-list></ol>
+            </div>
           </div>
           {% if plan.status == 'planned' and rec %}
           <div class="result-entry" data-sheet-result="{{ rec.pk }}">
@@ -87,7 +107,7 @@
             </div></fieldset>
             <div class="mt-3"><label class="form-label small" for="note-{{ rec.pk }}">یادداشت نتیجه (برای اسقاط الزامی)</label><input class="form-control" id="note-{{ rec.pk }}" name="note_{{ rec.pk }}" maxlength="255" placeholder="مثلاً آسیب در لبه"></div>
             <div class="remnant-fields mt-3" id="remnants-{{ rec.pk }}" data-sheet="{{ rec.pk }}" data-width="{{ rec.width }}" data-height="{{ rec.height }}" data-expected="{{ s.expected_offcuts_json }}">
-              <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2"><div><b>پرت‌های واقعی اندازه‌گیری‌شده</b><div class="small text-muted">پس از اندازه‌گیری؛ حداکثر ۵۰ ردیف.</div></div><span class="badge bg-light text-dark border remnant-area-total">مساحت ثبت‌شده: 0 m²</span></div>
+              <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2"><div><b>پرت‌های واقعی اندازه‌گیری‌شده</b><div class="small text-muted">پس از اندازه‌گیری؛ حداکثر ۵۰ ردیف.</div></div><span class="badge bg-light remnant-area-total">مساحت ثبت‌شده: 0 m²</span></div>
               <div class="remnant-rows"><div class="row g-2 align-items-end mb-2 remnant-row" data-remnant-row><div class="col-12 small fw-bold remnant-number">پرت 1</div><div class="col-5"><label class="form-label small">عرض (mm)</label><input class="form-control" type="number" inputmode="decimal" step="0.1" min="0.1" name="rem_{{ rec.pk }}_1_width" data-dimension="width" placeholder="اندازه‌گیری شود"></div><div class="col-5"><label class="form-label small">طول (mm)</label><input class="form-control" type="number" inputmode="decimal" step="0.1" min="0.1" name="rem_{{ rec.pk }}_1_height" data-dimension="height" placeholder="اندازه‌گیری شود"></div><div class="col-2"><button type="button" class="btn btn-outline-danger remove-remnant" aria-label="حذف پرت">×</button></div></div></div>
               <div class="d-flex flex-wrap gap-2 mt-2"><button type="button" class="btn btn-sm btn-outline-primary add-remnant" data-target="remnants-{{ rec.pk }}">افزودن پرت</button><button type="button" class="btn btn-sm btn-outline-secondary fill-predicted-offcuts" data-target="remnants-{{ rec.pk }}">پر کردن از پیش‌بینی</button></div>
               <div class="small text-danger remnant-validation mt-1" aria-live="polite"></div>
@@ -95,14 +115,41 @@
           </div>
           {% endif %}
           <div class="sheet-navigation d-flex justify-content-between align-items-center gap-2"><button type="button" class="btn btn-outline-secondary btn-lg previous-sheet">→ قبلی</button><span class="sheet-position small text-muted" aria-live="polite"></span><button type="button" class="btn btn-primary btn-lg next-sheet">بعدی ←</button></div>
+          <script type="application/json" data-cut-sim data-sheet-pk="{{ rec.pk|default:'0' }}">{"w":"{{ s.sheet.width }}","h":"{{ s.sheet.height }}","kerf":"{{ plan.plan_data.kerf|default:'4' }}","parts":[{% for part in s.parts %}{"no":{{ part.no }},"x":"{{ part.x }}","y":"{{ part.y }}","width":"{{ part.width }}","height":"{{ part.height }}","rotated":{% if part.rotated %}true{% else %}false{% endif %},"label":"{{ part.label|escapejs }}"{% if part.color %},"color":"{{ part.color }}"{% endif %}}{% if not forloop.last %},{% endif %}{% endfor %}],"offcuts":{{ s.expected_offcuts_json|default:'[]' }}}</script>
         </article>
         {% endwith %}{% endfor %}
       </div>
     </div>
   </section>
   {% endfor %}
-  {% if color_legend %}<details class="mb-3"><summary class="small fw-bold">راهنمای رنگ قطعات</summary><div class="d-flex flex-wrap gap-2 mt-2">{% for item in color_legend %}<span class="badge bg-light text-dark border d-inline-flex align-items-center gap-1"><span class="legend-swatch" style="background:{{ item.color }}"></span>{{ item.label }}</span>{% endfor %}</div></details>{% endif %}
-  {% if plan.status == 'planned' %}<div class="cut-result-actions d-flex flex-wrap justify-content-between align-items-center gap-2 p-3 border rounded bg-white mb-3"><div><b>مرور نتیجه</b><div id="result-summary" class="small text-muted" aria-live="polite">برای هر ورق نتیجه را انتخاب کنید.</div></div><div class="d-flex flex-wrap gap-2"><button type="button" id="mark-all-used" class="btn btn-outline-primary">همه مصرف شدند</button><button type="button" class="btn btn-success" id="open-confirm">مرور و تأیید</button></div></div></form>{% endif %}
+  {% if color_legend %}<details class="mb-3"><summary class="small fw-bold">راهنمای رنگ قطعات</summary><div class="d-flex flex-wrap gap-2 mt-2">{% for item in color_legend %}<span class="badge bg-light d-inline-flex align-items-center gap-1"><span class="legend-swatch" style="background:{{ item.color }}"></span>{{ item.label }}</span>{% endfor %}</div></details>{% endif %}
+  {% if plan.status == 'planned' %}</form>{% endif %}
+
+  <div class="station-statusbar">
+    <div class="sb-item">تیغه <b class="num">{{ plan.plan_data.kerf|default:'4' }} mm</b></div>
+    <div class="sb-item">سیاست <b>{{ plan.get_stock_policy_display }}</b></div>
+    <div class="sb-item">بهره‌وری کل <b class="num">{{ plan_metrics.utilization_percent|floatformat:1 }}%</b></div>
+    <span class="sb-sep"></span>
+    {% if plan.status == 'planned' %}
+    <div class="sb-item" id="sheet-progress-title-wrap"><span id="sheet-progress-label">{{ sheet_progress.completed }} از {{ sheet_progress.total }} ورق ثبت شده</span></div>
+    <div class="progress" role="progressbar" aria-label="پیشرفت ثبت نتیجهٔ ورق‌ها" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ sheet_progress.percent|floatformat:0 }}"><div class="progress-bar bg-success" id="sheet-progress-bar" style="width:{{ sheet_progress.percent|floatformat:0 }}%">{{ sheet_progress.percent|floatformat:0 }}%</div></div>
+    <div class="d-flex flex-wrap gap-1">
+      <span class="status-pill status-pill-pending"><b data-count="reserved">{{ sheet_progress.reserved }}</b> ثبت‌نشده</span>
+      <span class="status-pill status-pill-used"><b data-count="used">{{ sheet_progress.used }}</b> مصرف‌شده</span>
+      <span class="status-pill status-pill-untouched"><b data-count="untouched">{{ sheet_progress.untouched }}</b> دست‌نخورده</span>
+      <span class="status-pill status-pill-scrapped"><b data-count="scrapped">{{ sheet_progress.scrapped }}</b> اسقاط</span>
+    </div>
+    <span class="sb-sep"></span>
+    <span id="result-summary" class="sb-summary" aria-live="polite">برای هر ورق نتیجه را انتخاب کنید.</span>
+    <div class="sb-actions">
+      <button type="button" id="mark-all-used" class="btn btn-sm btn-outline-primary">همه مصرف شدند</button>
+      <button type="button" id="open-confirm" class="btn btn-sm btn-success">مرور و تأیید</button>
+    </div>
+    {% else %}
+    <div class="sb-item">قطعه <b class="num">{{ plan_metrics.piece_count }}</b></div>
+    <div class="sb-item">پرت <b class="num">{{ plan_metrics.waste_area_m2|floatformat:2 }} m²</b></div>
+    {% endif %}
+  </div>
 
   <div class="modal fade" id="confirm-cut-modal" tabindex="-1" aria-labelledby="confirm-cut-title" aria-hidden="true"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h2 class="modal-title fs-5" id="confirm-cut-title">خلاصه ثبت نتیجه</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="بستن"></button></div><div class="modal-body"><div id="confirm-cut-summary"></div><div class="alert alert-warning mt-3 mb-0">پس از تأیید، موجودی واقعی به‌روزرسانی و پرت‌ها به انبار اضافه می‌شوند.</div></div><div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">بازگشت و اصلاح</button><button type="submit" form="cut-results-form" id="confirm-cut-submit" class="btn btn-success"><span>تأیید و ثبت نتیجه</span><span class="spinner-border spinner-border-sm ms-2" role="status" aria-hidden="true" hidden></span></button></div></div></div></div>
   <div class="modal fade" id="cut-warning-modal" tabindex="-1" aria-labelledby="cut-warning-title" aria-hidden="true"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h2 class="modal-title fs-5" id="cut-warning-title">بررسی فایل برش</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="بستن"></button></div><div class="modal-body"><p>پذیرش این فایل روی کنترلر دستگاه تأیید نشده؛ ابتدا در حالت آزمایشی بررسی کنید.</p><div class="form-check"><input class="form-check-input" type="checkbox" id="cut-warning-ack"><label class="form-check-label" for="cut-warning-ack">متوجه شدم</label></div></div><div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">بازگشت</button><button type="button" class="btn btn-primary" id="cut-warning-download" disabled>دانلود فایل .CUT</button></div></div></div></div>
@@ -110,4 +157,4 @@
   {% if plan.status == 'partial' %}<a class="btn btn-primary" href="{% url 'cutting:planner' %}">برنامه‌ریزی باقی‌مانده‌ها</a>{% endif %}
 </div>
 {% endblock %}
-{% block extra_js %}<script src="{% static 'cutting/plan_detail.js' %}"></script>{% endblock %}
+{% block extra_js %}<script src="{% static 'cutting/plan_detail.js' %}"></script><script src="{% static 'cutting/cut_sim.js' %}"></script>{% endblock %}

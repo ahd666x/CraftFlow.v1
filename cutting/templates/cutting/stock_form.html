@@ -2,7 +2,7 @@
 {% load static %}
 {% block title %}{% if stock %}ویرایش موجودی{% else %}ثبت ورق MDF{% endif %}{% endblock %}
 {% block content %}
-<div class="container py-4 cutting-page cutting-stock-form-page" dir="rtl">
+<div class="station cutting-page cutting-stock-form-page" dir="rtl">
   {% include 'cutting/_inventory_nav.html' %}
   <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3"><div><h1 class="mb-1">{% if stock %}ویرایش بچ موجودی{% else %}ثبت گروهی موجودی ورق{% endif %}</h1><p class="text-muted mb-0">ابعاد برحسب میلی‌متر است؛ حداکثر یک رقم اعشار پذیرفته می‌شود.</p></div></div>
   {% include 'cutting/_messages.html' %}
