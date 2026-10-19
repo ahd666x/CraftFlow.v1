@@ -108,9 +108,20 @@ def payment_verify(request):
             'error': f'مبلغ پرداخت ({payment.amount}) با مبلغ سفارش ({expected_amount}) مطابقت ندارد.'
         })
 
-    # پرداخت درب منزل: بدون پرداخت واقعی، سفارش paid نمی‌شود.
-    # Payment در حالت `pending` می‌ماند تا مدیر هنگام تحویل دستی تغییر دهد.
+    # پرداخت درب منزل: پول هنوز دریافت نشده، پس سفارش `paid` نمی‌شود و
+    # Payment هم `pending` می‌ماند تا مدیر هنگام تحویل آن را تسویه کند.
+    # اما تولید باید همین‌جا راه بیفتد؛ بدون generate_tasks() سفارش در
+    # `draft` می‌ماند و هیچ کارگاهی نمی‌داند چه چیزی بسازد (همان قرارداد
+    # `_finish_payment`). فراخوانی تکراری هم امن است: generate_tasks()
+    # خودش تسک تکراری نمی‌سازد و این شرط هم فقط بار اول عبور می‌کند.
     if payment.gateway == 'cash_on_delivery':
+        if not order.tasks.exists() and order.status not in Order.LOCKED_STATUSES:
+            task_result = order.generate_tasks()
+            if not task_result.get('success'):
+                messages.warning(
+                    request,
+                    f"سفارش ثبت شد، اما صدور دستور تولید با مشکل مواجه شد: {task_result.get('error')}",
+                )
         messages.success(
             request,
             'سفارش شما ثبت شد. مبلغ آن هنگام تحویل پرداخت خواهد شد.',
