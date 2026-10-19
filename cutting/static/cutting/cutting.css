@@ -111,3 +111,69 @@
   .cutting-stepper .cutting-step { font-size: .78rem; padding: .35rem .5rem; }
   .material-preview-card { position: static; }
 }
+
+
+/* Focused finishing pass for the MDF cutting application */
+.cutting-nav {
+  padding: .5rem .65rem;
+  background: #fff;
+  border: 1px solid #dbe3ec;
+  border-radius: .75rem;
+}
+.cutting-nav .nav-tabs {
+  flex-wrap: nowrap;
+  gap: .2rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-bottom-color: #dbe3ec;
+  scrollbar-width: thin;
+}
+.cutting-nav .nav-tabs .nav-link {
+  white-space: nowrap;
+  border-radius: .5rem .5rem 0 0;
+  padding: .65rem .9rem;
+}
+.cutting-nav .nav-tabs .nav-link:not(.active) { color: #475569; }
+.cutting-nav .nav-tabs .nav-link:focus-visible,
+.cutting-nav a:focus-visible {
+  outline: 3px solid #93c5fd;
+  outline-offset: 2px;
+}
+.inventory-status-cards .card {
+  border: 1px solid #dce4ed !important;
+  border-top: 3px solid #94a3b8 !important;
+  border-radius: .75rem;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, .035);
+}
+.inventory-status-cards .card-body { padding: 1rem; }
+.inventory-status-cards .fs-3 {
+  font-size: clamp(1.35rem, 2vw, 1.8rem) !important;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+.inventory-status-cards .small { line-height: 1.55; }
+.inventory-quick-links .btn { border-radius: 999px; padding-inline: .9rem; }
+#inventory-filters .form-control,
+#inventory-filters .form-select { min-height: 42px; }
+#inventory-filters { row-gap: .75rem !important; }
+#inventory-filters + .table-responsive,
+.inventory-table-wrap { border-radius: 0 0 .75rem .75rem; }
+.inventory-sheet-visual { box-shadow: inset 0 0 0 1px rgba(255,255,255,.45); }
+.planner-page #order-filters { border: 1px solid #dbe3ec; border-radius: .75rem; }
+.planner-page .material-preview-card { border-color: #dbe3ec; border-radius: .75rem; }
+.planner-page .material-preview-card .card-header { background: #f8fafc; }
+.planner-page .order-row td { vertical-align: middle; }
+.cut-plan-page .material-section { border-color: #dbe3ec; border-radius: .75rem; overflow: clip; }
+.cut-plan-page .material-section > .card-header { background: #f8fafc; }
+@media (max-width: 767.98px) {
+  .cutting-nav { margin-bottom: 1rem !important; padding: .4rem; }
+  .cutting-nav .nav-tabs .nav-link { padding: .6rem .75rem; font-size: .9rem; }
+  .inventory-status-cards { --bs-gutter-y: .65rem; --bs-gutter-x: .65rem; }
+  .inventory-status-cards .card-body { padding: .8rem; }
+  .inventory-quick-links { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .inventory-quick-links .btn { white-space: normal; min-height: 42px; }
+  .planner-page, .cut-plan-page { padding-top: 1rem !important; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cutting-nav *, .planner-page *, .cut-plan-page * { scroll-behavior: auto !important; transition-duration: .01ms !important; }
+}
