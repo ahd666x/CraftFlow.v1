@@ -77,6 +77,29 @@ def _arc_extremes(sx, sy, ex, ey, i, j, clockwise):
     return points
 
 
+def _arc_center_from_r(sx, sy, ex, ey, r, clockwise):
+    """Center of an R-format arc; ``None`` when the geometry is impossible.
+
+    G-code sign convention: positive R selects the minor (<= 180 deg) arc,
+    negative R the major one. For a CCW arc (G3) the centre lies on the
+    left side of the start->end chord; for CW (G2) on the right side.
+    """
+    radius = abs(r)
+    dx, dy = ex - sx, ey - sy
+    chord = math.hypot(dx, dy)
+    if radius == 0 or chord == 0 or chord > 2 * radius:
+        return None
+    mx, my = (sx + ex) / 2.0, (sy + ey) / 2.0
+    h = math.sqrt(radius * radius - (chord / 2.0) ** 2)
+    lx, ly = -dy / chord, dx / chord  # unit normal to the left of the chord
+    left = (mx + lx * h, my + ly * h)
+    right = (mx - lx * h, my - ly * h)
+    minor = r >= 0
+    if clockwise:
+        return right if minor else left
+    return left if minor else right
+
+
 def source_bounds(body):
     """Bounding box of the *cutting* geometry (G1/G2/G3), arcs included.
 
@@ -95,7 +118,7 @@ def source_bounds(body):
                 mode = int(value)
         vals = {}
         for letter, value, _ in words:
-            if letter in "XYIJ":
+            if letter in "XYIJR":
                 vals[letter] = value
         nx = vals.get("X", cur_x)
         ny = vals.get("Y", cur_y)
@@ -105,7 +128,19 @@ def source_bounds(body):
             if nx is not None and ny is not None:
                 pts.append((nx, ny))
             if mode in (2, 3) and cur_x is not None and cur_y is not None and nx is not None and ny is not None:
-                pts.extend(_arc_extremes(cur_x, cur_y, nx, ny, vals.get("I", 0.0), vals.get("J", 0.0), mode == 2))
+                if "I" in vals or "J" in vals:
+                    pts.extend(_arc_extremes(cur_x, cur_y, nx, ny, vals.get("I", 0.0), vals.get("J", 0.0), mode == 2))
+                elif "R" in vals:
+                    # R-format arc: derive the centre from R and the
+                    # start->end chord. Previously only I/J were read, so
+                    # R arcs silently shrank the bounding box and the part
+                    # could be nested overlapping its neighbours.
+                    center = _arc_center_from_r(cur_x, cur_y, nx, ny, vals["R"], mode == 2)
+                    if center is not None:
+                        pts.extend(_arc_extremes(
+                            cur_x, cur_y, nx, ny,
+                            center[0] - cur_x, center[1] - cur_y, mode == 2,
+                        ))
         cur_x, cur_y = nx, ny
     if not pts:
         raise GcodeError("فایل CNC مسیر برش (G1/G2/G3) با مختصات X/Y ندارد.")
