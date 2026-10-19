@@ -98,17 +98,24 @@ def get_or_create_cart(request):
     return cart
 
 
-def merge_guest_cart_to_user(request, user):
+@transaction.atomic
+def merge_guest_cart_to_user(request, user, guest_session_key=None):
     """
     Merge guest cart (session-based) into user cart after login.
-    
+
+    ``guest_session_key`` must be the session key *before* ``login()``:
+    Django rotates the session key on login (``cycle_key``), so after login
+    the guest cart is only reachable through the pre-login key. When it is
+    not passed, the current session key is used (call paths outside login).
+
     This should be called after successful authentication.
     """
-    if not request.session.session_key:
+    session_key = guest_session_key or request.session.session_key
+    if not session_key:
         return
-    
+
     try:
-        guest_cart = Cart.objects.get(session_key=request.session.session_key)
+        guest_cart = Cart.objects.get(session_key=session_key)
     except Cart.DoesNotExist:
         return
     
@@ -137,9 +144,12 @@ def merge_guest_cart_to_user(request, user):
     
     # Delete guest cart
     guest_cart.delete()
-    
-    # Clear session key to prevent re-merging
-    request.session.flush()
+
+    # توجه: قبلاً اینجا ``request.session.flush()`` صدا زده می‌شد «برای
+    # جلوگیری از merge دوباره». flush() سشن تازه‌ساخته‌شدهٔ login را نابود
+    # می‌کند و کاربر عملاً بی‌خبر logout می‌شود. حذف سبد مهمان در خط بالا
+    # کافی است: فراخوانی دوبارهٔ merge برای همین کلید به DoesNotExist
+    # می‌خورد و بی‌اثر return می‌کند.
 
 
 class CartService:

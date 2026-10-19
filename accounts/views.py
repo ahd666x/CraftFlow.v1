@@ -32,9 +32,16 @@ class CustomLoginView(auth_views.LoginView):
         return super().get_success_url()
 
     def form_valid(self, form):
+        # کلید سشن مهمان را باید *قبل از* login() نگه داشت؛ Django در
+        # login() با cycle_key() کلید سشن را عوض می‌کند و بعد از آن سبدِ
+        # گره‌خورده به کلید قدیمی دیگر قابل پیدا کردن نیست (merge بی‌صدا
+        # هیچ می‌شد).
+        guest_session_key = self.request.session.session_key
         response = super().form_valid(form)
         # Merge guest cart into user cart after successful login
-        merge_guest_cart_to_user(self.request, self.request.user)
+        merge_guest_cart_to_user(
+            self.request, self.request.user, guest_session_key=guest_session_key,
+        )
         return response
 
 
