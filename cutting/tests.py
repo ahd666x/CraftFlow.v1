@@ -237,6 +237,20 @@ class InventoryAndCutFlowTests(TestCase):
         self.assertEqual(offcut.created_from_plan_id, plan.pk)
         self.assertTrue(SheetStockEvent.objects.filter(event_type='offcut', stock=offcut, plan=plan).exists())
 
+    def test_used_sheet_cannot_be_recorded_as_a_full_sheet_remnant(self):
+        source = self.add_stock()
+        plan = self.make_plan(); sheet = plan.planned_sheets.get()
+        response = self.client.post(reverse('cutting:mark_cut', args=[plan.pk]), {
+            f'outcome_{sheet.pk}': 'used',
+            f'rem_{sheet.pk}_1_width': str(sheet.width),
+            f'rem_{sheet.pk}_1_height': str(sheet.height),
+        })
+        self.assertEqual(response.status_code, 302)
+        source.refresh_from_db(); plan.refresh_from_db()
+        self.assertEqual(source.quantity, 1)
+        self.assertEqual(plan.status, 'planned')
+        self.assertFalse(SheetStock.objects.filter(is_offcut=True).exists())
+
     def test_idempotent_confirmation_and_exact_task_membership(self):
         source = self.add_stock()
         plan = self.make_plan(); sheet = plan.planned_sheets.get()
@@ -385,12 +399,38 @@ class InventoryAndCutFlowTests(TestCase):
         self.assertEqual(len(data['materials']), 1)
         self.assertEqual(data['materials'][0]['piece_count'], 1)
 
-    def test_standard_planner_does_not_duplicate_pieces_reserved_by_cnc(self):
+    def test_standard_mode_preview_excludes_cnc_first_parts(self):
+        self.add_stock()
+        self.part.routing_code = ' cnc .paint'
+        self.part.save(update_fields=['routing_code'])
+        response = self.client.get(reverse('cutting:planner_preview'), {'order_ids': [self.order.pk]})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['piece_count'], 0)
+
+    def test_cnc_mode_does_not_put_whitespace_normalized_cnc_parts_in_cut_plan(self):
+        self.add_stock(quantity=2)
+        self.part.routing_code = ' cnc .paint'
+        self.part.save(update_fields=['routing_code'])
+        response = self.client.post(reverse('cutting:planner'), {
+            'action': 'plan', 'order_ids': [self.order.pk], 'kerf': '4.0', 'planning_mode': 'cnc_sheets',
+        })
+        self.assertEqual(response.status_code, 302)
+        from cutting.models import CutPlanTask
+        self.assertFalse(CutPlanTask.objects.filter(task=self.task).exists())
+
+    def test_standard_planner_keeps_direct_cnc_parts_out_of_cut_in_mixed_order(self):
         stock = self.add_stock(quantity=2)
         self.part.routing_code = 'cnc.cut'
         self.part.save(update_fields=['routing_code'])
         self.task.quantity = 2
         self.task.save(update_fields=['quantity'])
+        plain_part = Part.objects.create(
+            material=self.material, name='قفسه معمولی', length=Decimal('350'), width=Decimal('250'),
+            pname='کمد', routing_code='cut.paint', turn=True,
+        )
+        plain_task = ProductionTask.objects.create(
+            order=self.order, part=plain_part, station_name='cut', step_order=2, quantity=1, status='pending',
+        )
         CncSheetPlan.objects.create(
             material=self.material, source_stock=stock, sheet_index=0,
             width=stock.width, height=stock.height,
@@ -401,7 +441,7 @@ class InventoryAndCutFlowTests(TestCase):
         })
         self.assertEqual(response.status_code, 302)
         cut_plan = CutPlan.objects.get()
-        self.assertEqual(cut_plan.planned_tasks.get().quantity, 1)
+        self.assertEqual(list(cut_plan.planned_tasks.values_list('task_id', flat=True)), [plain_task.pk])
 
     def test_cnc_result_consumes_stock_records_event_and_completes_piece(self):
         stock = self.add_stock()
@@ -410,27 +450,63 @@ class InventoryAndCutFlowTests(TestCase):
         plan = CncSheetPlan.objects.create(
             material=self.material, source_stock=stock, sheet_index=0,
             width=stock.width, height=stock.height,
-            layout={'parts': [{'task_id': self.task.pk, 'width': 300, 'height': 400}]},
-            gcode='G-code', created_by=self.user,
+            planned_area=Decimal('120000.00'),
+            layout={'parts': [{'task_id': self.task.pk, 'part_id': self.part.pk, 'order_id': self.order.pk,
+                               'task_quantity': self.task.quantity, 'completed_before': self.task.completed_quantity,
+                               'width': 300, 'height': 400}]},
+            gcode='G-code', output_verified=True, created_by=self.user,
         )
         response = self.client.post(reverse('cnc_resizer:complete_sheet_plan', args=[plan.pk]), {
             'outcome': 'used', 'note': 'test run', f'rem_{plan.pk}_1_width': '500',
             f'rem_{plan.pk}_1_height': '600',
         })
         self.assertEqual(response.status_code, 302)
+        self.client.post(reverse('cnc_resizer:complete_sheet_plan', args=[plan.pk]), {
+            'outcome': 'used', 'note': 'duplicate submission',
+        })
         plan.refresh_from_db(); stock.refresh_from_db(); self.task.refresh_from_db()
         self.assertEqual((plan.status, plan.result_outcome), ('done', 'used'))
         self.assertEqual(stock.quantity, 0)
         self.assertEqual((self.task.completed_quantity, self.task.status), (1, 'done'))
         self.assertTrue(SheetStockEvent.objects.filter(cnc_plan=plan, event_type='consume', quantity_delta=-1).exists())
+        self.assertEqual(SheetStockEvent.objects.filter(cnc_plan=plan, event_type='consume').count(), 1)
         self.assertTrue(SheetStock.objects.filter(created_from_cnc_plan=plan, is_offcut=True).exists())
+
+    def test_unverified_cnc_output_cannot_be_downloaded_or_recorded_as_used(self):
+        stock = self.add_stock()
+        plan = CncSheetPlan.objects.create(
+            material=self.material, source_stock=stock, sheet_index=0,
+            width=stock.width, height=stock.height, layout={'parts': []},
+            gcode='legacy generic program', output_verified=False, created_by=self.user,
+        )
+        self.assertEqual(self.client.get(reverse('cnc_resizer:download_sheet_plan', args=[plan.pk])).status_code, 409)
+        response = self.client.post(reverse('cnc_resizer:complete_sheet_plan', args=[plan.pk]), {'outcome': 'used'})
+        self.assertEqual(response.status_code, 302)
+        plan.refresh_from_db(); stock.refresh_from_db()
+        self.assertEqual((plan.status, stock.quantity), ('planned', 1))
+
+    def test_cnc_used_result_rejects_task_mutated_after_planning(self):
+        stock = self.add_stock()
+        plan = CncSheetPlan.objects.create(
+            material=self.material, source_stock=stock, sheet_index=0,
+            width=stock.width, height=stock.height, planned_area=Decimal('120000.00'),
+            layout={'parts': [{'task_id': self.task.pk, 'part_id': self.part.pk, 'order_id': self.order.pk,
+                               'task_quantity': 1, 'completed_before': 0, 'width': '300', 'height': '400'}]},
+            gcode='validated test output', output_verified=True, created_by=self.user,
+        )
+        self.task.quantity = 2
+        self.task.save(update_fields=['quantity'])
+        self.client.post(reverse('cnc_resizer:complete_sheet_plan', args=[plan.pk]), {'outcome': 'used'})
+        plan.refresh_from_db(); stock.refresh_from_db(); self.task.refresh_from_db()
+        self.assertEqual((plan.status, stock.quantity), ('planned', 1))
+        self.assertEqual((self.task.completed_quantity, self.task.status), (0, 'pending'))
 
     def test_untouched_cnc_result_releases_reservation_without_consuming_stock(self):
         stock = self.add_stock()
         plan = CncSheetPlan.objects.create(
             material=self.material, source_stock=stock, sheet_index=0,
             width=stock.width, height=stock.height, layout={'parts': [{'task_id': self.task.pk}]},
-            gcode='G-code', created_by=self.user,
+            gcode='G-code', output_verified=True, created_by=self.user,
         )
         self.client.post(reverse('cnc_resizer:complete_sheet_plan', args=[plan.pk]), {'outcome': 'untouched'})
         plan.refresh_from_db(); stock.refresh_from_db(); self.task.refresh_from_db()
@@ -438,6 +514,26 @@ class InventoryAndCutFlowTests(TestCase):
         self.assertEqual(stock.quantity, 1)
         self.assertEqual(self.task.completed_quantity, 0)
         self.assertTrue(SheetStockEvent.objects.filter(cnc_plan=plan, event_type='untouched').exists())
+
+    def test_cnc_used_sheet_cannot_be_recorded_as_a_full_sheet_remnant(self):
+        stock = self.add_stock()
+        plan = CncSheetPlan.objects.create(
+            material=self.material, source_stock=stock, sheet_index=0,
+            width=stock.width, height=stock.height,
+            planned_area=Decimal('120000.00'),
+            layout={'parts': [{'task_id': self.task.pk, 'part_id': self.part.pk,
+                               'order_id': self.order.pk, 'task_quantity': self.task.quantity,
+                               'completed_before': self.task.completed_quantity,
+                               'width': '300', 'height': '400'}]},
+            gcode='test only', output_verified=True, created_by=self.user,
+        )
+        self.client.post(reverse('cnc_resizer:complete_sheet_plan', args=[plan.pk]), {
+            'outcome': 'used', f'rem_{plan.pk}_1_width': str(plan.width),
+            f'rem_{plan.pk}_1_height': str(plan.height),
+        })
+        plan.refresh_from_db(); stock.refresh_from_db()
+        self.assertEqual((plan.status, stock.quantity), ('planned', 1))
+        self.assertFalse(SheetStock.objects.filter(created_from_cnc_plan=plan).exists())
 
     def test_cnc_planning_issue_can_be_resolved_and_reopened_from_ui_route(self):
         issue = CncPlanningIssue.objects.create(
@@ -458,7 +554,7 @@ class InventoryAndCutFlowTests(TestCase):
         plan = CncSheetPlan.objects.create(
             material=self.material, source_stock=stock, sheet_index=0,
             width=stock.width, height=stock.height, layout={'parts': [{'task_id': self.task.pk}]},
-            gcode='G-code', created_by=self.user,
+            gcode='G-code', output_verified=True, created_by=self.user,
         )
         issue = CncPlanningIssue.objects.create(task=self.task, order=self.order, part=self.part, reason='بررسی', created_by=self.user)
         response = self.client.get(reverse('cnc_resizer:sheet_plans'))
@@ -473,7 +569,7 @@ class InventoryAndCutFlowTests(TestCase):
         plan = CncSheetPlan.objects.create(
             material=self.material, source_stock=stock, sheet_index=0,
             width=stock.width, height=stock.height, layout={'parts': []},
-            gcode='G-code', created_by=self.user,
+            gcode='G-code', output_verified=True, created_by=self.user,
         )
         operator = User.objects.create_user(username='cnc-other-operator', password='test')
         operator.groups.add(Group.objects.get_or_create(name='1')[0])
@@ -482,6 +578,14 @@ class InventoryAndCutFlowTests(TestCase):
         self.assertEqual(self.client.post(reverse('cnc_resizer:cancel_sheet_plan', args=[plan.pk])).status_code, 403)
         plan.refresh_from_db()
         self.assertEqual(plan.status, 'planned')
+
+    def test_cnc_plan_admin_is_read_only_for_lifecycle_and_output_state(self):
+        from django.contrib import admin
+        model_admin = admin.site._registry[CncSheetPlan]
+        readonly = set(model_admin.get_readonly_fields(None))
+        self.assertTrue({'status', 'gcode', 'output_verified', 'layout', 'source_stock'}.issubset(readonly))
+        self.assertFalse(model_admin.has_add_permission(None))
+        self.assertFalse(model_admin.has_delete_permission(None))
 
     def test_part_profile_rejects_unsupported_http_methods(self):
         response = self.client.put(reverse('cnc_resizer:part_profile'), data='{}', content_type='application/json')

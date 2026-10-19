@@ -42,17 +42,41 @@ class CncSheetNestingTests(TestCase):
         )
         self.archive = tempfile.TemporaryDirectory()
         self.addCleanup(self.archive.cleanup)
-        register_base_file(SAMPLE, self.cnc_part.f3, self.user)
+        with open(SAMPLE, encoding='utf-8-sig') as source:
+            known_mm_program = source.read().replace('N10G90G54', 'N10G21G90G54', 1)
+        self.known_mm_path = os.path.join(self.archive.name, 'known-mm.cnc')
+        with open(self.known_mm_path, 'w', encoding='utf-8') as destination:
+            destination.write(known_mm_program)
+        register_base_file(self.known_mm_path, self.cnc_part.f3, self.user)
 
-    def test_all_same_material_cnc_parts_share_one_complete_sheet_program(self):
+    def test_all_same_material_cnc_parts_share_one_layout_without_unverified_machine_output(self):
         plans, issues = create_cnc_sheet_plans([self.order.pk], self.user)
-        self.assertEqual(issues, [])
+        self.assertEqual(len(issues), 1)
+        self.assertEqual(issues[0].details, {'stage': 'output_blocked', 'quantity': 3})
         self.assertEqual(len(plans), 1)
         plan = plans[0]
         self.assertEqual(len(plan.layout["parts"]), 3)
-        self.assertEqual(plan.gcode.count("; PART"), 3)
-        self.assertEqual(plan.gcode.count("M30"), 1)
-        self.assertEqual(plan.gcode.count("G53X0Y3950"), 1)
+        self.assertEqual(plan.gcode, '')
+        self.assertFalse(plan.output_verified)
+        self.assertGreater(plan.planned_area, 0)
+        self.assertEqual(self.client.get(reverse('cnc_resizer:download_sheet_plan', args=[plan.pk])).status_code, 409)
+        from cutting.models import SheetStockEvent
+        self.assertTrue(SheetStockEvent.objects.filter(cnc_plan=plan, event_type='reserve').exists())
+
+    def test_source_without_explicit_millimetre_units_is_rejected(self):
+        from .gcode_sheet import GcodeError
+        from .sheet_nesting import _source_geometry
+        with self.assertRaisesRegex(GcodeError, 'G21'):
+            _source_geometry(SAMPLE)
+
+    def test_source_failure_issue_is_not_duplicated_on_repeated_attempt(self):
+        register_base_file(SAMPLE, self.cnc_part.f3, self.user)
+        first, first_issues = create_cnc_sheet_plans([self.order.pk], self.user)
+        second, second_issues = create_cnc_sheet_plans([self.order.pk], self.user)
+        self.assertEqual((first, second), ([], []))
+        self.assertEqual(len(first_issues), 1)
+        self.assertEqual(len(second_issues), 1)
+        self.assertEqual(self.cnc_task.cnc_planning_issues.filter(status='open').count(), 1)
 
     def test_running_twice_does_not_plan_the_same_pieces_again(self):
         create_cnc_sheet_plans([self.order.pk], self.user)
@@ -64,6 +88,9 @@ class CncSheetNestingTests(TestCase):
         first, _ = create_cnc_sheet_plans([self.order.pk], self.user)
         response = self.client.post(reverse("cnc_resizer:cancel_sheet_plan", args=[first[0].pk]))
         self.assertEqual(response.status_code, 302)
+        from cutting.models import SheetStockEvent
+        self.assertTrue(SheetStockEvent.objects.filter(cnc_plan=first[0], event_type='reserve').exists())
+        self.assertTrue(SheetStockEvent.objects.filter(cnc_plan=first[0], event_type='release').exists())
         again, _ = create_cnc_sheet_plans([self.order.pk], self.user)
         self.assertEqual(len(again), 1)
         self.assertEqual(again[0].sheet_index, first[0].sheet_index + 1)  # unique per stock+user
@@ -78,7 +105,9 @@ class CncSheetNestingTests(TestCase):
         self.assertIn(self.plain_task.pk, planned_task_ids)
         self.assertNotIn(self.cnc_task.pk, planned_task_ids)
         page = self.client.get(reverse("cnc_resizer:sheet_plans"))
-        self.assertContains(page, "دانلود G-code کل ورق")
+        self.assertContains(page, "فایل دستگاه تولید نشده")
+        plan = CncSheetPlan.objects.get()
+        self.assertNotContains(page, reverse('cnc_resizer:download_sheet_plan', args=[plan.pk]))
 
     def test_sheets_used_by_cnc_are_not_offered_to_the_standard_planner(self):
         create_cnc_sheet_plans([self.order.pk], self.user)

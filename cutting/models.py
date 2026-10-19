@@ -105,6 +105,7 @@ class CutPlanSheet(models.Model):
     layout_index = models.PositiveIntegerField()
     width = models.DecimalField(verbose_name='عرض (میلی‌متر)', **MM_FIELD)
     height = models.DecimalField(verbose_name='طول (میلی‌متر)', **MM_FIELD)
+    planned_area = models.DecimalField(max_digits=20, decimal_places=2, default=0, editable=False)
     was_offcut = models.BooleanField(default=False)
     outcome = models.CharField(max_length=12, choices=OUTCOMES, default='reserved')
     actual_offcuts = models.JSONField(default=list, blank=True)
