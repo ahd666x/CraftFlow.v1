@@ -204,3 +204,32 @@
 @media (prefers-reduced-motion: reduce) {
   .planning-mode-option { transition: none; }
 }
+
+
+/* Shared layout polish for the remaining cutting screens */
+.cutting-page { max-width: 1800px; margin-inline: auto; }
+.cutting-page > h1 { margin-bottom: 1rem !important; }
+.cutting-page .card { border-color: #dbe3ec; border-radius: .75rem; }
+.cutting-page .card-header { background: #f8fafc; border-bottom-color: #e2e8f0; }
+.cutting-page .table { --bs-table-bg: transparent; }
+.cutting-page .table thead th { color: #475569; background: #f8fafc; font-size: .84rem; font-weight: 700; white-space: nowrap; }
+.cutting-page .table td { vertical-align: middle; }
+.cutting-page .form-control,
+.cutting-page .form-select { min-height: 42px; }
+.cutting-page .btn { border-radius: .55rem; }
+.cutting-page .btn-sm { min-height: 34px; }
+.cutting-history-page .card-body form,
+.cutting-plans-page form { row-gap: .75rem; }
+.cutting-history-page .table td { overflow-wrap: anywhere; }
+.cutting-stock-form-page { max-width: 1100px; }
+.cutting-stock-form-page .card-body { padding: clamp(1rem, 2.2vw, 1.75rem); }
+.cutting-stock-form-page fieldset { min-width: 0; }
+.cutting-size-specs-page .card,
+.cutting-policy-page .card { margin-bottom: 1rem; }
+@media (max-width: 767.98px) {
+  .cutting-page { padding-inline: .65rem; }
+  .cutting-page > h1 { font-size: 1.45rem; }
+  .cutting-page .card-footer { flex-wrap: wrap; gap: .65rem; }
+  .cutting-page .card-footer > div { max-width: 100%; flex-wrap: wrap; }
+  .cutting-stock-form-page .btn-lg { min-height: 46px; }
+}
