@@ -469,14 +469,18 @@ def complete_sheet_plan(request, plan_id):
                 return redirect('cnc_resizer:sheet_plans')
             if plan.status != 'planned':
                 raise ValueError('برنامهٔ لغوشده قابل ثبت نتیجه نیست.')
-            if not plan.output_verified or not plan.gcode.strip():
-                raise ValueError('فایل خروجی تأییدشده‌ای برای این برنامه وجود ندارد؛ ثبت نتیجه و مصرف موجودی مسدود شد.')
             outcome = request.POST.get('outcome', '')
             note = request.POST.get('note', '').strip()[:255]
             if outcome not in ('used', 'untouched', 'scrapped'):
                 raise ValueError('نتیجهٔ ورق معتبر نیست.')
             if outcome == 'scrapped' and not note:
                 raise ValueError('برای اسقاط ورق، ثبت علت الزامی است.')
+            # نبود فایل دستگاه تأییدشده فقط «مصرف شد» را مسدود می‌کند؛
+            # «استفاده نشد» و «اسقاط» دقیقاً برای زمانی طراحی شده‌اند که
+            # فایل دستگاه تولید نشده یا اجرای آن ممکن نبوده — بستنِ ثبت
+            # دفتریِ آن‌ها برنامهٔ planned را برای همیشه قفل می‌کرد.
+            if outcome == 'used' and (not plan.output_verified or not plan.gcode.strip()):
+                raise ValueError('فایل خروجی تأییدشده‌ای برای این برنامه وجود ندارد؛ تکمیل قطعات «مصرف شد» مسدود است.')
 
             remnants = []
             if outcome == 'used':

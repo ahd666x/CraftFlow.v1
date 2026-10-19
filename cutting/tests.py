@@ -519,6 +519,37 @@ class InventoryAndCutFlowTests(TestCase):
         self.assertEqual(self.task.completed_quantity, 0)
         self.assertTrue(SheetStockEvent.objects.filter(cnc_plan=plan, event_type='untouched').exists())
 
+    def test_untouched_cnc_result_does_not_require_verified_machine_output(self):
+        stock = self.add_stock()
+        plan = CncSheetPlan.objects.create(
+            material=self.material, source_stock=stock, sheet_index=0,
+            width=stock.width, height=stock.height, layout={'parts': [{'task_id': self.task.pk}]},
+            gcode='', output_verified=False, created_by=self.user,
+        )
+        response = self.client.post(reverse('cnc_resizer:complete_sheet_plan', args=[plan.pk]), {'outcome': 'untouched'})
+        self.assertEqual(response.status_code, 302)
+        plan.refresh_from_db(); stock.refresh_from_db(); self.task.refresh_from_db()
+        self.assertEqual((plan.status, plan.result_outcome), ('done', 'untouched'))
+        self.assertEqual(stock.quantity, 1)
+        self.assertEqual(self.task.completed_quantity, 0)
+        self.assertTrue(SheetStockEvent.objects.filter(cnc_plan=plan, event_type='untouched').exists())
+
+    def test_scrapped_cnc_result_does_not_require_verified_machine_output(self):
+        stock = self.add_stock()
+        plan = CncSheetPlan.objects.create(
+            material=self.material, source_stock=stock, sheet_index=0,
+            width=stock.width, height=stock.height, layout={'parts': []},
+            gcode='', output_verified=False, created_by=self.user,
+        )
+        response = self.client.post(reverse('cnc_resizer:complete_sheet_plan', args=[plan.pk]), {
+            'outcome': 'scrapped', 'note': 'ورق ترک خورد',
+        })
+        self.assertEqual(response.status_code, 302)
+        plan.refresh_from_db(); stock.refresh_from_db()
+        self.assertEqual((plan.status, plan.result_outcome), ('done', 'scrapped'))
+        self.assertEqual(stock.quantity, 0)
+        self.assertTrue(SheetStockEvent.objects.filter(cnc_plan=plan, event_type='scrap').exists())
+
     def test_cnc_used_sheet_cannot_be_recorded_as_a_full_sheet_remnant(self):
         stock = self.add_stock()
         plan = CncSheetPlan.objects.create(
