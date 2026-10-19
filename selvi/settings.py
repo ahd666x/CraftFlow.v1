@@ -208,8 +208,14 @@ REST_FRAMEWORK = {
 
 # مسیر پوشه‌ای که فایل‌های CNC در آن ذخیره شده‌اند
 # CNC_SOURCE_DIR = r'C:\cnc_archive'  
-CNC_SOURCE_DIR = BASE_DIR /  'cnc_archive'  
+CNC_SOURCE_DIR = BASE_DIR /  'cnc_archive'
 CNC_FILE_EXTENSION = '.cnc'
+
+# تولید «فایل مشتق» برای قطعات با طول سفارشی: با موتور legacy (core.process)
+# و فقط با پروفایل resize تأییدشدهٔ اپراتور انجام می‌شود. خروجی ماشینِ ورق
+# همچنان پشت gate پست‌پروسسور (output_verified) باقی می‌ماند. برای توقف
+# کامل تولید فایل مشتق، این مقدار را در .env برابر False بگذارید.
+CNC_DERIVED_FILES_ENABLED = config('CNC_DERIVED_FILES_ENABLED', default=True, cast=bool)
 
 
 

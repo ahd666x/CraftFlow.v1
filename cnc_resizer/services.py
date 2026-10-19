@@ -1,4 +1,5 @@
 import hashlib
+import json
 import os
 import re
 
@@ -135,19 +136,74 @@ def resolve_cnc_file(part, created_by=None):
 
     if profile.get('axis', 'length') != 'length':
         raise CncResolutionError('محور CNC انتخاب‌شده پشتیبانی نمی‌شود؛ Y باید به Part.length نگاشت شود')
+
+    # فایل مشتقِ قطعه با همان بازنویس legacy ساخته می‌شود که هنگام ثبت فایل
+    # پایه برای تشخیص `resizable` به آن اعتماد شده، و فقط با پروفایل resize
+    # تأییدشدهٔ اپراتور. این یک فایل قطعهٔ قابل بازبینی است؛ خروجی ماشینِ
+    # ورق همچنان پشت gate پست‌پروسسور (CncSheetPlan.output_verified /
+    # generate_gcode) مسدود است و این مسیر آن را دور نمی‌زند.
+    if not getattr(settings, 'CNC_DERIVED_FILES_ENABLED', True):
+        raise CncResolutionError('تولید فایل مشتق غیرفعال است (CNC_DERIVED_FILES_ENABLED=False).')
+
     with open(base_record.path, 'rb') as stream:
         source_text = stream.read(core.MAX_BYTES + 1).decode('utf-8-sig')
-    from .engine.parser import ParseError, parse_program
-    from .engine.postprocessor import execution_gate
+
+    rules = {key: value for key, value in profile.items() if key != 'axis'}
+    rules['delta'] = float(delta)
     try:
-        parsed_source = parse_program(source_text, filename=base_record.barcode_key)
-    except ParseError as exc:
-        raise CncResolutionError(f"فایل CNC در موتور جدید قابل تجزیه نیست: {exc}") from exc
-    controller = base_record.controller_profile
-    controller_config = controller.postprocessor_config if controller else None
-    gate = execution_gate(parsed_source, controller_config, source_sha256=base_record.sha256)
-    if not gate["allowed"]:
-        raise CncResolutionError("تولید فایل مشتق CNC مسدود است: " + "; ".join(gate["reasons"]))
-    # A registry adapter is required to serialize transformed IR. The legacy
-    # text-rewriter remains preview-only and is not allowed to write a file.
-    raise CncResolutionError("تولید فایل مشتق غیرفعال است؛ آداپتر پست‌پروسسور تأییدشده هنوز ثبت نشده است.")
+        result = core.process(source_text, rules)
+    except core.CncError as exc:
+        raise CncResolutionError(f"تولید فایل مشتق با موتور تغییر اندازه شکست خورد: {exc}") from exc
+    if not result.get('resizable') or not (result.get('cnc_text') or '').strip():
+        problems = result.get('profile_errors') or list(result.get('warnings') or []) or ['نتیجهٔ موتور نامعتبر است']
+        raise CncResolutionError('تولید فایل مشتق مسدود شد: ' + '؛ '.join(str(item) for item in problems))
+
+    src_lines, _ = core.split_lines(source_text)
+    out_lines, _ = core.split_lines(result['cnc_text'])
+    if len(src_lines) != len(out_lines):
+        raise CncResolutionError('ساختار فایل مشتق با فایل پایه تفاوت دارد؛ تولید مسدود شد.')
+
+    # هویت content-addressed: نسخهٔ فایل پایه + قواعد تأییدشده + دلتا.
+    # هر تغییر در هر کدام، کلید تازه می‌سازد و نتیجهٔ قدیمی بی‌صدا استفاده
+    # نمی‌شود (طبق قرارداد docstring همین تابع).
+    rules_json = json.dumps(rules, sort_keys=True, default=str, separators=(',', ':'))
+    item_number = int(hashlib.sha256(
+        f"{base_record.sha256}|{rules_json}".encode('utf-8')
+    ).hexdigest()[:12], 16)
+    derived_key = f"{base_record.barcode_key}.item{item_number}"
+    existing = CncFile.objects.filter(barcode_key=derived_key, kind=CncFile.KIND_DERIVED).first()
+    if existing and os.path.isfile(existing.path):
+        return existing
+
+    derived_dir = str(getattr(
+        settings, 'CNC_DERIVED_DIR',
+        os.path.join(str(settings.MEDIA_ROOT), 'cnc_derived'),
+    ))
+    os.makedirs(derived_dir, exist_ok=True)
+    derived_path = os.path.join(derived_dir, f"{derived_key}.cnc")
+    with open(derived_path, 'w', encoding='utf-8') as stream:
+        stream.write(result['cnc_text'])
+
+    record, _ = CncFile.objects.update_or_create(
+        barcode_key=derived_key,
+        kind=CncFile.KIND_DERIVED,
+        sha256=_sha256(result['cnc_text'].encode('utf-8')),
+        defaults={
+            'path': derived_path,
+            'source_file': base_record,
+            'params': {
+                'base_sha256': base_record.sha256,
+                'delta': str(delta),
+                'mode': rules.get('mode', 'equal'),
+                'symmetric': bool(rules.get('symmetric', True)),
+                'changed_lines': len(result.get('changed_lines', [])),
+                'warnings': result.get('warnings', []),
+            },
+            'length_before': Decimal(str(result.get('length_before'))),
+            'length_after': Decimal(str(result.get('length_after'))),
+            'resizable': False,
+            'validation_error': '',
+            'created_by': created_by,
+        },
+    )
+    return record

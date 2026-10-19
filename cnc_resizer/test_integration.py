@@ -1,4 +1,5 @@
 import os
+import shutil
 import tempfile
 import json
 import hashlib
@@ -222,7 +223,8 @@ class CncIntegrationTests(TestCase):
             "panel.1740.5x500",
         )
 
-    def test_resolver_blocks_derived_file_without_verified_controller_adapter(self):
+    def _dynamic_part_with_base_file(self):
+        """Base+dynamic parts plus an indexed, resize-capable base file."""
         category = ProductCategory.objects.create(name="CNC category")
         product = Product.objects.create(category=category, name="CNC product", base_price=1)
         material = Material.objects.create(name="MDF", thickness=Decimal("16.0"))
@@ -236,23 +238,45 @@ class CncIntegrationTests(TestCase):
             length=Decimal("120.0"), width=Decimal("50.0"),
             f3="panel.120x50.item1", pname=base.pname, routing_code="cnc",
         )
-        with tempfile.TemporaryDirectory() as archive:
-            with self.settings(CNC_SOURCE_DIR=archive):
-                with tempfile.NamedTemporaryFile(suffix=".cnc", delete=False) as stream:
-                    with open(SAMPLE, "rb") as sample:
-                        stream.write(sample.read())
-                    source_path = stream.name
-                try:
-                    source = register_base_file(source_path, base.f3, self.manager)
-                    CncPartProfile.objects.create(
-                        part=base, source_file=source,
-                        params={'mode': 'equal', 'symmetric': True, 'axis': 'length'},
-                        approved=True, approved_by=self.manager,
-                    )
-                    with self.assertRaises(CncResolutionError):
-                        resolve_cnc_file(dynamic, self.manager)
-                finally:
-                    os.unlink(source_path)
+        archive = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, archive, ignore_errors=True)
+        source_path = os.path.join(archive, "panel.100x50.cnc")
+        with open(SAMPLE, "rb") as sample, open(source_path, "wb") as stream:
+            stream.write(sample.read())
+        source = register_base_file(source_path, base.f3, self.manager)
+        return base, dynamic, source
+
+    def test_resolver_generates_derived_file_from_approved_profile(self):
+        base, dynamic, source = self._dynamic_part_with_base_file()
+        derived_dir = os.path.join(tempfile.gettempdir(), f"cnc_derived_{source.pk}")
+        self.addCleanup(shutil.rmtree, derived_dir, ignore_errors=True)
+        with self.settings(CNC_DERIVED_DIR=derived_dir):
+            CncPartProfile.objects.create(
+                part=base, source_file=source,
+                params={'mode': 'equal', 'symmetric': True, 'axis': 'length'},
+                approved=True, approved_by=self.manager,
+            )
+            record = resolve_cnc_file(dynamic, self.manager)
+            self.assertEqual(record.kind, CncFile.KIND_DERIVED)
+            self.assertEqual(record.source_file_id, source.pk)
+            self.assertTrue(os.path.isfile(record.path))
+            self.assertIn(".item", record.barcode_key)
+            self.assertGreater(record.params.get('changed_lines', 0), 0)
+            measured = record.length_after - record.length_before
+            self.assertLess(abs(measured - Decimal("20")), Decimal("0.05"))
+            again = resolve_cnc_file(dynamic, self.manager)
+            self.assertEqual(again.pk, record.pk)
+
+    def test_resolver_respects_derived_files_kill_switch(self):
+        base, dynamic, source = self._dynamic_part_with_base_file()
+        with self.settings(CNC_DERIVED_FILES_ENABLED=False):
+            CncPartProfile.objects.create(
+                part=base, source_file=source,
+                params={'mode': 'equal', 'symmetric': True, 'axis': 'length'},
+                approved=True, approved_by=self.manager,
+            )
+            with self.assertRaises(CncResolutionError):
+                resolve_cnc_file(dynamic, self.manager)
         self.assertFalse(CncFile.objects.filter(kind=CncFile.KIND_DERIVED).exists())
 
     def test_controller_profile_is_not_ready_without_auditable_approval_and_fixture(self):
