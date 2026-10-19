@@ -1,10 +1,11 @@
 {% extends 'base.html' %}
-{% block title %}سیاست مصرف ورق{% endblock %}
+{% block title %}ضخامت تیغه پیش‌فرض{% endblock %}
 {% block content %}
 <div class="container-fluid py-4 cutting-page cutting-policy-page" dir="rtl">
-  <h1 class="mb-3">سیاست مصرف موجودی</h1>
+  <h1 class="mb-3">ضخامت تیغه پیش‌فرض</h1>
   {% include 'cutting/_inventory_nav.html' %}
   {% include 'cutting/_messages.html' %}
+  <div class="alert alert-info py-2">اولویت مصرف ورق (ابتدا ورق کامل یا ابتدا پرت) حالا هنگام برنامه‌ریزی، در «تنظیمات پیشرفته» صف برش انتخاب می‌شود و همراه هر برنامه ذخیره می‌ماند.</div>
   <section class="card mb-4" aria-labelledby="default-kerf-title">
     <div class="card-header"><h2 class="h5 mb-0" id="default-kerf-title">ضخامت تیغه پیش‌فرض</h2></div>
     <div class="card-body">
@@ -15,6 +16,5 @@
       </form>
     </div>
   </section>
-
 </div>
 {% endblock %}

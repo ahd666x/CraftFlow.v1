@@ -1041,24 +1041,18 @@ def size_specs(request, spec_id=None):
 @manager_only
 def cutting_policy(request):
     setting = CuttingSettings.current()
-    if request.method == 'POST':
-        if request.POST.get('action') == 'save_kerf':
-            try:
-                kerf = Decimal(request.POST.get('default_kerf', ''))
-                if not kerf.is_finite() or kerf < 0 or kerf > Decimal('999.9') or kerf.quantize(MM) != kerf:
-                    raise ValueError('ضخامت تیغه باید عددی نامنفی با حداکثر یک رقم اعشار باشد.')
-                setting.default_kerf = kerf.quantize(MM)
-                setting.updated_by = request.user
-                setting.save(update_fields=('default_kerf', 'updated_by', 'updated_at'))
-                messages.success(request, 'ضخامت تیغه‌ی پیش‌فرض ذخیره شد.')
-            except (InvalidOperation, ValueError):
-                messages.error(request, 'ضخامت تیغه باید عددی نامنفی با حداکثر یک رقم اعشار باشد.')
-            return redirect('cutting:policy')
-        messages.error(request, 'درخواست تنظیمات معتبر نیست.')
+    if request.method == 'POST' and request.POST.get('action') == 'save_kerf':
+        try:
+            kerf = Decimal(request.POST.get('default_kerf', ''))
+            if not kerf.is_finite() or kerf < 0 or kerf > Decimal('999.9') or kerf.quantize(MM) != kerf:
+                raise ValueError
+            setting.default_kerf = kerf.quantize(MM)
+            setting.updated_by = request.user
+            setting.save(update_fields=('default_kerf', 'updated_by', 'updated_at'))
+            messages.success(request, 'ضخامت تیغه‌ی پیش‌فرض ذخیره شد.')
+        except (InvalidOperation, ValueError):
+            messages.error(request, 'ضخامت تیغه باید عددی نامنفی با حداکثر یک رقم اعشار باشد.')
         return redirect('cutting:policy')
-
-
-
     return render(request, 'cutting/policy.html', {'setting': setting})
 @inventory_operator
 def stock_history(request):

@@ -695,6 +695,25 @@ class InventoryAndCutFlowTests(TestCase):
         self.assertEqual(setting.default_kerf, Decimal('3.5'))
         self.assertContains(self.client.get(reverse('cutting:planner')), 'value="3.5"')
 
+    def test_policy_page_only_manages_default_kerf_and_planner_offers_stock_policy(self):
+        response = self.client.get(reverse('cutting:policy'))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'name="strategy"')
+        self.assertNotContains(response, 'name="priority_')
+        self.assertContains(response, 'name="default_kerf"')
+        planner = self.client.get(reverse('cutting:planner'))
+        self.assertContains(planner, 'name="stock_policy"')
+        self.assertNotContains(planner, 'part-needs-title')
+    def test_preview_follows_selected_stock_policy_without_reserving(self):
+        self.add_stock(width='410', height='310')
+        self.add_stock(width='700', height='700', offcut=True)
+        for policy, label in (('full_first', 'ابتدا ورق کامل'), ('offcuts_first', 'ابتدا پرت')):
+            data = self.client.get(reverse('cutting:planner_preview'), {
+                'order_ids': [self.order.pk], 'stock_policy': policy,
+            }).json()
+            self.assertIn(label, data['strategy'])
+        self.assertEqual(CutPlan.objects.count(), 0)
+
     def test_plan_detail_has_material_tabs_when_multiple_materials(self):
         other = Material.objects.create(name='MDF دوم', thickness=Decimal('18.0'))
         part2 = Part.objects.create(material=other, name='کف', length=Decimal('300.0'), width=Decimal('200.0'), pname='کمد', routing_code='cut', turn=True)
