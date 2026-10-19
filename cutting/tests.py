@@ -840,8 +840,8 @@ class PhaseBNestingEngineTests(SimpleTestCase):
         placed = layouts[0]['parts']
         self.assertEqual(len(placed), 2)
         for part in placed:
-            self.assertLessEqual(part['x'] + part['width'], Decimal('990'))
-            self.assertLessEqual(part['y'] + part['height'], Decimal('790'))
+            self.assertLessEqual(part['x'] + part['width'], Decimal('1000'))
+            self.assertLessEqual(part['y'] + part['height'], Decimal('800'))
 
     def test_guillotine_and_skyline_report_missing_stock_with_reference_message(self):
         stock = [{'width': 1000, 'height': 800, 'is_offcut': False}]
@@ -860,15 +860,15 @@ class PhaseBNestingEngineTests(SimpleTestCase):
         self.assertEqual(len(layouts[0]['parts']), 2)
 
     def test_compare_engines_picks_fewer_sheets(self):
-        # اسکایلاین قطعات b و c را کنار هم روی سکوی a می‌گذارد؛ قفسه‌ای c را به ورق دوم می‌فرستد.
+        # اسکایلاین قطعهٔ c را روی سکوی b می‌گذارد؛ قفسه‌ای c را به ورق دوم می‌فرستد.
         stock = [
             {'stock_id': 1, 'width': 1000, 'height': 1000, 'is_offcut': False},
             {'stock_id': 2, 'width': 1000, 'height': 1000, 'is_offcut': False},
         ]
         parts = [
-            {'width': 990, 'height': 400, 'turn': False, 'uid': 0, 'label': 'a'},
-            {'width': 500, 'height': 580, 'turn': False, 'uid': 1, 'label': 'b'},
-            {'width': 490, 'height': 580, 'turn': False, 'uid': 2, 'label': 'c'},
+            {'width': 500, 'height': 900, 'turn': False, 'uid': 0, 'label': 'a'},
+            {'width': 490, 'height': 450, 'turn': False, 'uid': 1, 'label': 'b'},
+            {'width': 490, 'height': 440, 'turn': False, 'uid': 2, 'label': 'c'},
         ]
         results, chosen = compare_engines(parts, stock, kerf=4, names=['shelf', 'skyline'])
         self.assertEqual(chosen, 'skyline')
@@ -884,7 +884,7 @@ class PhaseBNestingEngineTests(SimpleTestCase):
 
     def test_respect_grain_forbids_rotation(self):
         stock = [{'stock_id': 1, 'width': 900, 'height': 600, 'is_offcut': False}]
-        part = {'width': 500, 'height': 595, 'turn': True, 'grain': 'طولی', 'uid': 0, 'label': 'r'}
+        part = {'width': 500, 'height': 610, 'turn': True, 'grain': 'طولی', 'uid': 0, 'label': 'r'}
         unrotated_part = dict(part, grain='')
         layouts = run_engine('guillotine', [unrotated_part], stock, kerf=4)
         self.assertTrue(layouts[0]['parts'][0]['rotated'])  # only fits rotated
@@ -893,14 +893,33 @@ class PhaseBNestingEngineTests(SimpleTestCase):
 
     def test_trim_reduces_usable_height_and_appears_in_sequence(self):
         stock = [{'stock_id': 1, 'width': 1000, 'height': 800, 'is_offcut': False}]
-        part = {'width': 500, 'height': 700, 'turn': False, 'uid': 0, 'label': 't'}
+        part = {'width': 500, 'height': 750, 'turn': False, 'uid': 0, 'label': 't'}
         with self.assertRaises(ValueError):
-            run_engine('guillotine', [part], stock, kerf=4, trim=100)  # 800-10-100 < 700
+            run_engine('guillotine', [part], stock, kerf=4, trim=100)  # 800-100=700 < 750
         layouts = run_engine('guillotine', [part], stock, kerf=4, trim=0)
         sequence = build_cut_sequence(layouts[0], kerf=4, trim=100)
         self.assertEqual(sequence[0]['t'], 'trim')
         self.assertEqual(sequence[0]['at'], '100')
         self.assertEqual(sequence[0]['pieces'], [])
+
+    def test_full_length_piece_fits_full_sheet(self):
+        """قطعهٔ هم‌اندازهٔ ورق باید بدون حاشیهٔ پنهان جا شود (رایج‌ترین حالت کمد)."""
+        stock = [{'stock_id': 1, 'width': 1830, 'height': 3660, 'is_offcut': False}]
+        part = {'width': 3660, 'height': 480, 'turn': True, 'uid': 0, 'label': 'side'}
+        for engine in ('shelf', 'guillotine', 'skyline'):
+            layouts = run_engine(engine, [part], stock, kerf=4)
+            self.assertEqual(len(layouts), 1, engine)
+            placed = layouts[0]['parts'][0]
+            self.assertTrue(placed['rotated'], engine)
+            self.assertEqual(str(placed['height']), '3660')
+
+    def test_shelf_engine_honours_trim(self):
+        stock = [{'stock_id': 1, 'width': 1000, 'height': 800, 'is_offcut': False}]
+        part = {'width': 500, 'height': 750, 'turn': False, 'uid': 0, 'label': 't'}
+        with self.assertRaises(ValueError):
+            run_engine('shelf', [part], stock, kerf=4, trim=100)  # 800-100=700 < 750
+        layouts = run_engine('shelf', [part], stock, kerf=4, trim=0)
+        self.assertEqual(len(layouts), 1)
 
     def test_build_cut_sequence_is_deterministic_rip_cross(self):
         layout = {

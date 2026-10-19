@@ -44,9 +44,9 @@ def _dec(value):
 
 
 def _sheet_geometry(sheet, trim):
-    """حاشیهٔ ثابت ۵mm هر طرف (مطابق optimizer) + سربر مستقل روی لبهٔ طول."""
-    usable_width = max(Decimal('0'), _dec(sheet['width']) - Decimal('10'))
-    usable_height = max(Decimal('0'), _dec(sheet['height']) - Decimal('10') - max(Decimal('0'), _dec(trim)))
+    """ورق کامل قابل استفاده است؛ سربرِ مستقل تنها از لبهٔ طول کم می‌کند."""
+    usable_width = max(Decimal('0'), _dec(sheet['width']))
+    usable_height = max(Decimal('0'), _dec(sheet['height']) - max(Decimal('0'), _dec(trim)))
     return usable_width, usable_height
 
 
@@ -174,7 +174,7 @@ def run_engine(name, parts, stock, kerf=4, policy='offcuts_first', trim=0, respe
         parts = apply_grain(parts)
     if name == 'shelf':
         from .optimizer import optimize
-        return optimize(parts, stock, kerf, policy=policy)
+        return optimize(parts, stock, kerf, policy=policy, trim=trim)
     if name == 'guillotine':
         return optimize_guillotine(parts, stock, kerf, policy=policy, trim=trim)
     return optimize_skyline(parts, stock, kerf, policy=policy, trim=trim)

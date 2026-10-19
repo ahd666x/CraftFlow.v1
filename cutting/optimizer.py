@@ -1,6 +1,6 @@
 """Deterministic shelf nesting helpers. Dimensions are millimetres; decimals are preserved."""
 import xml.etree.ElementTree as ET
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 NS = 'http://www.King-stone.com'
 ET.register_namespace('', NS)
@@ -19,13 +19,19 @@ def stock_sort_key(stock, policy='offcuts_first'):
     return (not stock.get('is_offcut', False), priority, area, stock['width'], stock['height'], stable_id)
 
 
-def optimize(parts, stock, kerf=4, policy='offcuts_first'):
+def optimize(parts, stock, kerf=4, policy='offcuts_first', trim=0):
+    try:
+        trim = Decimal(str(trim))
+    except (InvalidOperation, ValueError):
+        trim = Decimal('0')
+    trim = max(Decimal('0'), trim)
     bins = sorted(stock, key=lambda s: stock_sort_key(s, policy))
     remaining = sorted((dict(p) for p in parts), key=lambda p: p['width'] * p['height'], reverse=True)
     layouts = []
     for sheet in bins:
-        usable_width = max(0, sheet['width'] - 10)
-        usable_height = max(0, sheet['height'] - 10)
+        # ورق کامل قابل استفاده است؛ تنها سربرِ مستقل از لبه کم می‌کند.
+        usable_width = max(Decimal('0'), Decimal(str(sheet['width'])))
+        usable_height = max(Decimal('0'), Decimal(str(sheet['height'])) - trim)
         placed = []
         left = []
         x = y = row_h = 0
