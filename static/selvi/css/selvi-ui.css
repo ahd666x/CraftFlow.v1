@@ -352,3 +352,60 @@ body {
         padding: 4px 10px;
     }
 }
+
+
+/* ── UI consistency pass: compact, calm, predictable panels ─────────── */
+:root {
+    --body-bg: #f5f6f8;
+    --surface-bg: #fff;
+    --brand-border: #e3e7ed;
+    --border-radius: 10px;
+    --border-radius-lg: 14px;
+    --card-shadow: 0 1px 3px rgba(15, 23, 42, .045);
+    --card-shadow-sm: 0 1px 2px rgba(15, 23, 42, .04);
+}
+body { line-height: 1.55; }
+body.admin-panel,
+body.inventory-panel,
+body.painting-panel { background: var(--body-bg); }
+body.inventory-panel,
+body.painting-panel { padding: 16px 20px; }
+.main-content { padding: 1.25rem; max-width: 1800px; margin-inline: auto; }
+.card,
+.card-modern { box-shadow: var(--card-shadow); border-color: var(--brand-border); }
+.card-modern { border: 1px solid var(--brand-border); margin-bottom: 1rem; }
+.card-modern .card-header { padding: 12px 16px; }
+.card-modern .card-body { padding: 16px; }
+.card-header { font-weight: 600; }
+h1, .h1 { font-size: clamp(1.35rem, 2vw, 1.8rem); }
+h2, .h2 { font-size: clamp(1.15rem, 1.6vw, 1.45rem); }
+h3, .h3 { font-size: 1.15rem; }
+h1, h2, h3, h4, h5, h6 { line-height: 1.4; }
+p.text-muted { max-width: 78ch; }
+.table { --bs-table-bg: transparent; margin-bottom: 0; }
+.table > :not(caption) > * > * { padding: .65rem .75rem; vertical-align: middle; }
+.table thead th { color: #475569; font-size: .82rem; font-weight: 600; white-space: nowrap; background: #f8fafc; }
+.table-responsive { border: 1px solid var(--brand-border); border-radius: var(--border-radius); }
+.table-responsive .table { margin-bottom: 0; }
+.form-label { font-size: .875rem; font-weight: 600; color: #475569; margin-bottom: .35rem; }
+.form-control, .form-select { min-height: 40px; border-color: #d8dee8; border-radius: 8px; }
+.form-control:focus, .form-select:focus { border-color: var(--brand-accent, #64748b); box-shadow: 0 0 0 .18rem rgba(100, 116, 139, .12); }
+.btn, .btn-modern, .btn-modern-outline { border-radius: 8px; box-shadow: none; }
+.btn:not(.btn-sm) { min-height: 38px; }
+.btn-modern:hover { transform: none; box-shadow: none; }
+.alert { padding: .75rem 1rem; }
+.badge { font-weight: 500; }
+.header-nav { border: 1px solid var(--brand-border); border-bottom: 2px solid var(--brand-accent); box-shadow: var(--card-shadow); border-radius: 12px; margin-bottom: 1rem; }
+.header-nav .nav-links .nav-link { padding: 7px 11px; border-radius: 8px; }
+.navbar-custom { box-shadow: none; }
+.navbar-custom .nav-link { border-radius: 8px; }
+.navbar-custom .nav-link.active { background: #f1f5f9; color: var(--brand-primary) !important; }
+@media (max-width: 768px) {
+    body.inventory-panel, body.painting-panel { padding: 10px; }
+    .main-content { padding: .75rem; }
+    .card-modern .card-header, .card-modern .card-body { padding: 12px; }
+    .table > :not(caption) > * > * { padding: .55rem .5rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}

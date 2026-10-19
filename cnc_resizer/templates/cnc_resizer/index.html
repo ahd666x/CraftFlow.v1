@@ -120,6 +120,39 @@
     .app { grid-template-columns: 1fr; height: auto; }
     .view { min-height: 560px; }
   }
+
+/* Responsive UI consistency for the standalone CNC workbench. */
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { color-scheme: dark; }
+}
+body { color: var(--text); line-height: 1.55; }
+button, input, select, textarea { font: inherit; }
+button { cursor: pointer; }
+input, select, textarea { max-width: 100%; min-width: 0; }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 3px solid rgba(59,130,246,.35); outline-offset: 2px;
+}
+table { width: 100%; border-collapse: collapse; }
+th { white-space: nowrap; }
+@media (max-width: 900px) {
+  .container, .app, .workspace, main { max-width: 100%; }
+  .layout, .main-grid, .workbench-grid { grid-template-columns: minmax(0,1fr) !important; }
+}
+@media (max-width: 640px) {
+  body { padding: 10px !important; }
+  .container, .app, .workspace, main { padding: 12px !important; }
+  h1 { font-size: clamp(1.35rem, 6vw, 1.8rem) !important; }
+  h2 { font-size: 1.15rem !important; }
+  .toolbar, .actions, .button-row { flex-wrap: wrap; }
+  .toolbar > *, .actions > *, .button-row > * { max-width: 100%; }
+  .table-wrap, .table-responsive, .results-table { overflow-x: auto; max-width: 100%; }
+  th, td { padding: .5rem !important; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
 </style>
 </head>
 <body data-api="{{ api_url }}">

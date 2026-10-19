@@ -1,0 +1,149 @@
+/* CraftFlow template polish — shared operational UI layer.
+   Intent: reduce visual noise, improve scanability and responsive behaviour.
+   Keep component styling semantic; avoid changing workflow or form behaviour. */
+:root {
+  --cf-page: #f5f7fa;
+  --cf-surface: #fff;
+  --cf-line: #e2e8f0;
+  --cf-ink: #1e293b;
+  --cf-muted: #64748b;
+  --cf-radius: 10px;
+  --cf-shadow: 0 1px 3px rgba(15, 23, 42, .045);
+}
+body.admin-panel, body.inventory-panel, body.painting-panel {
+  color: var(--cf-ink);
+  background: var(--cf-page);
+}
+body.inventory-panel, body.painting-panel { padding: 16px 20px; }
+.admin-panel .container-fluid,
+.inventory-panel .container-fluid,
+.painting-panel .container-fluid { max-width: 1800px; margin-inline: auto; }
+.admin-panel .container-fluid.py-4,
+.inventory-panel .container-fluid.py-4,
+.painting-panel .container-fluid.py-4 { padding-top: 1.25rem !important; padding-bottom: 1.25rem !important; }
+.admin-panel h1, .inventory-panel h1, .painting-panel h1 { letter-spacing: -.02em; }
+.admin-panel h1:not(.modal-title), .inventory-panel h1, .painting-panel h1 { margin-bottom: .5rem; }
+.admin-panel h1 + p, .inventory-panel h1 + p, .painting-panel h1 + p { margin-top: .2rem; }
+.admin-panel .card, .inventory-panel .card, .painting-panel .card {
+  border-color: var(--cf-line);
+  border-radius: var(--cf-radius);
+  box-shadow: var(--cf-shadow);
+}
+.admin-panel .card-header, .inventory-panel .card-header, .painting-panel .card-header {
+  padding: .75rem 1rem;
+  border-bottom-color: var(--cf-line);
+}
+.admin-panel .card-body, .inventory-panel .card-body, .painting-panel .card-body { padding: 1rem; }
+.admin-panel .card-footer, .inventory-panel .card-footer, .painting-panel .card-footer {
+  background: #fff;
+  border-top-color: var(--cf-line);
+}
+.admin-panel .row.g-4, .inventory-panel .row.g-4, .painting-panel .row.g-4 { --bs-gutter-y: 1rem; }
+.admin-panel .row.g-3, .inventory-panel .row.g-3, .painting-panel .row.g-3 { --bs-gutter-y: .85rem; }
+.admin-panel .text-muted, .inventory-panel .text-muted, .painting-panel .text-muted { color: var(--cf-muted) !important; }
+.admin-panel .form-label, .inventory-panel .form-label, .painting-panel .form-label {
+  margin-bottom: .35rem;
+  color: #475569;
+  font-size: .875rem;
+  font-weight: 600;
+}
+.admin-panel .form-control, .admin-panel .form-select,
+.inventory-panel .form-control, .inventory-panel .form-select,
+.painting-panel .form-control, .painting-panel .form-select {
+  min-height: 40px;
+  border-color: #d8dee8;
+  border-radius: 8px;
+}
+.admin-panel textarea.form-control, .inventory-panel textarea.form-control,
+.painting-panel textarea.form-control { min-height: 90px; }
+.admin-panel .form-control:focus, .admin-panel .form-select:focus,
+.inventory-panel .form-control:focus, .inventory-panel .form-select:focus,
+.painting-panel .form-control:focus, .painting-panel .form-select:focus {
+  border-color: #94a3b8;
+  box-shadow: 0 0 0 .18rem rgba(100,116,139,.12);
+}
+.admin-panel .btn, .inventory-panel .btn, .painting-panel .btn {
+  border-radius: 8px;
+  font-weight: 600;
+  box-shadow: none;
+}
+.admin-panel .btn:not(.btn-sm), .inventory-panel .btn:not(.btn-sm),
+.painting-panel .btn:not(.btn-sm) { min-height: 38px; }
+.admin-panel .btn:hover, .inventory-panel .btn:hover, .painting-panel .btn:hover { transform: none; }
+.admin-panel .table-responsive, .inventory-panel .table-responsive,
+.painting-panel .table-responsive {
+  border: 1px solid var(--cf-line);
+  border-radius: 9px;
+  background: #fff;
+}
+.admin-panel .table, .inventory-panel .table, .painting-panel .table { margin-bottom: 0; }
+.admin-panel .table > :not(caption) > * > *,
+.inventory-panel .table > :not(caption) > * > *,
+.painting-panel .table > :not(caption) > * > * {
+  padding: .62rem .7rem;
+  vertical-align: middle;
+}
+.admin-panel .table thead th, .inventory-panel .table thead th,
+.painting-panel .table thead th {
+  background: #f8fafc;
+  color: #475569;
+  font-size: .82rem;
+  font-weight: 700;
+  white-space: nowrap;
+  border-bottom-color: var(--cf-line);
+}
+.admin-panel .table tbody tr:hover, .inventory-panel .table tbody tr:hover,
+.painting-panel .table tbody tr:hover { --bs-table-bg: #f8fafc; }
+.admin-panel .pagination, .inventory-panel .pagination, .painting-panel .pagination { gap: .2rem; }
+.admin-panel .page-link, .inventory-panel .page-link, .painting-panel .page-link { border-radius: 7px; }
+.admin-panel .alert, .inventory-panel .alert, .painting-panel .alert { border-radius: 9px; }
+.admin-panel .badge, .inventory-panel .badge, .painting-panel .badge { font-weight: 600; letter-spacing: 0; }
+.admin-panel .modal-content, .inventory-panel .modal-content, .painting-panel .modal-content {
+  border: 1px solid var(--cf-line);
+  border-radius: 12px;
+  box-shadow: 0 18px 50px rgba(15,23,42,.15);
+}
+.admin-panel .modal-header, .inventory-panel .modal-header, .painting-panel .modal-header { border-bottom-color: var(--cf-line); }
+.admin-panel .modal-footer, .inventory-panel .modal-footer, .painting-panel .modal-footer { border-top-color: var(--cf-line); }
+/* Avoid making operator screens look like dashboards full of equal-priority cards. */
+.admin-panel .display-4, .inventory-panel .display-4, .painting-panel .display-4 { font-size: clamp(1.6rem, 3vw, 2.2rem); }
+.admin-panel .fs-3, .inventory-panel .fs-3, .painting-panel .fs-3 { font-size: clamp(1.25rem, 2vw, 1.7rem) !important; }
+.admin-panel .quick-link-card { padding: 1.2rem .9rem; }
+.admin-panel .quick-link-card:hover { transform: translateY(-2px); }
+.empty-state { padding: 2rem 1rem; }
+@media (max-width: 768px) {
+  .admin-panel .main-content { padding: .75rem; }
+  .admin-panel .container-fluid.py-4, .inventory-panel .container-fluid.py-4,
+  .painting-panel .container-fluid.py-4 { padding-top: .75rem !important; padding-bottom: .75rem !important; }
+  .admin-panel .card-body, .inventory-panel .card-body, .painting-panel .card-body { padding: .8rem; }
+  .admin-panel .card-header, .inventory-panel .card-header, .painting-panel .card-header { padding: .65rem .8rem; }
+  .admin-panel .table > :not(caption) > * > *, .inventory-panel .table > :not(caption) > * > *,
+  .painting-panel .table > :not(caption) > * > * { padding: .5rem; }
+  .admin-panel .btn, .inventory-panel .btn, .painting-panel .btn { max-width: 100%; }
+  .admin-panel .d-flex.justify-content-between, .inventory-panel .d-flex.justify-content-between,
+  .painting-panel .d-flex.justify-content-between { row-gap: .65rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .admin-panel *, .inventory-panel *, .painting-panel * {
+    animation-duration: .01ms !important; transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+
+/* Shop-panel compatibility: this older panel shares the shell but has its own body class. */
+body.shop-panel { background: var(--cf-page); color: var(--cf-ink); }
+.shop-panel .container-fluid { max-width: 1800px; margin-inline: auto; }
+.shop-panel .card { border: 1px solid var(--cf-line); border-radius: var(--cf-radius); box-shadow: var(--cf-shadow); }
+.shop-panel .card-header { padding: .75rem 1rem; border-bottom-color: var(--cf-line); }
+.shop-panel .card-body { padding: 1rem; }
+.shop-panel .form-label { color: #475569; font-size: .875rem; font-weight: 600; margin-bottom: .35rem; }
+.shop-panel .form-control, .shop-panel .form-select { min-height: 40px; border-color: #d8dee8; border-radius: 8px; }
+.shop-panel .btn { border-radius: 8px; box-shadow: none; font-weight: 600; }
+.shop-panel .table-responsive { border: 1px solid var(--cf-line); border-radius: 9px; background: #fff; }
+.shop-panel .table { margin-bottom: 0; }
+.shop-panel .table thead th { background: #f8fafc; color: #475569; font-size: .82rem; white-space: nowrap; }
+@media (max-width: 768px) {
+  .shop-panel .card-body { padding: .8rem; }
+  .shop-panel .table > :not(caption) > * > * { padding: .5rem; }
+}
