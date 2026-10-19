@@ -16,6 +16,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_date
+from django.utils.safestring import mark_safe
 from django.views.decorators.http import require_GET, require_POST
 import jdatetime
 
@@ -23,6 +24,9 @@ from product.models import Material, Order, ProductionTask
 from .models import (
     CuttingSettings, CutPlan, CutPlanSheet, CutPlanSheetTask, CutPlanTask, SheetSizeSpec,
     SheetStock, SheetStockEvent,
+)
+from .algorithms import (
+    ENGINE_LABELS, ENGINE_ORDER, build_cut_sequence, compare_engines,
 )
 from .optimizer import expected_offcuts, make_autocut, optimize
 from .permissions import can_inventory, can_manage, can_operate
@@ -133,6 +137,15 @@ def planner(request):
         except (InvalidOperation, ValueError):
             messages.error(request, 'مقدار تیغه معتبر نیست.'); return redirect('cutting:planner')
         policy = _stock_policy(request.POST.get('stock_policy'))
+        engine_names = [name for name in request.POST.getlist('algorithms') if name in ENGINE_LABELS] or ['shelf']
+        respect_grain = bool(request.POST.get('respect_grain'))
+        try:
+            trim = Decimal(request.POST.get('trim', '0') or '0')
+            if not trim.is_finite() or trim < 0 or trim > 500 or trim.quantize(MM) != trim:
+                raise ValueError('سربر باید بین صفر تا ۵۰۰ میلی‌متر با حداکثر یک رقم اعشار باشد.')
+        except (InvalidOperation, ValueError) as exc:
+            messages.error(request, str(exc) if str(exc).startswith('سربر') else 'مقدار سربر معتبر نیست.')
+            return redirect('cutting:planner')
         if not order_ids:
             messages.error(request, 'برای برنامه‌ریزی دست‌کم یک سفارش انتخاب کنید.'); return redirect('cutting:planner')
         if cnc_sheet_mode:
@@ -224,7 +237,8 @@ def planner(request):
                             # The CNC G-code generator uses a separate Y=length convention.
                             'width': part.length, 'height': part.width,
                             'orig_width': part.length, 'orig_height': part.width,
-                            'turn': part.turn, 'grain': part.grain, 'f2': part.f2 or part.name,
+                            'turn': part.turn and not (respect_grain and (part.grain or '').strip()),
+                            'grain': part.grain, 'f2': part.f2 or part.name,
                             'f3': part.f3, 'routing': part.routing_code, 'order': str(task.order_id),
                             'customer': str(task.order.customer), 'label': f'{part.name} / سفارش {task.order_id}',
                             'uid': len(grouped[part.material_id]), 'task_id': task.pk,
@@ -245,9 +259,21 @@ def planner(request):
                         continue
                     remaining = list(parts)
                     layouts = []
+                    row_report = []
                     while remaining:
                         try:
-                            layouts = optimize(remaining, material_stock, kerf, policy=policy)
+                            engine_results, chosen_name = compare_engines(
+                                remaining, material_stock, kerf, policy=policy,
+                                names=engine_names, trim=trim, respect_grain=respect_grain,
+                            )
+                            layouts = next(item['layouts'] for item in engine_results if item['algorithm'] == chosen_name)
+                            row_report = [
+                                {'algorithm': item['algorithm'], 'label': item['label'], 'ok': item['ok'],
+                                 'sheet_count': item['sheet_count'],
+                                 'utilization': format(item['utilization'].quantize(Decimal('0.01')), 'f') if item['utilization'] is not None else None,
+                                 'error': item['error']}
+                                for item in engine_results
+                            ]
                             break
                         except (ValueError, TypeError) as exc:
                             candidate = next(
@@ -269,6 +295,8 @@ def planner(request):
                         rows.append({
                             'type': material.name.replace(' ', '-'), 'thickness': str(material.thickness),
                             'sheets': layouts, 'shapes': remaining, 'material_id': material_id,
+                            'algorithm': next((item['algorithm'] for item in row_report if item.get('ok')), 'shelf'),
+                            'engine_report': row_report,
                         })
                 planned_quantities = Counter()
                 for row in rows:
@@ -277,7 +305,30 @@ def planner(request):
                             if piece.get('task_id') is not None:
                                 planned_quantities[int(piece['task_id'])] += 1
                 orders = list(Order.objects.filter(pk__in=order_ids))
-                plan = CutPlan.objects.create(created_by=request.user, stock_policy=policy, plan_data={'rows': [], 'kerf': str(kerf), 'policy': policy})
+                plan_algorithm = 'shelf'
+                if rows:
+                    plan_algorithm = max(rows, key=lambda row: len(row['sheets'])).get('algorithm', 'shelf')
+                plan_report = []
+                for name in ENGINE_ORDER:
+                    entries = [entry for row in rows for entry in row.get('engine_report', []) if entry['algorithm'] == name]
+                    if not entries:
+                        continue
+                    ok_entries = [entry for entry in entries if entry['ok']]
+                    plan_report.append({
+                        'algorithm': name, 'label': ENGINE_LABELS[name], 'ok': bool(ok_entries),
+                        'sheet_count': sum(entry['sheet_count'] or 0 for entry in ok_entries),
+                        'utilization': (
+                            format((sum((Decimal(entry['utilization']) for entry in ok_entries), Decimal('0')) / len(ok_entries)).quantize(Decimal('0.01')), 'f')
+                            if ok_entries else None
+                        ),
+                        'error': next((entry['error'] for entry in entries if entry['error']), ''),
+                    })
+                plan = CutPlan.objects.create(
+                    created_by=request.user, stock_policy=policy, algorithm=plan_algorithm,
+                    algorithm_report=plan_report,
+                    plan_data={'rows': [], 'kerf': str(kerf), 'policy': policy,
+                               'algorithms': engine_names, 'respect_grain': respect_grain, 'trim': str(trim)},
+                )
                 plan.orders.set(orders)
                 for task in tasks:
                     if not planned_quantities[task.pk]:
@@ -301,6 +352,7 @@ def planner(request):
                                  for piece in layout['parts']), Decimal('0'),
                             ),
                             was_offcut=source.is_offcut,
+                            cut_sequence=build_cut_sequence(layout, kerf, trim),
                         )
                         stock_data['plan_sheet_id'] = sheet_record.pk
                         pieces_by_task = Counter(
@@ -312,7 +364,8 @@ def planner(request):
                                 plan_sheet=sheet_record, task_id=task_id, quantity=quantity,
                             )
                         _event(stock=source, event_type='reserve', user=request.user, plan=plan, note=f'رزرو در برنامه #{plan.pk}')
-                plan.plan_data = _json_safe({'rows': rows, 'kerf': kerf, 'policy': policy})
+                plan.plan_data = _json_safe({'rows': rows, 'kerf': kerf, 'policy': policy,
+                                             'algorithms': engine_names, 'respect_grain': respect_grain, 'trim': trim})
                 plan.save(update_fields=('plan_data',))
             return redirect('cutting:plan_detail', plan_id=plan.pk)
         except ValueError as exc:
@@ -358,7 +411,7 @@ def planner(request):
     return render(request, 'cutting/planner.html', {
         'materials': materials, 'orders': orders, 'setting': setting,
         'order_statuses': Order.ORDER_STATUS, 'status_filter': status_filter, 'query': query,
-        'active_plans': active_plans,
+        'active_plans': active_plans, 'engine_choices': CutPlan.ALGORITHMS,
     })
 
 
@@ -524,7 +577,7 @@ def plan_detail(request, plan_id):
             longest = max(Decimal(str(layout['sheet']['width'])), Decimal(str(layout['sheet']['height'])))
             layout['label_font'] = max(14, int(longest / 40))
             layout['dimension_font'] = max(10, int(layout['label_font'] * 0.3))
-            layout['expected_offcuts_json'] = json.dumps(layout.get('expected_offcuts', []), default=str)
+            layout['expected_offcuts_json'] = mark_safe(json.dumps(layout.get('expected_offcuts', []), default=str))
             sheet_area = Decimal(str(layout['sheet']['width'])) * Decimal(str(layout['sheet']['height']))
             piece_area = sum((Decimal(str(part['width'])) * Decimal(str(part['height'])) for part in layout['parts']), Decimal('0'))
             layout['sheet_area_mm2'] = sheet_area
@@ -547,6 +600,18 @@ def plan_detail(request, plan_id):
                     colors_by_task[task_id] = color
                     color_legend.append({'color': color, 'label': part.get('label', f'تسک {task_id}')})
                 part['color'] = colors_by_task[task_id]
+            no_by_uid = {part.get('uid'): part['no'] for part in layout['parts']}
+            raw_sequence = list(record.cut_sequence or []) if record else []
+            mapped_sequence = []
+            for cut in raw_sequence:
+                pieces = [no_by_uid.get(uid) for uid in cut.get('pieces', [])]
+                pieces = [piece for piece in pieces if piece]
+                if pieces or cut.get('t') == 'trim':
+                    mapped_sequence.append({
+                        't': cut.get('t', 'rip'), 'axis': cut.get('axis', 'y'),
+                        'at': cut.get('at'), 'pieces': pieces,
+                    })
+            layout['cut_sim_seq'] = mark_safe(json.dumps(mapped_sequence, default=str)) if mapped_sequence else ''
             row_piece_area += piece_area
             total_sheet_area += sheet_area
             total_piece_area += piece_area

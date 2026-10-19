@@ -9,6 +9,9 @@ from django.utils import timezone
 import jdatetime
 from product.models import Customer, Material, Order, Part, ProductionTask
 from .models import CuttingSettings, CutPlan, CutPlanSheet, SheetSizeSpec, SheetStock, SheetStockEvent
+from .algorithms import (
+    build_cut_sequence, compare_engines, optimize_guillotine, optimize_skyline, run_engine,
+)
 from .optimizer import expected_offcuts, make_autocut, optimize
 from .templatetags.cutting_extras import jalali
 from cnc_resizer.models import CncPlanningIssue, CncSheetPlan
@@ -821,3 +824,161 @@ class StockMigrationPreservationTests(TransactionTestCase):
         self.assertEqual((stock.material_id, stock.width, stock.height, stock.quantity, stock.is_offcut, stock.grain), (material_id, Decimal('1830.0'), Decimal('3660.0'), 7, False, 'lengthwise'))
         self.assertEqual((event.event_type, event.quantity_delta), ('receive', 7))
         self.assertEqual(snapshot.quantity, 1)
+
+
+class PhaseBNestingEngineTests(SimpleTestCase):
+    """فاز B — موتورهای گیلوتین/اسکایلاین، مقایسه، رگه، سربر و ترتیب برش."""
+
+    def test_guillotine_places_all_inside_usable_area(self):
+        stock = [{'stock_id': 1, 'width': 1000, 'height': 800, 'is_offcut': False}]
+        parts = [
+            {'width': 400, 'height': 300, 'turn': True, 'uid': 0, 'label': 'a'},
+            {'width': 350, 'height': 250, 'turn': True, 'uid': 1, 'label': 'b'},
+        ]
+        layouts = optimize_guillotine(parts, stock, kerf=4)
+        self.assertEqual(len(layouts), 1)
+        placed = layouts[0]['parts']
+        self.assertEqual(len(placed), 2)
+        for part in placed:
+            self.assertLessEqual(part['x'] + part['width'], Decimal('990'))
+            self.assertLessEqual(part['y'] + part['height'], Decimal('790'))
+
+    def test_guillotine_and_skyline_report_missing_stock_with_reference_message(self):
+        stock = [{'width': 1000, 'height': 800, 'is_offcut': False}]
+        for engine in (optimize_guillotine, optimize_skyline):
+            with self.assertRaisesRegex(ValueError, 'ورق قابل استفاده/موجودی کافی نیست'):
+                engine([{'width': 2000, 'height': 500, 'turn': False, 'label': 'بزرگ'}], stock, kerf=4)
+
+    def test_skyline_places_all_parts(self):
+        stock = [{'stock_id': 1, 'width': 1000, 'height': 800, 'is_offcut': False}]
+        parts = [
+            {'width': 400, 'height': 300, 'turn': True, 'uid': 0, 'label': 'a'},
+            {'width': 350, 'height': 250, 'turn': True, 'uid': 1, 'label': 'b'},
+        ]
+        layouts = optimize_skyline(parts, stock, kerf=4)
+        self.assertEqual(len(layouts), 1)
+        self.assertEqual(len(layouts[0]['parts']), 2)
+
+    def test_compare_engines_picks_fewer_sheets(self):
+        # اسکایلاین قطعات b و c را کنار هم روی سکوی a می‌گذارد؛ قفسه‌ای c را به ورق دوم می‌فرستد.
+        stock = [
+            {'stock_id': 1, 'width': 1000, 'height': 1000, 'is_offcut': False},
+            {'stock_id': 2, 'width': 1000, 'height': 1000, 'is_offcut': False},
+        ]
+        parts = [
+            {'width': 990, 'height': 400, 'turn': False, 'uid': 0, 'label': 'a'},
+            {'width': 500, 'height': 580, 'turn': False, 'uid': 1, 'label': 'b'},
+            {'width': 490, 'height': 580, 'turn': False, 'uid': 2, 'label': 'c'},
+        ]
+        results, chosen = compare_engines(parts, stock, kerf=4, names=['shelf', 'skyline'])
+        self.assertEqual(chosen, 'skyline')
+        by_name = {row['algorithm']: row for row in results}
+        self.assertEqual(by_name['shelf']['sheet_count'], 2)
+        self.assertEqual(by_name['skyline']['sheet_count'], 1)
+
+    def test_compare_engines_tie_breaks_to_engine_order(self):
+        stock = [{'stock_id': 1, 'width': 1000, 'height': 800, 'is_offcut': False}]
+        parts = [{'width': 400, 'height': 300, 'turn': True, 'uid': 0, 'label': 'a'}]
+        results, chosen = compare_engines(parts, stock, kerf=4, names=['guillotine', 'skyline'])
+        self.assertEqual(chosen, 'guillotine')  # equal sheets → ENGINE_ORDER first
+
+    def test_respect_grain_forbids_rotation(self):
+        stock = [{'stock_id': 1, 'width': 900, 'height': 600, 'is_offcut': False}]
+        part = {'width': 500, 'height': 595, 'turn': True, 'grain': 'طولی', 'uid': 0, 'label': 'r'}
+        unrotated_part = dict(part, grain='')
+        layouts = run_engine('guillotine', [unrotated_part], stock, kerf=4)
+        self.assertTrue(layouts[0]['parts'][0]['rotated'])  # only fits rotated
+        with self.assertRaises(ValueError):
+            run_engine('guillotine', [part], stock, kerf=4, respect_grain=True)
+
+    def test_trim_reduces_usable_height_and_appears_in_sequence(self):
+        stock = [{'stock_id': 1, 'width': 1000, 'height': 800, 'is_offcut': False}]
+        part = {'width': 500, 'height': 700, 'turn': False, 'uid': 0, 'label': 't'}
+        with self.assertRaises(ValueError):
+            run_engine('guillotine', [part], stock, kerf=4, trim=100)  # 800-10-100 < 700
+        layouts = run_engine('guillotine', [part], stock, kerf=4, trim=0)
+        sequence = build_cut_sequence(layouts[0], kerf=4, trim=100)
+        self.assertEqual(sequence[0]['t'], 'trim')
+        self.assertEqual(sequence[0]['at'], '100')
+        self.assertEqual(sequence[0]['pieces'], [])
+
+    def test_build_cut_sequence_is_deterministic_rip_cross(self):
+        layout = {
+            'sheet': {'width': 1000, 'height': 800},
+            'parts': [
+                {'uid': 7, 'x': 0, 'y': 0, 'width': 300, 'height': 200, 'rotated': False},
+                {'uid': 3, 'x': 304, 'y': 0, 'width': 200, 'height': 200, 'rotated': False},
+            ],
+        }
+        sequence = build_cut_sequence(layout, kerf=4)
+        self.assertEqual([cut['t'] for cut in sequence], ['cross', 'rip'])
+        self.assertEqual(sequence[0]['pieces'], [7])
+        self.assertEqual(sequence[1]['pieces'], [3, 7])
+        self.assertEqual(sequence[1]['at'], '202')
+
+
+class PhaseBPlanFlowTests(TestCase):
+    """فاز B در جریان کامل برنامه‌ریزی — مقایسه، گزارش، ترتیب برش و خروجی .CUT."""
+
+    def setUp(self):
+        self.user = User.objects.create_superuser(username='cut-b', email='cutb@example.test', password='test-password')
+        self.client.force_login(self.user)
+        self.customer = Customer.objects.create(name='کارگاه فاز B')
+        self.material = Material.objects.create(name='MDF فاز B', thickness=Decimal('16.0'))
+        self.part = Part.objects.create(material=self.material, name='قطعه B', length=Decimal('400.0'), width=Decimal('300.0'), pname='کمد', routing_code='cut', turn=True)
+        self.order = Order.objects.create(customer=self.customer, status='planned')
+        self.task = ProductionTask.objects.create(order=self.order, part=self.part, station_name='cut', step_order=1, quantity=1, status='pending')
+        SheetStock.objects.create(material=self.material, width=Decimal('1830.0'), height=Decimal('3660.0'), quantity=1, created_by=self.user)
+
+    def test_plan_with_engine_comparison_stores_report_sequence_and_xml(self):
+        response = self.client.post(reverse('cutting:planner'), {
+            'action': 'plan', 'order_ids': [self.order.pk], 'kerf': '4.0',
+            'algorithms': ['shelf', 'guillotine'],
+        })
+        self.assertEqual(response.status_code, 302)
+        plan = CutPlan.objects.latest('pk')
+        self.assertIn(plan.algorithm, ('shelf', 'guillotine'))
+        self.assertEqual(len(plan.algorithm_report), 2)
+        self.assertEqual({row['algorithm'] for row in plan.algorithm_report}, {'shelf', 'guillotine'})
+        sheet = plan.planned_sheets.get()
+        self.assertTrue(sheet.cut_sequence)
+        self.assertEqual(sheet.cut_sequence[0]['t'], 'rip')
+        detail = self.client.get(reverse('cutting:plan_detail', args=[plan.pk]))
+        self.assertContains(detail, 'مقایسهٔ بهره‌وری الگوریتم‌ها')
+        self.assertContains(detail, '"seq":[')
+        self.assertContains(detail, 'الگوریتم:')
+        cut_file = self.client.get(reverse('cutting:download_cut', args=[plan.pk]))
+        self.assertEqual(cut_file.status_code, 200)
+        import xml.etree.ElementTree as ET
+        root = ET.fromstring(cut_file.content)
+        self.assertEqual(root.tag, '{http://www.King-stone.com}AutoCUT')
+        self.assertIsNotNone(root.find('.//{http://www.King-stone.com}Layout'))
+
+    def test_default_plan_without_engine_fields_keeps_shelf_behavior(self):
+        response = self.client.post(reverse('cutting:planner'), {'action': 'plan', 'order_ids': [self.order.pk], 'kerf': '4.0'})
+        self.assertEqual(response.status_code, 302)
+        plan = CutPlan.objects.latest('pk')
+        self.assertEqual(plan.algorithm, 'shelf')
+        self.assertTrue(plan.planned_sheets.get().cut_sequence)
+        detail = self.client.get(reverse('cutting:plan_detail', args=[plan.pk]))
+        self.assertContains(detail, '"seq":[')
+        self.assertNotContains(detail, '"seq":[]')
+        self.assertContains(detail, 'قفسه‌ای FFDH')
+
+    def test_planner_offers_engine_choices_and_defaults_are_safe(self):
+        planner = self.client.get(reverse('cutting:planner'))
+        self.assertContains(planner, 'name="algorithms"')
+        self.assertContains(planner, 'name="respect_grain"')
+        self.assertContains(planner, 'name="trim"')
+        self.assertContains(planner, 'name="stock_policy"')  # pre-existing contract stays
+
+    def test_trim_and_grain_post_values_are_accepted_and_stored(self):
+        response = self.client.post(reverse('cutting:planner'), {
+            'action': 'plan', 'order_ids': [self.order.pk], 'kerf': '4.0',
+            'algorithms': ['guillotine'], 'respect_grain': '1', 'trim': '10.0',
+        })
+        self.assertEqual(response.status_code, 302)
+        plan = CutPlan.objects.latest('pk')
+        self.assertEqual(plan.algorithm, 'guillotine')
+        self.assertEqual(plan.plan_data.get('trim'), '10.0')
+        self.assertTrue(plan.plan_data.get('respect_grain'))

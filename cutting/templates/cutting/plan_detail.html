@@ -12,6 +12,7 @@
         <h1 class="h5 mb-0">برنامه برش <span class="num">#{{ plan.pk }}</span></h1>
         <span class="badge {% if plan.status == 'cut' %}bg-success{% elif plan.status == 'partial' %}bg-warning{% elif plan.status == 'cancelled' %}bg-secondary{% else %}bg-primary{% endif %}">{{ plan.get_status_display }}</span>
         <span class="badge bg-light">سیاست مصرف: {{ plan.get_stock_policy_display }}</span>
+        <span class="badge bg-dark">الگوریتم: {{ plan.get_algorithm_display }}</span>
       </div>
       <div class="small mt-1 text-muted">سفارش‌ها: {% for o in plan.orders.all %}<span class="badge bg-light num">#{{ o.pk }}{% if o.number %} · {{ o.number }}{% endif %}</span> {% endfor %}</div>
     </div>
@@ -37,6 +38,32 @@
     {% if plan.status == 'planned' %}<button type="button" class="mode-tab active" data-station-mode="process" aria-selected="true"><i class="bi bi-check2-square"></i>اجرا و ثبت نتیجه</button>{% endif %}
     <button type="button" class="mode-tab" data-station-mode="sim" aria-selected="false"><i class="bi bi-play-fill"></i>شبیه‌سازی برش</button>
   </div>
+
+  {% if plan.algorithm_report %}
+  <section class="engine-report card mb-3" aria-label="مقایسهٔ بهره‌وری الگوریتم‌ها">
+    <div class="card-body py-2">
+      <details open>
+        <summary class="small fw-bold">مقایسهٔ بهره‌وری الگوریتم‌ها — بهترین چیدمان خودکار انتخاب شد</summary>
+        <div class="engine-rows mt-2">
+          {% for engine in plan.algorithm_report %}
+          <div class="engine-row {% if engine.algorithm == plan.algorithm %}best{% endif %} {% if not engine.ok %}failed{% endif %}">
+            <span class="engine-name">{{ engine.label }}{% if engine.algorithm == plan.algorithm %} <span class="engine-best-badge">بهترین</span>{% endif %}</span>
+            {% if engine.ok %}
+            <span class="engine-bar"><i style="width:{{ engine.utilization|floatformat:1 }}%"></i></span>
+            <span class="engine-value num">{{ engine.utilization|floatformat:1 }}%</span>
+            <span class="engine-sheets num">{{ engine.sheet_count }} ورق</span>
+            {% else %}
+            <span class="engine-bar"><i style="width:0%"></i></span>
+            <span class="engine-value engine-error">اجرای ناموفق</span>
+            <span class="engine-sheets">—</span>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+      </details>
+    </div>
+  </section>
+  {% endif %}
 
   {% if summaries|length > 1 %}
   <div class="material-tabs" role="tablist" aria-label="انتخاب متریال">
@@ -115,7 +142,7 @@
           </div>
           {% endif %}
           <div class="sheet-navigation d-flex justify-content-between align-items-center gap-2"><button type="button" class="btn btn-outline-secondary btn-lg previous-sheet">→ قبلی</button><span class="sheet-position small text-muted" aria-live="polite"></span><button type="button" class="btn btn-primary btn-lg next-sheet">بعدی ←</button></div>
-          <script type="application/json" data-cut-sim data-sheet-pk="{{ rec.pk|default:'0' }}">{"w":"{{ s.sheet.width }}","h":"{{ s.sheet.height }}","kerf":"{{ plan.plan_data.kerf|default:'4' }}","parts":[{% for part in s.parts %}{"no":{{ part.no }},"x":"{{ part.x }}","y":"{{ part.y }}","width":"{{ part.width }}","height":"{{ part.height }}","rotated":{% if part.rotated %}true{% else %}false{% endif %},"label":"{{ part.label|escapejs }}"{% if part.color %},"color":"{{ part.color }}"{% endif %}}{% if not forloop.last %},{% endif %}{% endfor %}],"offcuts":{{ s.expected_offcuts_json|default:'[]' }}}</script>
+          <script type="application/json" data-cut-sim data-sheet-pk="{{ rec.pk|default:'0' }}">{"w":"{{ s.sheet.width }}","h":"{{ s.sheet.height }}","kerf":"{{ plan.plan_data.kerf|default:'4' }}","parts":[{% for part in s.parts %}{"no":{{ part.no }},"x":"{{ part.x }}","y":"{{ part.y }}","width":"{{ part.width }}","height":"{{ part.height }}","rotated":{% if part.rotated %}true{% else %}false{% endif %},"label":"{{ part.label|escapejs }}"{% if part.color %},"color":"{{ part.color }}"{% endif %}}{% if not forloop.last %},{% endif %}{% endfor %}],"offcuts":{{ s.expected_offcuts_json|default:'[]' }},"seq":{{ s.cut_sim_seq|default:'[]' }},"trim":"{{ plan.plan_data.trim|default:'0' }}"}</script>
         </article>
         {% endwith %}{% endfor %}
       </div>

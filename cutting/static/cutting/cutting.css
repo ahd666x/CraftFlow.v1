@@ -494,3 +494,25 @@
   .canvas-corner{display:none}
   .sheet-tab-status{color:#000}
 }
+
+/* ---------- Phase B: multi-engine efficiency comparison (autoSAW-like) ---------- */
+.engine-report{border:1px solid var(--st-line);background:var(--st-panel)}
+.engine-report summary{cursor:pointer;color:var(--st-muted);letter-spacing:.01em}
+.engine-report summary:hover{color:var(--st-ink)}
+.engine-rows{display:flex;flex-direction:column;gap:.45rem}
+.engine-row{display:grid;grid-template-columns:minmax(140px,220px) 1fr 70px 90px;align-items:center;gap:.8rem;
+  padding:.4rem .6rem;border:1px solid var(--st-line-soft);border-radius:8px;background:var(--st-sunken)}
+.engine-row.best{border-color:rgba(34,197,94,.55);background:rgba(34,197,94,.07)}
+.engine-row.failed{opacity:.6}
+.engine-name{color:var(--st-ink);font-size:.85rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.engine-best-badge{background:var(--st-green);color:#052e13;font-size:.68rem;font-weight:800;padding:.1rem .45rem;border-radius:99px;vertical-align:1px}
+.engine-bar{display:block;height:10px;border-radius:99px;background:#0b0f14;border:1px solid var(--st-line-soft);overflow:hidden;min-width:80px}
+.engine-bar i{display:block;height:100%;background:linear-gradient(90deg,#1d4ed8,#38bdf8);border-radius:99px}
+.engine-row.best .engine-bar i{background:linear-gradient(90deg,#15803d,#22c55e)}
+.engine-value{color:var(--st-ink);font-size:.85rem;font-weight:700}
+.engine-error{color:var(--st-red);font-size:.78rem;font-weight:600}
+.engine-sheets{color:var(--st-muted);font-size:.78rem;text-align:left;white-space:nowrap}
+@media (max-width:768px){
+  .engine-row{grid-template-columns:1fr 70px;grid-template-areas:"name value" "bar bar" "sheets sheets"}
+  .engine-name{grid-area:name}.engine-bar{grid-area:bar}.engine-value{grid-area:value}.engine-sheets{grid-area:sheets}
+}

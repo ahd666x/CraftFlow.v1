@@ -77,6 +77,28 @@
   }
 
   /* ---------- per-panel simulation ---------- */
+  const SEQ_LABELS = { trim: 'سربر', rip: 'طولی', cross: 'عرضی' };
+
+  /* Stored server-side sequence (Level B) — authoritative machine order. */
+  function storedSequence(data) {
+    const sheetW = number(data.w);
+    const sheetH = number(data.h);
+    const partByNo = {};
+    (data.parts || []).forEach(part => { partByNo[number(part.no)] = part; });
+    const cuts = (data.seq || []).map(cut => {
+      const pieces = (cut.pieces || []).map(no => partByNo[number(no)]).filter(Boolean);
+      const first = pieces[0];
+      return {
+        type: cut.t, label: SEQ_LABELS[cut.t] || 'برش',
+        axis: cut.axis === 'x' ? 'x' : 'y',
+        at: number(cut.at), x: sheetW / 2,
+        y: cut.t === 'cross' && first ? first.y + first.height / 2 : sheetH / 2,
+        pieces,
+      };
+    });
+    return { cuts, sheetW, sheetH };
+  }
+
   function resetSim(panel) {
     const dock = panel.querySelector('[data-sim]');
     const dataNode = panel.querySelector('[data-cut-sim]');
@@ -90,7 +112,9 @@
   }
 
   function createSim(panel, dock, data) {
-    const { cuts, sheetW, sheetH } = buildSequence(data);
+    const { cuts, sheetW, sheetH } = (Array.isArray(data.seq) && data.seq.length)
+      ? storedSequence(data)
+      : buildSequence(data);
     const svg = panel.querySelector('svg.cut-map');
     const viewBox = svg ? (svg.viewBox.baseVal || { width: sheetW, height: sheetH }) : { width: sheetW, height: sheetH };
     const list = dock.querySelector('[data-sim-list]');
@@ -172,7 +196,7 @@
         if (i === index - 1) li.scrollIntoView({ block: 'nearest' });
       });
       if (progress) progress.textContent = cuts.length
-        ? `برش ${index} از ${cuts.length}${current ? ` — قطعه: ${current.pieces[0].label || '#' + current.pieces[0].no}` : ''}`
+        ? `برش ${index} از ${cuts.length}${current && current.pieces[0] ? ` — قطعه: ${current.pieces[0].label || '#' + current.pieces[0].no}` : ''}`
         : 'ترتیبی برای شبیه‌سازی نیست';
       if (typeChip) {
         typeChip.textContent = current ? current.label : (upcoming ? upcoming.label : '—');
@@ -212,7 +236,7 @@
       }
       cuts.forEach((cut, i) => {
         const li = document.createElement('li');
-        const pieces = cut.pieces.map(piece => `#${piece.no}`).join('، ');
+        const pieces = cut.pieces.length ? cut.pieces.map(piece => `#${piece.no}`).join('، ') : '—';
         const value = cut.axis === 'x' ? `X=${fmt(cut.at)}` : `Y=${fmt(cut.at)}`;
         li.innerHTML = `<span class="sim-no num">${String(i + 1).padStart(2, '0')}</span><span class="sim-cut-type ${cut.type}">${cut.label}</span><span class="num">${value}</span><span class="sim-piece">${pieces}</span>`;
         list.appendChild(li);

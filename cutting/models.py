@@ -78,7 +78,14 @@ class CutPlan(models.Model):
         ('full_first', 'ابتدا ورق کامل، سپس پرت قابل استفاده'),
         ('offcuts_first', 'ابتدا پرت قابل استفاده، سپس ورق کامل'),
     ]
+    ALGORITHMS = [
+        ('shelf', 'قفسه‌ای FFDH (پایه)'),
+        ('guillotine', 'گیلوتین SAS'),
+        ('skyline', 'اسکایلاین Bottom-Left'),
+    ]
     stock_policy = models.CharField(max_length=20, choices=STOCK_POLICIES, default='offcuts_first', verbose_name='سیاست مصرف موجودی')
+    algorithm = models.CharField(max_length=20, choices=ALGORITHMS, default='shelf', verbose_name='الگوریتم چیدمان منتخب')
+    algorithm_report = models.JSONField(default=list, blank=True, verbose_name='گزارش مقایسهٔ الگوریتم‌ها')
     STATUS = [('planned', 'برنامه‌ریزی'), ('cut', 'برش انجام شد'), ('partial', 'نتیجه جزئی؛ ادامه لازم است'), ('cancelled', 'لغو شد')]
     orders = models.ManyToManyField(Order, related_name='cut_plans')
     status = models.CharField(max_length=12, choices=STATUS, default='planned')
@@ -114,6 +121,7 @@ class CutPlanSheet(models.Model):
     was_offcut = models.BooleanField(default=False)
     outcome = models.CharField(max_length=12, choices=OUTCOMES, default='reserved')
     actual_offcuts = models.JSONField(default=list, blank=True)
+    cut_sequence = models.JSONField(default=list, blank=True, verbose_name='ترتیب برش واقعی')
     result_note = models.CharField(max_length=255, blank=True)
     class Meta:
         ordering = ('material__name', 'layout_index')
