@@ -1,3 +1,4 @@
+import requests
 from django.conf import settings
 from django.urls import reverse
 
@@ -16,12 +17,15 @@ class ZarinpalGateway:
             self.start_pay_url = 'https://www.zarinpal.com/pg/StartPay/'
 
     def _post_json(self, url, data):
+        # `requests` اکنون وابستگی اعلام‌شدهٔ requirements.txt است؛ import در
+        # سطح ماژول یعنی نبود آن به‌جای پیام مبهم «خطا در ارتباط»، در استارتاپ
+        # پروژه آشکار می‌شود. اینجا فقط خطاهای شبکه/پارس پاسخ نرم گرفته می‌شود
+        # تا خروجی همیشه دیکشنری قابل پردازش باشد.
         try:
-            import requests
             response = requests.post(url, json=data, timeout=(5, 30))
             response.raise_for_status()
             return response.json()
-        except Exception as e:
+        except (requests.RequestException, ValueError) as e:
             return {'error': 'request', 'message': f'خطا در ارتباط: {str(e)}'}
 
     def pay(self, request, payment):

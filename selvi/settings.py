@@ -221,6 +221,14 @@ DR_FILE_EXTENSION = '.scx'              # پسوند فایل
 
 
 # ===================================================================
+#   درگاه پرداخت زرین‌پال
+#   MERCHANT ID را در selvi/.env نگه دارید؛ هرگز داخل گیت commit نکنید.
+#   تا زمانی که ZARINPAL_SANDBOX=false نشده، درگاه sandbox باقی می‌ماند.
+# ===================================================================
+ZARINPAL_MERCHANT_ID = config('ZARINPAL_MERCHANT_ID', default='')
+ZARINPAL_SANDBOX = config('ZARINPAL_SANDBOX', default=True, cast=bool)
+
+# ===================================================================
 #   لایهٔ هوش مصنوعی (CraftFlow AI Copilot) — فقط-خواندنی
 #   همهٔ مقادیر از Environment Variable خوانده می‌شوند.
 #   API Key را هرگز داخل گیت نگذارید؛ آن را در selvi/.env قرار دهید.
