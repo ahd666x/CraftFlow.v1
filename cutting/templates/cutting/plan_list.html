@@ -2,7 +2,7 @@
 {% load cutting_extras %}
 {% block title %}همه برنامه‌های برش{% endblock %}
 {% block content %}
-<div class="container-fluid py-4" dir="rtl">
+<div class="container-fluid py-4 cutting-page cutting-plans-page" dir="rtl">
   {% include 'cutting/_inventory_nav.html' %}
   <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3"><div><div class="text-muted small">گردش کار برش</div><h1 class="mb-1">همه برنامه‌های برش</h1><p class="text-muted mb-0">برنامه‌های فعال، جزئی، انجام‌شده و لغوشده در یک فهرست قابل جست‌وجو.</p></div><a class="btn btn-primary" href="{% url 'cutting:planner' %}">ساخت برنامه جدید</a></div>
   {% include 'cutting/_messages.html' %}
