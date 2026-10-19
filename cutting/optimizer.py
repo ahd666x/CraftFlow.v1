@@ -132,7 +132,12 @@ def make_autocut(plan_id, material_rows, kerf=4):
             })
             base = ET.SubElement(layout, f'{{{NS}}}Part', {'X': str(sheet['width']), 'Y': str(sheet['height']), 'Px': '5', 'Py': '5', 'Side': '5'})
             for part in layout_data['parts']:
-                attrs = {'X': str(part['width']), 'Y': str(part['height']), 'Px': str(part['x'] + 5), 'Py': str(part['y'] + 5), 'UID': str(part['uid'])}
+                # مختصات پس از ذخیره در JSONField رشته می‌شوند (_json_safe در
+                # cutting.views)؛ پس اول به Decimal برمی‌گردانیم، وگرنه
+                # `str + int` خطای TypeError و در نتیجه 500 در دانلود می‌دهد.
+                px = Decimal(str(part['x'])) + 5
+                py = Decimal(str(part['y'])) + 5
+                attrs = {'X': str(part['width']), 'Y': str(part['height']), 'Px': str(px), 'Py': str(py), 'UID': str(part['uid'])}
                 if part['rotated']:
                     attrs['Angle'] = '90'
                 ET.SubElement(base, f'{{{NS}}}Part', attrs)
