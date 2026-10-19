@@ -85,3 +85,29 @@
 @media(max-width:575.98px){.stock-summary-grid{grid-template-columns:repeat(2,1fr)}.stock-kpi-card .kpi-value{font-size:1.25rem}}
 .cnc-result-form{display:grid;gap:.55rem;padding:.8rem;border-top:1px solid #e5edf3;background:#f8fbfd}.cnc-result-form h4{font-size:.85rem;margin:0;color:var(--cnc-ink)}.cnc-result-form label{display:grid;gap:.25rem;font-size:.72rem;color:#52677a}.cnc-result-form input,.cnc-result-form select,.cnc-issue-actions input{min-width:0;width:100%;padding:.4rem .5rem;border:1px solid #cbd8e2;border-radius:.25rem;background:#fff;font-size:.75rem}.cnc-remnant-row{display:grid;grid-template-columns:1fr 1fr;gap:.4rem;margin:.35rem 0}.cnc-result-form [data-remnants] p{font-size:.72rem;margin:.25rem 0}.cnc-issue-actions{display:grid;gap:.4rem;margin-top:.6rem}.cnc-issue-actions form{display:flex;gap:.35rem;align-items:center}.cnc-issue-actions input{flex:1}.cnc-issue-actions button{white-space:nowrap}.cnc-status.done{color:#1769aa}.cnc-status.done span{background:#268ac2}
 .led-blue{background:#268ac2}
+
+
+/* UI consistency pass: keep the cutting workflow compact and legible. */
+.planner-page,
+.cut-plan-page { max-width: 1800px; margin-inline: auto; }
+.planner-page > .d-flex,
+.cut-plan-page > .d-flex { row-gap: .65rem !important; }
+.planner-page .card,
+.cut-plan-page .card,
+.container-fluid:has(> .cutting-nav) .card { box-shadow: 0 1px 3px rgba(15,23,42,.045); border-color: #e3e7ed; }
+.cutting-nav { margin-bottom: .85rem; }
+.cutting-nav .nav-tabs { border-bottom-color: #e3e7ed; }
+.cutting-nav .nav-link { padding: .55rem .8rem; }
+.cutting-stepper { gap: .4rem; margin-block: .75rem 1rem; }
+.cutting-stepper .cutting-step { padding: .38rem .65rem; border-radius: 8px; font-size: .84rem; }
+.cutting-stepper .cutting-step span { width: 1.4rem; height: 1.4rem; }
+.preview-kpi { background: #fff; border-radius: 8px; padding: .5rem .65rem; }
+.preview-kpi b { font-size: 1.1rem; }
+.preview-material { border-radius: 8px; padding: .65rem; }
+.order-row:hover { background: #f8fafc; }
+@media (max-width: 768px) {
+  .planner-page, .cut-plan-page { padding-inline: .65rem; }
+  .cutting-stepper { gap: .3rem; }
+  .cutting-stepper .cutting-step { font-size: .78rem; padding: .35rem .5rem; }
+  .material-preview-card { position: static; }
+}
