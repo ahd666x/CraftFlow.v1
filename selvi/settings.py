@@ -225,6 +225,16 @@ CNC_DERIVED_FILES_ENABLED = config('CNC_DERIVED_FILES_ENABLED', default=True, ca
 # می‌کند و متن نرمال‌شده در برنامهٔ ورق ذخیره می‌شود (فایل اینچ G20 همچنان رد است).
 CNC_RESIZER_IMPLICIT_UNITS = config('CNC_RESIZER_IMPLICIT_UNITS', default='')
 
+# پست‌پروسسور خروجی ماشین برای برنامه‌های ورق CNC.
+# پیش‌فرض خالی = خروجی ماشین مسدود است (فایل دستگاه تولید نمی‌شود).
+# مقدار 'minimal_xy_router' دیالکت استخراج‌شده از ۶۵ فایل واقعی دستگاه را
+# فعال می‌کند (G90/G54، تعویض ابزار دومرحله‌ای T#M6 + M141 + M6T#، G43 H#،
+# قوس فقط I/J، پارک G53 و شماره‌گذاری N با گام ۱۰). هر قطعه‌ای که خارج از
+# این دیالکت باشد، خروجی همان ورق مسدود و علتش در موارد برنامه‌ریزی ثبت
+# می‌شود. M141 یک‌بار در سربرگ صادر می‌شود؛ عملکرد دقیق PLC آن را سازنده
+# تأیید کند. این تنظیم بدون CNC_RESIZER_IMPLICIT_UNITS=mm کافی نیست.
+CNC_RESIZER_SHEET_ADAPTER = config('CNC_RESIZER_SHEET_ADAPTER', default='')
+
 
 
 # تنظیمات فایل‌های سوراخکاری (Drilling)

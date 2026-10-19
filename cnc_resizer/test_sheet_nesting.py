@@ -153,3 +153,59 @@ class CncSheetNestingTests(TestCase):
         create_cnc_sheet_plans([self.order.pk], self.user)
         from cutting.views import _reserved_counts
         self.assertEqual(_reserved_counts([self.stock.pk])[self.stock.pk], 1)
+
+    def test_sheet_adapter_produces_verified_machine_output(self):
+        with override_settings(CNC_RESIZER_IMPLICIT_UNITS='mm',
+                               CNC_RESIZER_SHEET_ADAPTER='minimal_xy_router'):
+            plans, issues = create_cnc_sheet_plans([self.order.pk], self.user)
+        self.assertEqual(issues, [])
+        self.assertEqual(len(plans), 1)
+        plan = plans[0]
+        self.assertTrue(plan.output_verified)
+        self.assertTrue(plan.gcode.startswith('%\r\nN10G90G54\r\n'))
+        self.assertEqual(plan.layout.get('adapter'), 'minimal_xy_router')
+        self.assertEqual(plan.gcode.count('M141'), 1)
+        from .models import CncPlanningIssue
+        self.assertEqual(CncPlanningIssue.objects.count(), 0)
+        response = self.client.get(reverse('cnc_resizer:download_sheet_plan', args=[plan.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'N40M141', response.content)
+        page = self.client.get(reverse('cnc_resizer:sheet_plans'))
+        self.assertContains(page, 'دریافت فایل دستگاه')
+        self.assertNotContains(page, 'فایل دستگاه تولید نشده')
+
+    def test_adapter_failure_falls_back_to_blocked_output(self):
+        second_part = Part.objects.create(
+            material=self.material, name="قطعه قوسی", length=Decimal("1740.0"), width=Decimal("60.0"),
+            f3="panel.arc.r10", routing_code="cnc.paint", turn=False,
+        )
+        ProductionTask.objects.create(
+            order=self.order, part=second_part, station_name="cut", step_order=2, quantity=1, status="pending",
+        )
+        archive = tempfile.TemporaryDirectory()
+        self.addCleanup(archive.cleanup)
+        r_arc_path = os.path.join(archive.name, 'panel.arc.r10.cnc')
+        with open(r_arc_path, 'w', encoding='utf-8') as stream:
+            stream.write(
+                "%\nN10G90G54\nN20G53 Z0\nN30T5M6\nN40 M141\nN50 M6T5\nN60 G43 H5\n"
+                "N70G0X10Y10Z5.000M3 S16000\nN80G1X50Y10F9000.0\n"
+                "N90G2X60Y20R10.0\nN100G1X10Y10\n"
+                "N110G0Z5.000M3 S16000\nN120G0X0.000Y0.000M3 S16000\n"
+                "N130G53Z0\nN140G53X0Y3950\nN150M30\n%\n"
+            )
+        register_base_file(r_arc_path, second_part.f3, self.user)
+        with override_settings(CNC_RESIZER_IMPLICIT_UNITS='mm',
+                               CNC_RESIZER_SHEET_ADAPTER='minimal_xy_router'):
+            plans, issues = create_cnc_sheet_plans([self.order.pk], self.user)
+        self.assertEqual(len(plans), 1)
+        plan = plans[0]
+        self.assertFalse(plan.output_verified)
+        self.assertEqual(plan.gcode, '')
+        self.assertEqual(len(issues), 2)
+        from .models import CncPlanningIssue
+        open_issues = CncPlanningIssue.objects.filter(status='open', details__stage='output_blocked')
+        self.assertEqual(open_issues.count(), 2)
+        self.assertTrue(all('R' in issue.reason for issue in open_issues))
+        self.assertEqual(
+            self.client.get(reverse('cnc_resizer:download_sheet_plan', args=[plan.pk])).status_code, 409,
+        )

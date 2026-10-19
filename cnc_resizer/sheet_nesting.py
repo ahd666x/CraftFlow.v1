@@ -13,6 +13,7 @@ from .models import CncPlanningIssue, CncSheetPlan
 from .services import CncResolutionError, resolve_cnc_file
 
 from . import gcode_sheet
+from . import sheet_adapter
 
 
 def _ceil_tenth(value):
@@ -239,19 +240,49 @@ def create_cnc_sheet_plans(order_ids, user, kerf=Decimal('4.0')):
                                      'task_quantity': p['task_quantity'],
                                      'completed_before': p['completed_before']})
             task_piece_counts = Counter(piece['task_id'] for piece in output_parts)
-            for task_id, quantity in task_piece_counts.items():
-                task = next(task for task in tasks if task.id == task_id)
-                register_issue(
-                    task,
-                    'خروجی دستگاه تولید نشد: کنترلر مقصد و پست‌پروسسور مخصوص ورق در مخزن تأیید نشده است.',
-                    stage='output_blocked', quantity=quantity,
-                )
+            adapter_key = str(getattr(settings, 'CNC_RESIZER_SHEET_ADAPTER', '') or '').strip()
+            gcode, output_verified, adapter_used = '', False, ''
+            if adapter_key:
+                # خروجی ماشین فقط با پست‌پروسسور قفل‌شده بر دیالکت تأییدشدهٔ
+                # کنترلر (minimal_xy_router) تولید می‌شود؛ هر انحراف قطعه از
+                # دیالکت، خروجی کل ورق را به حالت مسدود برمی‌گرداند.
+                try:
+                    placements = [{
+                        'name': pieces[placed['uid']]['label'],
+                        'text': pieces[placed['uid']]['text'],
+                        'place_x': Decimal(str(placed['x'])),
+                        'place_y': Decimal(str(placed['y'])),
+                        'rotated': bool(placed.get('rotated')),
+                    } for placed in layout['parts']]
+                    gcode = sheet_adapter.build_sheet_program(placements, adapter_key)
+                    output_verified, adapter_used = True, adapter_key
+                except Exception as exc:
+                    gcode, output_verified, adapter_used = '', False, ''
+                    for task_id, quantity in task_piece_counts.items():
+                        task = next(task for task in tasks if task.id == task_id)
+                        register_issue(
+                            task,
+                            f'خروجی دستگاه با پست‌پروسسور «{adapter_key}» تولید نشد: {exc}',
+                            stage='output_blocked', quantity=quantity,
+                        )
+            else:
+                for task_id, quantity in task_piece_counts.items():
+                    task = next(task for task in tasks if task.id == task_id)
+                    register_issue(
+                        task,
+                        'خروجی دستگاه تولید نشد: کنترلر مقصد و پست‌پروسسور مخصوص ورق در مخزن تأیید نشده است '
+                        '(در صورت تأیید دیالکت دستگاه، CNC_RESIZER_SHEET_ADAPTER=minimal_xy_router را در تنظیمات فعال کنید).',
+                        stage='output_blocked', quantity=quantity,
+                    )
+            layout_payload = {'parts': output_parts, 'material_id': material_id}
+            if adapter_used:
+                layout_payload['adapter'] = adapter_used
             plan = CncSheetPlan.objects.create(
                 material=stock.material, source_stock=stock, sheet_index=sheet_index,
                 width=stock.width, height=stock.height, kerf=kerf,
                 planned_area=sum((Decimal(piece['width']) * Decimal(piece['height']) for piece in output_parts), Decimal('0')),
-                layout={'parts': output_parts, 'material_id': material_id},
-                gcode='', output_verified=False, created_by=user,
+                layout=layout_payload,
+                gcode=gcode, output_verified=output_verified, created_by=user,
             )
             SheetStockEvent.objects.create(
                 stock=stock, material=stock.material, cnc_plan=plan, event_type='reserve',
