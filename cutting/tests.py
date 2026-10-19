@@ -101,8 +101,10 @@ class InventoryAndCutFlowTests(TestCase):
     def add_stock(self, *, width='1830.0', height='3660.0', quantity=1, offcut=False, priority=100):
         return SheetStock.objects.create(material=self.material, width=Decimal(width), height=Decimal(height), quantity=quantity, is_offcut=offcut, priority=priority, created_by=self.user)
 
-    def make_plan(self):
-        response = self.client.post(reverse('cutting:planner'), {'action': 'plan', 'order_ids': [self.order.pk], 'kerf': '4.0'})
+    def make_plan(self, policy=None):
+        data = {'action': 'plan', 'order_ids': [self.order.pk], 'kerf': '4.0'}
+        if policy: data['stock_policy'] = policy
+        response = self.client.post(reverse('cutting:planner'), data)
         self.assertEqual(response.status_code, 302)
         return CutPlan.objects.latest('pk')
 
@@ -186,25 +188,27 @@ class InventoryAndCutFlowTests(TestCase):
         stock.refresh_from_db()
         self.assertTrue(stock.active)
 
-    def test_offcuts_first_and_full_only_do_not_delete_offcut_inventory(self):
+    def test_offcuts_first_and_full_first_do_not_delete_offcut_inventory(self):
         full = self.add_stock()
         offcut = self.add_stock(width='700', height='700', offcut=True)
         plan = self.make_plan()
         self.assertEqual(plan.planned_sheets.get().source_stock_id, offcut.pk)
         plan.status = 'cancelled'; plan.save(update_fields=['status'])
-        setting = CuttingSettings.current(); setting.strategy = 'full_only'; setting.save()
-        plan2 = self.make_plan()
+        plan2 = self.make_plan('full_first')
         self.assertEqual(plan2.planned_sheets.get().source_stock_id, full.pk)
+        self.assertEqual(plan2.stock_policy, 'full_first')
         offcut.refresh_from_db(); self.assertTrue(offcut.active); self.assertEqual(offcut.quantity, 1)
-
-    def test_manual_priority_policy_overrides_offcut_first_when_configured(self):
-        full = self.add_stock(priority=1)
-        offcut = self.add_stock(width='700', height='700', offcut=True, priority=20)
-        setting = CuttingSettings.current(); setting.strategy = 'priority'; setting.save()
-        plan = self.make_plan()
+    def test_full_first_uses_full_sheet_first_and_falls_back_to_offcut(self):
+        full = self.add_stock(width='410', height='310')
+        offcut = self.add_stock(width='700', height='700', offcut=True)
+        plan = self.make_plan('full_first')
+        self.assertEqual(plan.stock_policy, 'full_first')
         self.assertEqual(plan.planned_sheets.get().source_stock_id, full.pk)
-        self.assertNotEqual(plan.planned_sheets.get().source_stock_id, offcut.pk)
-
+        plan.status = 'cancelled'; plan.save(update_fields=['status'])
+        self.task.quantity = 2; self.task.save(update_fields=['quantity'])
+        plan2 = self.make_plan('full_first')
+        used = set(plan2.planned_sheets.values_list('source_stock_id', flat=True))
+        self.assertEqual(used, {full.pk, offcut.pk})
     def test_untouched_full_sheet_is_not_consumed_or_converted(self):
         stock = self.add_stock()
         plan = self.make_plan(); sheet = plan.planned_sheets.get()
@@ -690,38 +694,6 @@ class InventoryAndCutFlowTests(TestCase):
         setting.refresh_from_db()
         self.assertEqual(setting.default_kerf, Decimal('3.5'))
         self.assertContains(self.client.get(reverse('cutting:planner')), 'value="3.5"')
-
-    def test_priority_table_is_conditional_and_bulk_save_is_atomic(self):
-        first = self.add_stock(priority=100)
-        second = self.add_stock(width='500', height='600', offcut=True, priority=200)
-        setting = CuttingSettings.current()
-        setting.strategy = 'offcuts_first'
-        setting.save(update_fields=('strategy',))
-        response = self.client.get(reverse('cutting:policy'))
-        self.assertNotContains(response, f'name="priority_{first.pk}"')
-
-        setting.strategy = 'priority'
-        setting.save(update_fields=('strategy',))
-        response = self.client.get(reverse('cutting:policy'))
-        self.assertContains(response, f'name="priority_{first.pk}"')
-
-        response = self.client.post(reverse('cutting:policy'), {
-            'action': 'save_priorities', f'priority_{first.pk}': '5', f'priority_{second.pk}': 'invalid',
-        })
-        self.assertEqual(response.status_code, 302)
-        first.refresh_from_db()
-        second.refresh_from_db()
-        self.assertEqual((first.priority, second.priority), (100, 200))
-        self.assertFalse(SheetStockEvent.objects.filter(stock__in=(first, second), event_type='adjust').exists())
-
-        response = self.client.post(reverse('cutting:policy'), {
-            'action': 'save_priorities', f'priority_{first.pk}': '5', f'priority_{second.pk}': '10',
-        })
-        self.assertEqual(response.status_code, 302)
-        first.refresh_from_db()
-        second.refresh_from_db()
-        self.assertEqual((first.priority, second.priority), (5, 10))
-        self.assertEqual(SheetStockEvent.objects.filter(stock__in=(first, second), event_type='adjust').count(), 2)
 
     def test_plan_detail_renders_and_downloads_the_cut_file(self):
         self.add_stock()

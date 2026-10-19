@@ -23,7 +23,7 @@
   {% elif cut_section == 'settings' %}
   <div class="mt-2 d-flex gap-2">
     <a class="btn btn-sm {% if cut_url_name|slice:':10' == 'size_specs' %}btn-secondary{% else %}btn-outline-secondary{% endif %}" href="{% url 'cutting:size_specs' %}">اندازه‌های استاندارد</a>
-    {% if can_manage %}<a class="btn btn-sm {% if cut_url_name == 'policy' %}btn-secondary{% else %}btn-outline-secondary{% endif %}" href="{% url 'cutting:policy' %}">سیاست مصرف و تیغه</a>{% endif %}
+    {% if can_manage %}{% endif %}
   </div>
   {% endif %}
 </nav>

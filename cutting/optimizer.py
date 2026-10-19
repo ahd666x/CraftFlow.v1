@@ -12,6 +12,9 @@ def stock_sort_key(stock, policy='offcuts_first'):
     stable_id = int(stock.get('stock_id', 0))
     if policy == 'priority':
         return (priority, not stock.get('is_offcut', False), area, stock['width'], stock['height'], stable_id)
+    if policy == 'full_first':
+        # Full sheets first; usable offcuts remain available as fallback.
+        return (stock.get('is_offcut', False), priority, area, stock['width'], stock['height'], stable_id)
     # Default is offcut-first. Priority is the next deterministic tie-breaker.
     return (not stock.get('is_offcut', False), priority, area, stock['width'], stock['height'], stable_id)
 

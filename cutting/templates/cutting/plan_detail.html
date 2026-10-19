@@ -11,6 +11,7 @@
       <h1 class="mb-1">بازبینی و اجرای برش</h1>
       <p class="mb-2">سفارش‌ها: {% for o in plan.orders.all %}<span class="badge bg-light text-dark border">#{{ o.pk }}{% if o.number %} · {{ o.number }}{% endif %}</span>{% endfor %}</p>
       <span class="badge {% if plan.status == 'cut' %}bg-success{% elif plan.status == 'partial' %}bg-warning text-dark{% elif plan.status == 'cancelled' %}bg-secondary{% else %}bg-primary{% endif %}">{{ plan.get_status_display }}</span>
+      <span class="badge bg-light text-dark border">سیاست مصرف: {{ plan.get_stock_policy_display }}</span>
     </div>
     <div class="d-flex flex-wrap gap-2">
       <a class="btn btn-primary" id="cut-download-trigger" href="{% url 'cutting:download_cut' plan.id %}">دانلود فایل .CUT</a>

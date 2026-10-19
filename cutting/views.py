@@ -74,6 +74,8 @@ def _dimension(value, field_name):
     return value.quantize(MM)
 
 
+def _stock_policy(raw):
+    return raw if raw in dict(CutPlan.STOCK_POLICIES) else 'offcuts_first'
 def _json_safe(value):
     if isinstance(value, Decimal):
         return format(value, 'f')
@@ -130,6 +132,7 @@ def planner(request):
                 raise ValueError('ضخامت تیغه باید صفر یا عدد مثبت با حداکثر یک رقم اعشار باشد.')
         except (InvalidOperation, ValueError):
             messages.error(request, 'مقدار تیغه معتبر نیست.'); return redirect('cutting:planner')
+        policy = _stock_policy(request.POST.get('stock_policy'))
         if not order_ids:
             messages.error(request, 'برای برنامه‌ریزی دست‌کم یک سفارش انتخاب کنید.'); return redirect('cutting:planner')
         if cnc_sheet_mode:
@@ -190,10 +193,8 @@ def planner(request):
                 task_ids = [task.pk for task in tasks]
                 if CutPlanTask.objects.filter(task_id__in=task_ids, plan__status='planned').exists():
                     raise ValueError('برخی از تسک‌ها هم‌اکنون در برنامه برش دیگری رزرو هستند.')
-                settings_row = CuttingSettings.current()
-                stock_qs = SheetStock.objects.select_for_update().filter(active=True, quantity__gt=0, material_id__in={t.part.material_id for t in tasks})
-                if settings_row.strategy == 'full_only':
-                    stock_qs = stock_qs.filter(is_offcut=False)
+                stock_qs = SheetStock.objects.select_for_update().filter(
+                    active=True, quantity__gt=0, material_id__in={t.part.material_id for t in tasks})
                 stock_rows = list(stock_qs.select_related('material').order_by('priority', 'is_offcut', 'width', 'height', 'pk'))
                 reserved = _reserved_counts([s.pk for s in stock_rows])
                 stock_by_id = {s.pk: s for s in stock_rows}
@@ -246,7 +247,7 @@ def planner(request):
                     layouts = []
                     while remaining:
                         try:
-                            layouts = optimize(remaining, material_stock, kerf, policy=settings_row.strategy)
+                            layouts = optimize(remaining, material_stock, kerf, policy=policy)
                             break
                         except (ValueError, TypeError) as exc:
                             candidate = next(
@@ -276,7 +277,7 @@ def planner(request):
                             if piece.get('task_id') is not None:
                                 planned_quantities[int(piece['task_id'])] += 1
                 orders = list(Order.objects.filter(pk__in=order_ids))
-                plan = CutPlan.objects.create(created_by=request.user, plan_data={'rows': [], 'kerf': str(kerf), 'policy': settings_row.strategy})
+                plan = CutPlan.objects.create(created_by=request.user, stock_policy=policy, plan_data={'rows': [], 'kerf': str(kerf), 'policy': policy})
                 plan.orders.set(orders)
                 for task in tasks:
                     if not planned_quantities[task.pk]:
@@ -311,7 +312,7 @@ def planner(request):
                                 plan_sheet=sheet_record, task_id=task_id, quantity=quantity,
                             )
                         _event(stock=source, event_type='reserve', user=request.user, plan=plan, note=f'رزرو در برنامه #{plan.pk}')
-                plan.plan_data = _json_safe({'rows': rows, 'kerf': kerf, 'policy': settings_row.strategy})
+                plan.plan_data = _json_safe({'rows': rows, 'kerf': kerf, 'policy': policy})
                 plan.save(update_fields=('plan_data',))
             return redirect('cutting:plan_detail', plan_id=plan.pk)
         except ValueError as exc:
@@ -339,15 +340,6 @@ def planner(request):
             filter=Q(tasks__pk__in=available_tasks),
         ),
     ).order_by('priority', F('due_date').asc(nulls_last=True), '-id'))
-    needs_queryset = available_tasks.filter(
-        order_id__in=[order.pk for order in orders],
-    ).select_related('part__material', 'order', 'order__customer').order_by('order_id', 'part__name', 'pk')
-    needs_page = Paginator(needs_queryset, 50).get_page(request.GET.get('needs_page'))
-    for task in needs_page.object_list:
-        task.remaining_quantity = max(0, task.quantity - task.completed_quantity)
-        task.needs_validation_error = (
-            'ابعاد نامعتبر' if task.part.length <= 0 or task.part.width <= 0 else ''
-        )
     material_names = defaultdict(list)
     if orders:
         material_rows = available_tasks.filter(order_id__in=[order.pk for order in orders]).values(
@@ -363,14 +355,10 @@ def planner(request):
         reserved_sheet_count=Count('planned_sheets', distinct=True),
     ).prefetch_related('orders').order_by('-created_at')[:10]
     setting = CuttingSettings.current()
-    needs_pagination_params = request.GET.copy()
-    needs_pagination_params.pop('needs_page', None)
     return render(request, 'cutting/planner.html', {
         'materials': materials, 'orders': orders, 'setting': setting,
         'order_statuses': Order.ORDER_STATUS, 'status_filter': status_filter, 'query': query,
         'active_plans': active_plans,
-        'needs_page': needs_page,
-        'needs_pagination_query': needs_pagination_params.urlencode(),
     })
 
 
@@ -425,6 +413,7 @@ def planner_preview(request):
     if len(tasks) > 2000 or total_pieces > 3000:
         return JsonResponse({'error': 'این انتخاب برای پیش‌نمایش خیلی بزرگ است؛ سفارش‌ها را به چند برنامه تقسیم کنید.'}, status=400)
 
+    policy = _stock_policy(request.GET.get('stock_policy'))
     setting = CuttingSettings.current()
     stocks = list(SheetStock.objects.filter(
         active=True, quantity__gt=0, material_id__in={task.part.material_id for task in tasks},
@@ -432,7 +421,7 @@ def planner_preview(request):
     reserved = _reserved_counts([stock.pk for stock in stocks])
     stock_by_material = defaultdict(list)
     for stock in stocks:
-        if (cnc_mode or setting.strategy == 'full_only') and stock.is_offcut:
+        if cnc_mode and stock.is_offcut:
             continue
         for _ in range(max(0, stock.quantity - reserved[stock.pk])):
             stock_by_material[stock.material_id].append({
@@ -470,7 +459,7 @@ def planner_preview(request):
         rough_estimate = ceil(required_area / reference_area) if reference_area else None
         fits, exact_estimate = False, None
         try:
-            exact_estimate = len(optimize(parts, stock, kerf, policy=setting.strategy))
+            exact_estimate = len(optimize(parts, stock, kerf, policy=policy))
             fits = True
         except ValueError:
             pass
@@ -487,7 +476,7 @@ def planner_preview(request):
         })
     return JsonResponse({
         'selected_order_count': len({task.order_id for task in tasks}),
-        'piece_count': total_pieces, 'strategy': setting.get_strategy_display(), 'materials': material_results,
+        'piece_count': total_pieces, 'strategy': dict(CutPlan.STOCK_POLICIES)[policy], 'materials': material_results,
     })
 
 
@@ -1065,55 +1054,12 @@ def cutting_policy(request):
             except (InvalidOperation, ValueError):
                 messages.error(request, 'ضخامت تیغه باید عددی نامنفی با حداکثر یک رقم اعشار باشد.')
             return redirect('cutting:policy')
-        if request.POST.get('action') == 'save_priorities':
-            changed = 0
-            try:
-                with transaction.atomic():
-                    stock_rows = SheetStock.objects.select_for_update().filter(active=True, quantity__gt=0)
-                    for stock in stock_rows:
-                        raw = request.POST.get(f'priority_{stock.pk}')
-                        if raw is None:
-                            continue
-                        try:
-                            new_priority = int(raw)
-                        except (TypeError, ValueError):
-                            raise ValueError('اولویت باید عدد صحیح باشد.')
-                        if new_priority != stock.priority:
-                            old_priority = stock.priority
-                            stock.priority = new_priority
-                            stock.save(update_fields=('priority', 'updated_at'))
-                            _event(stock=stock, event_type='adjust', user=request.user,
-                                   note=f'تغییر اولویت مصرف از {old_priority} به {new_priority}')
-                            changed += 1
-            except ValueError as exc:
-                messages.error(request, str(exc))
-                return redirect('cutting:policy')
-            messages.success(request, f'اولویت {changed} ردیف به‌روزرسانی شد.')
-            return redirect('cutting:policy')
-        if request.POST.get('stock_id'):
-            stock = get_object_or_404(SheetStock, pk=request.POST.get('stock_id'), active=True)
-            try:
-                priority = int(request.POST.get('priority'))
-                old_priority = stock.priority
-                stock.priority = priority
-                stock.save(update_fields=('priority', 'updated_at'))
-                _event(stock=stock, event_type='adjust', user=request.user,
-                       note=f'تغییر اولویت مصرف از {old_priority} به {priority}')
-                messages.success(request, 'اولویت این ردیف موجودی به‌روزرسانی شد.')
-            except (TypeError, ValueError):
-                messages.error(request, 'اولویت باید عدد صحیح باشد.')
-            return redirect('cutting:policy')
-        strategy = request.POST.get('strategy')
-        if strategy not in dict(CuttingSettings.STRATEGIES):
-            messages.error(request, 'سیاست مصرف انتخاب‌شده معتبر نیست.')
-        else:
-            setting.strategy=strategy; setting.updated_by=request.user; setting.save()
-            messages.success(request, 'سیاست مصرف ورق ذخیره شد؛ پرت‌های انبار حذف یا غیرفعال نشدند.')
-            return redirect('cutting:policy')
-    stock = SheetStock.objects.filter(active=True, quantity__gt=0).select_related('material').order_by('priority', 'is_offcut', 'material__name', 'width', 'height', 'pk')
-    return render(request, 'cutting/policy.html', {'setting': setting, 'strategies': CuttingSettings.STRATEGIES, 'stock': stock})
+        messages.error(request, 'درخواست تنظیمات معتبر نیست.')
+        return redirect('cutting:policy')
 
 
+
+    return render(request, 'cutting/policy.html', {'setting': setting})
 @inventory_operator
 def stock_history(request):
     events = SheetStockEvent.objects.select_related('material', 'stock', 'plan', 'created_by').order_by('-created_at', '-pk')

@@ -74,6 +74,11 @@ class CuttingSettings(models.Model):
 
 
 class CutPlan(models.Model):
+    STOCK_POLICIES = [
+        ('full_first', 'ابتدا ورق کامل، سپس پرت قابل استفاده'),
+        ('offcuts_first', 'ابتدا پرت قابل استفاده، سپس ورق کامل'),
+    ]
+    stock_policy = models.CharField(max_length=20, choices=STOCK_POLICIES, default='offcuts_first', verbose_name='سیاست مصرف موجودی')
     STATUS = [('planned', 'برنامه‌ریزی'), ('cut', 'برش انجام شد'), ('partial', 'نتیجه جزئی؛ ادامه لازم است'), ('cancelled', 'لغو شد')]
     orders = models.ManyToManyField(Order, related_name='cut_plans')
     status = models.CharField(max_length=12, choices=STATUS, default='planned')

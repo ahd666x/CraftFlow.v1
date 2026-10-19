@@ -10,6 +10,7 @@
   const clearFilters = document.getElementById('clear-order-filters');
   const kerf = document.getElementById('kerf');
   const planningModes = [...document.querySelectorAll('input[name="planning_mode"]')];
+  const stockPolicies = [...document.querySelectorAll('input[name="stock_policy"]')];
   const submit = document.getElementById('plan-submit');
   let timer = null;
   let controller = null;
@@ -115,6 +116,8 @@
       if (kerf.value) params.set('kerf', kerf.value);
       const selectedMode = planningModes.find(input => input.checked);
       if (selectedMode) params.set('planning_mode', selectedMode.value);
+      const policy = stockPolicies.find(input => input.checked);
+      if (policy) params.set('stock_policy', policy.value);
       try {
         const response = await fetch(`${form.dataset.previewUrl}?${params}`, {
           headers: { 'X-Requested-With': 'XMLHttpRequest' },
@@ -146,6 +149,7 @@
     status.value = '';
     filterRows();
   });
+  stockPolicies.forEach(input => input.addEventListener('change', updatePreview));
   boxes.forEach(box => box.addEventListener('change', () => {
     box.closest('.order-row')?.classList.toggle('order-selected', box.checked);
     filterRows();
