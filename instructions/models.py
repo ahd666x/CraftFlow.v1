@@ -176,6 +176,48 @@ class WorkInstructionImage(models.Model):
         return f"تصویر {self.sort_order} برای «{self.instruction.title}»"
 
 
+class ChecklistState(models.Model):
+    """تیک ماندگار چک‌لیست: هر خط از هر دستورالعملِ چک‌لیستی به ازای آیتم سفارش.
+
+    صفحه اسکن قبلاً چک‌لیست‌ها را فقط نمایش می‌داد (تیک‌ها با رفرش صفحه
+    می‌پریدند)؛ این مدل وضعیت واقعی «انجام شد» را ذخیره می‌کند تا اپراتور
+    بعدی یا اپراتور شیفت بعد همان‌جا ادامه دهد.
+
+    ``line_index`` شماره‌ی خط در متن ``body`` است (از صفر)؛ اگر متن بند
+    ویرایش شود ممکن است جای خط‌ها جابه‌جا شود — این سادگی عمدی است و
+    هزینه‌ی نگهداری سقف‌های متن ساده‌تر از ذخیره‌ی متن هر خط است.
+    """
+
+    instruction = models.ForeignKey(
+        WorkInstruction, on_delete=models.CASCADE,
+        related_name='check_states', verbose_name='دستورالعمل',
+    )
+    order_item = models.ForeignKey(
+        'product.OrderItem', on_delete=models.CASCADE,
+        related_name='checklist_states', verbose_name='آیتم سفارش',
+    )
+    line_index = models.PositiveIntegerField(verbose_name='شماره خط')
+    checked_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, editable=False,
+        on_delete=models.SET_NULL, related_name='checklist_checks', verbose_name='تیک‌زننده',
+    )
+    checked_at = models.DateTimeField(auto_now=True, verbose_name='زمان تیک')
+
+    class Meta:
+        verbose_name = 'وضعیت تیک چک‌لیست'
+        verbose_name_plural = 'وضعیت تیک‌های چک‌لیست'
+        ordering = ('instruction', 'line_index')
+        constraints = [
+            models.UniqueConstraint(
+                fields=('instruction', 'order_item', 'line_index'),
+                name='unique_checklist_line_per_item',
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.instruction_id}#L{self.line_index} @ item {self.order_item_id}"
+
+
 class CncMachineSetup(models.Model):
     """راه‌اندازی ثابت ماشین CNC — بخش خودکار ایستگاه CNC در سیستم دستورالعمل‌ها.
 

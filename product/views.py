@@ -748,7 +748,7 @@ def scan_item_tasks_ajax(request, item_id):
         'order_id': item.order_id,
         'item_id': item.id,
         'product_name': item.product.name if item.product else '',
-        'instructions': collect_item_instructions(item, worker_stage),
+        'instructions': collect_item_instructions(item, worker_stage, with_checklist=True),
         'cnc_setup': cnc_setup,
     })
 
@@ -2108,7 +2108,7 @@ def scan_part_cnc(request):
         'quantity': task.quantity,
         'item_tasks': get_item_task_progress_for_station(task.order_item_id, 'cnc'),
         'cnc_config_url': f"{reverse('cnc_resizer:index')}?part_id={part.id}",
-        'instructions': collect_item_instructions(task.order_item, 'cnc'),
+        'instructions': collect_item_instructions(task.order_item, 'cnc', with_checklist=True),
     }
     # راهنمای خودکار اپراتور CNC: پارکینگ ابزار + روند آفست + وضعیت نقاط میخ برای همین قطعه
     from instructions.cnc_guide import part_cnc_guide

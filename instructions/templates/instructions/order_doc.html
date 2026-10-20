@@ -1,0 +1,63 @@
+{% load static %}
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>دستور تولید سفارش {{ order.id }}{% if order.number %} — {{ order.number }}{% endif %}</title>
+{% include 'instructions/partials/doc_styles.html' %}
+</head>
+<body>
+<div class="sheet">
+  <div class="doc-head">
+    <div>
+      <h1>دستور تولید سفارش {{ order.id }}{% if order.number %} ({{ order.number }}){% endif %}</h1>
+      <div class="meta">
+        <span>مشتری: {{ order.customer.name|default:'—' }}</span>
+        <span>نماینده: {% if order.user %}{{ order.user.get_full_name|default:order.user.username }}{% else %}—{% endif %}</span>
+        <span>تاریخ: {{ order.created_at }}</span>
+        <span>تحویل: {{ order.due_date|default:'—' }}</span>
+        <span>{{ order.items.count }} آیتم</span>
+      </div>
+    </div>
+    <span class="spacer"></span>
+  </div>
+
+  <div class="btnbar no-print">
+    <a class="btnlink" href="{% url 'instructions:browser' %}">مرورگر دانش تولید</a>
+    <button class="primary" onclick="window.print()">🖨 چاپ سند</button>
+  </div>
+
+  {# راه‌اندازی ماشین CNC مشترک همه‌ی آیتم‌ها — یک‌بار بالای سند #}
+  {% if cnc_setup %}
+    <h2 class="station">ایستگاه CNC — راه‌اندازی ماشین (مشترک همه آیتم‌ها)</h2>
+    {% include 'instructions/partials/cnc_auto_section.html' %}
+  {% endif %}
+
+  {% for block in blocks %}
+    <div class="item-block">
+      <div class="item-head">
+        <h3>آیتم {{ block.item.id }} — {{ block.product.name }}</h3>
+        <span class="badge secondary">تعداد: {{ block.item.quantity }}</span>
+        {% if block.item.size_display %}<span class="badge secondary">سایز: {{ block.item.size_display }}</span>{% endif %}
+        {% for m in block.materials %}<span class="badge info">متریال: {{ m }}</span>{% endfor %}
+        {% for c in block.colors %}<span class="badge cond">رنگ کد: {{ c }}</span>{% endfor %}
+        {% if block.item.notes %}<span class="hint">{{ block.item.notes }}</span>{% endif %}
+      </div>
+
+      {% if not block.has_content %}
+        <div class="empty">برای این آیتم دستورالعملی که با متریال/رنگ سفارش بخواند ثبت نشده است.</div>
+      {% endif %}
+
+      {% for section in block.sections %}
+        <h2 class="station">{{ section.label }}</h2>
+        {# در سند سفارش، راه‌اندازی ماشین بالای سند یک‌بار آمد؛ اینجا فقط دستورالعمل‌های ایستگاه CNC #}
+        {% for ins in section.items %}
+          {% include 'instructions/partials/ins_card.html' %}
+        {% endfor %}
+      {% endfor %}
+    </div>
+  {% endfor %}
+</div>
+</body>
+</html>

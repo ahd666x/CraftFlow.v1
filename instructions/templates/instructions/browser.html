@@ -1,0 +1,137 @@
+{% load static %}
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>مرورگر دانش تولید</title>
+{% include 'instructions/partials/doc_styles.html' %}
+<style>
+  .stat-grid { display: flex; gap: 10px; flex-wrap: wrap; margin: 14px 0; }
+  .stat { flex: 1; min-width: 120px; background: var(--soft); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; text-align: center; }
+  .stat .num { font-size: 22px; font-weight: 800; color: var(--accent); }
+  .stat .lbl { font-size: 12px; color: var(--muted); }
+  .prod-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; margin: 10px 0 20px; }
+  .prod-card { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; background: #fff; }
+  .prod-card b { font-size: 13.5px; }
+  .prod-card .cat { color: var(--muted); font-size: 11.5px; }
+  .prod-card .cnt { margin: 6px 0; font-size: 12px; color: var(--muted); }
+  .prod-card .cnt b { color: var(--text); }
+  .prod-card .acts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .prod-card .acts a { font-size: 11.5px; text-decoration: none; border: 1px solid var(--line); border-radius: 6px; padding: 3px 9px; color: var(--text); background: #fff; }
+  .prod-card .acts a.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
+  .filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 10px 0; }
+  .filters input, .filters select, .filters button { font: inherit; padding: 6px 10px; border: 1px solid var(--line); border-radius: 7px; background: #fff; }
+  .filters input[type=text] { min-width: 220px; }
+  .filters .submit { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; cursor: pointer; }
+  table.rows { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  table.rows th, table.rows td { border: 1px solid var(--line); padding: 6px 9px; text-align: right; vertical-align: top; }
+  table.rows th { background: var(--soft); }
+  table.rows td.n { direction: ltr; unicode-bidi: plaintext; }
+  table.rows .inactive { color: #b3261e; font-weight: 700; }
+  table.rows a { color: var(--accent); text-decoration: none; }
+  .topbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<div class="sheet">
+  <div class="doc-head">
+    <div>
+      <h1>مرورگر دانش تولید</h1>
+      <div class="meta">
+        <span>همه‌ی دستورالعمل‌های ایستگاه‌ها، شرط‌های متریال/رنگ و راه‌اندازی ماشین در یک نما</span>
+      </div>
+    </div>
+    <span class="spacer"></span>
+  </div>
+
+  <div class="stat-grid">
+    <div class="stat"><div class="num">{{ stats.active }}</div><div class="lbl">دستورالعمل فعال</div></div>
+    <div class="stat"><div class="num">{{ stats.warnings }}</div><div class="lbl">هشدار فعال</div></div>
+    <div class="stat"><div class="num">{{ stats.checklists }}</div><div class="lbl">چک‌لیست فعال</div></div>
+    <div class="stat"><div class="num">{{ stats.products }}</div><div class="lbl">محصول دارای دانش</div></div>
+    <div class="stat"><div class="num">{{ stats.total }}</div><div class="lbl">کل بندها</div></div>
+  </div>
+
+  <h2 class="station">محصولات</h2>
+  {% if products %}
+    <div class="prod-grid">
+      {% for p in products %}
+        <div class="prod-card">
+          <b>{{ p.name }}</b>
+          <div class="cat">{{ p.category.name|default:'بدون دسته' }}</div>
+          <div class="cnt"><b>{{ p.active_count }}</b> فعال از <b>{{ p.total }}</b> بند</div>
+          <div class="acts">
+            <a class="primary" href="{% url 'instructions:product_editor' p.pk %}">✏️ ویرایشگر</a>
+            <a href="{% url 'instructions:product_doc' p.pk %}">سند دستور تولید</a>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="empty">هنوز هیچ محصولی دستورالعمل ندارد. از ویرایشگر محصول شروع کنید.</div>
+  {% endif %}
+
+  <h2 class="station">همه‌ی دستورالعمل‌ها</h2>
+  <form class="filters" method="get">
+    <input type="text" name="q" value="{{ filters.q }}" placeholder="جست‌وجو در عنوان و متن...">
+    <select name="station">
+      <option value="">همه‌ی ایستگاه‌ها</option>
+      {% for code, label in stations %}
+        <option value="{{ code }}" {% if filters.station == code %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <select name="kind">
+      <option value="">همه‌ی انواع</option>
+      {% for code, label in kinds %}
+        <option value="{{ code }}" {% if filters.kind == code %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <select name="status">
+      <option value="">فعال و غیرفعال</option>
+      <option value="active" {% if filters.status == 'active' %}selected{% endif %}>فقط فعال</option>
+      <option value="inactive" {% if filters.status == 'inactive' %}selected{% endif %}>فقط غیرفعال</option>
+    </select>
+    <button class="submit" type="submit">فیلتر</button>
+  </form>
+
+  {% if rows %}
+    <table class="rows">
+      <thead>
+        <tr>
+          <th>عنوان</th><th>مقصد</th><th>ایستگاه</th><th>نوع</th><th>شرط نمایش</th>
+          <th class="n">عکس</th><th>وضعیت</th><th class="n">ترتیب</th><th>ادمین</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for ins in rows %}
+          <tr>
+            <td>
+              <b>{{ ins.title }}</b>
+              {% if ins.body %}<div class="hint">{{ ins.body|truncatechars:90 }}</div>{% endif %}
+            </td>
+            <td>
+              {% if ins.product_id %}<a href="{% url 'instructions:product_editor' ins.product_id %}">{{ ins.product.name }}</a>{% endif %}
+              {% if ins.part_id %}قطعه: {{ ins.part.name }}{% endif %}
+            </td>
+            <td>{{ ins.get_station_display }}</td>
+            <td><span class="badge {{ ins.badge.1 }}">{{ ins.badge.0 }}</span></td>
+            <td>{% if ins.condition_labels %}{{ ins.condition_labels|join:' / ' }}{% else %}همیشه{% endif %}</td>
+            <td class="n">{{ ins.images.count }}</td>
+            <td>{% if ins.active %}فعال{% else %}<span class="inactive">غیرفعال</span>{% endif %}</td>
+            <td class="n">{{ ins.sequence }}</td>
+            <td><a href="{% url 'admin:instructions_workinstruction_change' ins.pk %}" target="_blank">ویرایش</a></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="empty">موردی با این فیلترها پیدا نشد.</div>
+  {% endif %}
+
+  <div class="hint" style="margin-top:14px;">
+    🛠 راه‌اندازی ماشین CNC (پارکینگ ابزار، مبدأ G54، نقاط میخ): {{ cnc_setup_active|yesno:'ثبت شده و فعال است — از ادمین بخش «دانش تولید» ویرایش کنید,' }} ثبت نشده است — از ادمین بخش «دانش تولید» → «راه‌اندازی ماشین CNC» اضافه کنید.
+  </div>
+</div>
+</body>
+</html>

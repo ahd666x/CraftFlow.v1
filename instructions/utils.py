@@ -3,7 +3,7 @@
 این ماژول فقط به مدل‌های محصول وابسته است تا هم از ``product.views`` و هم
 از ویوهای خود اپ بدون حلقه‌ی ایمپورت قابل استفاده باشد.
 """
-from .models import WorkInstruction
+from .models import ChecklistState, WorkInstruction
 
 
 def serialize_instruction(instruction):
@@ -46,12 +46,14 @@ def _item_color_codes(order_item):
     return [row.code for row in order_item.ordercolor.all() if row.code and row.code != 'nan']
 
 
-def collect_item_instructions(order_item, station=None):
+def collect_item_instructions(order_item, station=None, with_checklist=False):
     """فهرست سریال‌شده‌ی دستورالعمل‌های applicable به یک آیتم واقعی.
 
     - ایستگاه داده شود → همان ایستگاه + دستورالعمل‌های عمومی.
     - شرط متریال/رنگ با واقعیت سفارش مقایسه می‌شود.
     - خروجی بر اساس ترتیب ثبت‌شده و نوع مرتب است؛ عکس‌ها از قبل لود شده‌اند.
+    - ``with_checklist`` → برای بندهای چک‌لیستی، فهرست خط‌های تیک‌خورده‌ی
+      ماندگار همان آیتم هم در ``checked_lines`` می‌آید (فاز ۳).
     """
     if order_item is None or order_item.product_id is None:
         return []  # تسک‌های بدون آیتم سفارش (کارت آزاد نقاشی) دستورالعمل محصول ندارند
@@ -65,7 +67,24 @@ def collect_item_instructions(order_item, station=None):
           .filter(models_q_for_item(order_item))
           .select_related('part')
           .prefetch_related('images'))
-    return [serialize_instruction(ins) for ins in qs]
+    items = [serialize_instruction(ins) for ins in qs]
+    if with_checklist:
+        checked = checklist_checked_lines(order_item)
+        for row in items:
+            if row['kind'] == WorkInstruction.KIND_CHECKLIST:
+                row['checked_lines'] = sorted(checked.get(row['id'], ()))
+    return items
+
+
+def checklist_checked_lines(order_item):
+    """نقشه‌ی {شناسه دستورالعمل: مجموعه شماره خط‌های تیک‌خورده} برای آیتم."""
+    result = {}
+    rows = (ChecklistState.objects
+            .filter(order_item=order_item)
+            .values_list('instruction_id', 'line_index'))
+    for instruction_id, line_index in rows:
+        result.setdefault(instruction_id, set()).add(line_index)
+    return result
 
 
 def models_q_for_item(order_item):

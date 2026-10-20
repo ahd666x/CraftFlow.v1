@@ -8,6 +8,7 @@
     .ins-step { background: #eef5ff; }
     .ins-spec { background: #f0f8ff; }
     .ins-line { font-size: 14px; margin: 2px 0; }
+    .chk-done { text-decoration: line-through; opacity: .55; }
     .ins-thumb { max-height: 110px; max-width: 160px; border-radius: 6px; border: 1px solid #dee2e6; margin: 6px 4px 0 0; cursor: zoom-in; }
     .ins-cond { font-size: 11px; }
     .cnc-guide table { font-size: 13px; }
@@ -160,6 +161,41 @@ function escapeHtml(text) {
         .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
+let currentOrderItemId = null;
+
+function getCsrfToken() {
+    const m = document.cookie.match(/csrftoken=([^;]+)/);
+    return m ? m[1] : '{{ csrf_token }}';
+}
+
+/* تیک ماندگار چک‌لیست — ذخیره روی سرور به ازای آیتم سفارش (فاز ۳) */
+function onChecklistToggle(el) {
+    const label = el.closest('.form-check').querySelector('label');
+    label.classList.toggle('chk-done', el.checked);
+    if (!currentOrderItemId) return;
+    fetch('/instructions/checklist/toggle/', {
+        method: 'POST',
+        headers: {'X-CSRFToken': getCsrfToken(), 'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            instruction_id: parseInt(el.dataset.ins, 10),
+            order_item_id: currentOrderItemId,
+            line_index: parseInt(el.dataset.line, 10),
+            checked: el.checked,
+        }),
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (!d.success) {
+            el.checked = !el.checked;
+            label.classList.toggle('chk-done', el.checked);
+        }
+    })
+    .catch(() => {
+        el.checked = !el.checked;
+        label.classList.toggle('chk-done', el.checked);
+    });
+}
+
 function renderInstructions(list) {
     const card = document.getElementById('instructions-card');
     const body = document.getElementById('instructions-body');
@@ -182,9 +218,11 @@ function renderInstructions(list) {
             html += `<span class="badge bg-light text-dark border ins-cond">قطعه: ${escapeHtml(ins.part_name)}</span>`;
         }
         html += `</div>`;
-        (ins.body_lines || []).forEach(function(line) {
+        (ins.body_lines || []).forEach(function(line, idx) {
             if (ins.kind === 'checklist') {
-                html += `<div class="form-check"><input class="form-check-input" type="checkbox" onclick="return false;"><label class="form-check-label ins-line">${escapeHtml(line)}</label></div>`;
+                const checkedLines = ins.checked_lines || [];
+                const isChecked = checkedLines.indexOf(idx) !== -1;
+                html += `<div class="form-check"><input class="form-check-input chk-line" type="checkbox" ${isChecked ? 'checked' : ''} data-ins="${ins.id}" data-line="${idx}" onchange="onChecklistToggle(this)"><label class="form-check-label ins-line ${isChecked ? 'chk-done' : ''}" style="cursor:pointer;">${escapeHtml(line)}</label></div>`;
             } else {
                 html += `<div class="ins-line">• ${escapeHtml(line)}</div>`;
             }
@@ -356,6 +394,11 @@ function handleScanResponse(data) {
         if (data.cnc_setup) {
             renderCncSetup(data.cnc_setup);
         }
+        if (data.item_tasks && data.item_tasks.length > 0 && data.item_tasks[0].order_item_id) {
+            currentOrderItemId = data.item_tasks[0].order_item_id;
+        } else if (data.item_id) {
+            currentOrderItemId = data.item_id;
+        }
         if (data.instructions) {
             renderInstructions(data.instructions);
         }
@@ -380,6 +423,7 @@ function handleScanResponse(data) {
 }
 
 function loadItemTasks(itemId, rowElement) {
+    currentOrderItemId = itemId;  // برای تیک ماندگار چک‌لیست
     fetch(`/scan/item-tasks/${itemId}/`, {
         headers: {'X-Requested-With': 'XMLHttpRequest'},
     })
@@ -468,6 +512,7 @@ document.addEventListener('DOMContentLoaded', function() {
     } else {
         const initialItemTasks = JSON.parse('{{ item_tasks_json|escapejs }}');
         if (initialItemTasks && initialItemTasks.length > 0) {
+            currentOrderItemId = initialItemTasks[0].order_item_id || ('{{ item_order_item_id|default:"" }}' || null);
             renderItemTasks(initialItemTasks);
             updateItemOrderHeader('{{ item_order_id|default:"" }}', initialItemTasks[0].order_item_id || '{{ item_order_item_id|default:"" }}');
         }

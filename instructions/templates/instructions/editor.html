@@ -1,0 +1,362 @@
+{% load static %}
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ویرایشگر دستورالعمل‌ها — {{ product.name }}</title>
+{% include 'instructions/partials/doc_styles.html' %}
+<style>
+  .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin: 14px 0; }
+  .sec-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .sec-head .add { font: inherit; font-size: 12px; cursor: pointer; border: 1px solid var(--accent); background: #fff; color: var(--accent); border-radius: 7px; padding: 3px 12px; }
+  .sec-head .add:hover { background: var(--accent); color: #fff; }
+  .cards { min-height: 30px; }
+  .ins-card { display: flex; gap: 10px; align-items: flex-start; background: #fff; }
+  .ins-card.dragging { opacity: .45; border-style: dashed; }
+  .grip { cursor: grab; color: var(--muted); font-size: 16px; padding: 8px 2px; user-select: none; line-height: 1.4; }
+  .ins-card .grow { flex: 1; min-width: 0; }
+  .card-btns { display: flex; gap: 4px; flex-wrap: wrap; }
+  .card-btns button { font-size: 12px; padding: 3px 9px; border-radius: 6px; border: 1px solid var(--line); background: #fff; cursor: pointer; }
+  .card-btns button:hover { background: var(--soft); }
+  .card-btns button.danger { color: #b3261e; border-color: #f0b9b4; }
+  .card-btns button.warn { color: #925b00; border-color: #efd79a; }
+  .card-btns button.ok { color: #157a45; border-color: #b5dfc5; }
+  .inactive-card { opacity: .62; background: var(--soft); }
+  .thumbs { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .thumbs img { max-height: 64px; max-width: 100px; border-radius: 6px; border: 1px solid var(--line); }
+  .drop-hint { font-size: 11.5px; color: var(--muted); }
+  .overlay { position: fixed; inset: 0; background: rgba(23,34,46,.45); display: none; align-items: flex-start; justify-content: center; padding: 40px 14px; overflow: auto; z-index: 50; }
+  .overlay.open { display: flex; }
+  .modal { background: #fff; border-radius: 12px; width: 560px; max-width: 100%; padding: 18px 20px; box-shadow: 0 12px 40px rgba(0,0,0,.25); }
+  .modal h3 { margin: 0 0 12px; font-size: 16px; }
+  .modal label { display: block; font-size: 12.5px; font-weight: 700; margin: 10px 0 4px; }
+  .modal input[type=text], .modal select, .modal textarea {
+    width: 100%; font: inherit; padding: 7px 10px; border: 1px solid var(--line); border-radius: 7px; background: #fff;
+  }
+  .modal textarea { min-height: 110px; resize: vertical; }
+  .modal .row2 { display: flex; gap: 10px; }
+  .modal .row2 > div { flex: 1; }
+  .modal .foot { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+  .modal .chk { display: flex; align-items: center; gap: 6px; font-size: 13px; margin-top: 12px; font-weight: 700; }
+  .modal .err { color: #b3261e; font-size: 12.5px; margin-top: 8px; min-height: 16px; }
+  .modal .conds { background: #fff6df; border: 1px dashed #efd79a; border-radius: 8px; padding: 8px 12px; font-size: 12px; color: #925b00; margin-top: 8px; }
+  .img-grid { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+  .img-grid figure { margin: 0; position: relative; }
+  .img-grid img { max-height: 90px; max-width: 140px; border-radius: 6px; border: 1px solid var(--line); display: block; }
+  .img-grid figcaption { font-size: 10.5px; color: var(--muted); max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .img-grid .del { position: absolute; top: -6px; left: -6px; width: 20px; height: 20px; border-radius: 50%; border: 1px solid #f0b9b4; background: #fdecea; color: #b3261e; cursor: pointer; font-size: 11px; line-height: 1; }
+  .cond-line { display: flex; gap: 6px; align-items: center; }
+</style>
+</head>
+<body>
+<div class="sheet">
+  <div class="doc-head">
+    {% if product.image %}<img class="cover" src="{{ product.image.url }}" alt="{{ product.name }}">{% endif %}
+    <div>
+      <h1>ویرایشگر دستورالعمل‌ها — {{ product.name }}</h1>
+      <div class="meta">
+        <span>دسته: {{ product.category.name|default:'—' }}</span>
+        <span class="drop-hint">کارت‌ها را با ☰ بکشید و رها کنید؛ ترتیب خودکار ذخیره می‌شود.</span>
+      </div>
+    </div>
+    <span class="spacer"></span>
+  </div>
+
+  <div class="toolbar">
+    <button class="primary" onclick="openEditModal(null)">➕ دستورالعمل جدید</button>
+    <a class="btnlink" href="{% url 'instructions:product_doc' product.pk %}">سند دستور تولید</a>
+    <a class="btnlink" href="{% url 'instructions:browser' %}">مرورگر دانش تولید</a>
+    <a class="btnlink" href="{% url 'admin:instructions_workinstruction_changelist' %}">ادمین دستورالعمل‌ها</a>
+  </div>
+
+  {% for section in sections %}
+    <h2 class="station">
+      <span class="sec-head">
+        {{ section.label }}
+        <button type="button" class="add" onclick="openEditModal(null, '{{ section.code }}')">＋ افزودن</button>
+      </span>
+    </h2>
+    <div class="cards" data-station="{{ section.code }}">
+      {% for ins in section.items %}
+        <div class="ins ins-card {% if not ins.active %}inactive-card{% endif %} {% if ins.kind == 'warning' %}warning{% endif %}"
+             draggable="true" data-id="{{ ins.pk }}">
+          <span class="grip" title="کشیدن برای تغییر ترتیب">☰</span>
+          <div class="grow">
+            <div class="head">
+              <span class="badge {{ ins.badge.1 }}">{{ ins.badge.0 }}</span>
+              <b>{{ ins.title }}</b>
+              {% for label in ins.condition_labels %}<span class="badge cond">{{ label }}</span>{% endfor %}
+              {% if not ins.active %}<span class="badge danger">غیرفعال</span>{% endif %}
+            </div>
+            {% for line in ins.body_lines %}
+              <div class="line"><span>•</span><span>{{ line }}</span></div>
+            {% endfor %}
+            {% if ins.images.all %}
+              <div class="thumbs">
+                {% for img in ins.images.all %}
+                  <img src="{{ img.image.url }}" alt="{{ img.caption|default:'' }}" title="{{ img.caption|default:'' }}">
+                {% endfor %}
+              </div>
+            {% endif %}
+          </div>
+          <div class="card-btns">
+            <button type="button" title="ویرایش" onclick="openEditModal({{ ins.pk }})">✏️</button>
+            <button type="button" class="warn" title="تصاویر" onclick="openImageModal({{ ins.pk }})">📷 {{ ins.images.count }}</button>
+            <button type="button" class="{% if ins.active %}danger{% else %}ok{% endif %}" onclick="toggleActive({{ ins.pk }}, this)"
+                    title="{% if ins.active %}غیرفعال کردن{% else %}فعال کردن{% endif %}">{% if ins.active %}⏸{% else %}▶️{% endif %}</button>
+            <button type="button" title="بالا" onclick="moveCard(this, -1)">↑</button>
+            <button type="button" title="پایین" onclick="moveCard(this, +1)">↓</button>
+            <button type="button" class="danger" title="حذف" onclick="deleteIns({{ ins.pk }})">🗑</button>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% endfor %}
+
+  <div class="hint" style="margin-top:16px;">
+    دانش قطعه‌محور (مثلاً جهت قرارگیری یک قطعه خاص در سوراخکاری) از ادمین مستقل دستورالعمل‌ها ثبت می‌شود.
+    شرط متریال/رنگ: بند فقط وقتی نمایش داده می‌شود که متریال و رنگ سفارش با شرط بخواند (خالی = همیشه).
+  </div>
+</div>
+
+{# ─── مودال افزودن/ویرایش ─── #}
+<div class="overlay" id="edit-overlay">
+  <form class="modal" id="edit-form" onsubmit="return false;">
+    <h3 id="edit-title">دستورالعمل جدید</h3>
+    <input type="hidden" id="f_id">
+    <div class="row2">
+      <div>
+        <label>ایستگاه</label>
+        <select id="f_station">
+          {% for code, label in stations %}<option value="{{ code }}">{{ label }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label>نوع بند</label>
+        <select id="f_kind">
+          {% for code, label in kinds %}<option value="{{ code }}">{{ label }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+    <label>عنوان *</label>
+    <input type="text" id="f_title" placeholder="مثلاً: صفحه شش‌ضلعی — نوار لبه">
+    <label>متن (هر خط یک بند جدا؛ در چک‌لیست هر خط یک تیک)</label>
+    <textarea id="f_body" placeholder="خط اول...&#10;خط دوم..."></textarea>
+    <div class="conds">
+      شرط نمایش (اختیاری) — هر دو شرط با هم AND می‌شوند؛ خالی یعنی همیشه نمایش.
+    </div>
+    <div class="row2">
+      <div>
+        <label>فقط متریال</label>
+        <select id="f_material">
+          <option value="">— همه متریال‌ها —</option>
+          {% for m in materials %}<option value="{{ m.pk }}">{{ m.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label>فقط رنگ کد</label>
+        <select id="f_color">
+          <option value="">— همه رنگ‌ها —</option>
+          {% for c in colors %}<option value="{{ c.pk }}">{{ c.code }}{% if c.description %} — {{ c.description }}{% endif %}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="chk"><input type="checkbox" id="f_active" checked> فعال (در صفحه اسکن اپراتور و سندها بیاید)</div>
+    <div class="err" id="edit-err"></div>
+    <div class="foot">
+      <button type="button" onclick="closeEditModal()">انصراف</button>
+      <button type="button" class="primary" onclick="saveInstruction()">ذخیره</button>
+    </div>
+  </form>
+</div>
+
+{# ─── مودال تصاویر ─── #}
+<div class="overlay" id="img-overlay">
+  <form class="modal" onsubmit="return false;">
+    <h3>تصاویر دستورالعمل <span id="img-ins-title" style="font-weight:400"></span></h3>
+    <div class="img-grid" id="img-grid"></div>
+    <label>افزودن تصویر (مثلاً عکس صفحه با ضلع‌های علامت‌خورده)</label>
+    <input type="file" id="img-file" accept="image/*">
+    <label>توضیح تصویر</label>
+    <input type="text" id="img-caption" placeholder="مثلاً: سه ضلع روکش طبیعی، ضلع پشت PVC">
+    <div class="err" id="img-err"></div>
+    <div class="foot">
+      <button type="button" onclick="closeImageModal()">بستن</button>
+      <button type="button" class="primary" onclick="uploadImage()">آپلود</button>
+    </div>
+  </form>
+</div>
+
+{# داده‌ی کارت‌ها برای جاوااسکریپت (امن در برابر کوتیشن و متن فارسی) #}
+{{ card_data|json_script:"card-data" }}
+
+<script>
+const CSRF = document.cookie.match(/csrftoken=([^;]+)/) ? document.cookie.match(/csrftoken=([^;]+)/)[1] : '';
+const PRODUCT_ID = {{ product.pk }};
+const CARD_DATA = {};
+JSON.parse(document.getElementById('card-data').textContent).forEach(function(d) { CARD_DATA[d.id] = d; });
+
+function postJson(url, body) {
+  return fetch(url, {
+    method: 'POST',
+    headers: {'X-CSRFToken': CSRF, 'Content-Type': 'application/json'},
+    body: JSON.stringify(body || {}),
+  }).then(r => r.json());
+}
+function postForm(url, form) {
+  return fetch(url, {method: 'POST', headers: {'X-CSRFToken': CSRF}, body: form}).then(r => r.json());
+}
+
+/* ── مودال ویرایش ── */
+let editingStation = null;
+function openEditModal(id, station) {
+  const err = document.getElementById('edit-err');
+  err.textContent = '';
+  document.getElementById('f_id').value = id || '';
+  const data = id ? CARD_DATA[id] : null;
+  document.getElementById('edit-title').textContent = data ? ('ویرایش: ' + data.title) : 'دستورالعمل جدید';
+  document.getElementById('f_station').value = data ? data.station : (station || 'general');
+  document.getElementById('f_kind').value = data ? data.kind : 'note';
+  document.getElementById('f_title').value = data ? data.title : '';
+  document.getElementById('f_body').value = data ? data.body : '';
+  document.getElementById('f_material').value = data && data.material ? data.material : '';
+  document.getElementById('f_color').value = data && data.color ? data.color : '';
+  document.getElementById('f_active').checked = data ? data.active : true;
+  document.getElementById('edit-overlay').classList.add('open');
+  document.getElementById('f_title').focus();
+}
+function closeEditModal() { document.getElementById('edit-overlay').classList.remove('open'); }
+function saveInstruction() {
+  const fd = new FormData();
+  const id = document.getElementById('f_id').value;
+  fd.append('id', id);
+  if (!id) fd.append('product', PRODUCT_ID);
+  fd.append('station', document.getElementById('f_station').value);
+  fd.append('kind', document.getElementById('f_kind').value);
+  fd.append('title', document.getElementById('f_title').value);
+  fd.append('body', document.getElementById('f_body').value);
+  fd.append('condition_material', document.getElementById('f_material').value);
+  fd.append('condition_color', document.getElementById('f_color').value);
+  fd.append('active', document.getElementById('f_active').checked ? '1' : '0');
+  postForm('{% url "instructions:instruction_save" %}', fd).then(d => {
+    if (d.success) location.reload();
+    else document.getElementById('edit-err').textContent = d.error || 'خطا در ذخیره';
+  }).catch(() => { document.getElementById('edit-err').textContent = 'خطای شبکه'; });
+}
+
+function deleteIns(id) {
+  if (!confirm('این دستورالعمل حذف شود؟')) return;
+  postJson('{% url "instructions:instruction_delete" 0 %}'.replace('/0/', '/' + id + '/')).then(d => {
+    if (d.success) location.reload(); else alert(d.error || 'خطا در حذف');
+  });
+}
+function toggleActive(id, btn) {
+  btn.disabled = true;
+  postJson('{% url "instructions:instruction_toggle" 0 %}'.replace('/0/', '/' + id + '/')).then(d => {
+    if (d.success) location.reload(); else { alert(d.error || 'خطا'); btn.disabled = false; }
+  });
+}
+
+/* ── مودال تصاویر ── */
+let imgInsId = null;
+function openImageModal(id) {
+  imgInsId = id;
+  document.getElementById('img-err').textContent = '';
+  document.getElementById('img-file').value = '';
+  document.getElementById('img-caption').value = '';
+  document.getElementById('img-ins-title').textContent = CARD_DATA[id] ? '— ' + CARD_DATA[id].title : '';
+  renderImgGrid();
+  document.getElementById('img-overlay').classList.add('open');
+}
+function closeImageModal() { document.getElementById('img-overlay').classList.remove('open'); }
+function renderImgGrid() {
+  const grid = document.getElementById('img-grid');
+  const images = (CARD_DATA[imgInsId] || {images: []}).images;
+  grid.innerHTML = images.map(img =>
+    `<figure><button type="button" class="del" onclick="deleteImage(${img.id})">✕</button>` +
+    `<a href="${img.url}" target="_blank"><img src="${img.url}" alt=""></a>` +
+    `<figcaption>${img.caption || ''}</figcaption></figure>`
+  ).join('');
+}
+function uploadImage() {
+  const file = document.getElementById('img-file').files[0];
+  if (!file) { document.getElementById('img-err').textContent = 'اول فایل تصویر را انتخاب کنید.'; return; }
+  const fd = new FormData();
+  fd.append('image', file);
+  fd.append('caption', document.getElementById('img-caption').value);
+  postForm('{% url "instructions:instruction_image_add" 0 %}'.replace('/0/', '/' + imgInsId + '/'), fd).then(d => {
+    if (d.success) { CARD_DATA[imgInsId].images.push(d.image); renderImgGrid();
+      document.getElementById('img-file').value = ''; document.getElementById('img-caption').value = ''; }
+    else document.getElementById('img-err').textContent = d.error || 'خطا در آپلود';
+  }).catch(() => { document.getElementById('img-err').textContent = 'خطای شبکه'; });
+}
+function deleteImage(iid) {
+  if (!confirm('این تصویر حذف شود؟')) return;
+  postJson('{% url "instructions:instruction_image_delete" 0 %}'.replace('/0/', '/' + iid + '/')).then(d => {
+    if (d.success) {
+      const data = CARD_DATA[imgInsId];
+      data.images = data.images.filter(x => x.id !== iid);
+      renderImgGrid();
+    } else alert(d.error || 'خطا');
+  });
+}
+
+/* ── درگ‌سورت و جابه‌جایی ── */
+let dragCard = null;
+document.addEventListener('dragstart', e => {
+  const card = e.target.closest('.ins-card');
+  if (!card) return;
+  dragCard = card;
+  card.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+});
+document.addEventListener('dragend', () => {
+  if (dragCard) dragCard.classList.remove('dragging');
+  dragCard = null;
+});
+document.querySelectorAll('.cards').forEach(list => {
+  list.addEventListener('dragover', e => {
+    e.preventDefault();
+    if (!dragCard) return;
+    const after = getAfterElement(list, e.clientY);
+    if (after == null) list.appendChild(dragCard);
+    else list.insertBefore(dragCard, after);
+  });
+  list.addEventListener('drop', e => { e.preventDefault(); persistOrder(); });
+});
+function getAfterElement(list, y) {
+  const els = [...list.querySelectorAll('.ins-card:not(.dragging)')];
+  return els.reduce((closest, child) => {
+    const box = child.getBoundingClientRect();
+    const offset = y - box.top - box.height / 2;
+    if (offset < 0 && offset > closest.offset) return {offset: offset, element: child};
+    return closest;
+  }, {offset: Number.NEGATIVE_INFINITY, element: null}).element;
+}
+function moveCard(btn, dir) {
+  const card = btn.closest('.ins-card');
+  const list = card.closest('.cards');
+  if (dir < 0 && card.previousElementSibling) list.insertBefore(card, card.previousElementSibling);
+  if (dir > 0 && card.nextElementSibling) list.insertBefore(card.nextElementSibling, card);
+  persistOrder();
+}
+function persistOrder() {
+  const ids = [...document.querySelectorAll('.ins-card')].map(c => c.dataset.id);
+  postJson('{% url "instructions:product_reorder" product.pk %}', {ids: ids}).then(d => {
+    if (!d.success) alert(d.error || 'خطا در ذخیره ترتیب');
+  }).catch(() => alert('خطای شبکه در ذخیره ترتیب'));
+}
+
+/* بستن مودال با کلیک بیرون یا Esc */
+['edit-overlay', 'img-overlay'].forEach(id => {
+  document.getElementById(id).addEventListener('mousedown', e => {
+    if (e.target.id === id) { id === 'edit-overlay' ? closeEditModal() : closeImageModal(); }
+  });
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { closeEditModal(); closeImageModal(); }
+});
+</script>
+</body>
+</html>

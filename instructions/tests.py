@@ -1,4 +1,6 @@
 """دستورالعمل‌های تولید: منطق تطبیق شرط‌ها، سریال‌سازی برای صفحه اسکن و سند محصول."""
+import io
+import json
 from unittest import mock
 
 from django.contrib.auth.models import User
@@ -13,6 +15,7 @@ from instructions.cnc_guide import (
     serialize_setup,
 )
 from instructions.models import (
+    ChecklistState,
     CncFixturePoint,
     CncMachineSetup,
     CncToolSlot,
@@ -452,3 +455,327 @@ class CncGuideIntegrationTests(TestCase):
         self.assertIn('راهنمای خودکار ماشین: CNC کارگاه', body)
         self.assertIn('T1', body)
         self.assertIn('مبدأ G54', body)
+
+
+class PersistentChecklistTests(TestCase):
+    """فاز ۳ — تیک ماندگار چک‌لیست: ذخیره، حذف، گاردها و سریال‌سازی."""
+
+    @classmethod
+    def setUpTestData(cls):
+        _base_data(cls)
+        cls.worker = User.objects.create_user('worker1', password='x')
+        WorkerProfile.objects.create(user=cls.worker, stage='cnc')
+        cls.item = OrderItem.objects.create(order=cls.order, product=cls.product, quantity=1)
+        cls.checklist = WorkInstruction.objects.create(
+            product=cls.product, station='cnc', kind=WorkInstruction.KIND_CHECKLIST,
+            title='چک قبل از خروج', body='برق وصل است\nنوار چسبیده\nلبه‌ها ساب خورده',
+        )
+        cls.note = WorkInstruction.objects.create(
+            product=cls.product, station='cnc', kind=WorkInstruction.KIND_NOTE,
+            title='نکته ساده', body='یک خط',
+        )
+
+    def _toggle(self, instruction, line, checked=True, user=None):
+        actor = user or self.worker
+        self.client.force_login(actor)
+        return self.client.post(
+            reverse('instructions:checklist_toggle'),
+            data=json.dumps({
+                'instruction_id': instruction.id,
+                'order_item_id': self.item.id,
+                'line_index': line,
+                'checked': checked,
+            }),
+            content_type='application/json',
+        )
+
+    def test_toggle_creates_and_deletes_state(self):
+        resp = self._toggle(self.checklist, 0, True)
+        self.assertTrue(resp.json()['success'])
+        self.assertTrue(ChecklistState.objects.filter(
+            instruction=self.checklist, order_item=self.item, line_index=0).exists())
+        resp = self._toggle(self.checklist, 0, False)
+        self.assertTrue(resp.json()['success'])
+        self.assertFalse(ChecklistState.objects.filter(
+            instruction=self.checklist, order_item=self.item, line_index=0).exists())
+
+    def test_toggle_same_line_twice_is_idempotent(self):
+        self._toggle(self.checklist, 1, True)
+        self._toggle(self.checklist, 1, True)
+        self.assertEqual(ChecklistState.objects.filter(
+            instruction=self.checklist, order_item=self.item, line_index=1).count(), 1)
+
+    def test_non_checklist_instruction_rejected(self):
+        resp = self._toggle(self.note, 0, True)
+        self.assertEqual(resp.status_code, 400)
+
+    def test_line_index_out_of_range_rejected(self):
+        resp = self._toggle(self.checklist, 99, True)
+        self.assertEqual(resp.status_code, 400)
+
+    def test_anonymous_redirected_and_user_without_profile_denied(self):
+        self.client.force_login(self.worker)
+        # بدون workerprofile و بدون staff → 403 (worker1 اینجا profile دارد؛ کاربر تازه می‌سازیم)
+        plain = User.objects.create_user('plain1', password='x')
+        self.client.force_login(plain)
+        resp = self.client.post(
+            reverse('instructions:checklist_toggle'),
+            data=json.dumps({'instruction_id': self.checklist.id,
+                             'order_item_id': self.item.id,
+                             'line_index': 0, 'checked': True}),
+            content_type='application/json',
+        )
+        self.assertEqual(resp.status_code, 403)
+
+    def test_collect_with_checklist_returns_checked_lines(self):
+        ChecklistState.objects.create(
+            instruction=self.checklist, order_item=self.item, line_index=2,
+            checked_by=self.worker,
+        )
+        data = collect_item_instructions(self.item, 'cnc', with_checklist=True)
+        row = next(x for x in data if x['id'] == self.checklist.id)
+        self.assertEqual(row['checked_lines'], [2])
+        # بدون بافلگ، کلید checked_lines نمی‌آید
+        data2 = collect_item_instructions(self.item, 'cnc')
+        row2 = next(x for x in data2 if x['id'] == self.checklist.id)
+        self.assertNotIn('checked_lines', row2)
+
+    def test_checklist_state_endpoint(self):
+        ChecklistState.objects.create(
+            instruction=self.checklist, order_item=self.item, line_index=1,
+            checked_by=self.worker,
+        )
+        self.client.force_login(self.worker)
+        resp = self.client.get(reverse('instructions:checklist_state', args=[self.item.id]))
+        payload = resp.json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['checked'][str(self.checklist.id)], [1])
+
+
+class KnowledgeBrowserTests(TestCase):
+    """فاز ۳ — مرورگر دانش تولید: دسترسی، آمار، فیلترها."""
+
+    @classmethod
+    def setUpTestData(cls):
+        _base_data(cls)
+        cls.staff = User.objects.create_user('staffer3', password='x', is_staff=True)
+        cls.ins_cnc = WorkInstruction.objects.create(
+            product=cls.product, station='cnc', kind=WorkInstruction.KIND_STEP, title='مرحله CNC',
+        )
+        cls.ins_pvc = WorkInstruction.objects.create(
+            product=cls.product, station='pvc', kind=WorkInstruction.KIND_WARNING, title='هشدار نوار',
+        )
+        cls.ins_off = WorkInstruction.objects.create(
+            product=cls.product, station='pvc', title='بند خاموش', active=False,
+        )
+
+    def test_anonymous_redirected(self):
+        resp = self.client.get(reverse('instructions:browser'))
+        self.assertEqual(resp.status_code, 302)
+
+    def test_regular_user_denied(self):
+        plain = User.objects.create_user('plain2', password='x')
+        self.client.force_login(plain)
+        resp = self.client.get(reverse('instructions:browser'))
+        self.assertIn(resp.status_code, (302, 403))
+
+    def test_staff_sees_stats_products_and_rows(self):
+        self.client.force_login(self.staff)
+        resp = self.client.get(reverse('instructions:browser'))
+        self.assertEqual(resp.status_code, 200)
+        body = resp.content.decode()
+        self.assertIn('مرورگر دانش تولید', body)
+        self.assertIn('میز فیدان', body)
+        self.assertIn('مرحله CNC', body)
+        self.assertIn('بند خاموش', body)
+
+    def test_filters_by_station_kind_status_and_q(self):
+        self.client.force_login(self.staff)
+        resp = self.client.get(reverse('instructions:browser'), {'station': 'pvc', 'status': 'active'})
+        titles = {ins.title for ins in resp.context['rows']}
+        self.assertEqual(titles, {'هشدار نوار'})
+        resp = self.client.get(reverse('instructions:browser'), {'kind': 'step'})
+        titles = {ins.title for ins in resp.context['rows']}
+        self.assertEqual(titles, {'مرحله CNC'})
+        resp = self.client.get(reverse('instructions:browser'), {'q': 'هشدار'})
+        titles = {ins.title for ins in resp.context['rows']}
+        self.assertEqual(titles, {'هشدار نوار'})
+
+
+class ProductEditorTests(TestCase):
+    """فاز ۳ — ویرایشگر اختصاصی: نمایش، ذخیره AJAX، حذف، فعال/غیرفعال، ترتیب، عکس."""
+
+    @classmethod
+    def setUpTestData(cls):
+        _base_data(cls)
+        cls.staff = User.objects.create_user('staffer4', password='x', is_staff=True)
+        cls.ins_a = WorkInstruction.objects.create(
+            product=cls.product, station='cnc', kind=WorkInstruction.KIND_STEP,
+            title='الف', sequence=10,
+        )
+        cls.ins_b = WorkInstruction.objects.create(
+            product=cls.product, station='cnc', kind=WorkInstruction.KIND_NOTE,
+            title='ب', sequence=20,
+        )
+
+    def _save(self, data):
+        self.client.force_login(self.staff)
+        return self.client.post(reverse('instructions:instruction_save'), data)
+
+    def test_editor_page_renders_with_card_data(self):
+        self.client.force_login(self.staff)
+        resp = self.client.get(reverse('instructions:product_editor', args=[self.product.id]))
+        self.assertEqual(resp.status_code, 200)
+        body = resp.content.decode()
+        self.assertIn('id="card-data"', body)
+        self.assertIn('ویرایشگر دستورالعمل‌ها', body)
+
+    def test_anonymous_redirected(self):
+        resp = self.client.get(reverse('instructions:product_editor', args=[self.product.id]))
+        self.assertEqual(resp.status_code, 302)
+
+    def test_save_creates_with_station_sequence(self):
+        resp = self._save({
+            'product': self.product.id, 'station': 'cnc', 'kind': 'note',
+            'title': 'بند تازه', 'body': 'خط اول', 'active': '1',
+        })
+        payload = resp.json()
+        self.assertTrue(payload['success'])
+        self.assertTrue(payload['is_new'])
+        ins = WorkInstruction.objects.get(title='بند تازه')
+        self.assertEqual(ins.sequence, 30)  # بعد از ۱۰ و ۲۰
+        self.assertEqual(ins.created_by.username, 'staffer4')
+        self.assertIsNone(ins.part_id)
+
+    def test_save_updates_existing_and_rejects_bad_station(self):
+        resp = self._save({
+            'id': self.ins_a.id, 'station': 'cnc', 'kind': 'warning',
+            'title': 'الف ویرایش‌شده', 'body': '', 'active': '1',
+        })
+        self.assertTrue(resp.json()['success'])
+        self.ins_a.refresh_from_db()
+        self.assertEqual(self.ins_a.kind, 'warning')
+        self.assertEqual(self.ins_a.updated_by.username, 'staffer4')
+        resp = self._save({
+            'id': self.ins_a.id, 'station': 'nope', 'kind': 'note',
+            'title': 'x', 'body': '', 'active': '1',
+        })
+        self.assertEqual(resp.status_code, 400)
+
+    def test_save_empty_title_rejected(self):
+        resp = self._save({'product': self.product.id, 'station': 'cnc', 'title': '  '})
+        self.assertEqual(resp.status_code, 400)
+
+    def test_delete_and_toggle(self):
+        self.client.force_login(self.staff)
+        resp = self.client.post(reverse('instructions:instruction_delete', args=[self.ins_b.id]))
+        self.assertTrue(resp.json()['success'])
+        self.assertFalse(WorkInstruction.objects.filter(pk=self.ins_b.id).exists())
+        resp = self.client.post(reverse('instructions:instruction_toggle', args=[self.ins_a.id]))
+        self.assertTrue(resp.json()['success'])
+        self.ins_a.refresh_from_db()
+        self.assertFalse(self.ins_a.active)
+
+    def test_reorder_updates_sequence_and_rejects_foreign_ids(self):
+        self.client.force_login(self.staff)
+        other_product = Product.objects.create(category=self.category, name='محصول دیگر', base_price=1)
+        foreign = WorkInstruction.objects.create(product=other_product, station='cnc', title='بیگانه')
+        resp = self.client.post(
+            reverse('instructions:product_reorder', args=[self.product.id]),
+            data=json.dumps({'ids': [self.ins_b.id, self.ins_a.id, foreign.id]}),
+            content_type='application/json',
+        )
+        self.assertEqual(resp.status_code, 400)  # id بیگانه رد شد
+        resp = self.client.post(
+            reverse('instructions:product_reorder', args=[self.product.id]),
+            data=json.dumps({'ids': [self.ins_b.id, self.ins_a.id]}),
+            content_type='application/json',
+        )
+        self.assertTrue(resp.json()['success'])
+        self.ins_b.refresh_from_db()
+        self.ins_a.refresh_from_db()
+        self.assertEqual(self.ins_b.sequence, 10)
+        self.assertEqual(self.ins_a.sequence, 20)
+
+    def test_image_add_and_delete(self):
+        from PIL import Image
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        buf = io.BytesIO()
+        Image.new('RGB', (4, 4), (200, 30, 30)).save(buf, format='PNG')
+        upload = SimpleUploadedFile('dot.png', buf.getvalue(), content_type='image/png')
+        self.client.force_login(self.staff)
+        resp = self.client.post(
+            reverse('instructions:instruction_image_add', args=[self.ins_a.id]),
+            {'image': upload, 'caption': 'نمونه'},
+        )
+        payload = resp.json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(self.ins_a.images.count(), 1)
+        img_id = payload['image']['id']
+        resp = self.client.post(reverse('instructions:instruction_image_delete', args=[img_id]))
+        self.assertTrue(resp.json()['success'])
+        self.assertEqual(self.ins_a.images.count(), 0)
+
+
+class OrderDocTests(TestCase):
+    """فاز ۳ — سند سفارش‌محور: اعمال شرط متریال/رنگ واقعی و بلوک مشترک CNC."""
+
+    @classmethod
+    def setUpTestData(cls):
+        _base_data(cls)
+        cls.staff = User.objects.create_user('staffer5', password='x', is_staff=True)
+        cls.part_raw = Part.objects.create(
+            material=cls.mdf_raw, name='پشت‌بند خام', pname=cls.product.name,
+            length=600, width=150, routing_code='dr',
+        )
+        cls.item_raw = OrderItem.objects.create(order=cls.order, product=cls.product, quantity=1)
+        cls.task_raw = ProductionTask.objects.create(
+            order=cls.order, part=cls.part_raw, order_item=cls.item_raw,
+            station_name='cnc', step_order=1, quantity=1, status='pending',
+        )
+        cls.ins_raw = WorkInstruction.objects.create(
+            product=cls.product, station='pvc', title='خام: اصلاً نوار نمی‌خورد',
+            condition_material=cls.mdf_raw,
+        )
+        cls.ins_veneer = WorkInstruction.objects.create(
+            product=cls.product, station='pvc', title='روکش: سه ضلع طبیعی',
+            condition_material=cls.mdf_veneer,
+        )
+        cls.ins_plain = WorkInstruction.objects.create(
+            product=cls.product, station='cnc', title='بدون شرط',
+        )
+        cls.ins_part = WorkInstruction.objects.create(
+            part=cls.part_raw, station='cnc', title='قطعه‌محور پشت‌بند',
+        )
+        cls.setup = CncMachineSetup.objects.create(
+            name='CNC سند سفارش', table_width=2100, table_height=3200, origin_x=150, origin_y=100,
+        )
+
+    def test_anonymous_redirected(self):
+        resp = self.client.get(reverse('instructions:order_doc', args=[self.order.id]))
+        self.assertEqual(resp.status_code, 302)
+
+    def test_conditions_applied_per_item_reality(self):
+        self.client.force_login(self.staff)
+        resp = self.client.get(reverse('instructions:order_doc', args=[self.order.id]))
+        self.assertEqual(resp.status_code, 200)
+        body = resp.content.decode()
+        self.assertIn('خام: اصلاً نوار نمی‌خورد', body)      # شرط متریال با واقعی سفارش می‌خواند
+        self.assertNotIn('روکش: سه ضلع طبیعی', body)        # شرط روکش برآورده نمی‌شود
+        self.assertIn('بدون شرط', body)
+        self.assertIn('قطعه‌محور پشت‌بند', body)             # دانش قطعه‌محور قطعات همین آیتم
+        self.assertIn('متریال: MDF خام', body)
+        # بلوک مشترک CNC یک‌بار بالای سند
+        self.assertEqual(body.count('راهنمای خودکار ماشین: CNC سند سفارش'), 1)
+
+    def test_item_without_material_reality_hides_conditioned_instructions(self):
+        """آیتم بدون تسک و بدون BOM: متریال نامشخص → شرط‌دارها fail-closed حذف می‌شوند."""
+        other = Order.objects.create(user=self.user, customer=self.customer, number='SZ-2')
+        item = OrderItem.objects.create(order=other, product=self.product, quantity=1)
+        self.client.force_login(self.staff)
+        resp = self.client.get(reverse('instructions:order_doc', args=[other.id]))
+        body = resp.content.decode()
+        self.assertNotIn('خام: اصلاً نوار نمی‌خورد', body)  # شرط متریال با واقعیت نامشخص نمی‌خواند
+        self.assertNotIn('روکش: سه ضلع طبیعی', body)
+        self.assertIn('بدون شرط', body)                      # بدون شرط همیشه می‌آید
