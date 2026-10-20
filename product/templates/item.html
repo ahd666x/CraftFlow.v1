@@ -32,7 +32,7 @@
                         <div class="col-md-3"><strong>سفارش:</strong> {{ item.order.id }}</div>
                         <div class="col-md-3"><strong>محصول:</strong> {{ item.product.name }}</div>
                         <div class="col-md-2"><strong>تعداد:</strong> {{ item.quantity }}</div>
-                        <div class="col-md-2"><strong>اندازه:</strong> {{ item.size|default:"-" }}</div>
+                        <div class="col-md-2"><strong>اندازه:</strong> {{ item.size_display|default:"-" }}</div>
                         <div class="col-md-2"><strong>رنگ:</strong> {{ item.color_summary }}</div>
                     </div>
                     <div class="row mt-2">

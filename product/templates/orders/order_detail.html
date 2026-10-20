@@ -128,7 +128,7 @@
                             <td>{{ item.product.category.name }} {{ item.product.name }}</td>
                             <td><small>{{ item.order.created_at|date:"Y/m/d H:i" }}</small></td>
                             <td><span class="badge bg-secondary fs-6">{{ item.quantity }}</span></td>
-                            <td>{{ item.size|default:"-" }}</td>
+                            <td>{{ item.size_display|default:"-" }}</td>
                             <td>{{ item.color_summary }}</td>
                             <td><small>{{ item.notes|default:"-" }}</small></td>
                             {% comment %} <td><small>{{ item.unit_price|floatformat:0|default:"0" }}</small></td>

@@ -228,7 +228,7 @@
                     <td>{{ item.product.category.name }}</td>
                     <td>{{ item.product.name }}</td>
                     <td>{{ item.quantity }}</td>
-                    <td>{{ item.size|default:"-" }}</td>
+                    <td>{{ item.size_display|default:"-" }}</td>
                     <td>{{ item.color_summary }}</td>
                     <td>{{ item.notes|default:"-" }}</td>
                 </tr>
@@ -254,7 +254,7 @@
                 <div>
                     <h4>شماره: {{ order.id }}/{{ data.item.id }}</h4>
                     <h4>رنگ: {{ data.item.color }}</h4>
-                    <h4>اندازه: {{ data.item.size }}</h4>
+                    <h4>اندازه: {{ data.item.size_display }}</h4>
                 </div>
                 <div>
                     <h4>تاریخ: {{ order.created_at|date:"Y/m/d" }}</h4>
@@ -315,7 +315,7 @@
                         </div>
                         <div>
                             <div>رنگ : {{ data.item.color }}</div>
-                            <div>اندازه : {{ data.item.size }}</div>
+                            <div>اندازه : {{ data.item.size_display }}</div>
                             <div>مشتری : {{ data.item.order.customer }} - {{ data.item.order.number }}</div>
                         </div>
                     </div>

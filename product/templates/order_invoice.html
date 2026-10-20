@@ -199,7 +199,7 @@
                     <td>{{ item.product.category.name }}</td>
                     <td>{{ item.product.name }}</td>
                     <td>{{ item.quantity }}</td>
-                    <td>{{ item.size|default:"-" }}</td>
+                    <td>{{ item.size_display|default:"-" }}</td>
                     <td><span class="colors-list">{{ item.color_summary }}</span></td>
                     <td>{{ item.unit_price|floatformat:"0"|intcomma }}</td>
                     <td>{{ item.line_total|floatformat:"0"|intcomma }}</td>

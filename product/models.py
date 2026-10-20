@@ -558,6 +558,24 @@ class OrderItem(models.Model):
     def get_absolute_url(self):
         return reverse('scan_qr', args=[self.id])
 
+    @property
+    def size_display(self):
+        """رشته‌ی خوانای اندازه برای نمایش در همه‌ی صفحات.
+
+        ترتیب: مقدار ذخیره‌شده‌ی «size»، سپس ابعاد ساختاریافته‌ی خود آیتم، و
+        در نبودِ هر دو، ابعاد پیش‌فرض محصول (یعنی سفارش با سایز استاندارد
+        ثبت شده و باید اندازه‌ی پیش‌فرض دیده شود، نه «-»).
+        """
+        if self.size:
+            return self.size
+        dims = [str(v) for v in (self.length, self.width, self.height) if v]
+        if dims:
+            return 'x'.join(dims)
+        try:
+            return self.product.default_size_display or ''
+        except Exception:
+            return ''
+
     def __str__(self):
         return f"{self.product.name} (سفارش {self.order.id})"
 
@@ -715,6 +733,13 @@ class OrderItem(models.Model):
     
     def save(self, *args, **kwargs):
         """ذخیره آیتم با محاسبه خودکار قیمت (مگر اینکه صراحتاً غیرفعال شده باشد)"""
+        # رشته‌ی نمایشی «size» همیشه از ابعاد ساختاریافته همگام می‌شود تا در
+        # صفحات سفارش و چاپ خالی نماند؛ اگر ابعادی ثبت نشده باشد مقدار فعلی
+        # (مثلاً از ورود اکسل) دست‌نخورده می‌ماند.
+        dims = [str(v) for v in (self.length, self.width, self.height) if v]
+        if dims:
+            self.size = 'x'.join(dims)
+
         if self.product and not getattr(self, '_skip_price_calc', False):
             try:
                 self.unit_price = self.calculate_price()

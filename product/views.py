@@ -1630,7 +1630,7 @@ def order_print(request, order_id):
             'product': item.product.name,
             'category': item.product.category.name,
             'quantity': item.quantity,
-            'size': item.size,
+            'size': item.size_display,
             'colors': item.color_summary,
             'notes': item.notes
         })

@@ -123,7 +123,7 @@
                         <td>{{ item.product.category }}</td>
                         <td>{{ item.product.name }}</td>
                         <td class="text-center">{{ item.quantity }}</td>
-                        <td>{{ item.size|default:"-" }}</td>
+                        <td>{{ item.size_display|default:"-" }}</td>
                         <td>{{ item.color_summary }}</td>
                         <td><small>{{ item.notes|default:"-" }}</small></td>
                         {% if can_edit %}

@@ -113,7 +113,7 @@
                             <td>{{ item.product.category.name }}</td>
                             <td>{{ item.product.name }}</td>
                             <td><span class="badge bg-secondary">{{ item.quantity }}</span></td>
-                            <td>{{ item.size|default:"-" }}</td>
+                            <td>{{ item.size_display|default:"-" }}</td>
                             <td>
                                 {% for color in item.ordercolor.all %}
                                     <span class="color-badge">{{ color.part }}: {{ color.code }}</span>
