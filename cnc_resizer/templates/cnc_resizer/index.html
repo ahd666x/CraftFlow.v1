@@ -117,6 +117,22 @@
   .featlist .dims { direction: ltr; unicode-bidi: isolate; color: var(--muted); }
   .kindname { font-weight: 700; }
 
+  /* ---------- operator guide card (CNC setup) ---------- */
+  .opguide table.tooltab { width: 100%; border-collapse: collapse; font-size: 11.5px; margin-top: 6px; }
+  .opguide table.tooltab th { color: var(--muted); font-weight: 600; text-align: start; padding: 3px 5px; border-bottom: 1px solid var(--line); }
+  .opguide table.tooltab td { padding: 3px 5px; border-bottom: 1px solid var(--surface-2); }
+  .opguide table.tooltab td.n { direction: ltr; unicode-bidi: plaintext; }
+  .opline { font-size: 12.5px; margin: 3px 0; }
+  .opguide .fxlegend { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; font-size: 11.5px; }
+  .fxlist { margin: 8px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+  .fxlist li { display: flex; align-items: center; gap: 7px; font-size: 12px; border: 1px solid var(--line); border-radius: 7px; padding: 4px 8px; }
+  .fxlist .sw { width: 11px; height: 11px; border-radius: 50%; flex: none; }
+  .fxlist .st { margin-inline-start: auto; font-weight: 700; font-size: 11.5px; }
+  .fxlist .st.forbidden { color: var(--bad); }
+  .fxlist .st.safe { color: var(--good); }
+  .fxlist .st.none { color: var(--muted); }
+  .fxlist .co { direction: ltr; unicode-bidi: isolate; color: var(--muted); font-size: 10.5px; }
+
   /* ---------- measurement card ---------- */
   .mlist { margin: 8px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
   .mlist li {
@@ -181,6 +197,7 @@
 </head>
 <body data-api="{{ api_url }}">
 {% csrf_token %}
+{{ cnc_setup|json_script:"cncSetupData" }}
 <header class="top">
   <h1>محیط CAD تغییر طول قطعه CNC</h1>
   <span class="sub">نمایش مهندسی، ابزار اندازه‌گیری تعاملی، تحلیل ویژگی G-code و خروجی کنترلر تأییدشده</span>
@@ -192,6 +209,21 @@
 <div class="app">
   <aside class="panel">
     <div id="errBox" class="banner err" hidden></div>
+
+    <section class="card opguide" id="opGuideCard" hidden>
+      <h2>راهنمای اپراتور CNC <span class="cnt" id="opMachineName"></span></h2>
+      <div id="opTools"></div>
+      <div id="opOffset" style="margin-top:8px"></div>
+      <div id="opNotes" style="margin-top:6px"></div>
+      <div class="fxlegend" id="fxLegend" hidden>
+        <span><span style="color:var(--bad); font-weight:800">✖</span> ممنوع — زیر مسیر برش این قطعه</span>
+        <span><span style="color:var(--good); font-weight:800">●</span> امن برای میخ/گیره</span>
+      </div>
+      <ul class="fxlist" id="fxList"></ul>
+      <div class="mtoolbtns" id="fxButtons" hidden>
+        <button type="button" id="btnShowTable">🗂 نمایش کل میز</button>
+      </div>
+    </section>
 
     <section class="card">
       <h2>۱. فایل CNC</h2>
@@ -312,6 +344,7 @@
       <label class="check" title="نمایش خطوط اندازه (طول/عرض/فاصله‌ها)"><input type="checkbox" id="tgDims" checked> اندازه‌ها</label>
       <label class="check" title="نمایش شبح قطعه قبل از تغییر"><input type="checkbox" id="tgGhost" checked> قبل</label>
       <label class="check" title="نمایش کادر ویژگی‌های تحلیل‌شده"><input type="checkbox" id="tgFeat" checked> ویژگی‌ها</label>
+      <label class="check" title="نمایش نقاط میخ/فیکس میز (ممنوع/امن)"><input type="checkbox" id="tgFix" checked> نقاط میخ</label>
       <span class="sep"></span>
       <button type="button" id="copyBtn" disabled>کپی کد</button>
       <button type="button" id="dxfBtn" disabled title="نقاط برش و سوراخ‌ها برای CAD">دانلود DXF</button>
@@ -349,6 +382,8 @@
   const ANALYZE_API = '{{ analyze_api_url }}';
   const PROFILE_API = '{{ profile_api_url }}';
   const PART_ID = '{{ part_id|escapejs }}';
+  let CNC_SETUP = null;
+  try { CNC_SETUP = JSON.parse(document.getElementById('cncSetupData').textContent || 'null'); } catch (_) { CNC_SETUP = null; }
   const NS = 'http://www.w3.org/2000/svg';
 
   const FEAT_COLORS = { hole: 'var(--feat-hole)', outer_contour: 'var(--feat-outer)',
@@ -364,7 +399,7 @@
     measureA: null,                  // first clicked point while measuring
     measures: [],                    // [{ax,ay,bx,by}]
     snapPts: [],                     // [[x,y],...] rebuilt per render
-    showGrid: true, showDims: true, showGhost: true, showFeat: true,
+    showGrid: true, showDims: true, showGhost: true, showFeat: true, showFix: true,
     analyzeDoneFor: '',              // signature of text already analyzed
   };
 
@@ -776,6 +811,106 @@
     });
   }
 
+  // ------------------------------------------------------------ operator guide (CNC setup — فاز ۲)
+  function fixtureProgramPoint(p) {
+    // نقطه‌ی فیکس (مختصات میز) → مختصات برنامه: جداشدن از مبدأ G54
+    return { x: p.x - CNC_SETUP.origin.x, y: p.y - CNC_SETUP.origin.y };
+  }
+  function isFixtureForbidden(p, bb) {
+    if (!bb || !CNC_SETUP) return null;
+    const q = fixtureProgramPoint(p);
+    const reach = (p.radius || 0) + (CNC_SETUP.safety_margin || 0);
+    return (bb.x0 - reach <= q.x && q.x <= bb.x1 + reach
+        && bb.y0 - reach <= q.y && q.y <= bb.y1 + reach);
+  }
+  function renderOpGuide() {
+    if (!CNC_SETUP) return;
+    const card = $('opGuideCard');
+    card.hidden = false;
+    $('opMachineName').textContent = CNC_SETUP.name || '';
+    const tools = $('opTools');
+    if (CNC_SETUP.tools && CNC_SETUP.tools.length) {
+      let html = '<table class="tooltab"><thead><tr><th>پارکینگ</th><th>ابزار</th><th class="n">قطر mm</th><th>برای</th></tr></thead><tbody>';
+      CNC_SETUP.tools.forEach((t) => {
+        html += `<tr><td><b>${t.label || ('T' + t.slot)}</b></td><td>${t.type_label}</td>`
+              + `<td class="n">${t.diameter_display}</td><td>${t.description || ''}</td></tr>`;
+      });
+      html += '</tbody></table>';
+      tools.innerHTML = html;
+    } else {
+      tools.innerHTML = '<p class="hint" style="margin:4px 0 0">برای پارکینگ‌های ابزار هنوز چیزی ثبت نشده است.</p>';
+    }
+    const offset = $('opOffset');
+    if (CNC_SETUP.offset_procedure && CNC_SETUP.offset_procedure.length) {
+      offset.innerHTML = '<div style="font-size:11.5px;color:var(--muted);font-weight:700">روند آفست‌زدن و قرارگیری قطعه</div>'
+        + CNC_SETUP.offset_procedure.map((line) => `<div class="opline">⚙ ${line}</div>`).join('');
+    }
+    const notes = $('opNotes');
+    if (CNC_SETUP.notes && CNC_SETUP.notes.length) {
+      notes.innerHTML = CNC_SETUP.notes.map((line) => `<div class="opline">📝 ${line}</div>`).join('');
+    }
+    $('fxLegend').hidden = !(CNC_SETUP.points && CNC_SETUP.points.length);
+    $('fxButtons').hidden = !(CNC_SETUP.points && CNC_SETUP.points.length);
+    updateFxList();
+  }
+  function updateFxList() {
+    const list = $('fxList');
+    list.replaceChildren();
+    if (!CNC_SETUP || !CNC_SETUP.points || !CNC_SETUP.points.length) return;
+    CNC_SETUP.points.forEach((p) => {
+      const q = fixtureProgramPoint(p);
+      const li = document.createElement('li');
+      const sw = document.createElement('i'); sw.className = 'sw';
+      const st = isFixtureForbidden(p, S.bb);
+      sw.style.background = st === true ? 'var(--bad)' : st === false ? 'var(--good)' : 'var(--ghost)';
+      const name = document.createElement('b'); name.textContent = p.label;
+      const kind = document.createElement('span'); kind.style.color = 'var(--muted)'; kind.textContent = p.kind_label;
+      const co = document.createElement('span'); co.className = 'co'; co.textContent = `X${f1(q.x)} Y${f1(q.y)}`;
+      const stat = document.createElement('span');
+      stat.className = 'st ' + (st === true ? 'forbidden' : st === false ? 'safe' : 'none');
+      stat.textContent = st === true ? 'ممنوع ✖' : st === false ? 'امن ●' : '—';
+      li.append(sw, name, kind, co, stat);
+      list.appendChild(li);
+    });
+  }
+  function drawFixtures() {
+    if (!gFix) return;
+    gFix.replaceChildren();
+    if (!CNC_SETUP || !CNC_SETUP.points || !CNC_SETUP.points.length) return;
+    if (!S.showFix || !S.res) return;
+    const pxPerMM = svg.getScreenCTM()?.a || 0.2;
+    CNC_SETUP.points.forEach((p) => {
+      const q = fixtureProgramPoint(p);
+      const forbidden = isFixtureForbidden(p, S.bb);
+      const color = forbidden === true ? 'var(--bad)' : forbidden === false ? 'var(--good)' : 'var(--ghost)';
+      const cy = -q.y;
+      // شعاع ممنوع دور نقطه
+      el('circle', { cx: q.x, cy, r: p.radius || 10, fill: color, 'fill-opacity': 0.07,
+                     stroke: color, 'stroke-opacity': .5, 'stroke-width': 1, 'stroke-dasharray': '4 3',
+                     'vector-effect': 'non-scaling-stroke' }, gFix);
+      if (forbidden === true) {
+        // علامت ✖ روی نقاط ممنوع
+        const s = Math.max(6 / (pxPerMM || 0.2), (p.radius || 10) * .35);
+        el('path', { d: `M${q.x - s} ${cy - s}L${q.x + s} ${cy + s}M${q.x - s} ${cy + s}L${q.x + s} ${cy - s}`,
+                     stroke: 'var(--bad)', fill: 'none', 'stroke-width': 2.4, 'vector-effect': 'non-scaling-stroke' }, gFix);
+      } else {
+        el('circle', { cx: q.x, cy, r: Math.max(2.5 / (pxPerMM || 0.2), 2), fill: color, stroke: 'none' }, gFix);
+      }
+      const fs = 11 / (pxPerMM || 0.2);
+      const t = el('text', { x: q.x, y: cy - (p.radius || 10) - 3 / (pxPerMM || 0.2), 'font-size': fs,
+                             fill: color, 'text-anchor': 'middle', 'font-weight': 700,
+                             style: 'paint-order:stroke; stroke:var(--canvas); stroke-width:3px;' }, gFix);
+      t.textContent = p.label;
+    });
+  }
+  $('btnShowTable')?.addEventListener('click', () => {
+    if (!CNC_SETUP) return;
+    const w = CNC_SETUP.table.width, h = CNC_SETUP.table.height;
+    S.vb = { x: -CNC_SETUP.origin.x, y: CNC_SETUP.origin.y - h, w, h };
+    applyVB();
+  });
+  $('tgFix').onchange = () => { S.showFix = $('tgFix').checked; drawFixtures(); };
+
   // ------------------------------------------------------------ postprocessor status card
   function renderPostState() {
     const r = S.res;
@@ -829,6 +964,7 @@
       document.querySelector('#svg').textContent = '';
       renderPostState(); showWarn([]); syncModeUI();
       $('featSummary').hidden = true; $('featList').replaceChildren(); $('featCount').textContent = '';
+      S.bb = null; updateFxList();
       return;
     }
 
@@ -855,7 +991,7 @@
 
   // ------------------------------------------------------------ drawing (CAD)
   const svg = $('svg');
-  let gScene = null, gFeat = null, gDims = null, gMeas = null, gSnap = null;
+  let gScene = null, gFeat = null, gFix = null, gDims = null, gMeas = null, gSnap = null;
   let bands = [], featRects = {};
 
   function bounds(r) {
@@ -1117,11 +1253,14 @@
     });
     shape(r.resized, gScene, false);
     gFeat = el('g', {}, svg);
+    gFix = el('g', { 'pointer-events': 'none' }, svg);
     gDims = el('g', {}, svg);
     drawDims(bb);
     gMeas = el('g', {}, svg);
     drawMeasures();
     gSnap = el('g', { 'pointer-events': 'none' }, svg);
+    drawFixtures();            // نقاط میخ/فیکس با وضعیت زنده‌ی همین قطعه
+    updateFxList();
     applyVB();
   }
 
@@ -1319,6 +1458,7 @@
 
   setToolMode('pan');
   syncModeUI();
+  renderOpGuide();
   window.__cncApp = { S, loadText: (name, text) => { S.name = name; S.text = text; S.res = null; S.enabled = []; S.manual = []; run(true); } };
   loadArchiveList().then(loadPartProfile);
 })();

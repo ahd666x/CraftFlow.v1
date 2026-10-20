@@ -38,6 +38,12 @@ def cnc_operator_required(view_func):
 @cnc_operator_required
 @require_GET
 def index(request):
+    # راهنمای خودکار اپراتور CNC (فاز ۲): پارکینگ ابزار + آفست + نقاط فیکس
+    # در قالب با json_script امن می‌شود؛ ارزیابی ممنوع/امن سمت کلاینت با
+    # هندسه‌ی زنده‌ی فایل انجام می‌گیرد.
+    from instructions.cnc_guide import get_active_setup, serialize_setup
+
+    setup = serialize_setup(get_active_setup())
     return render(request, "cnc_resizer/index.html", {
         "api_url": reverse("cnc_resizer:process"),
         "analyze_api_url": reverse("cnc_resizer:analyze"),
@@ -46,6 +52,7 @@ def index(request):
         "profile_api_url": reverse("cnc_resizer:part_profile"),
         "sheet_plans_url": reverse("cnc_resizer:sheet_plans"),
         "part_id": request.GET.get("part_id", ""),
+        "cnc_setup": setup,
     })
 
 

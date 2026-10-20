@@ -10,6 +10,13 @@
     .ins-line { font-size: 14px; margin: 2px 0; }
     .ins-thumb { max-height: 110px; max-width: 160px; border-radius: 6px; border: 1px solid #dee2e6; margin: 6px 4px 0 0; cursor: zoom-in; }
     .ins-cond { font-size: 11px; }
+    .cnc-guide table { font-size: 13px; }
+    .cnc-guide th, .cnc-guide td { padding: 4px 8px; }
+    .cnc-sec-title { font-size: 12.5px; color: #5d6b7d; font-weight: 700; margin: 10px 0 4px; }
+    .cnc-line { font-size: 13.5px; margin: 2px 0; }
+    .fx-forbidden { color: #b3261e; font-weight: 700; }
+    .fx-safe { color: #157a45; font-weight: 700; }
+    .fx-none { color: #5d6b7d; }
 </style>
 <div class="container-fluid mt-4">
     <div class="row">
@@ -46,6 +53,12 @@
         </div>
 
         <div class="col-lg-7">
+            <div id="cnc-guide-card" class="card shadow mb-3 border-warning" style="display:none;">
+                <div class="card-header bg-warning text-dark">
+                    <h5 class="mb-0">🛠 راهنمای اپراتور CNC</h5>
+                </div>
+                <div class="card-body cnc-guide" id="cnc-guide-body"></div>
+            </div>
             <div id="instructions-card" class="card shadow mb-3" style="display:none;">
                 <div class="card-header bg-dark text-white">
                     <h5 class="mb-0">📋 دستورالعمل‌های این سفارش در این مرحله</h5>
@@ -185,6 +198,67 @@ function renderInstructions(list) {
     card.style.display = 'block';
 }
 
+let lastCncSetupUrl = '';
+
+function renderCncSetup(setup) {
+    // راهنمای خودکار اپراتور CNC: پارکینگ ابزار + آفست + وضعیت نقاط میخ برای همین قطعه
+    const card = document.getElementById('cnc-guide-card');
+    const body = document.getElementById('cnc-guide-body');
+    if (!setup) {
+        card.style.display = 'none';
+        body.innerHTML = '';
+        return;
+    }
+    lastCncSetupUrl = setup.guide_url || '';
+    const fxClass = (s) => s === 'forbidden' ? 'fx-forbidden' : (s === 'safe' ? 'fx-safe' : 'fx-none');
+    const fxLabel = (s) => s === 'forbidden' ? '⛔ ممنوع' : (s === 'safe' ? '✔ امن' : '— بدون ارزیابی');
+    let html = '';
+    if (setup.tools && setup.tools.length) {
+        html += '<div class="cnc-sec-title">ابزار هر پارکینگ (قبل از شروع چک کنید)</div>';
+        html += '<div class="table-responsive"><table class="table table-sm table-bordered bg-white mb-0"><thead class="table-light">';
+        html += '<tr><th>پارکینگ</th><th>نوع فرز</th><th>قطر (mm)</th><th>توضیح</th></tr></thead><tbody>';
+        setup.tools.forEach(function(t) {
+            html += `<tr><td><b>${escapeHtml(t.label || ('T' + t.slot))}</b></td>`;
+            html += `<td>${escapeHtml(t.type_label)}</td>`;
+            html += `<td class="num">${escapeHtml(t.diameter_display)}</td>`;
+            html += `<td>${escapeHtml(t.description || '')}</td></tr>`;
+        });
+        html += '</tbody></table></div>';
+    }
+    if (setup.offset_procedure && setup.offset_procedure.length) {
+        html += '<div class="cnc-sec-title">روند آفست‌زدن و قرارگیری قطعه</div>';
+        setup.offset_procedure.forEach(function(line) {
+            html += `<div class="cnc-line">⚙ ${escapeHtml(line)}</div>`;
+        });
+    }
+    if (setup.points && setup.points.length) {
+        html += '<div class="cnc-sec-title">نقاط میخ/فیکس روی میز — وضعیت برای همین قطعه</div>';
+        html += '<div class="table-responsive"><table class="table table-sm table-bordered bg-white mb-0"><thead class="table-light">';
+        html += '<tr><th>نقطه</th><th>نوع</th><th class="num">X (mm)</th><th class="num">Y (mm)</th><th>وضعیت</th></tr></thead><tbody>';
+        setup.points.forEach(function(p) {
+            html += `<tr><td><b>${escapeHtml(p.label)}</b></td>`;
+            html += `<td>${escapeHtml(p.kind_label)}</td>`;
+            html += `<td class="num">${p.x}</td><td class="num">${p.y}</td>`;
+            html += `<td class="${fxClass(p.status)}">${fxLabel(p.status)}</td></tr>`;
+        });
+        html += '</tbody></table></div>';
+        if (setup.part_assessed) {
+            html += '<div class="hint mt-1">حاشیه امن برش: ' + (setup.safety_margin || 0) + ' mm — ممنوع یعنی مسیر برش از این نقطه می‌گذرد؛ میخ/گیره را آن‌طرف‌تر بزنید.</div>';
+        } else {
+            html += '<div class="hint mt-1">برای این قطعه فایل قابل تحلیل نبود؛ وضعیت ممنوع/امن روی نقشه در «راهنمای اپراتور CNC» قابل مشاهده است.</div>';
+        }
+    }
+    (setup.notes || []).forEach(function(line) {
+        html += `<div class="cnc-line">📝 ${escapeHtml(line)}</div>`;
+    });
+    const url = setup.guide_url || lastCncSetupUrl;
+    if (url) {
+        html += `<a href="${url}" target="_blank" class="btn btn-warning btn-lg w-100 mt-3 fw-bold">🛠 باز کردن راهنمای اپراتور CNC (نقشه میز + ابزار + فایل این قطعه)</a>`;
+    }
+    body.innerHTML = html;
+    card.style.display = 'block';
+}
+
 function updateItemOrderHeader(orderId, itemId) {
     const el = document.getElementById('item-order-number');
     if (!el) return;
@@ -279,10 +353,13 @@ function refreshCurrentView() {
 function handleScanResponse(data) {
     const feedback = document.getElementById('scan-feedback');
     if (data.success) {
+        if (data.cnc_setup) {
+            renderCncSetup(data.cnc_setup);
+        }
         if (data.instructions) {
             renderInstructions(data.instructions);
         }
-        const cncLink = data.cnc_config_url
+        const cncLink = (!data.cnc_setup && data.cnc_config_url)
             ? `<a href="${data.cnc_config_url}" target="_blank" class="btn btn-sm btn-warning ms-2">مشاهده و تنظیم الگوی CNC</a>`
             : '';
         feedback.innerHTML = `<div class="alert alert-success py-2">${data.message} ${cncLink}</div>`;
@@ -324,6 +401,7 @@ function loadItemTasks(itemId, rowElement) {
         }
         renderItemTasks(data.item_tasks);
         updateItemOrderHeader(data.order_id, data.item_id);
+        renderCncSetup(data.cnc_setup || null);
         if (data.instructions) {
             renderInstructions(data.instructions);
         } else {

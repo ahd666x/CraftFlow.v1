@@ -57,6 +57,22 @@
   table.bom td.n { direction: ltr; unicode-bidi: plaintext; }
   .empty { color: var(--muted); background: var(--soft); border: 1px dashed var(--line); border-radius: 8px; padding: 14px; text-align: center; }
   .hint { color: var(--muted); font-size: 12px; }
+  .cnc-auto { border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; margin-bottom: 8px; break-inside: avoid; background: #f8fbff; }
+  .cnc-auto .sub { font-size: 12px; color: var(--muted); font-weight: 700; margin: 10px 0 4px; }
+  .cnc-auto table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .cnc-auto table th, .cnc-auto table td { border: 1px solid var(--line); padding: 4px 8px; text-align: right; }
+  .cnc-auto table th { background: var(--soft); }
+  .cnc-auto .td-n { direction: ltr; unicode-bidi: plaintext; }
+  .cnc-map-wrap { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-start; }
+  .cnc-map { position: relative; width: 250px; border: 2px solid var(--text); border-radius: 6px; background: #fff; flex: none; }
+  .cnc-map .pt { position: absolute; width: 12px; height: 12px; border-radius: 50%; background: #b3261e; border: 2px solid #fff; box-shadow: 0 0 0 1px #b3261e; transform: translate(-50%, -50%); }
+  .cnc-map .pt span { position: absolute; top: -17px; right: -6px; font-size: 10px; color: #b3261e; font-weight: 800; white-space: nowrap; }
+  .cnc-map .org { position: absolute; width: 10px; height: 10px; transform: translate(-50%, -50%); }
+  .cnc-map .org::before, .cnc-map .org::after { content: ''; position: absolute; background: #1d6ce0; }
+  .cnc-map .org::before { left: 50%; top: 0; bottom: 0; width: 2px; transform: translateX(-50%); }
+  .cnc-map .org::after { top: 50%; left: 0; right: 0; height: 2px; transform: translateY(-50%); }
+  .cnc-map .org span { position: absolute; top: 12px; left: -30px; font-size: 10px; color: #1d6ce0; font-weight: 700; white-space: nowrap; }
+  .cnc-map-legend { font-size: 11.5px; color: var(--muted); max-width: 300px; }
   @media print {
     body { background: #fff; font-size: 12px; }
     .sheet { border: 0; margin: 0; max-width: none; padding: 0; border-radius: 0; }
@@ -95,6 +111,7 @@
 
   {% for section in sections %}
     <h2 class="station">{{ section.label }}</h2>
+    {% if section.code == 'cnc' and cnc_setup %}{% include 'instructions/partials/cnc_auto_section.html' %}{% endif %}
     {% for ins in section.items %}
       <div class="ins ins-{{ ins.kind }} {% if ins.kind == 'warning' %}warning{% endif %}">
         <div class="head">

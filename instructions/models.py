@@ -174,3 +174,146 @@ class WorkInstructionImage(models.Model):
 
     def __str__(self):
         return f"تصویر {self.sort_order} برای «{self.instruction.title}»"
+
+
+class CncMachineSetup(models.Model):
+    """راه‌اندازی ثابت ماشین CNC — بخش خودکار ایستگاه CNC در سیستم دستورالعمل‌ها.
+
+    این مدل «سخت‌افزار» را توصیف می‌کند نه محصول را: ابزار هر پارکینگ، روند
+    آفست‌زدن، مختصات مبدأ برنامه روی میز و نقاط مجاز/غیرمجاز میخ‌کوبی برای
+    فیکس کردن ورق. این داده‌ها به‌طور خودکار به دستورالعمل‌های ایستگاه CNC
+    صفحه اسکن، کارت راهنمای اپراتور در /cnc/ و سند دستور تولید اضافه می‌شوند.
+
+    دستگاه مختصات: ``origin_x/origin_y`` مختصات مبدأ برنامه (G54 X0Y0) روی
+    میز است؛ هر دو دستگاه (میز و برنامه) با همان جهت فرض می‌شوند — X به راست
+    و Y به سمت دور از اپراتور. نقاط فیکس با مختصات میز ثبت می‌شوند و موقع
+    ارزیابی به مختصات برنامه برمی‌گردند.
+    """
+
+    name = models.CharField(max_length=120, unique=True, verbose_name='نام ماشین')
+    table_width = models.PositiveIntegerField(verbose_name='عرض میز X (mm)')
+    table_height = models.PositiveIntegerField(verbose_name='طول میز Y (mm)')
+    origin_x = models.FloatField(
+        verbose_name='مبدأ برنامه X روی میز (mm)',
+        help_text='مبدأ G54 (نقطه‌ی صفر برنامه) روی محور X میز؛ اپراتور قطعه را روی همین نقطه سِت می‌کند.',
+    )
+    origin_y = models.FloatField(
+        verbose_name='مبدأ برنامه Y روی میز (mm)',
+        help_text='مبدأ G54 (نقطه‌ی صفر برنامه) روی محور Y میز.',
+    )
+    safety_margin = models.PositiveIntegerField(
+        default=10, verbose_name='حاشیه ایمن برش (mm)',
+        help_text='فاصله‌ی امن دور مسیر برش که میخ نباید واردش شود (شعاع فرز + فاصله‌ی احتیاط).',
+    )
+    offset_procedure = models.TextField(
+        blank=True, verbose_name='روند آفست‌زدن',
+        help_text='هر خط یک بند: مثلاً «بعد از فیکس، دیس تاج را روی سطح بالای ورق بگذارید» / «Z آفست را روی -16.5 تنظیم کنید».',
+    )
+    notes = models.TextField(
+        blank=True, verbose_name='توضیحات عمومی',
+        help_text='هر خط یک بند؛ مثلاً «ورق را با لبه‌ی پشتی به ریل توقف بچسبانید».',
+    )
+    active = models.BooleanField(default=True, verbose_name='فعال')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='ویرایش')
+
+    class Meta:
+        verbose_name = 'راه‌اندازی ماشین CNC'
+        verbose_name_plural = 'راه‌اندازی ماشین CNC'
+
+    def __str__(self):
+        return self.name
+
+    def clean(self):
+        if self.origin_x < 0 or self.origin_y < 0:
+            raise ValidationError('مبدأ برنامه روی میز نمی‌تواند منفی باشد.')
+        if self.origin_x > self.table_width or self.origin_y > self.table_height:
+            raise ValidationError('مبدأ برنامه باید داخل محدوده‌ی میز باشد.')
+
+    @property
+    def tool_slots_map(self):
+        """دیکشنری شماره پارکینگ → ردیف ابزار (برای سریع‌سازی در سریال‌سازی)."""
+        return {row.slot: row for row in self.tool_slots.all()}
+
+
+class CncToolSlot(models.Model):
+    """یک پارکینگ ابزار (T#): چه فرزی بسته شود و برای چه کاری."""
+
+    CUTTER_FLAT = 'flat'
+    CUTTER_COMPRESSION = 'compression'
+    CUTTER_VBIT = 'vbit'
+    CUTTER_DRILL = 'drill'
+    CUTTER_BALL = 'ball'
+    CUTTER_OTHER = 'other'
+    CUTTER_CHOICES = [
+        (CUTTER_FLAT, 'فرز تخت'),
+        (CUTTER_COMPRESSION, 'فرز فشاری (کمپرشن)'),
+        (CUTTER_VBIT, 'فرز V'),
+        (CUTTER_DRILL, 'مته'),
+        (CUTTER_BALL, 'فرز گِرد (بال)'),
+        (CUTTER_OTHER, 'سایر'),
+    ]
+
+    setup = models.ForeignKey(
+        CncMachineSetup, on_delete=models.CASCADE, related_name='tool_slots', verbose_name='ماشین',
+    )
+    slot = models.PositiveIntegerField(verbose_name='شماره پارکینگ (T)', help_text='شماره ابزار در فایل CNC (T1، T2 و ...).')
+    cutter_type = models.CharField(max_length=20, choices=CUTTER_CHOICES, default=CUTTER_FLAT, verbose_name='نوع فرز')
+    diameter = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True, verbose_name='قطر (mm)')
+    description = models.CharField(max_length=200, blank=True, verbose_name='توضیح', help_text='مثلاً «برش متریال ۱۶ میلی» یا «سوراخ‌کاری ۸ میلی».')
+
+    class Meta:
+        verbose_name = 'پارکینگ ابزار CNC'
+        verbose_name_plural = 'پارکینگ‌های ابزار CNC'
+        ordering = ('slot',)
+        constraints = [
+            models.UniqueConstraint(fields=('setup', 'slot'), name='unique_tool_slot_per_setup'),
+        ]
+
+    def __str__(self):
+        dia = f" Ø{float(self.diameter):g}" if self.diameter is not None else ''
+        return f"T{self.slot}: {self.get_cutter_type_display()}{dia}"
+
+    @property
+    def diameter_display(self):
+        return f"{float(self.diameter):g}" if self.diameter is not None else '—'
+
+
+class CncFixturePoint(models.Model):
+    """نقطه‌ی فیکس روی میز CNC (میخ/گیره/پین توقف) با مختصات میز.
+
+    ارزیابی ایمنی: نقطه به مختصات برنامه برمی‌گردد (جداشدن از مبدأ) و اگر
+    داخل کادر مسیر برش قطعه + حاشیه‌ی امن بیفتد «ممنوع» است؛ بیرون «امن».
+    """
+
+    KIND_SCREW = 'screw'
+    KIND_CLAMP = 'clamp'
+    KIND_STOP = 'stop'
+    KIND_OTHER = 'other'
+    KIND_CHOICES = [
+        (KIND_SCREW, 'میخ/پیچ'),
+        (KIND_CLAMP, 'گیره'),
+        (KIND_STOP, 'پین توقف / ریل'),
+        (KIND_OTHER, 'سایر'),
+    ]
+    KIND_FA = dict(KIND_CHOICES)
+
+    setup = models.ForeignKey(
+        CncMachineSetup, on_delete=models.CASCADE, related_name='fixture_points', verbose_name='ماشین',
+    )
+    label = models.CharField(max_length=60, verbose_name='برچسب', help_text='مثلاً M1، گیره راست، پین عقب.')
+    kind = models.CharField(max_length=12, choices=KIND_CHOICES, default=KIND_SCREW, verbose_name='نوع')
+    x = models.FloatField(verbose_name='X روی میز (mm)')
+    y = models.FloatField(verbose_name='Y روی میز (mm)')
+    radius = models.PositiveIntegerField(
+        default=15, verbose_name='شعاع ممنوع (mm)',
+        help_text='دور خود نقطه هم این‌قدر فاصله ممنوع است؛ برای سر گیره/سر میخ.',
+    )
+    active = models.BooleanField(default=True, verbose_name='فعال')
+
+    class Meta:
+        verbose_name = 'نقطه فیکس میز CNC'
+        verbose_name_plural = 'نقاط فیکس میز CNC'
+        ordering = ('label', 'id')
+
+    def __str__(self):
+        return f"{self.label} ({self.get_kind_display()})"

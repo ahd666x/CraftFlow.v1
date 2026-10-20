@@ -10,7 +10,13 @@ from django.utils.html import format_html
 
 from product.models import Material, Product
 
-from .models import WorkInstruction, WorkInstructionImage
+from .models import (
+    CncFixturePoint,
+    CncMachineSetup,
+    CncToolSlot,
+    WorkInstruction,
+    WorkInstructionImage,
+)
 
 
 @admin.register(Material)
@@ -126,3 +132,63 @@ def register_product_inline():
     model_admin = dj_admin.site._registry.get(Product)
     if model_admin is not None and WorkInstructionInline not in model_admin.inlines:
         model_admin.inlines = list(model_admin.inlines) + [WorkInstructionInline]
+
+
+class CncToolSlotInline(admin.TabularInline):
+    model = CncToolSlot
+    extra = 0
+    fields = ('slot', 'cutter_type', 'diameter', 'description')
+    verbose_name = 'پارکینگ ابزار'
+    verbose_name_plural = 'پارکینگ‌های ابزار (T#)'
+
+
+class CncFixturePointInline(admin.TabularInline):
+    model = CncFixturePoint
+    extra = 0
+    fields = ('label', 'kind', 'x', 'y', 'radius', 'active')
+    verbose_name = 'نقطه فیکس (میخ/گیره/پین)'
+    verbose_name_plural = 'نقاط فیکس میز (مختصات میز، مبدأ گوشه‌ی مرجع میز)'
+
+
+@admin.register(CncMachineSetup)
+class CncMachineSetupAdmin(admin.ModelAdmin):
+    """راه‌اندازی ماشین CNC — به‌طور خودکار به راهنمای ایستگاه CNC وصل می‌شود."""
+
+    list_display = ('name', 'table_display', 'origin_display', 'tools_count', 'points_count', 'active', 'updated_at')
+    list_filter = ('active',)
+    list_editable = ('active',)
+    inlines = [CncToolSlotInline, CncFixturePointInline]
+    save_on_top = True
+
+    fieldsets = (
+        ('ماشین و میز', {
+            'fields': ('name', 'table_width', 'table_height'),
+        }),
+        ('مبدأ برنامه (G54) و حاشیه ایمن', {
+            'fields': ('origin_x', 'origin_y', 'safety_margin'),
+            'description': 'مختصات نقطه‌ی صفر برنامه روی میز؛ هر دو دستگاه هم‌جهت فرض می‌شوند (X راست، Y به سمت دور).',
+        }),
+        ('راهنمای اپراتور', {
+            'fields': ('offset_procedure', 'notes'),
+            'description': 'هر خط یک بند نمایش داده می‌شود؛ این متن‌ها به‌طور خودکار در صفحه اسکن CNC، صفحه /cnc/ و سند دستور تولید می‌آیند.',
+        }),
+        ('وضعیت', {
+            'fields': ('active',),
+        }),
+    )
+
+    @admin.display(description='میز (mm)')
+    def table_display(self, obj):
+        return f"{obj.table_width} × {obj.table_height}"
+
+    @admin.display(description='مبدأ G54')
+    def origin_display(self, obj):
+        return f"X{obj.origin_x:g} / Y{obj.origin_y:g}"
+
+    @admin.display(description='ابزارها')
+    def tools_count(self, obj):
+        return obj.tool_slots.count()
+
+    @admin.display(description='نقاط فیکس')
+    def points_count(self, obj):
+        return obj.fixture_points.count()

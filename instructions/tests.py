@@ -1,9 +1,23 @@
 """دستورالعمل‌های تولید: منطق تطبیق شرط‌ها، سریال‌سازی برای صفحه اسکن و سند محصول."""
+from unittest import mock
+
 from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
 
-from instructions.models import WorkInstruction
+from instructions.cnc_guide import (
+    assess_points,
+    cut_bounds_from_text,
+    get_active_setup,
+    part_cnc_guide,
+    serialize_setup,
+)
+from instructions.models import (
+    CncFixturePoint,
+    CncMachineSetup,
+    CncToolSlot,
+    WorkInstruction,
+)
 from instructions.utils import collect_item_instructions
 from product.models import (
     Color,
@@ -18,6 +32,24 @@ from product.models import (
     ProductionTask,
     WorkerProfile,
 )
+
+
+# G-code حداقلی برای تحلیل کادر برش: مستطیل 100×50 از مبدأ برنامه
+MINIMAL_GCODE = """%
+N10 G90G54
+N20 G21
+N30 T1M6
+N40 G43H1
+N50 G0X0Y0
+N60 G1X100Y0F6000
+N70 G1X100Y50
+N80 G1X0Y50
+N90 G1X0Y0
+N100 G0Z5
+N110 G53Z0
+N120 M30
+%
+"""
 
 
 def _base_data(cls):
@@ -238,3 +270,185 @@ class ProductDocTests(TestCase):
             reverse('instructions:product_doc', args=[self.product.id])
         ).content.decode()
         self.assertIn('فقط متریال: MDF خام', body)
+
+
+class CncGuideEngineTests(TestCase):
+    """موتور راهنمای خودکار CNC: سریال‌سازی، کادر برش و ارزیابی ممنوع/امن."""
+
+    @classmethod
+    def setUpTestData(cls):
+        _base_data(cls)
+        cls.part = Part.objects.create(
+            material=cls.mdf_veneer, name='قطعه برش CNC', pname=cls.product.name,
+            length=600, width=400, routing_code='cnc',
+        )
+        cls.setup = CncMachineSetup.objects.create(
+            name='CNC اصلی',
+            table_width=2100, table_height=3200,
+            origin_x=150, origin_y=100,
+            safety_margin=10,
+            offset_procedure='قطعه را به پین توقف عقب بچسبانید\nZ تاج را روی سطح ورق سِت کنید',
+            notes='قبل از شروع وکیوم را چک کنید',
+        )
+        CncToolSlot.objects.create(setup=cls.setup, slot=1, cutter_type=CncToolSlot.CUTTER_COMPRESSION, diameter=8, description='برش ۱۶ میلی')
+        CncToolSlot.objects.create(setup=cls.setup, slot=2, cutter_type=CncToolSlot.CUTTER_FLAT, diameter=6, description='شیار و سوراخ')
+        # M1: روی مسیر برش (مختصات برنامه 50,25) → ممنوع
+        cls.p_inside = CncFixturePoint.objects.create(setup=cls.setup, label='M1', kind=CncFixturePoint.KIND_SCREW, x=200, y=125)
+        # M2: بیرون قطعه (مختصات برنامه 1500,2600) → امن
+        cls.p_safe = CncFixturePoint.objects.create(setup=cls.setup, label='M2', kind=CncFixturePoint.KIND_CLAMP, x=1650, y=2700)
+        # M3: نزدیک لبه — با شعاع ممنوع 20 داخل ناحیه ممنوع می‌افتد (برنامه X=115 یعنی 15mm بیرون لبه 100)
+        cls.p_edge = CncFixturePoint.objects.create(setup=cls.setup, label='M3', kind=CncFixturePoint.KIND_STOP, x=265, y=150, radius=20)
+        cls.p_inactive = CncFixturePoint.objects.create(setup=cls.setup, label='M9', x=200, y=125, active=False)
+        cls.setup_inactive = CncMachineSetup.objects.create(
+            name='ماشین غیرفعال', table_width=1000, table_height=1000, origin_x=0, origin_y=0, active=False,
+        )
+
+    def test_get_active_setup_returns_only_active(self):
+        self.assertEqual(get_active_setup().pk, self.setup.pk)
+        self.setup.active = False
+        self.setup.save(update_fields=('active',))
+        try:
+            self.assertIsNone(get_active_setup())
+        finally:
+            self.setup.active = True
+            self.setup.save(update_fields=('active',))
+
+    def test_serialize_setup_shape(self):
+        data = serialize_setup(self.setup)
+        self.assertEqual(data['name'], 'CNC اصلی')
+        self.assertEqual(data['table'], {'width': 2100, 'height': 3200})
+        self.assertEqual(data['origin'], {'x': 150, 'y': 100})
+        self.assertEqual([t['slot'] for t in data['tools']], [1, 2])
+        self.assertEqual(data['tools'][0]['label'], 'T1')
+        self.assertEqual(data['tools'][0]['diameter_display'], '8')
+        self.assertEqual(data['offset_procedure'], ['قطعه را به پین توقف عقب بچسبانید', 'Z تاج را روی سطح ورق سِت کنید'])
+        self.assertEqual(data['notes'], ['قبل از شروع وکیوم را چک کنید'])
+        # نقطه غیرفعال سریال نمی‌شود
+        self.assertEqual([p['label'] for p in data['points']], ['M1', 'M2', 'M3'])
+        self.assertIsNone(data['points'][0]['status'])
+
+    def test_unique_tool_slot_per_setup(self):
+        duplicate = CncToolSlot(setup=self.setup, slot=1, cutter_type=CncToolSlot.CUTTER_FLAT)
+        with self.assertRaises(Exception):
+            duplicate.full_clean()
+
+    def test_cut_bounds_from_minimal_gcode(self):
+        bounds = cut_bounds_from_text(MINIMAL_GCODE)
+        self.assertEqual(bounds, {'x0': 0.0, 'y0': 0.0, 'x1': 100.0, 'y1': 50.0})
+        self.assertIsNone(cut_bounds_from_text('این گicode نیست'))
+
+    def test_assess_points_forbidden_safe_and_none(self):
+        bounds = {'x0': 0, 'y0': 0, 'x1': 100, 'y1': 50}
+        statuses = {p['label']: p['status'] for p in assess_points(self.setup, bounds)}
+        self.assertEqual(statuses['M1'], 'forbidden')  # داخل مسیر برش
+        self.assertEqual(statuses['M2'], 'safe')       # خیلی بیرون
+        self.assertEqual(statuses['M3'], 'forbidden')  # 15mm بیرون لبه ولی شعاع ممنوع 20 + حاشیه 10
+        # بدون کادر برش هیچ ارزیابی‌ای انجام نمی‌شود (fail-open به «بدون وضعیت»)
+        for p in assess_points(self.setup, None):
+            self.assertIsNone(p['status'])
+
+    def test_part_cnc_guide_without_active_setup_is_none(self):
+        self.setup.active = False
+        self.setup.save(update_fields=('active',))
+        try:
+            self.assertIsNone(part_cnc_guide(self.part))
+        finally:
+            self.setup.active = True
+            self.setup.save(update_fields=('active',))
+
+    def test_part_cnc_guide_assesses_with_real_file(self):
+        class FakeRecord:
+            path = None
+        with mock.patch('cnc_resizer.services.resolve_cnc_file', return_value=FakeRecord()) as _:
+            import tempfile, os
+            with tempfile.NamedTemporaryFile('w', suffix='.cnc', delete=False, encoding='utf-8') as fh:
+                fh.write(MINIMAL_GCODE)
+                FakeRecord.path = fh.name
+            try:
+                payload = part_cnc_guide(self.part, self.user)
+            finally:
+                os.unlink(FakeRecord.path)
+        self.assertTrue(payload['part_assessed'])
+        statuses = {p['label']: p['status'] for p in payload['points']}
+        self.assertEqual(statuses['M1'], 'forbidden')
+        self.assertEqual(statuses['M2'], 'safe')
+
+    def test_part_cnc_guide_degrades_to_unassessed_when_file_missing(self):
+        with mock.patch('cnc_resizer.services.resolve_cnc_file', side_effect=OSError('no file')):
+            payload = part_cnc_guide(self.part, self.user)
+        self.assertFalse(payload['part_assessed'])
+        self.assertIsNone(payload['points'][0]['status'])
+
+
+class CncGuideIntegrationTests(TestCase):
+    """اتصال راهنمای CNC به صفحه اسکن و سند دستور تولید."""
+
+    @classmethod
+    def setUpTestData(cls):
+        _base_data(cls)
+        cls.staff = User.objects.create_user('staffer2', password='x', is_staff=True)
+        cls.setup = CncMachineSetup.objects.create(
+            name='CNC کارگاه', table_width=2100, table_height=3200, origin_x=150, origin_y=100,
+        )
+        CncToolSlot.objects.create(setup=cls.setup, slot=1, cutter_type=CncToolSlot.CUTTER_COMPRESSION, diameter=8)
+        CncFixturePoint.objects.create(setup=cls.setup, label='M1', x=200, y=125)
+        cls.part = Part.objects.create(
+            material=cls.mdf_veneer, name='قطعه اسکن', pname=cls.product.name,
+            length=600, width=400, routing_code='cnc',
+        )
+        cls.item = OrderItem.objects.create(order=cls.order, product=cls.product, quantity=1)
+        cls.task = ProductionTask.objects.create(
+            order=cls.order, part=cls.part, order_item=cls.item,
+            station_name='cnc', step_order=1, quantity=1, status='pending',
+        )
+
+    def test_scan_item_tasks_returns_cnc_setup_for_cnc_stage(self):
+        WorkerProfile.objects.create(user=self.user, stage='cnc')
+        self.client.force_login(self.user)
+        resp = self.client.get(
+            reverse('scan_item_tasks_ajax', args=[self.item.id]),
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+        payload = resp.json()
+        self.assertTrue(payload['success'])
+        self.assertIsNotNone(payload['cnc_setup'])
+        self.assertEqual(payload['cnc_setup']['name'], 'CNC کارگاه')
+        self.assertEqual(payload['cnc_setup']['tools'][0]['label'], 'T1')
+
+    def test_scan_item_tasks_has_no_cnc_setup_for_other_stages(self):
+        WorkerProfile.objects.create(user=self.user, stage='pvc')
+        self.client.force_login(self.user)
+        resp = self.client.get(
+            reverse('scan_item_tasks_ajax', args=[self.item.id]),
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+        self.assertIsNone(resp.json()['cnc_setup'])
+
+    def test_cnc_index_embeds_setup_json(self):
+        WorkerProfile.objects.create(user=self.user, stage='cnc')
+        self.client.force_login(self.user)
+        resp = self.client.get(reverse('cnc_resizer:index'))
+        self.assertEqual(resp.status_code, 200)
+        body = resp.content.decode()
+        self.assertIn('id="cncSetupData"', body)
+        # json_script متن فارسی را escape می‌کند؛ JSON را پارس می‌کنیم
+        import json
+        import re
+        match = re.search(
+            r'<script[^>]*id="cncSetupData"[^>]*>(.*?)</script>',
+            body, re.S,
+        )
+        self.assertIsNotNone(match)
+        setup = json.loads(match.group(1))
+        self.assertEqual(setup['name'], 'CNC کارگاه')
+        self.assertEqual(setup['tools'][0]['label'], 'T1')
+
+    def test_product_doc_includes_auto_cnc_section(self):
+        """سکشن CNC حتی بدون دستورالعمل دستی هم از راه‌اندازی ماشین ساخته می‌شود."""
+        self.client.force_login(self.staff)
+        resp = self.client.get(reverse('instructions:product_doc', args=[self.product.id]))
+        self.assertEqual(resp.status_code, 200)
+        body = resp.content.decode()
+        self.assertIn('راهنمای خودکار ماشین: CNC کارگاه', body)
+        self.assertIn('T1', body)
+        self.assertIn('مبدأ G54', body)

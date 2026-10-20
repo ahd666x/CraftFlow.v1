@@ -1,0 +1,57 @@
+{# بخش خودکار ایستگاه CNC — از راه‌اندازی ماشین (CncMachineSetup) ساخته می‌شود. #}
+<div class="cnc-auto">
+  <b>راهنمای خودکار ماشین: {{ cnc_setup.name }}</b>
+  <div class="hint">این بخش به‌طور خودکار از «راه‌اندازی ماشین CNC» در ادمین ساخته می‌شود.</div>
+
+  {% if cnc_setup.tools %}
+    <div class="sub">ابزار هر پارکینگ (پارکینگ = جای فرز روی ماشین)</div>
+    <table>
+      <thead>
+        <tr>
+          <th>پارکینگ</th><th>نوع فرز</th><th class="td-n">قطر (mm)</th><th>توضیح</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for tool in cnc_setup.tools %}
+          <tr>
+            <td class="td-n"><b>{{ tool.label }}</b></td>
+            <td>{{ tool.type_label }}</td>
+            <td class="td-n">{{ tool.diameter_display }}</td>
+            <td>{{ tool.description|default:'—' }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+
+  {% if cnc_setup.offset_procedure %}
+    <div class="sub">روند آفست‌زدن و قرارگیری قطعه</div>
+    {% for line in cnc_setup.offset_procedure %}
+      <div class="opline">⚙ {{ line }}</div>
+    {% endfor %}
+  {% endif %}
+
+  {% if cnc_setup.map %}
+    <div class="sub">نقشه میز و نقاط میخ/فیکس</div>
+    <div class="cnc-map-wrap">
+      <div class="cnc-map" style="aspect-ratio: {{ cnc_setup.map.aspect }};">
+        {% for point in cnc_setup.map.points %}
+          <div class="pt" style="left: {{ point.left }}%; top: {{ point.top }}%;"><span>{{ point.label }}</span></div>
+        {% endfor %}
+        <div class="org" style="left: {{ cnc_setup.map.origin.left }}%; top: {{ cnc_setup.map.origin.top }}%;"><span>مبدأ G54</span></div>
+      </div>
+      <div class="cnc-map-legend">
+        <div>🔴 نقطه‌ی میخ/گیره/پین — هرگز روی مسیر برش قطعه نیفتد.</div>
+        <div>✛ مبدأ برنامه (G54): قطعه روی همین نقطه سِت می‌شود؛ مختصات برنامه از همین‌جا شمرده می‌شود.</div>
+        <div>وضعیت ممنوع/امن هر نقطه برای هر قطعه، در صفحه اسکن CNC و صفحه /cnc/ به‌طور خودکار محاسبه می‌شود.</div>
+      </div>
+    </div>
+  {% endif %}
+
+  {% if cnc_setup.notes %}
+    <div class="sub">توضیحات عمومی</div>
+    {% for line in cnc_setup.notes %}
+      <div class="opline">📝 {{ line }}</div>
+    {% endfor %}
+  {% endif %}
+</div>
