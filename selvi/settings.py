@@ -75,6 +75,9 @@ INSTALLED_APPS = [
     # ابزار تغییر طول قطعه CNC
     'cnc_resizer',
 
+    # دستورالعمل‌های تولید (دانش ایستگاه‌ها)
+    'instructions',
+
 ]
 
 MIDDLEWARE = [

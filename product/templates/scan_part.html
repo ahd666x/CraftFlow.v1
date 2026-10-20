@@ -2,6 +2,15 @@
 {% load static %}
 
 {% block content %}
+<style>
+    .ins-item { margin-bottom: 8px; background: #f8f9fa; }
+    .ins-warning { background: #fdecea; border-color: #f5c6cb !important; }
+    .ins-step { background: #eef5ff; }
+    .ins-spec { background: #f0f8ff; }
+    .ins-line { font-size: 14px; margin: 2px 0; }
+    .ins-thumb { max-height: 110px; max-width: 160px; border-radius: 6px; border: 1px solid #dee2e6; margin: 6px 4px 0 0; cursor: zoom-in; }
+    .ins-cond { font-size: 11px; }
+</style>
 <div class="container-fluid mt-4">
     <div class="row">
         <div class="col-lg-5 mb-4">
@@ -37,6 +46,12 @@
         </div>
 
         <div class="col-lg-7">
+            <div id="instructions-card" class="card shadow mb-3" style="display:none;">
+                <div class="card-header bg-dark text-white">
+                    <h5 class="mb-0">📋 دستورالعمل‌های این سفارش در این مرحله</h5>
+                </div>
+                <div class="card-body" id="instructions-body"></div>
+            </div>
             <div id="item-tasks-card" class="card shadow mb-3" style="display:none;">
                 <div class="card-header bg-secondary text-white">
                     <h5 id="item-order-number"  class="mb-0"></h5>
@@ -124,6 +139,50 @@ function getSelectedItemId() {
 
 function clearSelectedItemId() {
     localStorage.removeItem(SELECTED_ITEM_KEY);
+}
+
+function escapeHtml(text) {
+    return String(text == null ? '' : text)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function renderInstructions(list) {
+    const card = document.getElementById('instructions-card');
+    const body = document.getElementById('instructions-body');
+    if (!list || !list.length) {
+        card.style.display = 'none';
+        body.innerHTML = '';
+        return;
+    }
+    let html = '';
+    list.forEach(function(ins) {
+        const badge = ins.badge || ['نکته', 'secondary'];
+        html += `<div class="ins-item ins-${escapeHtml(ins.kind)} border rounded p-2">`;
+        html += `<div class="d-flex align-items-center flex-wrap gap-1 mb-1">`;
+        html += `<span class="badge bg-${escapeHtml(badge[1])}">${escapeHtml(badge[0])}</span>`;
+        html += `<b>${escapeHtml(ins.title)}</b>`;
+        (ins.conditions || []).forEach(function(c) {
+            html += `<span class="badge bg-warning text-dark ins-cond">${escapeHtml(c)}</span>`;
+        });
+        if (ins.part_name) {
+            html += `<span class="badge bg-light text-dark border ins-cond">قطعه: ${escapeHtml(ins.part_name)}</span>`;
+        }
+        html += `</div>`;
+        (ins.body_lines || []).forEach(function(line) {
+            if (ins.kind === 'checklist') {
+                html += `<div class="form-check"><input class="form-check-input" type="checkbox" onclick="return false;"><label class="form-check-label ins-line">${escapeHtml(line)}</label></div>`;
+            } else {
+                html += `<div class="ins-line">• ${escapeHtml(line)}</div>`;
+            }
+        });
+        (ins.images || []).forEach(function(img) {
+            html += `<a href="${img.url}" target="_blank" title="${escapeHtml(img.caption || '')}"><img src="${img.url}" class="ins-thumb" alt="${escapeHtml(img.caption || '')}"></a>`;
+        });
+        html += `</div>`;
+    });
+    body.innerHTML = html;
+    card.style.display = 'block';
 }
 
 function updateItemOrderHeader(orderId, itemId) {
@@ -220,6 +279,9 @@ function refreshCurrentView() {
 function handleScanResponse(data) {
     const feedback = document.getElementById('scan-feedback');
     if (data.success) {
+        if (data.instructions) {
+            renderInstructions(data.instructions);
+        }
         const cncLink = data.cnc_config_url
             ? `<a href="${data.cnc_config_url}" target="_blank" class="btn btn-sm btn-warning ms-2">مشاهده و تنظیم الگوی CNC</a>`
             : '';
@@ -262,6 +324,11 @@ function loadItemTasks(itemId, rowElement) {
         }
         renderItemTasks(data.item_tasks);
         updateItemOrderHeader(data.order_id, data.item_id);
+        if (data.instructions) {
+            renderInstructions(data.instructions);
+        } else {
+            renderInstructions([]);
+        }
         saveSelectedItemId(itemId);
         document.querySelectorAll('.item-select-row').forEach(r => r.classList.remove('table-active'));
         if (rowElement) {

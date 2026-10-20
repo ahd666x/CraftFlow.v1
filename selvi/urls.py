@@ -42,6 +42,8 @@ urlpatterns = [
     path('craftflow-ai/', include('craftflow_ai.urls')),
     # ابزار تغییر طول قطعه CNC
     path('cnc/', include('cnc_resizer.urls')),
+    # دستورالعمل‌های تولید (سند دستور تولید محصول)
+    path('instructions/', include('instructions.urls')),
     # فروشگاه روی پیشوند /shop سوار می‌شود تا با پنل تولید قاطی نشود.
     # قالب‌های فروشگاه هم namespace مستقل `storefront/` دارند.
     path('shop/', include('storefront.urls')),

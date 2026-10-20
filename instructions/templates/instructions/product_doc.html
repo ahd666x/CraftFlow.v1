@@ -1,0 +1,154 @@
+{% load static %}
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>دستور تولید — {{ product.name }}</title>
+<style>
+  :root {
+    --line: #d8dee7; --text: #17222e; --muted: #5d6b7d;
+    --accent: #1d6ce0; --warn-bg: #fdecea; --warn-line: #e5a09a;
+    --soft: #f2f4f8;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: #f0f2f5; color: var(--text);
+    font: 13.5px/1.75 "Vazirmatn", "Segoe UI", Tahoma, sans-serif;
+  }
+  .sheet {
+    max-width: 900px; margin: 18px auto; background: #fff;
+    border: 1px solid var(--line); border-radius: 10px; padding: 26px 30px;
+  }
+  .doc-head { display: flex; align-items: flex-start; gap: 16px; border-bottom: 2px solid var(--text); padding-bottom: 14px; }
+  .doc-head img.cover { width: 84px; height: 84px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); }
+  .doc-head h1 { font-size: 20px; margin: 0 0 4px; }
+  .doc-head .meta { color: var(--muted); font-size: 12.5px; display: flex; gap: 14px; flex-wrap: wrap; }
+  .doc-head .spacer { flex: 1; }
+  .btnbar { display: flex; gap: 8px; justify-content: flex-end; margin: 14px 0; }
+  button, a.btnlink {
+    font: inherit; cursor: pointer; border-radius: 7px; border: 1px solid var(--line);
+    background: #fff; color: var(--text); padding: 6px 14px; text-decoration: none; display: inline-block;
+  }
+  button.primary, a.btnlink.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
+  h2.station {
+    font-size: 15px; background: var(--soft); border: 1px solid var(--line);
+    border-radius: 8px; padding: 8px 14px; margin: 22px 0 10px;
+  }
+  .ins { border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; margin-bottom: 8px; break-inside: avoid; }
+  .ins .head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+  .badge { font-size: 11px; border-radius: 20px; padding: 1px 10px; border: 1px solid transparent; white-space: nowrap; }
+  .badge.primary { background: #e8f0fe; color: #1d4fa0; border-color: #b9cff5; }
+  .badge.secondary { background: var(--soft); color: var(--muted); border-color: var(--line); }
+  .badge.danger { background: #fdecea; color: #b3261e; border-color: #f0b9b4; }
+  .badge.success { background: #e7f5ec; color: #157a45; border-color: #b5dfc5; }
+  .badge.info { background: #eaf6fd; color: #0b6a92; border-color: #b7e0f2; }
+  .badge.cond { background: #fff6df; color: #925b00; border-color: #efd79a; }
+  .ins.warning { background: var(--warn-bg); border-color: var(--warn-line); }
+  .ins .line { display: flex; gap: 8px; align-items: flex-start; }
+  .ins .line .tick { font-family: monospace; }
+  .ins .imgs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .ins .imgs figure { margin: 0; text-align: center; }
+  .ins .imgs img { max-height: 150px; max-width: 220px; border-radius: 6px; border: 1px solid var(--line); }
+  .ins .imgs figcaption { font-size: 11px; color: var(--muted); }
+  table.bom { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 10px; }
+  table.bom th, table.bom td { border: 1px solid var(--line); padding: 5px 8px; text-align: right; }
+  table.bom th { background: var(--soft); font-weight: 700; }
+  table.bom td.n { direction: ltr; unicode-bidi: plaintext; }
+  .empty { color: var(--muted); background: var(--soft); border: 1px dashed var(--line); border-radius: 8px; padding: 14px; text-align: center; }
+  .hint { color: var(--muted); font-size: 12px; }
+  @media print {
+    body { background: #fff; font-size: 12px; }
+    .sheet { border: 0; margin: 0; max-width: none; padding: 0; border-radius: 0; }
+    .btnbar, .no-print { display: none !important; }
+    h2.station { background: #f0f0f0 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .ins.warning { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+</style>
+</head>
+<body>
+<div class="sheet">
+  <div class="doc-head">
+    {% if product.image %}<img class="cover" src="{{ product.image.url }}" alt="{{ product.name }}">{% endif %}
+    <div>
+      <h1>دستور تولید — {{ product.name }}</h1>
+      <div class="meta">
+        <span>دسته: {{ product.category.name|default:'—' }}</span>
+        <span>ابعاد پیش‌فرض: {{ product.default_size_display|default:'—' }}</span>
+        <span>تعداد دستورالعمل: {{ sections|length }} ایستگاه</span>
+      </div>
+    </div>
+    <span class="spacer"></span>
+  </div>
+
+  <div class="btnbar no-print">
+    <a class="btnlink" href="{% url 'admin:product_product_change' product.pk %}">ویرایش در ادمین</a>
+    <button class="primary" onclick="window.print()">🖨 چاپ سند</button>
+  </div>
+
+  {% if not has_instructions %}
+    <div class="empty">
+      برای این محصول هنوز دستورالعملی ثبت نشده است.<br>
+      <span class="hint">از ادمین → محصولات → «دستورالعمل‌های این محصول» دستورالعمل هر ایستگاه را اضافه کنید.</span>
+    </div>
+  {% endif %}
+
+  {% for section in sections %}
+    <h2 class="station">{{ section.label }}</h2>
+    {% for ins in section.items %}
+      <div class="ins ins-{{ ins.kind }} {% if ins.kind == 'warning' %}warning{% endif %}">
+        <div class="head">
+          <span class="badge {{ ins.badge.1 }}">{{ ins.badge.0 }}</span>
+          <b>{{ ins.title }}</b>
+          {% for label in ins.condition_labels %}<span class="badge cond">{{ label }}</span>{% endfor %}
+        </div>
+        {% for line in ins.body_lines %}
+          <div class="line">
+            {% if ins.kind == 'checklist' %}<span class="tick">☐</span>{% else %}<span>•</span>{% endif %}
+            <span>{{ line }}</span>
+          </div>
+        {% endfor %}
+        {% if ins.images.all %}
+          <div class="imgs">
+            {% for img in ins.images.all %}
+              <figure>
+                <img src="{{ img.image.url }}" alt="{{ img.caption|default:'' }}">
+                {% if img.caption %}<figcaption>{{ img.caption }}</figcaption>{% endif %}
+              </figure>
+            {% endfor %}
+          </div>
+        {% endif %}
+      </div>
+    {% endfor %}
+  {% endfor %}
+
+  {% if bom_rows %}
+    <h2 class="station">فرمول ساخت (قطعات محصول)</h2>
+    <table class="bom">
+      <thead>
+        <tr>
+          <th>قطعه</th><th>متریال</th><th class="n">ابعاد (mm)</th><th class="n">نوار لبه F26</th>
+          <th class="n">نوار لبه F18</th><th class="n">نوار لبه F4</th><th class="n">نوار لبه F5</th>
+          <th>تحویل به</th><th class="n">تعداد</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in bom_rows %}
+          <tr>
+            <td>{{ row.name }}</td>
+            <td>{{ row.material }}</td>
+            <td class="n">{{ row.size }}</td>
+            <td class="n">{{ row.edges.0.1 }}</td>
+            <td class="n">{{ row.edges.1.1 }}</td>
+            <td class="n">{{ row.edges.2.1 }}</td>
+            <td class="n">{{ row.edges.3.1 }}</td>
+            <td>{{ row.routing }}</td>
+            <td class="n">{{ row.quantity }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+</div>
+</body>
+</html>
