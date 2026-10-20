@@ -164,9 +164,9 @@ function renderItemTasks(itemTasks) {
                 </a>
             `;
         }
-        if (workerStage === 'cnc' && t.cnc_config_url) {
+        {% comment %} if (workerStage === 'cnc' && t.cnc_config_url) {
             actions += `<a href="${t.cnc_config_url}" target="_blank" class="btn btn-sm btn-outline-warning ms-1">مشاهده و تنظیم CNC</a>`;
-        }
+        } {% endcomment %}
         actions += `
             <button class="btn btn-sm btn-outline-success ms-1 mark-done-btn" data-task-id="${t.task_id}">
                 <i class="fas fa-check"></i> انجام شد
