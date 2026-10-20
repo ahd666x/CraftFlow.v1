@@ -1091,6 +1091,7 @@ def admin_tasks_management(request):
                 messages.success(request, f'کارگر برای {count} وظیفه تخصیص داده شد.')
         elif action == 'bulk_delete':
             count = ProductionTask.objects.filter(id__in=task_ids).count()
+            _detach_tasks_from_cut_plans(list(task_ids), user=request.user)
             ProductionTask.objects.filter(id__in=task_ids).delete()
             messages.success(request, f'تعداد {count} وظیفه حذف شد.')
 
@@ -6624,6 +6625,46 @@ def painting_assignment_rules_view(request):
     return render(request, 'painting_management/assignment_rules.html', context)
 
 
+def _detach_tasks_from_cut_plans(task_ids, user=None):
+    """ارجاع‌های PROTECT برنامه‌ی برش را پیش از حذف تسک‌ها آزاد می‌کند.
+
+    برنامه‌هایی که هنوز «برنامه‌ریزی» هستند لغو شده و رزرو ورق‌هایشان آزاد می‌شود
+    (مطابق لغو دستی برنامه در ماژول برش). در هر حال ردیف‌های عضویت
+    CutPlanTask/CutPlanSheetTask مربوط به تسک‌های موردنظر حذف می‌شوند تا حذف
+    تسک‌ها با خطای ProtectedError متوقف نشود. تعداد برنامه‌های لغوشده برمی‌گردد.
+    """
+    from cutting.models import CutPlan, CutPlanSheet, CutPlanTask, CutPlanSheetTask, SheetStockEvent
+    task_ids = [tid for tid in task_ids if tid]
+    if not task_ids:
+        return 0
+    plan_ids = list(
+        CutPlanTask.objects.filter(task_id__in=task_ids)
+        .values_list('plan_id', flat=True).distinct()
+    )
+    cancelled = 0
+    with transaction.atomic():
+        for plan in CutPlan.objects.select_for_update().filter(pk__in=plan_ids, status='planned'):
+            for sheet in (CutPlanSheet.objects.select_for_update()
+                          .filter(plan=plan).select_related('source_stock')):
+                stock = sheet.source_stock
+                SheetStockEvent.objects.create(
+                    stock=stock, material=stock.material, plan=plan, event_type='release',
+                    quantity_delta=0, width=stock.width, height=stock.height,
+                    is_offcut=stock.is_offcut,
+                    note='لغو خودکار: حذف تسک‌های سفارش و بازگشت به پیش‌نویس'[:255],
+                    created_by=user,
+                )
+                sheet.outcome = 'released'
+                sheet.save(update_fields=('outcome',))
+            plan.status = 'cancelled'
+            plan.cancelled_at = timezone.now()
+            plan.save(update_fields=('status', 'cancelled_at'))
+            cancelled += 1
+        CutPlanTask.objects.filter(task_id__in=task_ids).delete()
+        CutPlanSheetTask.objects.filter(task_id__in=task_ids).delete()
+    return cancelled
+
+
 @require_POST
 @login_required
 @admin_or_manager_required
@@ -6636,10 +6677,14 @@ def delete_all_tasks(request, order_id):
         messages.warning(request, f"{done_tasks.count()} تسک قبلاً تکمیل شده‌اند. با حذف آن‌ها، سابقه از بین می‌رود.")
 
     with transaction.atomic():
+        task_ids = list(order.tasks.values_list('pk', flat=True))
+        cancelled_plans = _detach_tasks_from_cut_plans(task_ids, user=request.user)
         order.tasks.all().delete()
         order.status = 'draft'
         order.save(update_fields=['status'])
 
+    if cancelled_plans:
+        messages.info(request, f"{cancelled_plans} برنامه‌ریزی برش مرتبط لغو و رزرو ورق‌های آن آزاد شد.")
     messages.success(request, f"✅ تمام تسک‌های سفارش {order.id} حذف شدند و وضعیت به پیش‌نویس برگردانده شد.")
     return redirect('order_detail', order_id=order.id)
 

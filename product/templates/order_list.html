@@ -287,9 +287,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     .then(response => response.json())
                     .then(data => {
                         if (data.success) {
-                            if (data.cnc_warnings && data.cnc_warnings.length) {
-                                alert('هشدار فایل CNC:\n' + data.cnc_warnings.join('\n'));
-                            }
                             location.reload();
                     } else {
                         alert('خطا: ' + (data.error || 'نامشخص'));
