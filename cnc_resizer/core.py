@@ -52,9 +52,11 @@ def get_val(line, letter):
 
 def _blocks(lines):
     """Split the program into blocks started by a rapid (G0) XY move.
-    Each block: dict(start=(x,y), segs=[dict(type, p0, p1, center, cw)])."""
-    x = y = 0.0
+    Each block: dict(start=(x,y), segs=[dict(type, p0, p1, center, cw)],
+    plus modal metadata (z depth, feed, spindle, tool) observed inside it."""
+    x = y = z = 0.0
     g = None
+    feed = spindle = tool = None
     blocks, cur = [], None
     for raw in lines:
         s = raw.strip()
@@ -64,8 +66,17 @@ def _blocks(lines):
             gv = int(gm.group(1))
             if gv in (0, 1, 2, 3):
                 g = gv
-        gx, gy = get_val(s, 'X'), get_val(s, 'Y')
+        gx, gy, gz = get_val(s, 'X'), get_val(s, 'Y'), get_val(s, 'Z')
         i, j = get_val(s, 'I'), get_val(s, 'J')
+        f_val, s_val, t_val = get_val(s, 'F'), get_val(s, 'S'), get_val(s, 'T')
+        if f_val is not None:
+            feed = f_val
+        if s_val is not None:
+            spindle = s_val
+        if t_val is not None:
+            tool = int(t_val)
+        if gz is not None:
+            z = gz
         px, py = x, y
         if gx is not None:
             x = gx
@@ -74,10 +85,14 @@ def _blocks(lines):
         has_xy = gx is not None or gy is not None
         if g == 0:
             if has_xy:
-                cur = dict(start=(x, y), segs=[])
+                cur = dict(start=(x, y), segs=[], z=z, feed=feed, spindle=spindle, tool=tool)
                 blocks.append(cur)
             continue
         if cur is None or not has_xy or g not in (1, 2, 3):
+            if cur is not None and g in (1, 2, 3) and gz is not None:
+                cur['z'] = z
+                if feed is not None:
+                    cur['feed'] = feed
             continue
         if g == 1:
             if abs(x - px) < 1e-9 and abs(y - py) < 1e-9:
@@ -505,6 +520,70 @@ def handle_request(raw):
         return 500, dict(ok=False, error="خطای غیرمنتظره در پردازش فایل")
 
 # --- Generic operator-approved feature profiles ----------------------------
+def program_summary(lines):
+    """File-level G-code feature summary for the operator UI (تحلیل ویژگی G-code)."""
+    g_codes, m_codes, tools, feeds, spindles = set(), set(), set(), set(), set()
+    units, wcs, arc_format, n_step = None, set(), None, None
+    blocks = _blocks(lines)
+    n_values = []
+    move_count = 0
+    arc_count = 0
+    for raw in lines:
+        s = raw.strip()
+        if not s or s == "%":
+            continue
+        nm = re.match(r'^N(\d+)', s)
+        if nm:
+            n_values.append(int(nm.group(1)))
+        for gm in re.finditer(r'G(\d+)(?!\d)', s):
+            g_codes.add(int(gm.group(1)))
+        for mm_ in re.finditer(r'M(\d+)(?!\d)', s):
+            m_codes.add(int(mm_.group(1)))
+        tv = get_val(s, 'T')
+        if tv is not None:
+            tools.add(int(tv))
+        fv, sv = get_val(s, 'F'), get_val(s, 'S')
+        if fv is not None:
+            feeds.add(fv)
+        if sv is not None:
+            spindles.add(sv)
+        if re.search(r'G20(?!\d)', s):
+            units = 'G20'
+        if re.search(r'G21(?!\d)', s):
+            units = 'G21'
+        wm = re.search(r'G5([4-9])(?!\d)', s)
+        if wm:
+            wcs.add('G5' + wm.group(1))
+        if re.search(r'\bG[23][^\d]*(?:[IJK])', s) or (re.search(r'G[23](?!\d)', s) and re.search(r'[IJ]\s*' + NUM, s)):
+            arc_format = arc_format or 'IJ'
+        if re.search(r'G[23](?!\d)[^\n]*R\s*' + NUM, s):
+            arc_format = 'R'
+    if n_values and len(n_values) > 1:
+        steps = {b - a for a, b in zip(n_values, n_values[1:]) if b > a}
+        if len(steps) == 1:
+            n_step = steps.pop()
+    for blk in blocks:
+        move_count += len(blk['segs'])
+        arc_count += sum(sg['type'] == 'A' for sg in blk['segs'])
+    depths = sorted({round(blk['z'], 3) for blk in blocks if blk.get('z') is not None and blk['z'] < 0})
+    return {
+        'line_count': len([l for l in lines if l.strip()]),
+        'blocks': len(blocks),
+        'moves': move_count,
+        'arcs': arc_count,
+        'g_codes': sorted(g_codes),
+        'm_codes': sorted(m_codes),
+        'tools': sorted(tools),
+        'feeds': sorted(feeds),
+        'spindles': sorted(spindles),
+        'units': units,
+        'work_offsets': sorted(wcs),
+        'arc_format': arc_format,
+        'n_numbering_step': n_step,
+        'depth_levels': depths,
+    }
+
+
 def analyze_program(lines):
     """Build a conservative geometry inventory; tool numbers are metadata only."""
     out = []
@@ -531,6 +610,10 @@ def analyze_program(lines):
                     'bounds': {'x0': round(min(xs),3), 'y0': round(min(ys),3),
                                'x1': round(max(xs),3), 'y1': round(max(ys),3)},
                     'closed': closed, 'segments': len(segs), 'arcs': arcs,
+                    'depth': block.get('z'),
+                    'feed': block.get('feed'),
+                    'spindle': block.get('spindle'),
+                    'tool': block.get('tool'),
                     'start': [round(v,3) for v in block['start']]})
     return out
 
@@ -583,7 +666,9 @@ def analyze(text, params=None):
     if not any(re.search(r'G[0-3](?!\d)', l) for l in lines):
         raise CncError('این فایل شبیه G-code نیست')
     inventory = analyze_program(lines)
+    summary = program_summary(lines)
     profile = params.get('profile') or params.get('feature_profile')
     errors = validate_profile(profile, inventory) if profile else []
-    return {'ok': True, 'features': inventory, 'profile_errors': errors,
+    return {'ok': True, 'features': inventory, 'summary': summary,
+            'profile_errors': errors,
             'ready': bool(profile and not errors), 'warnings': []}

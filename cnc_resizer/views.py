@@ -66,16 +66,65 @@ def engine_workbench(request):
 @cnc_operator_required
 @require_POST
 def process(request):
-    """Return legacy geometry previews only; executable CNC/DXF payloads are stripped fail-closed."""
+    """Length-resize API.
+
+    Always returns the geometric preview (vectors + DXF drawing). The
+    machine-ready G-code (``cnc_text``) is included only when the source and
+    the resized candidate verify against the registered controller dialect
+    post-processor (``minimal_xy_router``); anything else stays fail-closed
+    with a precise, operator-readable reason list.
+    """
+    import json
+    from . import controller
     status, data = core.handle_request(request.body)
-    if status == 200 and "cnc_text" in data:
-        data.pop("cnc_text", None)
-        data.pop("dxf_text", None)
-        data["preview_only"] = True
+    if status != 200 or "cnc_text" not in data:
+        return JsonResponse(data, status=status, json_dumps_params={"ensure_ascii": False})
+    resized_text = data.pop("cnc_text")
+    data["preview_only"] = True
+    data["machine_output_written"] = False
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+        source_text = payload.get("content") if isinstance(payload, dict) else None
+        if not isinstance(source_text, str):
+            source_text = ""
+    except Exception:
+        source_text = ""
+
+    def blocked(reason, violations=None, dialect=None):
         data["safe_for_execution"] = False
-        data["machine_output_written"] = False
-        data["output_blocked_reason"] = "پست‌پروسسور مختص کنترلر تأییدشده ثبت نشده است؛ API فقط پیش‌نمایش هندسی ارائه می‌دهد."
-        data.setdefault("warnings", []).append(data["output_blocked_reason"])
+        data["output_blocked_reason"] = reason
+        if violations:
+            data["dialect_violations"] = violations
+        if dialect is not None:
+            data["dialect"] = dialect
+        data.setdefault("warnings", []).append(reason)
+
+    if not data.get("resizable") or not resized_text.strip() or not source_text:
+        blocked("این فایل فقط نمایش داده می‌شود و قابل تغییر طول نیست؛ خروجی دستگاه تولید نشد.")
+    elif controller.controller_adapter_key() != controller.ADAPTER_KEY:
+        blocked(
+            "پست‌پروسسور کنترلر فعال نشده است؛ برای صدور فایل دستگاه "
+            f"«{controller.ADAPTER_KEY}» را در تنظیمات (CNC_RESIZER_SHEET_ADAPTER) فعال کنید."
+        )
+    else:
+        try:
+            output = controller.postprocess_resize(source_text, resized_text)
+        except controller.ControllerPostprocessError as exc:
+            blocked(
+                f"خروجی دستگاه با پست‌پروسسور «{controller.ADAPTER_KEY}» مسدود شد: {exc}",
+                violations=getattr(exc, "violations", None) or [str(exc)],
+            )
+        else:
+            data["cnc_text"] = output["text"]
+            data["safe_for_execution"] = True
+            data["postprocessor"] = {
+                "adapter_key": output["adapter_key"],
+                "dialect": "workshop minimal XY router (G90/G54, T#M6+M141+M6T#+G43H#, I/J arcs, G53 park, N×10)",
+                "units_injected": output["units_injected"],
+                "tool": output["tool"],
+                "h": output["h"],
+            }
+            data.setdefault("warnings", []).extend(output["source_warnings"])
     return JsonResponse(data, status=status, json_dumps_params={"ensure_ascii": False})
 
 

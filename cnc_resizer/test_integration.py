@@ -133,7 +133,7 @@ class CncIntegrationTests(TestCase):
         self.assertEqual(report["execution_gate"], "blocked")
         self.assertTrue(any("output serializer" in reason for reason in report["blockers"]))
 
-    def test_legacy_process_endpoint_never_returns_machine_or_dxf_output(self):
+    def test_legacy_process_endpoint_stays_fail_closed_without_adapter(self):
         self.client.login(username="cnc-manager", password="testpass")
         with open(SAMPLE, "r", encoding="utf-8") as stream:
             content = stream.read()
@@ -148,7 +148,66 @@ class CncIntegrationTests(TestCase):
         self.assertFalse(payload["safe_for_execution"])
         self.assertFalse(payload["machine_output_written"])
         self.assertNotIn("cnc_text", payload)
-        self.assertNotIn("dxf_text", payload)
+        self.assertIn("output_blocked_reason", payload)
+        # DXF is a CAD drawing of the same preview vectors, not machine output.
+        self.assertIn("dxf_text", payload)
+
+    def test_process_returns_controller_gcode_for_verified_dialect(self):
+        self.client.login(username="cnc-manager", password="testpass")
+        with open(SAMPLE, "r", encoding="utf-8") as stream:
+            content = stream.read()
+        with self.settings(CNC_RESIZER_SHEET_ADAPTER="minimal_xy_router",
+                           CNC_RESIZER_IMPLICIT_UNITS="mm"):
+            response = self.client.post(
+                reverse("cnc_resizer:process"),
+                data=json.dumps({"content": content, "params": {"delta": 40}}),
+                content_type="application/json",
+            )
+        self.assertEqual(response.status_code, 200, response.content)
+        payload = response.json()
+        self.assertTrue(payload["safe_for_execution"])
+        self.assertIn("cnc_text", payload)
+        self.assertEqual(payload["postprocessor"]["adapter_key"], "minimal_xy_router")
+        self.assertTrue(payload["postprocessor"]["units_injected"])
+        # the derived program keeps the controller structure and gains explicit units
+        self.assertIn("G21", payload["cnc_text"])
+        self.assertIn("M141", payload["cnc_text"])
+        self.assertRegex(payload["cnc_text"], r"M30\r?\n$")
+        self.assertEqual(len(payload["cnc_text"].splitlines()),
+                         len(content.splitlines()))
+
+    def test_process_blocks_source_outside_controller_dialect(self):
+        self.client.login(username="cnc-manager", password="testpass")
+        content = "\r\n".join([
+            "%", "N10G90G54", "N20G53 Z0", "N30T2M6", "N40 M141", "N50 M6T2", "N60 G43 H2",
+            "N70G0X0Y0Z5.000M3 S16000",
+            "N80G1Z-2.000F9000.0",
+            "N90G1Y200.000",
+            "N100G1X150.000",
+            "N110G1Y0.000",
+            "N120G1X0.000",
+            "N130G0Z5.000M3 S16000",
+            "N140G0X0Y0M3 S16000",
+            "N150G53Z0", "N160M30", "%",
+            "", "N170G0X10Y10Z5.000M3 S16000",
+            "N180G1Z-2.000F9000.0",
+            "N190G2X110Y10R50.000",          # R-format arc: never in this dialect
+            "N200G0Z5.000M3 S16000",
+            "N210G0X0Y0M3 S16000",
+        ]) + "\r\n"
+        with self.settings(CNC_RESIZER_SHEET_ADAPTER="minimal_xy_router",
+                           CNC_RESIZER_IMPLICIT_UNITS="mm"):
+            response = self.client.post(
+                reverse("cnc_resizer:process"),
+                data=json.dumps({"content": content, "params": {"delta": 10}}),
+                content_type="application/json",
+            )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload["resizable"], payload.get("warnings"))
+        self.assertFalse(payload["safe_for_execution"])
+        self.assertNotIn("cnc_text", payload)
+        self.assertTrue(payload.get("dialect_violations"))
 
     def test_analyze_api_returns_feature_inventory_for_ui(self):
         self.client.login(username="cnc-manager", password="testpass")
