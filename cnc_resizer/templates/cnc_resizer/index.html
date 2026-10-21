@@ -243,11 +243,33 @@
         </select>
       </label>
       <div class="row" style="margin-top:10px">
-        <label class="field">قطر فرز سوراخ‌ها (mm)
+        <label class="field">قطر پیش‌فرض (پارکینگ بدون ثبت در میز ابزار)
           <input type="number" id="tool" value="8" min="0.1" step="0.1">
         </label>
       </div>
-      <p class="hint">قطر سوراخ وکتور = قطر مسیر ابزار + قطر فرز (فقط برای نمایش و خروجی DXF).</p>
+      <p class="hint">قطر سوراخ = مسیر ابزار + قطر فرزِ همان پارکینگ از میز ابزار؛ اگر پارکینگ در میز نباشد این پیش‌فرض. جمع زنده در «جمع سوراخ» پایین.</p>
+      <p class="hint" id="toolHint" hidden style="border:1px solid var(--line);border-radius:6px;padding:6px;background:var(--bg,#fff)"></p>
+    </section>
+
+    <section class="card" id="toolTableCard">
+      <h2>🧰 میز ابزار (پارکینگ T)</h2>
+      <p class="hint">G-code فقط شمارهٔ پارکینگ را می‌گوید؛ قطر واقعی ابزار اینجا ثبت می‌شود و جبران سوراخ‌ها (نمایش و لایهٔ HOLES در DXF) خودکار از همین جدول پر می‌شود.</p>
+      <table id="toolTable">
+        <thead><tr><th>T</th><th>نام ابزار</th><th>قطر (mm)</th></tr></thead>
+        <tbody id="toolTableBody"></tbody>
+      </table>
+      <div class="mtoolbtns" style="margin-top:8px">
+        <button type="button" id="saveToolsBtn" class="primary">💾 ذخیرهٔ میز ابزار</button>
+      </div>
+      <div class="row" style="margin-top:8px;display:flex;gap:6px;align-items:end">
+        <label class="field" style="flex:1">ست‌های آماده
+          <select id="toolSetSelect"><option value="">— انتخاب ست —</option></select>
+        </label>
+        <button type="button" id="loadToolSetBtn" title="بازگرداندن ابزارهای این ست به میز">بارگذاری</button>
+        <button type="button" id="saveToolSetBtn" title="ذخیرهٔ میز فعلی به‌عنوان ست جدید">ذخیرهٔ ست…</button>
+        <button type="button" id="delToolSetBtn" title="حذف ست انتخابی">حذف</button>
+      </div>
+      <p class="hint" id="toolTableStatus"></p>
     </section>
 
     <section class="card" id="postCard">
@@ -349,7 +371,7 @@
       <label class="check" title="نمایش نقاط میخ/فیکس میز (ممنوع/امن)"><input type="checkbox" id="tgFix" checked> نقاط میخ</label>
       <span class="sep"></span>
       <button type="button" id="copyBtn" disabled>کپی کد</button>
-      <button type="button" id="dxfBtn" disabled title="نقاط برش و سوراخ‌ها برای CAD">دانلود DXF</button>
+      <button type="button" id="dxfBtn" disabled title="لایه‌ها: HOLES=قطر نهایی با میز ابزار، TOOLPATH=مسیر خام G-code، OUTLINE=کانتورها">دانلود DXF</button>
       <button type="button" id="cncBtn" class="primary" disabled title="پس از تأیید دیالکت کنترلر فعال می‌شود">دانلود G-code کنترلر</button>
     </div>
 
@@ -383,6 +405,8 @@
   const API = document.body.dataset.api || '/api/process/';
   const ANALYZE_API = '{{ analyze_api_url }}';
   const PROFILE_API = '{{ profile_api_url }}';
+  const TOOLS_API = '{{ tools_api_url }}';
+  const TOOLSETS_API = '{{ tool_sets_api_url }}';
   const PART_ID = '{{ part_id|escapejs }}';
   let CNC_SETUP = null;
   try { CNC_SETUP = JSON.parse(document.getElementById('cncSetupData').textContent || 'null'); } catch (_) { CNC_SETUP = null; }
@@ -395,7 +419,7 @@
 
   const S = {
     name: '', text: '', res: null, reqId: 0, timer: null, analyzeTimer: null,
-    mode: 'equal', symmetric: true, enabled: [], manual: [], tool: 8,
+    mode: 'equal', symmetric: true, enabled: [], manual: [], tool: 8, toolMap: null,
     vb: null, fs: 12, tab: 'view', featureInventory: [], featureProfile: null, summary: null,
     toolMode: 'pan',                 // 'pan' | 'measure'
     measureA: null,                  // first clicked point while measuring
@@ -680,6 +704,119 @@
       $('profileStatus').textContent = data.message;
     } catch (err) { showErr(err.message); }
   };
+
+  // --------------------------------------------- tool table (میز ابزار)
+  function renderToolTable(slots) {
+    const body = $('toolTableBody'); body.replaceChildren();
+    slots.forEach((s) => {
+      const tr = document.createElement('tr');
+      const t1 = document.createElement('td'); t1.textContent = 'T' + s.slot;
+      const t2 = document.createElement('td');
+      const name = document.createElement('input'); name.type = 'text'; name.value = s.label || '';
+      name.dataset.slot = s.slot; name.dataset.field = 'label'; name.style.cssText = 'width:100%';
+      const t3 = document.createElement('td');
+      const dia = document.createElement('input'); dia.type = 'number'; dia.min = '0.1'; dia.step = '0.1';
+      dia.value = (s.dia == null ? '' : s.dia); dia.placeholder = '—'; dia.style.cssText = 'width:72px';
+      dia.dataset.slot = s.slot; dia.dataset.field = 'dia';
+      t2.appendChild(name); t3.appendChild(dia); tr.append(t1, t2, t3); body.appendChild(tr);
+    });
+  }
+  function renderToolSets(sets, current) {
+    const sel = $('toolSetSelect'); const keep = current || sel.value;
+    sel.replaceChildren();
+    const o0 = document.createElement('option'); o0.value = ''; o0.textContent = '— انتخاب ست —'; sel.appendChild(o0);
+    (sets || []).forEach((n) => { const o = document.createElement('option'); o.value = n; o.textContent = n; sel.appendChild(o); });
+    if (keep && [...sel.options].some((o) => o.value === keep)) sel.value = keep;
+  }
+  async function loadTools() {
+    try {
+      const resp = await fetch(TOOLS_API, { credentials: 'same-origin' });
+      const data = await resp.json();
+      if (!resp.ok || !data.ok) throw new Error(data.error || 'میز ابزار بارگذاری نشد');
+      renderToolTable(data.slots); renderToolSets(data.sets);
+      S.toolMap = {};
+      data.slots.forEach((s) => { if (s.dia != null) S.toolMap[s.slot] = s.dia; });
+      renderToolHint();
+    } catch (err) { $('toolTableStatus').textContent = err.message; }
+  }
+  function collectToolRows() {
+    const rows = [];
+    document.querySelectorAll('#toolTableBody [data-field]').forEach((inp) => {
+      const slot = Number(inp.dataset.slot);
+      let row = rows.find((r) => r.slot === slot);
+      if (!row) { row = { slot }; rows.push(row); }
+      row[inp.dataset.field] = inp.value;
+    });
+    return rows;
+  }
+  async function postToolSet(action, name) {
+    const resp = await fetch(TOOLSETS_API, { method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+      body: JSON.stringify({ action, name }) });
+    const data = await resp.json();
+    if (!resp.ok || !data.ok) throw new Error(data.error || 'عملیات ست ابزار نشد');
+    return data;
+  }
+  $('saveToolsBtn').onclick = async () => {
+    try {
+      const resp = await fetch(TOOLS_API, { method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+        body: JSON.stringify({ slots: collectToolRows() }) });
+      const data = await resp.json();
+      if (!resp.ok || !data.ok) throw new Error(data.error || 'ذخیرهٔ میز ابزار نشد');
+      $('toolTableStatus').textContent = data.message;
+      await loadTools();
+      if (S.res) schedule();
+    } catch (err) { $('toolTableStatus').textContent = err.message; }
+  };
+  $('saveToolSetBtn').onclick = async () => {
+    const name = prompt('نام ست ابزار (مثلاً «ست قطعه A»):');
+    if (!name || !name.trim()) return;
+    try {
+      const data = await postToolSet('save', name.trim());
+      $('toolTableStatus').textContent = data.message;
+      await loadTools(); renderToolSets(null, name.trim());
+    } catch (err) { $('toolTableStatus').textContent = err.message; }
+  };
+  $('loadToolSetBtn').onclick = async () => {
+    const name = $('toolSetSelect').value;
+    if (!name) { $('toolTableStatus').textContent = 'اول یک ست انتخاب کنید.'; return; }
+    try {
+      const data = await postToolSet('load', name);
+      $('toolTableStatus').textContent = data.message;
+      await loadTools();
+      if (S.res) schedule();
+    } catch (err) { $('toolTableStatus').textContent = err.message; }
+  };
+  $('delToolSetBtn').onclick = async () => {
+    const name = $('toolSetSelect').value;
+    if (!name) { $('toolTableStatus').textContent = 'اول یک ست انتخاب کنید.'; return; }
+    if (!confirm('ست «' + name + '» حذف شود؟')) return;
+    try {
+      const data = await postToolSet('delete', name);
+      $('toolTableStatus').textContent = data.message;
+      await loadTools();
+    } catch (err) { $('toolTableStatus').textContent = err.message; }
+  };
+  function renderToolHint() {
+    const el = $('toolHint');
+    const holes = (S.res && S.res.resized && S.res.resized.holes) || [];
+    if (!S.res || !holes.length) { el.hidden = true; el.textContent = ''; return; }
+    const groups = new Map();
+    holes.forEach((h) => {
+      const pd = (h.path_dia == null ? h.dia : h.path_dia);
+      const key = (h.tool == null ? '-' : h.tool) + '|' + pd + '|' + h.dia;
+      if (!groups.has(key)) groups.set(key, { tool: h.tool, pd, dia: h.dia, n: 0 });
+      groups.get(key).n++;
+    });
+    el.textContent = 'جمع سوراخ (مسیر + ابزار): ' + [...groups.values()].map((g) => {
+      const comp = (g.tool != null && S.toolMap && S.toolMap[g.tool] != null)
+        ? 'T' + g.tool + ' (' + S.toolMap[g.tool] + 'mm)'
+        : 'پیش‌فرض ' + (Math.round((g.dia - g.pd) * 10) / 10) + 'mm';
+      return '×' + g.n + ' مسیر ' + g.pd + ' + ' + comp + ' = ' + g.dia + 'mm';
+    }).join(' · ');
+    el.hidden = false;
+  }
 
   // ------------------------------------------------------------ requests
   function schedule() { clearTimeout(S.timer); S.timer = setTimeout(() => run(false), 220); }
@@ -966,7 +1103,7 @@
       document.querySelector('#svg').textContent = '';
       renderPostState(); showWarn([]); syncModeUI();
       $('featSummary').hidden = true; $('featList').replaceChildren(); $('featCount').textContent = '';
-      S.bb = null; updateFxList();
+      S.bb = null; updateFxList(); renderToolHint();
       return;
     }
 
@@ -986,6 +1123,7 @@
       node.disabled = S.res.resizable === false;
     });
     showWarn([...(r.warnings || [])]);
+    renderToolHint();
 
     $('sBefore').textContent = f1(r.length_before) + ' mm';
     $('sAfter').textContent = f1(r.length_after) + ' mm';
@@ -1469,6 +1607,7 @@
   syncModeUI();
   renderOpGuide();
   window.__cncApp = { S, loadText: (name, text) => { S.name = name; S.text = text; S.res = null; S.enabled = []; S.manual = []; run(true); } };
+  loadTools();
   loadArchiveList().then(loadPartProfile);
 })();
 </script>

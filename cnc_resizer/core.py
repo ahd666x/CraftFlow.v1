@@ -164,10 +164,13 @@ def _fit_circle(pts):
     return mx + uc, my + vc, math.sqrt(uc * uc + vc * vc + (suu + svv) / n)
 
 
-def extract_vectors(lines, tool_dia):
+def extract_vectors(lines, tool_dia, tool_map=None):
     """Vectors rebuilt from the toolpath:
        holes     - small closed loops  -> circle (diameter = loop + tool)
-       contours  - everything else     -> polyline with arc bulges"""
+       contours  - everything else     -> polyline with arc bulges
+       tool_map  - optional {int parking T: float dia mm}; when the block's
+                   parking has an entry, that diameter compensates the hole
+                   instead of the global fallback ``tool_dia``."""
     holes, contours = [], []
     for blk in _blocks(lines):
         segs, closed = _first_loop(blk)
@@ -177,8 +180,13 @@ def extract_vectors(lines, tool_dia):
         xs = [p[0] for p in pts]; ys = [p[1] for p in pts]
         if closed and max(xs) - min(xs) < HOLE_MAX_SIZE and max(ys) - min(ys) < HOLE_MAX_SIZE:
             cx, cy, r = _fit_circle(pts[:-1])
-            dia = round(2 * r + tool_dia, 1)
-            holes.append(dict(cx=round(cx, 2), cy=round(cy, 2), dia=dia))
+            path_dia = 2 * r
+            t = blk.get('tool')
+            comp = tool_map.get(int(t)) if (tool_map and t is not None) else None
+            used = comp if comp is not None else tool_dia
+            holes.append(dict(cx=round(cx, 2), cy=round(cy, 2), dia=round(path_dia + used, 1),
+                              tool=(int(t) if t is not None else None),
+                              path_dia=round(path_dia, 3), tool_dia_used=round(used, 2)))
         else:
             verts = [(blk['start'][0], blk['start'][1], _bulge(segs[0]))]
             for k, sg in enumerate(segs):
@@ -537,11 +545,13 @@ def _process_kerf(text, lines, eol, delta, tool_dia, params):
     exactly uniform, the previously solid middle zone gets grooves too, and the
     extra length is realised as NEW passes — never by stretching the pitch.
     The remainder (delta mod pitch) grows the zone below the field."""
+    tool_map = _tool_map_from(params)
+    tool_warn = _tool_warnings(lines, tool_map, tool_dia)
     try:
         levels, edge_lo, edge_hi = detect_geometry(lines)
     except CncError as exc:
         if params.get('allow_view_only'):
-            return view_only_result(text, lines, eol, tool_dia, str(exc))
+            return view_only_result(text, lines, eol, tool_dia, str(exc), extra_warnings=tool_warn)
         raise
     blocks = _detect_serpentine_blocks(lines)
     if not blocks:
@@ -672,8 +682,8 @@ def _process_kerf(text, lines, eol, delta, tool_dia, params):
                    else f"N{nv}{s}")
     out = res
 
-    v0 = extract_vectors(lines, tool_dia)
-    v1 = extract_vectors(out, tool_dia)
+    v0 = extract_vectors(lines, tool_dia, tool_map)
+    v1 = extract_vectors(out, tool_dia, tool_map)
     a0, b0 = _span(v0)
     a1, b1 = _span(v1)
     if abs((b1 - a1) - (b0 - a0) - delta) > 0.05:
@@ -688,6 +698,7 @@ def _process_kerf(text, lines, eol, delta, tool_dia, params):
         if len(b2['passes']) != K + 1:
             raise CncError("مود kerf: اعتبارسنجی تعداد شیار شکست خورد")
     passes_before = len(blocks[0]['passes'])
+    warnings += tool_warn
     warnings.insert(0, (
         f"مود kerf: گام {pitch:.3f} میلی‌متر ثابت ماند و ناحیهٔ خالی وسط با شیار پر شد؛ "
         f"تعداد شیار در هر عمق: {passes_before} ← {K + 1}؛ "
@@ -712,10 +723,17 @@ def _process_kerf(text, lines, eol, delta, tool_dia, params):
 
 # ---------------------------------------------------------------- DXF
 def to_dxf(vec):
-    """R12 ASCII DXF: layer OUTLINE (polylines with bulge) and layer HOLES (circles)."""
+    """R12 ASCII DXF: layer OUTLINE (polylines with bulge), layer HOLES (final
+    compensated circles) and layer TOOLPATH (raw centerline circles, so the
+    operator can always see what the G-code really contains)."""
     out = []
     w = lambda code, val: out.extend([str(code), str(val)])
     w(0, "SECTION"); w(2, "ENTITIES")
+    for h in vec['holes']:
+        pd = h.get('path_dia')
+        if pd:
+            w(0, "CIRCLE"); w(8, "TOOLPATH")
+            w(10, f"{h['cx']:.4f}"); w(20, f"{h['cy']:.4f}"); w(30, "0.0"); w(40, f"{pd / 2:.4f}")
     for h in vec['holes']:
         w(0, "CIRCLE"); w(8, "HOLES")
         w(10, f"{h['cx']:.4f}"); w(20, f"{h['cy']:.4f}"); w(30, "0.0"); w(40, f"{h['dia'] / 2:.4f}")
@@ -750,7 +768,56 @@ def _span(vec):
     return (min(ys), max(ys)) if ys else (0.0, 0.0)
 
 
-def view_only_result(text, lines, eol, tool_dia, reason):
+# ------------------------------------------------------- tool table support
+def _tool_map_from(params):
+    """Lenient {parking: diameter} extraction — the map comes from the operator's
+    tool table; junk entries are dropped instead of blocking a display feature."""
+    raw = params.get('tool_map')
+    out = {}
+    if isinstance(raw, dict):
+        for k, v in raw.items():
+            try:
+                sk, fv = int(k), float(v)
+            except (TypeError, ValueError):
+                continue
+            if 1 <= sk <= 10 and 0.1 <= fv <= 100 and fv == fv:
+                out[sk] = fv
+    return out
+
+
+def _tools_in_file(lines):
+    tools = set()
+    for l in lines:
+        tv = get_val(l, 'T')
+        if tv is None:
+            continue
+        try:
+            ti = int(tv)
+        except (TypeError, ValueError):
+            continue
+        if 0 <= ti <= 99:
+            tools.add(ti)
+    return tools
+
+
+def _tool_warnings(lines, tool_map, tool_dia):
+    """Make the diameter assumption VISIBLE: which parkings were used from the
+    tool table and which fell back to the default diameter."""
+    tools = _tools_in_file(lines)
+    if not tools:
+        return []
+    ws = []
+    known = sorted(t for t in tools if t in tool_map)
+    missing = sorted(t for t in tools if t not in tool_map)
+    if known:
+        ws.append("میز ابزار اعمال شد: " + "، ".join(f"T{t} = {tool_map[t]:g}mm" for t in known) + ".")
+    if missing:
+        ws.append("پارکینگ " + "، ".join(f"T{t}" for t in missing) +
+                  f" در میز ابزار ثبت نشده؛ جبران سوراخ‌ها با قطر پیش‌فرض {tool_dia:g}mm انجام شد.")
+    return ws
+
+
+def view_only_result(text, lines, eol, tool_dia, reason, extra_warnings=()):
     """Return geometry for viewing without permitting an automatic resize."""
     vectors = extract_vectors(lines, tool_dia)
     a, b = _span(vectors)
@@ -759,7 +826,7 @@ def view_only_result(text, lines, eol, tool_dia, reason):
         ok=True, resizable=False, features=[], hole_rows=[], gaps=[], families=[], cuts=[],
         delta=0.0, length_before=round(b - a, 3), length_after=round(b - a, 3),
         original=shown, resized=shown,
-        warnings=[f"این فایل فقط نمایش داده می‌شود و قابل تغییر طول نیست: {reason}"],
+        warnings=[f"این فایل فقط نمایش داده می‌شود و قابل تغییر طول نیست: {reason}"] + list(extra_warnings),
         changed_lines=[], cnc_text=text, dxf_text=to_dxf(vectors),
     )
 
@@ -778,18 +845,25 @@ def process(text, params=None):
         raise CncError("این فایل شبیه G-code نیست")
     _reject_unsupported_syntax(lines)
 
+    tool_map = _tool_map_from(params)
+    try:
+        _td_fallback = float(params.get('tool_dia', 8.0))
+    except (TypeError, ValueError):
+        _td_fallback = 8.0
+    tool_warn = _tool_warnings(lines, tool_map, _td_fallback)
+
     profile = params.get('profile') or params.get('feature_profile')
     if profile is not None:
         inventory = analyze_program(lines)
         errors = validate_profile(profile, inventory)
-        vectors = extract_vectors(lines, float(params.get('tool_dia', 8.0)))
+        vectors = extract_vectors(lines, float(params.get('tool_dia', 8.0)), tool_map)
         shown = vectors_for_json(vectors)
         a, b = _span(vectors)
         if errors:
             return dict(ok=True, resizable=False, profile_mode=True, profile_errors=errors,
                         features=inventory, original=shown, resized=shown,
                         length_before=round(b-a,3), length_after=round(b-a,3), delta=0.0,
-                        warnings=['این فایل فقط نمایش داده می‌شود تا همهٔ featureها تأیید شوند.'],
+                        warnings=['این فایل فقط نمایش داده می‌شود تا همهٔ featureها تأیید شوند.'] + tool_warn,
                         changed_lines=[], cnc_text=text, dxf_text=to_dxf(vectors))
         # Safe default: approved profiles still need explicit legacy opt-in until
         # segment-level stretch rules are saved; this prevents arc distortion.
@@ -798,7 +872,7 @@ def process(text, params=None):
                         'ناحیهٔ خطوط صاف قابل تغییر هنوز در پروفایل ثبت نشده است'],
                         features=inventory, original=shown, resized=shown,
                         length_before=round(b-a,3), length_after=round(b-a,3), delta=0.0,
-                        warnings=['برای فعال‌سازی تولید، نقاط شروع و پایان ناحیهٔ کشش را ثبت کنید.'],
+                        warnings=['برای فعال‌سازی تولید، نقاط شروع و پایان ناحیهٔ کشش را ثبت کنید.'] + tool_warn,
                         changed_lines=[], cnc_text=text, dxf_text=to_dxf(vectors))
         legacy = dict(params)
         legacy.pop('profile', None); legacy.pop('feature_profile', None)
@@ -821,7 +895,7 @@ def process(text, params=None):
         levels, edge_lo, edge_hi = detect_geometry(lines)
     except CncError as exc:
         if params.get('allow_view_only'):
-            return view_only_result(text, lines, eol, tool_dia, str(exc))
+            return view_only_result(text, lines, eol, tool_dia, str(exc), extra_warnings=tool_warn)
         raise
     mids = [l for l in levels if edge_lo < l[0] < edge_hi]
     features = [edge_lo] + [l[0] for l in mids] + [edge_hi]
@@ -847,9 +921,10 @@ def process(text, params=None):
 
     out_lines, w2 = apply_resize(lines, shift_for)
     warnings += w2
+    warnings += tool_warn
 
-    v0 = extract_vectors(lines, tool_dia)
-    v1 = extract_vectors(out_lines, tool_dia)
+    v0 = extract_vectors(lines, tool_dia, tool_map)
+    v1 = extract_vectors(out_lines, tool_dia, tool_map)
     a0, b0 = _span(v0)
     a1, b1 = _span(v1)
 

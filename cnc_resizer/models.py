@@ -199,6 +199,56 @@ class CncPlanningIssue(models.Model):
         return f"خطای CNC تسک {self.task_id or '-'}: {self.reason[:60]}"
 
 
+class ToolSlot(models.Model):
+    """One parking position (T number) of the workshop tool magazine.
+    The G-code only names the parking number; the real diameter lives here.
+    Hole compensation (and therefore the DXF HOLES layer) uses this table."""
+    slot = models.PositiveSmallIntegerField(unique=True, verbose_name="پارکینگ (T)")
+    label = models.CharField(max_length=80, blank=True, verbose_name="نام ابزار")
+    dia = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True,
+                              verbose_name="قطر (mm)")
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ("slot",)
+        verbose_name = "ابزار میز CNC"
+        verbose_name_plural = "ابزارهای میز CNC"
+
+    def __str__(self):
+        dia = f"{self.dia}mm" if self.dia is not None else "بدون قطر"
+        return f"T{self.slot} — {self.label or 'بی‌نام'} ({dia})"
+
+    @property
+    def dia_value(self):
+        return None if self.dia is None else float(self.dia)
+
+
+class ToolSet(models.Model):
+    """A named snapshot of the whole magazine (e.g. «ست قطعه A»), because the
+    workshop swaps tools between jobs while parking numbers stay fixed."""
+    name = models.CharField(max_length=80, unique=True, verbose_name="نام ست")
+    slots = models.JSONField(default=dict, verbose_name="ابزارها")  # {"3": {"label":…, "dia":…}}
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ("name",)
+        verbose_name = "ست ابزار CNC"
+        verbose_name_plural = "ست‌های ابزار CNC"
+
+    def __str__(self):
+        return f"ست ابزار: {self.name}"
+
+
+def ensure_tool_slots():
+    """Create parking positions 1..10 once, so the operator edits rows instead
+    of creating them."""
+    existing = set(ToolSlot.objects.values_list("slot", flat=True))
+    missing = [ToolSlot(slot=s) for s in range(1, 11) if s not in existing]
+    if missing:
+        ToolSlot.objects.bulk_create(missing)
+
+
 class CncEngineeringProfile(models.Model):
     """Private, source-hash-bound persistent rules for the reverse-engineering workbench."""
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,

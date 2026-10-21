@@ -9,9 +9,15 @@ from django.db import transaction
 from django.utils import timezone
 
 from . import core
-from .models import CncEngineeringProfile, CncFile, CncPartProfile, CncPlanningIssue, CncSheetPlan
+from .models import CncEngineeringProfile, CncFile, CncPartProfile, CncPlanningIssue, CncSheetPlan, ToolSet, ToolSlot, ensure_tool_slots
 from product.models import Part
 from .services import _base_record_for_part
+
+
+def _current_tool_map():
+    """{parking int: diameter float} from the operator's tool table — the DB is
+    the single source of truth; the client never sends it."""
+    return {s.slot: s.dia_value for s in ToolSlot.objects.all() if s.dia is not None}
 
 
 def cnc_operator_required(view_func):
@@ -51,6 +57,8 @@ def index(request):
         "archive_api_url": reverse("cnc_resizer:archive_files"),
         "profile_api_url": reverse("cnc_resizer:part_profile"),
         "sheet_plans_url": reverse("cnc_resizer:sheet_plans"),
+        "tools_api_url": reverse("cnc_resizer:tools"),
+        "tool_sets_api_url": reverse("cnc_resizer:tool_sets"),
         "part_id": request.GET.get("part_id", ""),
         "cnc_setup": setup,
     })
@@ -90,6 +98,9 @@ def process(request):
         payload = json.loads(request.body.decode("utf-8"))
     except Exception:
         payload = None
+    # میز ابزار دیتابیس، مرجع قطر ابزارهاست؛ کلاینت آن را نمی‌فرستد (اگر بفرستد بازنویسی می‌شود).
+    if isinstance(payload, dict) and isinstance(payload.get('params'), dict):
+        payload['params']['tool_map'] = _current_tool_map()
     status, data = core.handle_payload(payload if isinstance(payload, dict) else {})
     if status != 200 or "cnc_text" not in data:
         return JsonResponse(data, status=status, json_dumps_params={"ensure_ascii": False})
@@ -156,6 +167,98 @@ def analyze(request):
         return JsonResponse({'ok': False, 'error': str(exc)}, status=400,
                             json_dumps_params={'ensure_ascii': False})
     return JsonResponse(result, json_dumps_params={'ensure_ascii': False})
+
+
+@login_required
+@cnc_operator_required
+@require_http_methods(['GET', 'POST'])
+def tools(request):
+    """The workshop tool magazine (parking T numbers 1..10 → label + diameter).
+    GET returns the current table plus saved set names; POST overwrites the
+    given rows. The table feeds hole compensation (DXF/preview) automatically."""
+    import json
+    ensure_tool_slots()
+    if request.method == 'GET':
+        slots = [{'slot': s.slot, 'label': s.label, 'dia': s.dia_value}
+                 for s in ToolSlot.objects.all()]
+        sets = list(ToolSet.objects.values_list('name', flat=True))
+        return JsonResponse({'ok': True, 'slots': slots, 'sets': sets},
+                            json_dumps_params={'ensure_ascii': False})
+    try:
+        payload = json.loads(request.body.decode('utf-8'))
+        rows = payload.get('slots')
+        if not isinstance(rows, list) or not rows or len(rows) > 10:
+            raise ValueError
+        seen = set()
+        with transaction.atomic():
+            for row in rows:
+                slot = int(row.get('slot'))
+                if not (1 <= slot <= 10) or slot in seen:
+                    raise ValueError
+                seen.add(slot)
+                label = str(row.get('label') or '').strip()[:80]
+                dia_raw = row.get('dia')
+                dia = None if dia_raw in (None, '') else round(float(dia_raw), 2)
+                if dia is not None and not (0.1 <= dia <= 100):
+                    raise ValueError
+                obj, _created = ToolSlot.objects.get_or_create(slot=slot)
+                obj.label, obj.dia = label, dia
+                obj.save()
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+        return JsonResponse({'ok': False, 'error': 'مقادیر میز ابزار نامعتبر است.'}, status=400,
+                            json_dumps_params={'ensure_ascii': False})
+    return JsonResponse({'ok': True, 'message': 'میز ابزار ذخیره شد.'},
+                        json_dumps_params={'ensure_ascii': False})
+
+
+@login_required
+@cnc_operator_required
+@require_POST
+def tool_sets(request):
+    """Named snapshots of the magazine: the workshop swaps tools between jobs
+    (قطعه A / قطعه B) while parking numbers stay fixed."""
+    import json
+    from django.core.exceptions import ObjectDoesNotExist
+    try:
+        payload = json.loads(request.body.decode('utf-8'))
+        action = payload.get('action')
+        name = str(payload.get('name') or '').strip()[:80]
+        if action not in ('save', 'load', 'delete') or not name:
+            raise ValueError
+        if action == 'save':
+            data = {}
+            for s in ToolSlot.objects.all():
+                if s.label or s.dia is not None:
+                    data[str(s.slot)] = {'label': s.label, 'dia': s.dia_value}
+            if not data:
+                return JsonResponse({'ok': False, 'error': 'میز ابزار خالی است؛ اول ابزارها را ثبت کنید.'},
+                                    status=400, json_dumps_params={'ensure_ascii': False})
+            ToolSet.objects.update_or_create(name=name, defaults={'slots': data})
+            return JsonResponse({'ok': True, 'message': f'ست «{name}» ذخیره شد.'},
+                                json_dumps_params={'ensure_ascii': False})
+        try:
+            tool_set = ToolSet.objects.get(name=name)
+        except ObjectDoesNotExist:
+            return JsonResponse({'ok': False, 'error': f'ست «{name}» پیدا نشد.'}, status=404,
+                                json_dumps_params={'ensure_ascii': False})
+        if action == 'delete':
+            tool_set.delete()
+            return JsonResponse({'ok': True, 'message': f'ست «{name}» حذف شد.'},
+                                json_dumps_params={'ensure_ascii': False})
+        # load
+        ensure_tool_slots()
+        with transaction.atomic():
+            for s in ToolSlot.objects.all():
+                entry = tool_set.slots.get(str(s.slot))
+                s.label = str((entry or {}).get('label') or '')[:80]
+                dia = (entry or {}).get('dia')
+                s.dia = None if dia in (None, '') else round(float(dia), 2)
+                s.save()
+        return JsonResponse({'ok': True, 'message': f'ست «{name}» بارگذاری شد.'},
+                            json_dumps_params={'ensure_ascii': False})
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+        return JsonResponse({'ok': False, 'error': 'درخواست ست ابزار نامعتبر است.'}, status=400,
+                            json_dumps_params={'ensure_ascii': False})
 
 
 @login_required
