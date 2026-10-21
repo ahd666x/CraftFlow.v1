@@ -648,9 +648,13 @@ def _stretch_feature_x(block: Any, feature_id: str, band_start: float, band_end:
                     move.arc.center["x"] += start_offset
 
 
+_MAX_GRID_COPIES = 64  # mirrors serializer._MAX_COPIES_PER_BLOCK
+
+
 def preview_edits(program: Program, request: dict[str, Any], source_text: str) -> dict[str, Any]:
-    """Interactive rigid per-feature edits (phases one to three: shift, X
-    stretch, declarative placement constraints, linear arrays, mirroring).
+    """Interactive rigid per-feature edits (phases one to three plus the
+    package-F grid: shift, X stretch, declarative placement constraints,
+    linear arrays, 2-D grids, mirroring).
 
     A ``shift`` edit translates one recognized feature's whole block by
     ``(dx, dy)``; a ``resize_x`` edit stretches one feature's own X span to
@@ -662,13 +666,16 @@ def preview_edits(program: Program, request: dict[str, Any], source_text: str) -
     features). Phase three adds ``array`` (``count`` translated copies of the
     feature's block, inserted right after it as text duplications) and
     ``mirror`` (the block reflected across its own centre, arcs reversed).
-    A constraint or an array/mirror on a member of a depth-repeat group
-    broadcasts to every member. The candidate is accepted only after the
-    serializer accepts it AND a runtime reparse of the patched draft proves
-    every move (original or copy) reached exactly its expected position
-    while no Z value changed, and no edit CREATED a new partial bounds
-    overlap between two features (overlaps already present in the source
-    stay the operator's responsibility; full containment counts as
+    Package F adds ``grid``: ``count_x`` x ``count_y`` translated copies
+    (cartesian product of the two signed pitches, row-major order) forming an
+    ``(count_x+1) x (count_y+1)`` arrangement with the untouched original at
+    its corner. A constraint or an array/grid/mirror on a member of a
+    depth-repeat group broadcasts to every member. The candidate is accepted
+    only after the serializer accepts it AND a runtime reparse of the patched
+    draft proves every move (original or copy) reached exactly its expected
+    position while no Z value changed, and no edit CREATED a new partial
+    bounds overlap between two features (overlaps already present in the
+    source stay the operator's responsibility; full containment counts as
     legitimate nesting). Features sharing the same XY path at multiple
     depths must be edited together with identical parameters or not at all.
     """
@@ -684,10 +691,11 @@ def preview_edits(program: Program, request: dict[str, Any], source_text: str) -
     seen: set[str] = set()
     for index, edit in enumerate(edits):
         label = f"Edit {index + 1}"
-        if not isinstance(edit, dict) or edit.get("op") not in ("shift", "resize_x", "array", "mirror",
+        if not isinstance(edit, dict) or edit.get("op") not in ("shift", "resize_x", "array", "grid", "mirror",
                                                                 "center_on", "set_gap", "center_between"):
             raise TransformError(
-                f"{label}: op must be one of shift, resize_x, array, mirror, center_on, set_gap, center_between")
+                f"{label}: op must be one of shift, resize_x, array, grid, mirror, center_on, "
+                "set_gap, center_between")
         feature_id = edit.get("feature_id")
         if not isinstance(feature_id, str) or feature_id not in feature_by_id:
             raise TransformError(f"{label}: unknown feature_id {feature_id!r}")
@@ -735,6 +743,39 @@ def preview_edits(program: Program, request: dict[str, Any], source_text: str) -
                                "dy": offset if axis == "y" else 0.0})
             normalized.append({"op": "array", "feature_id": feature_id, "axis": axis,
                                "count": count, "pitch": pitch, "deltas": deltas,
+                               "block_id": feature["block_id"]})
+        elif edit["op"] == "grid":
+            count_x = edit.get("count_x")
+            count_y = edit.get("count_y")
+            for name, value in (("count_x", count_x), ("count_y", count_y)):
+                if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 32:
+                    raise TransformError(
+                        f"{label}: {name} must be an integer between 1 and 32 (copies to add on that axis)")
+            if count_x * count_y < 2:
+                raise TransformError(
+                    f"{label}: a grid needs at least one copy; count_x * count_y must be 2 or more "
+                    "(for a single row use op=array)")
+            if count_x * count_y > _MAX_GRID_COPIES:
+                raise TransformError(
+                    f"{label}: at most {_MAX_GRID_COPIES} copies per feature are supported "
+                    f"(count_x * count_y = {count_x * count_y})")
+            pitch_x = 0.0
+            pitch_y = 0.0
+            if count_x > 1:
+                pitch_x = _finite_number(edit.get("pitch_x"), f"{label} pitch_x")
+                if abs(pitch_x) <= 1e-6:
+                    raise TransformError(f"{label}: pitch_x must not be zero when count_x > 1")
+            if count_y > 1:
+                pitch_y = _finite_number(edit.get("pitch_y"), f"{label} pitch_y")
+                if abs(pitch_y) <= 1e-6:
+                    raise TransformError(f"{label}: pitch_y must not be zero when count_y > 1")
+            # Row-major order (Y rows outer, X columns inner): copies land
+            # row by row next to their source block.
+            deltas = [{"dx": pitch_x * i, "dy": pitch_y * j}
+                      for j in range(1, count_y + 1) for i in range(1, count_x + 1)]
+            normalized.append({"op": "grid", "feature_id": feature_id,
+                               "count_x": count_x, "count_y": count_y,
+                               "pitch_x": pitch_x, "pitch_y": pitch_y, "deltas": deltas,
                                "block_id": feature["block_id"]})
         elif edit["op"] == "resize_x":
             new_length = _finite_number(edit.get("new_length"), f"{label} new_length")
@@ -817,26 +858,32 @@ def preview_edits(program: Program, request: dict[str, Any], source_text: str) -
                 group_of[fid] = ids
     taken: set[str] = {item["feature_id"] for item in normalized}
     array_summaries: list[dict[str, Any]] = []
-    for item in [entry for entry in normalized if entry["op"] == "array"]:
+    for item in [entry for entry in normalized if entry["op"] in ("array", "grid")]:
         fid = item["feature_id"]
         targets = list(group_of.get(fid, [fid]))
         for member in targets:
             if member != fid and (member in seen or member in taken):
                 raise TransformError(
-                    f"Array on feature {fid}: depth-repeat group member {member} is already edited; "
-                    "a group arrays only as one unit and every member must be free")
+                    f"{item['op'].title()} on feature {fid}: depth-repeat group member {member} is "
+                    "already edited; a group replicates only as one unit and every member must be free")
         copy_targets = []
         for member in targets:
             member_feature = feature_by_id[member]
             if not member_feature.get("bounds"):
                 raise TransformError(
-                    f"Array on feature {fid}: group member {member} has unresolved geometry bounds")
+                    f"{item['op'].title()} on feature {fid}: group member {member} has unresolved geometry bounds")
             copy_targets.append({"feature_id": member, "block_id": member_feature["block_id"]})
             seen.add(member)
             taken.add(member)
         item["copy_targets"] = copy_targets
-        array_summaries.append({"feature_id": fid, "axis": item["axis"], "count": item["count"],
-                                "pitch": item["pitch"], "targets": targets})
+        summary: dict[str, Any] = {"op": item["op"], "feature_id": fid}
+        if item["op"] == "array":
+            summary.update(axis=item["axis"], count=item["count"], pitch=item["pitch"])
+        else:
+            summary.update(count_x=item["count_x"], count_y=item["count_y"],
+                           pitch_x=item["pitch_x"], pitch_y=item["pitch_y"])
+        summary["targets"] = targets
+        array_summaries.append(summary)
     mirror_seeds = [entry for entry in normalized if entry["op"] == "mirror"]
     for item in mirror_seeds:
         fid = item["feature_id"]
@@ -931,7 +978,7 @@ def preview_edits(program: Program, request: dict[str, Any], source_text: str) -
             continue
         group = list(pattern["feature_ids"])
         touched = [fid for fid in group if fid in edit_by_feature
-                   and edit_by_feature[fid]["op"] != "array"]
+                   and edit_by_feature[fid]["op"] not in ("array", "grid")]
         if not touched:
             continue
         if len(touched) < len(group):
@@ -967,7 +1014,7 @@ def preview_edits(program: Program, request: dict[str, Any], source_text: str) -
 
     block_copies: list[dict[str, Any]] = []
     for item in normalized:
-        if item["op"] != "array":
+        if item["op"] not in ("array", "grid"):
             continue
         for target in item["copy_targets"]:
             block_copies.append({"source_block_id": target["block_id"], "deltas": item["deltas"]})
@@ -1005,7 +1052,7 @@ def preview_edits(program: Program, request: dict[str, Any], source_text: str) -
     if has_copies or has_mirror:
         copy_plan: dict[str, list[tuple[float, float]]] = {}
         for item in normalized:
-            if item["op"] == "array":
+            if item["op"] in ("array", "grid"):
                 for target in item["copy_targets"]:
                     copy_plan.setdefault(target["block_id"], []).extend(
                         (delta["dx"], delta["dy"]) for delta in item["deltas"])
@@ -1331,8 +1378,9 @@ def preview_edits(program: Program, request: dict[str, Any], source_text: str) -
     result_warnings = [collision_warning]
     if array_summaries:
         result_warnings.append(
-            "Array copies are inserted right after their source block (per depth-pass member), carry no "
-            "N sequence word, and each copy keeps the source block's own cutting order.")
+            "Array and grid copies are inserted right after their source block (per depth-pass member, "
+            "grid rows in Y-major order), carry no N sequence word, and each copy keeps the source "
+            "block's own cutting order.")
     if has_mirror:
         result_warnings.append(
             "Mirroring keeps the feature's bounds but reverses every arc direction and the cutting "

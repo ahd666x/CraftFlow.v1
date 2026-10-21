@@ -240,6 +240,31 @@ class ToolSet(models.Model):
         return f"ست ابزار: {self.name}"
 
 
+class EditTemplate(models.Model):
+    """A named, reusable *interactive edit set* for the reverse-engineering
+    workbench (e.g. «شبکهٔ ۳×۲ سوراخ t.16»). A template is a saved FORM, never
+    an executable artifact: loading it only prefills the workbench edit list
+    and every edit still passes the full fail-closed preview (runtime proof +
+    collision gate) before any machine output can exist. Templates are shared
+    across the workshop (parts repeat, operators rotate); ``created_by`` is
+    audit only."""
+    name = models.CharField(max_length=80, unique=True, verbose_name="نام قالب")
+    payload = models.JSONField(default=list, verbose_name="ویرایش‌ها")  # [{"op":…, "feature_id":…, …}]
+    note = models.CharField(max_length=200, blank=True, verbose_name="یادداشت")
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="created_edit_templates")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ("name",)
+        verbose_name = "قالب ویرایش CNC"
+        verbose_name_plural = "قالب‌های ویرایش CNC"
+
+    def __str__(self):
+        return f"قالب ویرایش: {self.name}"
+
+
 def ensure_tool_slots():
     """Create parking positions 1..10 once, so the operator edits rows instead
     of creating them."""

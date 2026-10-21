@@ -9,7 +9,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from . import core
-from .models import CncEngineeringProfile, CncFile, CncPartProfile, CncPlanningIssue, CncSheetPlan, ToolSet, ToolSlot, ensure_tool_slots
+from .models import CncEngineeringProfile, CncFile, CncPartProfile, CncPlanningIssue, CncSheetPlan, EditTemplate, ToolSet, ToolSlot, ensure_tool_slots
 from product.models import Part
 from .services import _base_record_for_part
 
@@ -75,6 +75,8 @@ def engine_workbench(request):
         "engine_profile_url": reverse("cnc_resizer:engine_profile"),
         "engine_preflight_url": reverse("cnc_resizer:engine_preflight"),
         "engine_output_url": reverse("cnc_resizer:engine_output"),
+        "edit_templates_url": reverse("cnc_resizer:edit_templates"),
+        "edit_template_delete_url": reverse("cnc_resizer:edit_template_delete", args=[0]),
     })
 
 
@@ -403,6 +405,83 @@ def engine_profile(request):
         return JsonResponse({'ok': False, 'error': str(exc)}, status=400, json_dumps_params={'ensure_ascii': False})
     return JsonResponse({'ok': True, 'saved': True, 'source_sha256': digest,
                          'profile_id': record.pk, 'updated_at': record.updated_at.isoformat()},
+                        json_dumps_params={'ensure_ascii': False})
+
+
+_EDIT_TEMPLATE_OPS = frozenset({"shift", "resize_x", "array", "grid", "mirror",
+                                "center_on", "set_gap", "center_between"})
+
+
+def _validate_template_payload(edits):
+    """Structural validation ONLY: a template is a saved FORM, never an
+    executable artifact. Geometry, depth-repeat groups, collisions and the
+    runtime proof are all enforced by the preview endpoint at USE time."""
+    if not isinstance(edits, list) or not edits:
+        raise ValueError('ویرایش‌های قالب باید یک فهرست غیرخالی باشد.')
+    if len(edits) > 64:
+        raise ValueError('حداکثر ۶۴ ویرایش در هر قالب ذخیره می‌شود.')
+    for index, edit in enumerate(edits):
+        if not isinstance(edit, dict):
+            raise ValueError(f'ویرایش {index + 1} باید یک شیء باشد.')
+        op = edit.get('op')
+        if not isinstance(op, str) or op not in _EDIT_TEMPLATE_OPS:
+            raise ValueError(f'ویرایش {index + 1}: نوع ویرایش (op) نامعتبر است.')
+        if not isinstance(edit.get('feature_id'), str) or not edit['feature_id']:
+            raise ValueError(f'ویرایش {index + 1}: feature_id باید رشتهٔ غیرخالی باشد.')
+    return edits
+
+
+@login_required
+@cnc_operator_required
+@require_http_methods(['GET', 'POST'])
+def edit_templates(request):
+    """Named reusable workbench edit sets (قالب ویرایش), shared workshop-wide.
+
+    GET lists them; POST upserts by name. A template never executes by
+    itself: loading only prefills the workbench edit list, and every edit
+    still passes the full fail-closed preview (runtime proof + collision
+    gate) before any machine output can exist."""
+    import json
+    if request.method == 'GET':
+        templates = [{'id': template.pk, 'name': template.name, 'note': template.note,
+                      'payload': template.payload, 'updated_at': template.updated_at.isoformat()}
+                     for template in EditTemplate.objects.all()]
+        return JsonResponse({'ok': True, 'templates': templates},
+                            json_dumps_params={'ensure_ascii': False})
+    try:
+        payload = json.loads(request.body.decode('utf-8'))
+        if not isinstance(payload, dict):
+            raise ValueError('درخواست قالب ویرایش نامعتبر است.')
+        name = str(payload.get('name') or '').strip()[:80]
+        if not name:
+            raise ValueError('نام قالب لازم است.')
+        edits = _validate_template_payload(payload.get('edits'))
+        note = str(payload.get('note') or '').strip()[:200]
+        template, created = EditTemplate.objects.update_or_create(
+            name=name, defaults={'payload': edits, 'note': note, 'created_by': request.user})
+        return JsonResponse({'ok': True, 'created': created, 'template_id': template.pk,
+                             'message': f'قالب «{name}» ذخیره شد.'},
+                            json_dumps_params={'ensure_ascii': False})
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        message = str(exc) or 'درخواست قالب ویرایش نامعتبر است.'
+        return JsonResponse({'ok': False, 'error': message}, status=400,
+                            json_dumps_params={'ensure_ascii': False})
+
+
+@login_required
+@cnc_operator_required
+@require_POST
+def edit_template_delete(request, template_id: int):
+    import json
+    from django.core.exceptions import ObjectDoesNotExist
+    try:
+        template = EditTemplate.objects.get(pk=template_id)
+    except ObjectDoesNotExist:
+        return JsonResponse({'ok': False, 'error': f'قالب شمارهٔ {template_id} پیدا نشد.'}, status=404,
+                            json_dumps_params={'ensure_ascii': False})
+    name = template.name
+    template.delete()
+    return JsonResponse({'ok': True, 'message': f'قالب «{name}» حذف شد.'},
                         json_dumps_params={'ensure_ascii': False})
 
 

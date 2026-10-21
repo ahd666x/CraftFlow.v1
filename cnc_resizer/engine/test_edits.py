@@ -1135,6 +1135,14 @@ def mirror_preview(text, feature_id, axis="x"):
                          source_text=text)
 
 
+def grid_preview(text, feature_id, count_x=2, pitch_x=30.0, count_y=1, pitch_y=0.0):
+    program = parse_program(text)
+    return preview_edits(program, {"edits": [{"op": "grid", "feature_id": feature_id,
+                                              "count_x": count_x, "pitch_x": pitch_x,
+                                              "count_y": count_y, "pitch_y": pitch_y}]},
+                         source_text=text)
+
+
 class ArrayPreviewTests(SimpleTestCase):
     def test_array_x_places_copies_right_after_the_source_block(self):
         result = array_preview(ARRAY_SOURCE_LF, "feature-block-0001")
@@ -1301,6 +1309,134 @@ class MirrorPreviewTests(SimpleTestCase):
         self.assertTrue(result["validation"]["passed"], result["validation"]["errors"])
 
 
+class GridPreviewTests(SimpleTestCase):
+    def test_grid_builds_a_cartesian_arrangement(self):
+        program = parse_program(ARRAY_SOURCE_LF)
+        result = preview_edits(program, {"edits": [
+            {"op": "grid", "feature_id": "feature-block-0001",
+             "count_x": 2, "pitch_x": 30, "count_y": 2, "pitch_y": 35}]},
+            source_text=ARRAY_SOURCE_LF)
+        self.assertTrue(result["validation"]["passed"], result["validation"]["errors"])
+        summary = result["array_applied"][0]
+        self.assertEqual(summary["op"], "grid")
+        self.assertEqual(summary["count_x"], 2)
+        self.assertEqual(summary["count_y"], 2)
+        self.assertEqual(summary["targets"], ["feature-block-0001"])
+        # row-major deltas: Y rows outer, X columns inner
+        deltas = [(delta["dx"], delta["dy"]) for delta in result["edits_applied"][0]["deltas"]]
+        self.assertEqual(deltas, [(30.0, 35.0), (60.0, 35.0), (30.0, 70.0), (60.0, 70.0)])
+        # 2 source features + 4 copies
+        self.assertEqual(len(result["resized"]["features"]), 6)
+        copies = sorted(round(f["bounds"]["x_min"], 3) for f in result["resized"]["features"]
+                        if f["bounds"]["y_min"] > 40
+                        and f["bounds"]["x_max"] - f["bounds"]["x_min"] < 21)
+        self.assertEqual(copies, [40.0, 40.0, 70.0, 70.0])
+
+    def test_grid_single_row_matches_array_semantics(self):
+        result = grid_preview(ARRAY_SOURCE_LF, "feature-block-0001", count_x=2, pitch_x=25)
+        self.assertTrue(result["validation"]["passed"], result["validation"]["errors"])
+        spans = sorted(round(f["bounds"]["x_min"], 3) for f in result["resized"]["features"]
+                       if abs(f["bounds"]["y_min"] - 10) < 1e-6
+                       and f["bounds"]["x_max"] - f["bounds"]["x_min"] < 21)
+        self.assertEqual(spans, [10.0, 35.0, 60.0])  # source + copies at +25, +50
+
+    def test_grid_single_column_spreads_in_y(self):
+        result = grid_preview(ARRAY_SOURCE_LF, "feature-block-0001",
+                              count_x=1, pitch_x=0, count_y=2, pitch_y=40)
+        self.assertTrue(result["validation"]["passed"], result["validation"]["errors"])
+        tops = sorted(round(f["bounds"]["y_min"], 3) for f in result["resized"]["features"]
+                      if f["bounds"]["x_max"] - f["bounds"]["x_min"] < 21)
+        self.assertEqual(tops, [10.0, 50.0, 90.0])
+
+    def test_grid_negative_pitch_runs_opposite(self):
+        result = grid_preview(ARRAY_SOURCE_LF, "feature-block-0001", count_x=2, pitch_x=-30)
+        self.assertTrue(result["validation"]["passed"], result["validation"]["errors"])
+        lows = sorted(round(f["bounds"]["x_min"], 3) for f in result["resized"]["features"]
+                      if f["bounds"]["x_max"] - f["bounds"]["x_min"] < 21
+                      and abs(f["bounds"]["y_max"] - f["bounds"]["y_min"] - 20) < 1e-6
+                      and abs(f["bounds"]["y_min"] - 10) < 1e-6)
+        self.assertEqual(lows, [-50.0, -20.0, 10.0])
+
+    def test_grid_rejects_invalid_parameters(self):
+        cases = [
+            {"count_x": 0, "count_y": 1},
+            {"count_x": 2.5, "count_y": 1},
+            {"count_x": True, "count_y": 1},
+            {"count_x": 33, "count_y": 1},
+            {"count_x": 1, "count_y": 1},           # zero copies -> use array
+            {"count_x": 9, "count_y": 8},           # 72 > 64 copies
+            {"count_x": 2},                          # count_y missing
+            {"count_x": 2, "count_y": 1, "pitch_x": 0},
+            {"count_x": 2, "count_y": 1, "pitch_x": "abc"},
+            {"count_x": 2, "count_y": 2, "pitch_x": 30},   # pitch_y missing
+            {"count_x": 2, "count_y": 2, "pitch_x": 30, "pitch_y": 0},
+        ]
+        for extra in cases:
+            with self.subTest(extra=extra):
+                program = parse_program(ARRAY_SOURCE_LF)
+                edit = {"op": "grid", "feature_id": "feature-block-0001", **extra}
+                with self.assertRaises(TransformError):
+                    preview_edits(program, {"edits": [edit]}, source_text=ARRAY_SOURCE_LF)
+
+    def test_grid_depth_repeat_group_broadcasts_to_every_member(self):
+        program = parse_program(TWO_DEPTH_LF)
+        result = preview_edits(program, {"edits": [
+            {"op": "grid", "feature_id": "feature-block-0001",
+             "count_x": 1, "count_y": 2, "pitch_y": 40}]}, source_text=TWO_DEPTH_LF)
+        self.assertTrue(result["validation"]["passed"], result["validation"]["errors"])
+        self.assertEqual(result["array_applied"][0]["op"], "grid")
+        self.assertEqual(sorted(result["array_applied"][0]["targets"]),
+                         ["feature-block-0001", "feature-block-0002"])
+        squares = sorted(round(f["bounds"]["y_min"], 3) for f in result["resized"]["features"]
+                         if f["bounds"]["x_max"] - f["bounds"]["x_min"] < 21)
+        self.assertEqual(squares, [10.0, 10.0, 50.0, 50.0, 90.0, 90.0])
+
+    def test_grid_conflicts_with_other_edits_on_depth_group(self):
+        program = parse_program(TWO_DEPTH_LF)
+        with self.assertRaises(TransformError) as ctx:
+            preview_edits(program, {"edits": [
+                {"op": "shift", "feature_id": "feature-block-0002", "dx": 5, "dy": 0},
+                {"op": "grid", "feature_id": "feature-block-0001",
+                 "count_x": 1, "count_y": 2, "pitch_y": 40}]}, source_text=TWO_DEPTH_LF)
+        self.assertIn("already edited", str(ctx.exception))
+
+    def test_grid_twice_on_same_feature_rejected(self):
+        program = parse_program(ARRAY_SOURCE_LF)
+        with self.assertRaises(TransformError) as ctx:
+            preview_edits(program, {"edits": [
+                {"op": "grid", "feature_id": "feature-block-0001",
+                 "count_x": 1, "count_y": 2, "pitch_y": 40},
+                {"op": "grid", "feature_id": "feature-block-0001",
+                 "count_x": 2, "count_y": 1, "pitch_x": 30}]}, source_text=ARRAY_SOURCE_LF)
+        self.assertIn("edited twice", str(ctx.exception))
+
+    def test_grid_pitch_smaller_than_feature_rejected_by_collision(self):
+        result = grid_preview(ARRAY_SOURCE_LF, "feature-block-0001", count_x=2, pitch_x=10)
+        self.assertFalse(result["validation"]["passed"])
+        self.assertTrue(any("newly partially overlap" in item for item in result["validation"]["errors"]))
+        self.assertGreaterEqual(len(result["collision_check"]["flagged"]), 1)
+
+    def test_grid_copy_landing_on_a_third_feature_partially_rejected(self):
+        # copy at -45 partially overlaps block-0001's bounds (X 95..100),
+        # the copy at -90 lands fully inside it (containment allowed) —
+        # the partial pair still fails the whole edit.
+        program = parse_program(THREE_BLOCKS_LF)
+        result = preview_edits(program, {"edits": [
+            {"op": "grid", "feature_id": "feature-block-0003",
+             "count_x": 2, "pitch_x": -45, "count_y": 1}]}, source_text=THREE_BLOCKS_LF)
+        self.assertFalse(result["validation"]["passed"])
+        self.assertTrue(any("newly partially overlap" in item for item in result["validation"]["errors"]))
+
+    def test_grid_and_shift_compose_across_features(self):
+        program = parse_program(ARRAY_SOURCE_LF)
+        result = preview_edits(program, {"edits": [
+            {"op": "grid", "feature_id": "feature-block-0001",
+             "count_x": 2, "pitch_x": 25, "count_y": 1},
+            {"op": "shift", "feature_id": "feature-block-0002", "dx": 0, "dy": 100},
+        ]}, source_text=ARRAY_SOURCE_LF)
+        self.assertTrue(result["validation"]["passed"], result["validation"]["errors"])
+
+
 class EnginePhaseThreeViewTests(TestCase):
     @classmethod
     def setUpTestData(cls):
@@ -1380,7 +1516,56 @@ class EnginePhaseThreeViewTests(TestCase):
         self.assertTrue(body["validation"]["passed"], body["validation"]["errors"])
         self.assertEqual(body["array_applied"][0]["count"], 2)
         self.assertEqual(len(body["resized"]["features"]), 4)
-        self.assertTrue(any("Array copies" in warning for warning in body["validation"]["warnings"]))
+        self.assertTrue(any("Array and grid copies" in warning for warning in body["validation"]["warnings"]))
+
+    def test_preview_endpoint_accepts_grid(self):
+        self.client.login(username="cnc-manager-p3", password="testpass")
+        payload = {"filename": "parts.cnc", "content": ARRAY_SOURCE_LF,
+                   "edits": [{"op": "grid", "feature_id": "feature-block-0001",
+                              "count_x": 2, "pitch_x": 25, "count_y": 2, "pitch_y": 35}]}
+        response = self.client.post(self.preview_url(), data=json.dumps(payload),
+                                    content_type="application/json")
+        self.assertEqual(response.status_code, 200, response.content)
+        body = response.json()
+        self.assertTrue(body["validation"]["passed"], body["validation"]["errors"])
+        self.assertEqual(body["array_applied"][0]["op"], "grid")
+        self.assertEqual(len(body["resized"]["features"]), 6)
+
+    @override_settings(CNC_RESIZER_IMPLICIT_UNITS="mm", CNC_RESIZER_SHEET_ADAPTER="minimal_xy_router")
+    def test_output_endpoint_grid_structural_gate(self):
+        self.client.login(username="cnc-manager-p3", password="testpass")
+        payload = {"filename": "grid.cnc", "content": WORKSHOP_ARRAY_CRLF,
+                   "edits": [{"op": "grid", "feature_id": "feature-block-0001",
+                              "count_x": 2, "pitch_x": 50, "count_y": 1}]}
+        response = self.client.post(self.output_url(), data=json.dumps(payload),
+                                    content_type="application/json")
+        self.assertEqual(response.status_code, 200, response.content)
+        body = response.json()
+        self.assertTrue(body["allowed"], body)
+        self.assertTrue(body["safe_for_execution"])
+        self.assertEqual(body["postprocessor"]["gate"], "structural_with_declared_insertions")
+        self.assertEqual(body["inserted_line_count"], 14)  # two copies of a 7-line block
+        text = body["cnc_text"]
+        self.assertEqual(len(text.split("\r\n")), len(WORKSHOP_ARRAY_CRLF.split("\r\n")) + 14)
+        self.assertIn("N30G1X30.000Y10.000", text)  # original untouched
+        self.assertIn("G1X80.000Y10.000", text)  # copy translated by +50
+        self.assertIn("G1X130.000Y10.000", text)  # copy translated by +100
+        self.assertIn("G0X60.000Y10.000Z5.000M3 S16000", text)  # first copy entry rapid
+        self.assertIn("G0X110.000Y10.000Z5.000M3 S16000", text)  # second copy entry rapid
+        self.assertNotIn("N30G1X80.000", text)  # copy lines carry no N word
+
+    @override_settings(CNC_RESIZER_IMPLICIT_UNITS="mm", CNC_RESIZER_SHEET_ADAPTER="minimal_xy_router")
+    def test_output_endpoint_grid_collision_blocked(self):
+        self.client.login(username="cnc-manager-p3", password="testpass")
+        payload = {"filename": "grid.cnc", "content": WORKSHOP_ARRAY_CRLF,
+                   "edits": [{"op": "grid", "feature_id": "feature-block-0001",
+                              "count_x": 2, "pitch_x": 10, "count_y": 1}]}
+        response = self.client.post(self.output_url(), data=json.dumps(payload),
+                                    content_type="application/json")
+        self.assertEqual(response.status_code, 200, response.content)
+        body = response.json()
+        self.assertFalse(body["allowed"])
+        self.assertTrue(any("overlap" in item for item in body["blockers"]), body["blockers"])
 
 
 if __name__ == "__main__":
