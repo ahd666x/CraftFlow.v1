@@ -30,8 +30,9 @@ def preview_program(text: str, request: dict[str, Any], *, filename: str = "<mem
 
 
 def edits_program(text: str, request: dict[str, Any], *, filename: str = "<memory>") -> dict[str, Any]:
-    """Interactive rigid per-feature edits (phase one: whole-block shift and
-    X-axis segment stretch), runtime-verified through the pure-coordinate-patch
-    serializer."""
+    """Interactive rigid per-feature edits (phase one/two: whole-block shift,
+    X-axis segment stretch and declarative placement constraints with a
+    bounds-level collision gate), runtime-verified through the
+    pure-coordinate-patch serializer."""
     program = parse_program(text, filename=filename)
     return preview_edits(program, request, source_text=text)

@@ -282,8 +282,9 @@ def engine_analyze(request):
 
 def _engine_candidate(payload: dict, filename: str):
     """Build an engine preview candidate from an interactive ``edits`` list
-    (phase-one rigid shifts, runtime-verified) or from a parametric
-    ``profile``. Sending both is rejected — they do not compose yet."""
+    (rigid shifts, X stretches and placement constraints, runtime-verified)
+    or from a parametric ``profile``. Sending both is rejected — they do not
+    compose yet."""
     from .engine.service import edits_program, preview_program
     has_edits = 'edits' in payload
     has_profile = 'profile' in payload

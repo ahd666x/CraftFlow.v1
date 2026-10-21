@@ -570,17 +570,26 @@ def _stretch_feature_x(block: Any, feature_id: str, band_start: float, band_end:
 
 
 def preview_edits(program: Program, request: dict[str, Any], source_text: str) -> dict[str, Any]:
-    """Interactive rigid per-feature edits (phase one: whole-block shift and
-    X-axis segment stretch).
+    """Interactive rigid per-feature edits (phase one/two: shift, X stretch,
+    declarative placement constraints).
 
     A ``shift`` edit translates one recognized feature's whole block by
     ``(dx, dy)``; a ``resize_x`` edit stretches one feature's own X span to
-    ``new_length`` around an anchor (``min``/``max``/``center``). The candidate
-    is accepted only after the pure-coordinate-patch serializer accepts it AND
-    a runtime reparse of the patched draft proves every edited feature reached
-    exactly its requested geometry while every untouched feature stayed put
-    and no Z value changed. Features sharing the same XY path at multiple
-    depths must be edited together with identical parameters or not at all.
+    ``new_length`` around an anchor (``min``/``max``/``center``). Phase two
+    adds three constraint ops that are resolved against the ORIGINAL geometry
+    into derived rigid shifts: ``center_on`` (feature or program-envelope
+    centre), ``set_gap`` (exact edge-to-edge gap to an anchor feature on one
+    axis) and ``center_between`` (equidistant midpoint of two anchor
+    features). A constraint on a member of a depth-repeat group broadcasts the
+    identical derived shift to every member. The candidate is accepted only
+    after the pure-coordinate-patch serializer accepts it AND a runtime
+    reparse of the patched draft proves every edited feature reached exactly
+    its requested geometry while every untouched feature stayed put, no Z
+    value changed, and no edit CREATED a new partial bounds overlap between
+    two features (overlaps already present in the source stay the operator's
+    responsibility; full containment counts as legitimate nesting). Features
+    sharing the same XY path at multiple depths must be edited together with
+    identical parameters or not at all.
     """
     if not isinstance(request, dict):
         raise TransformError("Edits request must be an object")
@@ -590,11 +599,14 @@ def preview_edits(program: Program, request: dict[str, Any], source_text: str) -
     recognition = recognize(program)
     feature_by_id = {feature["id"]: feature for feature in recognition["features"]}
     normalized: list[dict[str, Any]] = []
+    raw_constraints: list[dict[str, Any]] = []
     seen: set[str] = set()
     for index, edit in enumerate(edits):
         label = f"Edit {index + 1}"
-        if not isinstance(edit, dict) or edit.get("op") not in ("shift", "resize_x"):
-            raise TransformError(f"{label}: only op='shift' or op='resize_x' are supported in phase one")
+        if not isinstance(edit, dict) or edit.get("op") not in ("shift", "resize_x",
+                                                                "center_on", "set_gap", "center_between"):
+            raise TransformError(
+                f"{label}: op must be one of shift, resize_x, center_on, set_gap, center_between")
         feature_id = edit.get("feature_id")
         if not isinstance(feature_id, str) or feature_id not in feature_by_id:
             raise TransformError(f"{label}: unknown feature_id {feature_id!r}")
@@ -611,7 +623,7 @@ def preview_edits(program: Program, request: dict[str, Any], source_text: str) -
                 raise TransformError(f"{label}: shift distance is zero")
             normalized.append({"op": "shift", "feature_id": feature_id, "dx": dx, "dy": dy,
                                "block_id": feature["block_id"]})
-        else:
+        elif edit["op"] == "resize_x":
             new_length = _finite_number(edit.get("new_length"), f"{label} new_length")
             if new_length <= 0:
                 raise TransformError(f"{label}: new_length must be greater than zero")
@@ -629,6 +641,123 @@ def preview_edits(program: Program, request: dict[str, Any], source_text: str) -
             normalized.append({"op": "resize_x", "feature_id": feature_id, "new_length": new_length,
                                "anchor": anchor, "block_id": feature["block_id"],
                                "band_start": bounds["x_min"], "band_end": bounds["x_max"]})
+        else:
+            # Declarative placement constraint (phase two). Validated here,
+            # resolved into a derived rigid shift below against the ORIGINAL
+            # geometry — the reference positions never move under the edit.
+            axis = edit.get("axis")
+            if axis not in ("x", "y"):
+                raise TransformError(f"{label}: axis must be 'x' or 'y'")
+            anchor_id = edit.get("anchor_feature_id")
+            envelope = edit.get("anchor") == "envelope"
+            if edit.get("anchor") not in (None, "envelope"):
+                raise TransformError(f"{label}: anchor must be 'envelope' when given")
+            if envelope and anchor_id is not None:
+                raise TransformError(f"{label}: choose an anchor_feature_id or the program envelope, not both")
+            if anchor_id is not None:
+                if not isinstance(anchor_id, str) or anchor_id not in feature_by_id:
+                    raise TransformError(f"{label}: unknown anchor_feature_id {anchor_id!r}")
+                if anchor_id == feature_id:
+                    raise TransformError(f"{label}: the feature cannot be anchored to itself")
+                if not feature_by_id[anchor_id].get("bounds"):
+                    raise TransformError(f"{label}: anchor feature {anchor_id} has unresolved geometry bounds")
+            entry: dict[str, Any] = {"op": edit["op"], "feature_id": feature_id, "axis": axis}
+            if edit["op"] == "center_on":
+                if anchor_id is None and not envelope:
+                    raise TransformError(f"{label}: center_on needs anchor_feature_id or anchor='envelope'")
+            else:
+                if anchor_id is None or envelope:
+                    raise TransformError(f"{label}: {edit['op']} needs an anchor_feature_id (no envelope anchor)")
+            if edit["op"] == "set_gap":
+                side = edit.get("side")
+                if side not in ("after", "before"):
+                    raise TransformError(
+                        f"{label}: side must be 'after' or 'before' (which side of the anchor the feature sits on)")
+                gap = _finite_number(edit.get("gap"), f"{label} gap")
+                if gap < 0:
+                    raise TransformError(f"{label}: gap must not be negative; overlap is rejected, not scheduled")
+                entry["side"] = side
+                entry["gap"] = gap
+            if edit["op"] == "center_between":
+                second = edit.get("second_feature_id")
+                if not isinstance(second, str) or second not in feature_by_id:
+                    raise TransformError(f"{label}: unknown second_feature_id {second!r}")
+                if second == feature_id:
+                    raise TransformError(f"{label}: second_feature_id must differ from the moved feature")
+                if second == anchor_id:
+                    raise TransformError(f"{label}: the two anchors of center_between must differ")
+                if not feature_by_id[second].get("bounds"):
+                    raise TransformError(f"{label}: second_feature_id {second} has unresolved geometry bounds")
+                entry["second_feature_id"] = second
+            if anchor_id is not None:
+                entry["anchor_feature_id"] = anchor_id
+            if envelope:
+                entry["anchor"] = "envelope"
+            raw_constraints.append(entry)
+
+    # ---- phase two: resolve constraints into derived rigid shifts ----
+    constraints_applied: list[dict[str, Any]] = []
+    group_of: dict[str, list[str]] = {}
+    for pattern in recognition["patterns"]:
+        if pattern["kind"] == "same_xy_path_at_multiple_depths":
+            ids = list(pattern["feature_ids"])
+            for fid in ids:
+                group_of[fid] = ids
+    taken: set[str] = {item["feature_id"] for item in normalized}
+    for index, constraint in enumerate(raw_constraints):
+        cid = f"constraint-{index + 1}"
+        fid = constraint["feature_id"]
+        axis = constraint["axis"]
+        low, high = axis + "_min", axis + "_max"
+        feature_bounds = feature_by_id[fid]["bounds"]
+        feature_measure = (feature_bounds[low] + feature_bounds[high]) / 2
+        op = constraint["op"]
+        if op == "center_on" and constraint.get("anchor") == "envelope":
+            envelope_bounds = recognition.get("bounds")
+            if not envelope_bounds:
+                raise TransformError(f"{cid}: the program envelope is unavailable")
+            anchor_measure = (envelope_bounds[low] + envelope_bounds[high]) / 2
+            translation = anchor_measure - feature_measure
+        else:
+            anchor_bounds = feature_by_id[constraint["anchor_feature_id"]]["bounds"]
+            anchor_measure = (anchor_bounds[low] + anchor_bounds[high]) / 2
+            if op == "center_on":
+                translation = anchor_measure - feature_measure
+            elif op == "set_gap":
+                gap = constraint["gap"]
+                translation = (anchor_bounds[high] + gap - feature_bounds[low] if constraint["side"] == "after"
+                               else anchor_bounds[low] - gap - feature_bounds[high])
+            else:  # center_between: equidistant midpoint of the two anchors
+                second_bounds = feature_by_id[constraint["second_feature_id"]]["bounds"]
+                second_measure = (second_bounds[low] + second_bounds[high]) / 2
+                translation = (anchor_measure + second_measure) / 2 - feature_measure
+        dx, dy = (translation, 0.0) if axis == "x" else (0.0, translation)
+        if abs(dx) <= 1e-9 and abs(dy) <= 1e-9:
+            raise TransformError(f"{cid}: the constraint already holds; nothing would change")
+        targets = list(group_of.get(fid, [fid]))
+        for member in targets:
+            if member in taken:
+                raise TransformError(
+                    f"{cid}: feature {member} is already moved by another edit; a depth-repeat group "
+                    "moves only as one unit and every feature takes at most one edit")
+        for member in targets:
+            normalized.append({"op": "shift", "feature_id": member, "dx": dx, "dy": dy,
+                               "block_id": feature_by_id[member]["block_id"],
+                               "derived_from": f"{cid}:{op}"})
+            taken.add(member)
+        record: dict[str, Any] = {"id": cid, "rule": op, "feature_id": fid, "axis": axis,
+                                  "translation": {"dx": dx, "dy": dy}, "targets": targets,
+                                  "evaluated_against": "original_geometry"}
+        if constraint.get("anchor") == "envelope":
+            record["anchor"] = "envelope"
+        else:
+            record["anchor_feature_id"] = constraint["anchor_feature_id"]
+            if op == "center_between":
+                record["second_feature_id"] = constraint["second_feature_id"]
+            if op == "set_gap":
+                record["side"] = constraint["side"]
+                record["gap"] = constraint["gap"]
+        constraints_applied.append(record)
 
     edit_by_feature = {item["feature_id"]: item for item in normalized}
 
@@ -724,6 +853,65 @@ def preview_edits(program: Program, request: dict[str, Any], source_text: str) -
         for key in ("x_min", "x_max", "y_min", "y_max"):
             if abs(runtime_bounds[key] - feature["bounds"][key]) > tolerance:
                 errors.append(f"Feature {feature_id}: untouched feature moved on {key}")
+
+    # Phase-two collision gate on the runtime reparse: bounds-level, so it is
+    # honest about its limits. A partial overlap that the edit CREATES is
+    # rejected; a partial overlap that ALREADY exists in the source (grooves
+    # crossing a raster fill, paths running to the sheet edge) is the
+    # designer's original intent and stays the operator's responsibility —
+    # it is counted and reported, not silently ignored. Full containment
+    # counts as legitimate nesting (a hole inside a contour); exact touching
+    # is allowed; members of one depth-repeat group share the same XY path
+    # and never collide with each other by definition.
+    edited_ids = {item["feature_id"] for item in normalized}
+    collision_flagged: list[dict[str, Any]] = []
+    checked_pairs = 0
+    preexisting_skipped = 0
+    bounds_ids = sorted(fid for fid, item in runtime_features.items() if item.get("bounds"))
+
+    def _contains(outer: dict[str, float], inner: dict[str, float]) -> bool:
+        return (outer["x_min"] <= inner["x_min"] + tolerance
+                and outer["x_max"] >= inner["x_max"] - tolerance
+                and outer["y_min"] <= inner["y_min"] + tolerance
+                and outer["y_max"] >= inner["y_max"] - tolerance)
+
+    def _pair_state(a: dict[str, float], b: dict[str, float]) -> str:
+        overlap_x = min(a["x_max"], b["x_max"]) - max(a["x_min"], b["x_min"])
+        overlap_y = min(a["y_max"], b["y_max"]) - max(a["y_min"], b["y_min"])
+        if overlap_x <= tolerance or overlap_y <= tolerance:
+            return "disjoint"
+        if _contains(a, b) or _contains(b, a):
+            return "contained"
+        return "partial"
+
+    for index_a in range(len(bounds_ids)):
+        for index_b in range(index_a + 1, len(bounds_ids)):
+            id_a, id_b = bounds_ids[index_a], bounds_ids[index_b]
+            if id_a not in edited_ids and id_b not in edited_ids:
+                continue  # untouched pairs already coexist in the source
+            if id_b in group_of.get(id_a, ()):  # same XY path at multiple depths
+                continue
+            if _pair_state(feature_by_id[id_a]["bounds"], feature_by_id[id_b]["bounds"]) == "partial":
+                preexisting_skipped += 1
+                continue  # the source already lets these coexist
+            checked_pairs += 1
+            state = _pair_state(runtime_features[id_a]["bounds"], runtime_features[id_b]["bounds"])
+            if state != "partial":
+                continue  # disjoint, touching or nested at runtime
+            overlap_x = min(runtime_features[id_a]["bounds"]["x_max"], runtime_features[id_b]["bounds"]["x_max"]) \
+                - max(runtime_features[id_a]["bounds"]["x_min"], runtime_features[id_b]["bounds"]["x_min"])
+            overlap_y = min(runtime_features[id_a]["bounds"]["y_max"], runtime_features[id_b]["bounds"]["y_max"]) \
+                - max(runtime_features[id_a]["bounds"]["y_min"], runtime_features[id_b]["bounds"]["y_min"])
+            collision_flagged.append({"features": [id_a, id_b],
+                                      "overlap_x": round(overlap_x, 6), "overlap_y": round(overlap_y, 6)})
+            errors.append(
+                f"Features {id_a} and {id_b} newly partially overlap after the edits "
+                f"({overlap_x:.3f} x {overlap_y:.3f} mm at bounds level); move or shrink one of them")
+
+    collision_check = {"method": "bounds_level_new_overlaps_rejected",
+                       "checked_pairs": checked_pairs, "preexisting_skipped": preexisting_skipped,
+                       "flagged": collision_flagged}
+
     for before, after in zip(program.moves, runtime.moves):
         z_before = before.end.z if before.end is not None else None
         z_after = after.end.z if after.end is not None else None
@@ -731,19 +919,22 @@ def preview_edits(program: Program, request: dict[str, Any], source_text: str) -
             errors.append(f"Move {before.id} changed Z at runtime")
             break
 
+    collision_warning = ("Collision check ran at bounds level (new partial overlaps rejected; containment "
+                         "counts as nesting; overlaps already present in the source are left to the operator); "
+                         "thin-wall and material-edge placement still needs operator eyes.")
     if errors:
         return {
             "preview_only": True, "safe_for_execution": False,
             "source_sha256": program.source_sha256,
             "operation": "interactive_edits",
             "edits_applied": normalized,
+            "constraints_applied": constraints_applied,
+            "collision_check": collision_check,
             "original": recognition,
             # Runtime truth (modal chains re-resolved on the patched draft) —
             # what the map preview should draw, not the static stale IR.
             "resized": runtime_recognition,
-            "validation": {"passed": False, "errors": errors,
-                           "warnings": ["Collision/overlap checking between features arrives in phase two; "
-                                        "verify placement yourself for now."]},
+            "validation": {"passed": False, "errors": errors, "warnings": [collision_warning]},
             "program_ir": to_dict(transformed),
         }
     return {
@@ -751,10 +942,10 @@ def preview_edits(program: Program, request: dict[str, Any], source_text: str) -
         "source_sha256": program.source_sha256,
         "operation": "interactive_edits",
         "edits_applied": normalized,
+        "constraints_applied": constraints_applied,
+        "collision_check": collision_check,
         "original": recognition,
         "resized": runtime_recognition,
-        "validation": {"passed": True, "errors": [],
-                       "warnings": ["Collision/overlap checking between features arrives in phase two; "
-                                    "verify placement yourself for now."]},
+        "validation": {"passed": True, "errors": [], "warnings": [collision_warning]},
         "program_ir": to_dict(transformed),
     }
