@@ -644,7 +644,6 @@
       if (profile && !data.ready) await validateFeatureProfile();
     } catch (err) { $('featureProfileStatus').textContent = err.message; }
   }
-  $('analyzeFeaturesBtn')?.addEventListener?.('click', () => analyzeFeatures(null));
   $('featureRefStart').onchange = validateFeatureProfile;
   $('featureRefEnd').onchange = validateFeatureProfile;
   $('saveFeatureProfileBtn').onclick = async () => {

@@ -66,9 +66,14 @@ def optimize(parts, stock, kerf=4, policy='offcuts_first', trim=0):
     return layouts
 
 
-def expected_offcuts(layout, kerf=4, minimum=200):
-    """Return disjoint, conservative rectangular remnants; these are forecasts only."""
+def expected_offcuts(layout, kerf=4, minimum=200, trim=0):
+    """Return disjoint, conservative rectangular remnants; these are forecasts only.
+    trim (mm) is the independent head cut on the length (height) edge — same
+    rule as _sheet_geometry: only the height axis loses it. Without this, the
+    bottom-remnant forecast would overlap the trim strip and overstate usable
+    remnant area."""
     sheet = layout['sheet']
+    trim = max(Decimal('0'), Decimal(str(trim)))
     shelves = {}
     for part in layout['parts']:
         shelves.setdefault(part['row'], []).append(part)
@@ -81,7 +86,7 @@ def expected_offcuts(layout, kerf=4, minimum=200):
         rem_width = sheet['width'] - used_width - kerf - 5
         if rem_width >= minimum and row_height >= minimum:
             remnants.append({'width': rem_width, 'height': row_height, 'x': used_width + kerf, 'y': shelf_y})
-    bottom_height = sheet['height'] - max_bottom - kerf - 5
+    bottom_height = sheet['height'] - trim - max_bottom - kerf - 5
     if sheet['width'] >= minimum and bottom_height >= minimum:
         remnants.append({'width': sheet['width'] - 10, 'height': bottom_height, 'x': 0, 'y': max_bottom + kerf})
     return remnants

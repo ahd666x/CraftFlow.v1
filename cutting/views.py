@@ -290,7 +290,7 @@ def planner(request):
                                 created_by=request.user,
                             )
                     for layout in layouts:
-                        layout['expected_offcuts'] = expected_offcuts(layout, kerf)
+                        layout['expected_offcuts'] = expected_offcuts(layout, kerf, trim=trim)
                     if layouts:
                         rows.append({
                             'type': material.name.replace(' ', '-'), 'thickness': str(material.thickness),
@@ -729,7 +729,11 @@ def download_cut(request, plan_id):
 
 
 def _parse_sheet_result(request, sheet):
-    outcome = request.POST.get(f'outcome_{sheet.pk}', 'used')
+    # نتیجهٔ هر ورق باید صریحاً اعلام شود؛ پیش‌فرضِ خاموشِ «used» یعنی یک POST
+    # دست‌ساز بدون فیلد، ورق را مصرف‌شده و موجودی را کسر می‌کرد.
+    outcome = request.POST.get(f'outcome_{sheet.pk}')
+    if outcome is None:
+        raise ValueError('نتیجهٔ همهٔ ورق‌ها را مشخص کنید (مصرف شد / دست‌نخورده / اسقاط).')
     if outcome not in ('used', 'untouched', 'scrapped'):
         raise ValueError('نتیجه یکی از ورق‌ها معتبر نیست.')
     if outcome == 'scrapped' and not request.POST.get(f'note_{sheet.pk}', '').strip():

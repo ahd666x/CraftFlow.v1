@@ -83,18 +83,20 @@ def process(request):
     """
     import json
     from . import controller
-    status, data = core.handle_request(request.body)
+    # بدنهٔ درخواست فقط یک‌بار پارس می‌شود و هم به handle_payload می‌رود و هم
+    # برای استخراج متن اصلی همین‌جا استفاده می‌شود (قبلاً دوبار پارس می‌شد).
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except Exception:
+        payload = None
+    status, data = core.handle_payload(payload if isinstance(payload, dict) else {})
     if status != 200 or "cnc_text" not in data:
         return JsonResponse(data, status=status, json_dumps_params={"ensure_ascii": False})
     resized_text = data.pop("cnc_text")
     data["preview_only"] = True
     data["machine_output_written"] = False
-    try:
-        payload = json.loads(request.body.decode("utf-8"))
-        source_text = payload.get("content") if isinstance(payload, dict) else None
-        if not isinstance(source_text, str):
-            source_text = ""
-    except Exception:
+    source_text = payload.get("content") if isinstance(payload, dict) else None
+    if not isinstance(source_text, str):
         source_text = ""
 
     def blocked(reason, violations=None, dialect=None):

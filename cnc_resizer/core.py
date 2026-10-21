@@ -196,6 +196,38 @@ def vectors_for_json(vec):
 
 
 # ---------------------------------------------------------------- geometry detection
+def _outline_key(block):
+    """Quality key for outline candidates among the large blocks: closed loops
+    beat open paths (weight 2), arcs beat straight-only corners (weight 1) and
+    a bigger bbox wins before falling back to the historical last-block rule."""
+    pts = block['pts']
+    xs = [p[2] for p in pts]
+    ys = [p[3] for p in pts]
+    area = (max(xs) - min(xs)) * (max(ys) - min(ys))
+    closed = math.hypot(pts[-1][2] - pts[0][2], pts[-1][3] - pts[0][3]) < 1e-3
+    arcs = any(p[1] in (2, 3) for p in pts)
+    return (2 if closed else 0) + (1 if arcs else 0), area
+
+
+def _reject_unsupported_syntax(lines):
+    """Fail early on syntax that makes core's own geometry meaningless:
+    incremental coordinates (G91) and inch units (G20) corrupt every parsed
+    position, so preview and resize would both be silently wrong. R-format
+    arcs are deliberately NOT rejected here — the Y-substitution keeps their
+    geometry consistent per shift region and the dialect gate
+    (controller/sheet_adapter) blocks them at machine output, matching the
+    preview-first product behavior. Comments (... and after ;) are ignored."""
+    for raw in lines:
+        s = re.sub(r'\([^)]*\)', ' ', raw.strip())
+        s = s.split(';', 1)[0]
+        if not s.strip():
+            continue
+        if re.search(r'G91(?!\d)', s):
+            raise CncError("برنامه با G91 (مختصات افزایشی) نوشته شده است؛ تغییر اندازه فقط با G90 (مطلق) پشتیبانی می‌شود")
+        if re.search(r'G20(?!\d)', s):
+            raise CncError("واحد فایل اینچ است (G20)؛ تغییر اندازه فقط با G21 (میلی‌متر) پشتیبانی می‌شود")
+
+
 def detect_geometry(lines):
     """-> (levels, edge_lo, edge_hi) ; levels = [(y_centre, [x_centres...]), ...] sorted by Y.
        Same detection as resize_cnc_length.py."""
@@ -225,14 +257,23 @@ def detect_geometry(lines):
     if cur and cur['pts']:
         blocks.append(cur)
 
-    hole_levels, outline = [], None
+    hole_levels, large_blocks = [], []
     for b in blocks:
         xs = [p[2] for p in b['pts']]; ys = [p[3] for p in b['pts']]
         w, h = max(xs) - min(xs), max(ys) - min(ys)
         if 0 < w < 5 and 0 < h < 5 and len(b['pts']) > 5:
             hole_levels.append(((max(ys) + min(ys)) / 2, (max(xs) + min(xs)) / 2))
         elif w > 100 and h > 100:
-            outline = b
+            large_blocks.append(b)
+    # انتخاب کانتور با امتیاز به‌جای «آخرین بلوک بزرگ»: حلقهٔ بسته (۲) و داشتن
+    # قوس (۱) قوی‌ترین نشانهٔ کانتور بیرونی‌اند؛ مساحت بزرگ‌تر بعدی است و در
+    # تساوی کامل، آخرین بلوک انتخاب می‌شود (رفتار تاریخی حفظ می‌شود). این‌طوری
+    # بلوک raster که بعد از کانتور بیاید، کانتور را قاپ نمی‌زند.
+    outline, best_key = None, None
+    for b in large_blocks:
+        key = _outline_key(b)
+        if best_key is None or key >= best_key:
+            outline, best_key = b, key
     if outline is None:
         raise CncError("کانتور اصلی قطعه در فایل پیدا نشد (فایل از همین نوع قطعه نیست؟)")
 
@@ -402,6 +443,7 @@ def process(text, params=None):
     lines, eol = split_lines(text)
     if not any(re.search(r'G[0-3](?!\d)', l) for l in lines):
         raise CncError("این فایل شبیه G-code نیست")
+    _reject_unsupported_syntax(lines)
 
     profile = params.get('profile') or params.get('feature_profile')
     if profile is not None:
@@ -498,11 +540,11 @@ def process(text, params=None):
     )
 
 
-def handle_request(raw):
-    """Framework-independent API handler. raw = request body (bytes, JSON:
-       {filename, content, params}).  Returns (http_status, dict)."""
+def handle_payload(payload):
+    """Framework-independent API handler for an already-parsed JSON payload
+    ({filename, content, params}).  Returns (http_status, dict).  Lets HTTP
+    views parse the request body exactly once."""
     try:
-        payload = json.loads(raw.decode('utf-8'))
         text, params = payload['content'], payload.get('params') or {}
         if not isinstance(params, dict):
             raise ValueError
@@ -518,6 +560,15 @@ def handle_request(raw):
     except Exception:
         log.exception("cnc_resizer: unexpected error")
         return 500, dict(ok=False, error="خطای غیرمنتظره در پردازش فایل")
+
+
+def handle_request(raw):
+    """Parse the raw request body (bytes) and delegate to handle_payload."""
+    try:
+        payload = json.loads(raw.decode('utf-8'))
+    except Exception:
+        return 400, dict(ok=False, error="درخواست نامعتبر است")
+    return handle_payload(payload)
 
 # --- Generic operator-approved feature profiles ----------------------------
 def program_summary(lines):
@@ -665,6 +716,7 @@ def analyze(text, params=None):
     lines, _ = split_lines(text)
     if not any(re.search(r'G[0-3](?!\d)', l) for l in lines):
         raise CncError('این فایل شبیه G-code نیست')
+    _reject_unsupported_syntax(lines)
     inventory = analyze_program(lines)
     summary = program_summary(lines)
     profile = params.get('profile') or params.get('feature_profile')

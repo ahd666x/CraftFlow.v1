@@ -163,6 +163,20 @@ def resolve_cnc_file(part, created_by=None):
     if len(src_lines) != len(out_lines):
         raise CncResolutionError('ساختار فایل مشتق با فایل پایه تفاوت دارد؛ تولید مسدود شد.')
 
+    # خودآزمایی متریک: تغییر طول Y بردارها باید دقیقاً برابر دلتای قطعه باشد؛
+    # هر انحراف یعنی خروجی موتور برای این قطعه معتبر نیست (fail-closed) و
+    # ناسازگاری پروفایل تأییدشده (مثلاً مود manual با مجموع ناسازگار) همین‌جا
+    # سد می‌شود، نه در مرحلهٔ nesting.
+    try:
+        metric_delta = float(result['length_after']) - float(result['length_before'])
+    except (KeyError, TypeError, ValueError):
+        raise CncResolutionError('خروجی موتور متریک طول ندارد؛ تولید فایل مشتق مسدود شد.')
+    if abs(metric_delta - float(delta)) > 0.05:
+        raise CncResolutionError(
+            f"تغییر طول فایل مشتق ({metric_delta:+.3f}mm) با دلتای قطعه ({float(delta):+.3f}mm) "
+            f"نمی‌خواند؛ تولید مسدود شد."
+        )
+
     # هویت content-addressed: نسخهٔ فایل پایه + قواعد تأییدشده + دلتا.
     # هر تغییر در هر کدام، کلید تازه می‌سازد و نتیجهٔ قدیمی بی‌صدا استفاده
     # نمی‌شود (طبق قرارداد docstring همین تابع).
