@@ -221,3 +221,45 @@ def resolve_cnc_file(part, created_by=None):
         },
     )
     return record
+
+
+def engine_machine_output(source_text, preview):
+    """Controller-ready G-code for an engineering-engine preview candidate.
+
+    Mirrors the legacy process flow's contract: the active controller adapter
+    must be ``minimal_xy_router``, the candidate must serialize as a pure
+    coordinate patch of the source text (engine.serializer), and the final
+    text must re-verify against the workshop dialect with an unchanged
+    header/body/post structure (controller.postprocess_resize). Fail-closed:
+    returns ``{"allowed": False, "blockers": [...]}`` instead of raising for
+    expected business failures.
+    """
+    from . import controller
+    from .engine.serializer import SerializerBlocked, serialize_candidate
+
+    if controller.controller_adapter_key() != controller.ADAPTER_KEY:
+        return {"allowed": False, "blockers": [
+            "پست‌پروسسور کنترلر فعال نشده است؛ برای صدور فایل دستگاه "
+            f"«{controller.ADAPTER_KEY}» را در تنظیمات (CNC_RESIZER_SHEET_ADAPTER) فعال کنید."
+        ]}
+    try:
+        serialized = serialize_candidate(source_text, preview)
+        output = controller.postprocess_resize(source_text, serialized["text"])
+    except SerializerBlocked as exc:
+        return {"allowed": False, "blockers": getattr(exc, "blockers", None) or [str(exc)]}
+    except controller.ControllerPostprocessError as exc:
+        return {"allowed": False, "blockers": getattr(exc, "violations", None) or [str(exc)]}
+    return {
+        "allowed": True,
+        "text": output["text"],
+        "postprocessor": {
+            "adapter_key": output["adapter_key"],
+            "dialect": "workshop minimal XY router (G90/G54, T#M6+M141+M6T#+G43H#, I/J arcs, G53 park, N×10)",
+            "units_injected": output["units_injected"],
+            "tool": output["tool"],
+            "h": output["h"],
+        },
+        "changed_move_count": serialized["changed_move_count"],
+        "changed_line_numbers": serialized["changed_line_numbers"],
+        "candidate_sha256": serialized["candidate_sha256"],
+    }

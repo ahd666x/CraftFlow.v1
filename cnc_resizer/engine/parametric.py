@@ -79,6 +79,95 @@ def _transform_feature(block: Any, axis: str, mapping) -> None:
             move.arc.center[axis] = mapping(move.arc.center[axis])
 
 
+def _stretch_closed_feature(block: Any, axis: str, start: float, end: float,
+                            delta: float, feature_id: str) -> None:
+    """Segment-level stretch of a closed path (fail-closed).
+
+    A closed path cannot be scaled through the reference band without
+    distorting its arcs. Instead only axial straight moves (parallel to the
+    stretch axis) may bridge the band: everything wholly below ``start``
+    stays rigid, everything wholly above ``end`` translates by ``delta``, and
+    each axial straight move that connects the two rigid regions absorbs the
+    length change at its junctions. Arcs and diagonal moves crossing the band
+    would be distorted and are rejected instead of being guessed at.
+    """
+    tol = 1e-6
+    cross = "x" if axis == "y" else "y"
+    moves = [move for move in block.motions if move.motion in ("linear", "arc_cw", "arc_ccw")]
+    if len(moves) < 3:
+        raise TransformError(f"Feature {feature_id} does not contain a stretchable closed path")
+    first_start, last_end = moves[0].start, moves[-1].end
+    if (first_start is None or last_end is None
+            or getattr(first_start, "x") is None or getattr(first_start, "y") is None
+            or getattr(last_end, "x") is None or getattr(last_end, "y") is None
+            or math.hypot(first_start.x - last_end.x, first_start.y - last_end.y) > 0.05):
+        raise TransformError(f"Feature {feature_id} is not a connected closed path; segment-level stretch is not defined")
+
+    def axial_interval(move: Any) -> tuple[float, float]:
+        values = [getattr(move.start, axis), getattr(move.end, axis)]
+        if move.arc and move.arc.center and axis in move.arc.center:
+            values.append(move.arc.center[axis])
+        return min(values), max(values)
+
+    groups: list[str] = []
+    for move in moves:
+        if move.start is None or move.end is None or getattr(move.start, axis) is None or getattr(move.end, axis) is None:
+            raise TransformError(f"Feature {feature_id} has unresolved {axis} coordinates")
+        low, high = axial_interval(move)
+        if high <= start + tol:
+            groups.append("below")
+        elif low >= end - tol:
+            groups.append("above")
+        elif move.motion != "linear":
+            raise TransformError(
+                f"Feature {feature_id}: segment-level closed stretch keeps arcs rigid; "
+                "an arc crosses the reference band and would be distorted")
+        elif abs(getattr(move.end, cross) - getattr(move.start, cross)) > tol:
+            raise TransformError(
+                f"Feature {feature_id}: segment-level closed stretch lengthens only axial straight moves; "
+                "a diagonal move crosses the reference band and would be distorted")
+        else:
+            groups.append("band")
+
+    count = len(moves)
+    offsets: list[float | None] = [None] * count
+
+    def pin(index: int, value: float) -> None:
+        if offsets[index] is not None and abs(offsets[index] - value) > 1e-9:
+            raise TransformError(
+                f"Feature {feature_id}: no consistent segment-level stretch exists for this closed path")
+        offsets[index] = value
+
+    for index, group in enumerate(groups):
+        if group == "below":
+            pin(index, 0.0)
+            pin((index + 1) % count, 0.0)
+        elif group == "above":
+            pin(index, delta)
+            pin((index + 1) % count, delta)
+        else:  # axial band move: junctions follow the neighbouring rigid regions
+            pin(index, delta if groups[index - 1] == "above" else 0.0)
+            pin((index + 1) % count, delta if groups[(index + 1) % count] == "above" else 0.0)
+
+    if abs(delta) > 1e-9 and not (any(abs(value) > 1e-9 for value in offsets)
+                                  and any(abs(value) <= 1e-9 for value in offsets)):
+        raise TransformError(
+            f"Feature {feature_id}: the reference band does not separate two rigid regions "
+            "of the closed path; nothing would stretch consistently")
+
+    for index, move in enumerate(moves):
+        start_offset = offsets[index]
+        end_offset = offsets[(index + 1) % count]
+        if move.arc and move.arc.center and axis in move.arc.center and abs(start_offset - end_offset) > 1e-9:
+            raise TransformError(f"Feature {feature_id}: arc {move.id} would be distorted by the band stretch")
+        if move.start is not None and getattr(move.start, axis) is not None:
+            setattr(move.start, axis, getattr(move.start, axis) + start_offset)
+        if move.end is not None and getattr(move.end, axis) is not None:
+            setattr(move.end, axis, getattr(move.end, axis) + end_offset)
+        if move.arc and move.arc.center and axis in move.arc.center:
+            move.arc.center[axis] = move.arc.center[axis] + start_offset
+
+
 def preview_resize(program: Program, request: dict[str, Any]) -> dict[str, Any]:
     """Return a transformed IR preview and validation, never G-code text.
 
@@ -202,8 +291,21 @@ def preview_resize(program: Program, request: dict[str, Any]) -> dict[str, Any]:
         else:
             if not cut_moves:
                 raise TransformError(f"Feature {feature_id} has no cutting motion")
-            if mode in ("stretch", "middle_scale") and feature["kind"] in ("small_loop_candidate", "large_closed_path_candidate"):
-                raise TransformError(f"Feature {feature_id} is closed; direct stretching is prohibited")
+            if mode == "middle_scale" and feature["kind"] in ("small_loop_candidate", "large_closed_path_candidate"):
+                raise TransformError(f"Feature {feature_id} is closed; middle scaling would distort it")
+            if mode == "stretch" and feature["kind"] == "small_loop_candidate":
+                raise TransformError(f"Feature {feature_id} is a small closed loop; stretching it is prohibited")
+            if mode == "stretch" and feature["kind"] == "large_closed_path_candidate":
+                # Package-B segment-level stretch: axial straight moves bridge the
+                # band, arcs/non-axial moves stay rigid or the transform fails.
+                _stretch_closed_feature(block, axis, start, end, delta, feature_id)
+                constraints.append({"feature_id": feature_id, "rule": "stretch",
+                                    "strategy": "segment_level_closed", "reference_start": start,
+                                    "reference_end": end, "target_dimension": target_dimension})
+                changed_features.append(feature_id)
+                resolving.remove(feature_id)
+                applied.add(feature_id)
+                return
             coordinates = [getattr(point, axis) for move in cut_moves for point in (move.start, move.end)
                            if point is not None and getattr(point, axis) is not None]
             if len(coordinates) < 2:

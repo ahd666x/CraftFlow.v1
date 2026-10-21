@@ -66,6 +66,7 @@ def engine_workbench(request):
         "engine_preview_url": reverse("cnc_resizer:engine_preview"),
         "engine_profile_url": reverse("cnc_resizer:engine_profile"),
         "engine_preflight_url": reverse("cnc_resizer:engine_preflight"),
+        "engine_output_url": reverse("cnc_resizer:engine_output"),
     })
 
 
@@ -284,9 +285,15 @@ def engine_profile(request):
 @cnc_operator_required
 @require_POST
 def engine_preflight(request):
-    """Stage-seven output-readiness report; deliberately emits no machine file."""
+    """Stage-seven output-readiness report; deliberately emits no machine file.
+
+    When the verified controller adapter is active, the report runs the real
+    dialect bridge (serializer + postprocess_resize) so ``allowed`` reflects
+    the actual machine-output path instead of a permanent blocker.
+    """
     import json
     import os
+    from . import controller
     from .engine.output_validation import validate_output_candidate
     from .engine.parametric import TransformError
     from .engine.parser import ParseError, parse_program
@@ -301,10 +308,54 @@ def engine_preflight(request):
         filename = os.path.basename(payload.get('filename') or 'uploaded.cnc')
         source = parse_program(payload['content'], filename=filename)
         candidate = preview_program(payload['content'], profile, filename=filename)
-        report = validate_output_candidate(source, candidate, payload.get('machine_limits'))
+        gate = (controller.postprocess_resize
+                if controller.controller_adapter_key() == controller.ADAPTER_KEY else None)
+        report = validate_output_candidate(
+            source, candidate, payload.get('machine_limits'),
+            source_text=payload['content'] if gate else None, dialect_gate=gate)
     except (TypeError, ValueError, json.JSONDecodeError, ParseError, TransformError) as exc:
         return JsonResponse({'ok': False, 'error': str(exc)}, status=400, json_dumps_params={'ensure_ascii': False})
     return JsonResponse({'ok': True, 'preflight': report}, json_dumps_params={'ensure_ascii': False})
+
+
+@login_required
+@cnc_operator_required
+@require_POST
+def engine_output(request):
+    """Controller-ready G-code for an engine candidate via the verified dialect gate.
+
+    The candidate must serialize as a pure coordinate patch of the source and
+    the final text must re-verify against the workshop controller dialect
+    (minimal_xy_router); anything else stays fail-closed with precise reasons.
+    """
+    import json
+    import os
+    from .engine.parametric import TransformError
+    from .engine.parser import ParseError
+    from .engine.service import preview_program
+    from .services import engine_machine_output
+    try:
+        payload = json.loads(request.body.decode('utf-8'))
+        if not isinstance(payload, dict) or not isinstance(payload.get('content'), str):
+            raise ValueError('content باید متن CNC باشد.')
+        profile = payload.get('profile')
+        if not isinstance(profile, dict):
+            raise ValueError('profile باید یک شیء باشد.')
+        filename = os.path.basename(payload.get('filename') or 'uploaded.cnc')
+        candidate = preview_program(payload['content'], profile, filename=filename)
+        result = engine_machine_output(payload['content'], candidate)
+    except (TypeError, ValueError, json.JSONDecodeError, ParseError, TransformError) as exc:
+        return JsonResponse({'ok': False, 'error': str(exc)}, status=400, json_dumps_params={'ensure_ascii': False})
+    if not result.get('allowed'):
+        return JsonResponse({'ok': True, 'allowed': False, 'safe_for_execution': False,
+                             'blockers': result.get('blockers', [])},
+                            json_dumps_params={'ensure_ascii': False})
+    return JsonResponse({'ok': True, 'allowed': True, 'safe_for_execution': True,
+                         'cnc_text': result['text'], 'postprocessor': result['postprocessor'],
+                         'changed_move_count': result['changed_move_count'],
+                         'changed_line_numbers': result['changed_line_numbers'],
+                         'candidate_sha256': result['candidate_sha256']},
+                        json_dumps_params={'ensure_ascii': False})
 
 
 @login_required

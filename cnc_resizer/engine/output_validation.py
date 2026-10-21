@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 import math
-from typing import Any
+from typing import Any, Callable
 
 from .postprocessor import execution_gate
+from .serializer import SerializerBlocked, serialize_candidate
 from .validation import validate_program
 
 
@@ -19,23 +20,38 @@ def _finite_limit(value: Any, name: str) -> float:
 
 
 def validate_output_candidate(source: Any, preview: dict[str, Any],
-                              machine_limits: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Report output blockers and an auditable geometry diff. `allowed` is always false
-    until a controller adapter and controller-specific simulation are registered.
+                              machine_limits: dict[str, Any] | None = None, *,
+                              source_text: str | None = None,
+                              dialect_gate: Callable[[str, str], dict[str, Any]] | None = None) -> dict[str, Any]:
+    """Report output blockers and an auditable geometry diff.
+
+    Without a dialect gate the report stays fail-closed exactly as before:
+    ``allowed`` is always false because no controller adapter is consulted.
+    When ``dialect_gate`` (the verified ``minimal_xy_router`` postprocessor)
+    and the ``source_text`` are supplied, the candidate may be allowed: the
+    engine-side source-frame blockers (undeclared units, G54/G43 semantics,
+    unknown codes) are then superseded by the gate's stronger line-by-line
+    re-verification of the FINAL patched text, while geometry, traceability
+    and machine-travel blockers still apply.
     """
     blockers: list[str] = []
     warnings: list[str] = []
     limits = machine_limits or {}
     if not isinstance(limits, dict):
         raise ValueError("machine_limits must be an object")
+    bridge_active = callable(dialect_gate) and isinstance(source_text, str) and bool(source_text.strip())
     source_gate = execution_gate(source)
-    blockers.extend(source_gate["reasons"])
-    if source.units is None:
-        blockers.append("Source units are undeclared; physical machine limits cannot be verified")
-    if source.coordinate_system:
-        blockers.append("Work-coordinate offset is unresolved; source coordinates cannot be checked against machine travel")
-    if any(code == "G43" or code.startswith("G43.") for code in source.observed_g_codes):
-        blockers.append("Tool-length compensation is unresolved; physical Z travel cannot be verified")
+    if bridge_active:
+        warnings.extend(f"dialect postprocessor re-verifies the final text: {reason}"
+                        for reason in source_gate["reasons"])
+    else:
+        blockers.extend(source_gate["reasons"])
+        if source.units is None:
+            blockers.append("Source units are undeclared; physical machine limits cannot be verified")
+        if source.coordinate_system:
+            blockers.append("Work-coordinate offset is unresolved; source coordinates cannot be checked against machine travel")
+        if any(code == "G43" or code.startswith("G43.") for code in source.observed_g_codes):
+            blockers.append("Tool-length compensation is unresolved; physical Z travel cannot be verified")
     source_validation = validate_program(source)
     if not source_validation["geometry_valid_for_preview"]:
         blockers.extend(source_validation["errors"])
@@ -142,16 +158,33 @@ def validate_output_candidate(source: Any, preview: dict[str, Any],
         and not any(code == "G43" or code.startswith("G43.") for code in source.observed_g_codes)
     )
     limits_complete = all(key in limits for key in ("x_min", "x_max", "y_min", "y_max"))
-    blockers.append("No verified controller-specific output serializer or reference simulator is registered")
+    bridge_report: dict[str, Any] = {"active": False}
+    candidate_sha256 = None
+    if bridge_active:
+        try:
+            serialized = serialize_candidate(source_text, preview)
+            postprocessed = dialect_gate(source_text, serialized["text"])
+        except (SerializerBlocked, ValueError) as exc:
+            blockers.append("Machine output via the dialect postprocessor is blocked: " + str(exc))
+        else:
+            bridge_report = {"active": True, "adapter_key": postprocessed.get("adapter_key"),
+                             "units_injected": postprocessed.get("units_injected"),
+                             "tool": postprocessed.get("tool"), "h": postprocessed.get("h"),
+                             "changed_move_count": serialized["changed_move_count"],
+                             "structure_verified": True}
+            candidate_sha256 = serialized["candidate_sha256"]
+    else:
+        blockers.append("No verified controller-specific output serializer or reference simulator is registered")
     return {
         "stage": "7-preflight",
-        "allowed": False,
+        "allowed": not blockers,
         "output_generated": False,
-        "execution_gate": "blocked",
+        "execution_gate": "passed" if not blockers else "blocked",
+        "machine_output_bridge": bridge_report,
         "blockers": list(dict.fromkeys(blockers)),
         "warnings": list(dict.fromkeys(warnings)),
         "source_sha256": source.source_sha256,
-        "candidate_sha256": None,
+        "candidate_sha256": candidate_sha256,
         "geometry_before": source_validation.get("bounds"),
         "geometry_after": candidate_geometry.get("bounds") if candidate_geometry else None,
         "changed_move_ids": sorted(set(changed_ids)),
@@ -159,5 +192,5 @@ def validate_output_candidate(source: Any, preview: dict[str, Any],
         "lost_move_ids": lost_moves,
         "motion_semantics_changed_move_ids": motion_semantics_changed,
         "machine_limits_checked": bool(limits_complete and physical_frame_resolved),
-        "controller_simulation": "not_configured",
+        "controller_simulation": "workshop_dialect_postprocessor" if bridge_report["active"] else "not_configured",
     }

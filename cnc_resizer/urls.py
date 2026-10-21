@@ -12,6 +12,7 @@ urlpatterns = [
     path("api/engine/preview/", views.engine_preview, name="engine_preview"),
     path("api/engine/profile/", views.engine_profile, name="engine_profile"),
     path("api/engine/preflight/", views.engine_preflight, name="engine_preflight"),
+    path("api/engine/output/", views.engine_output, name="engine_output"),
     path("engine/", views.engine_workbench, name="engine_workbench"),
     path("api/archive-files/", views.archive_files, name="archive_files"),
     path("api/part-profile/", views.part_profile, name="part_profile"),
