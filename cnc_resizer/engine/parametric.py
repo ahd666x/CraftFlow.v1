@@ -417,7 +417,15 @@ def _shift_block_rigid(block: Any, dx: float, dy: float, feature_id: str) -> Non
     for move in motions[1:]:
         if move.motion == "rapid":
             # Z-only rapid inside the block (retract/plunge): XY is modal at
-            # runtime and the line carries no X/Y words — leave untouched.
+            # runtime and the line carries no X/Y words — leave untouched. An
+            # XY-bearing rapid would have started its own PathBlock at parse
+            # time, so reaching this branch with X/Y words means an unexpected
+            # source shape: fail closed instead of leaving a stale
+            # repositioning rapid behind.
+            if "x" in (move.raw_words or {}) or "y" in (move.raw_words or {}):
+                raise TransformError(
+                    f"Feature {feature_id}: an internal repositioning rapid is not supported; "
+                    "blocks are expected to contain Z-only rapids only")
             continue
         if move.motion not in ("linear", "arc_cw", "arc_ccw"):
             continue
@@ -449,15 +457,130 @@ def _shift_block_rigid(block: Any, dx: float, dy: float, feature_id: str) -> Non
                     move.arc.center["y"] += dy
 
 
-def preview_edits(program: Program, request: dict[str, Any], source_text: str) -> dict[str, Any]:
-    """Interactive rigid per-feature edits (phase one: whole-block shift).
+def _stretch_feature_x(block: Any, feature_id: str, band_start: float, band_end: float,
+                       below_offset: float, above_offset: float) -> None:
+    """Segment-level X stretch of one parsed block for interactive editing.
 
-    Each edit translates one recognized feature's whole block by ``(dx, dy)``.
-    The candidate is accepted only after the pure-coordinate-patch serializer
-    accepts it AND a runtime reparse of the patched draft proves the shifted
-    features moved by exactly the requested delta while every untouched
-    feature stayed put and no Z value changed. Features sharing the same XY
-    path at multiple depths must move together or not at all.
+    The band is the feature's own X span. Everything wholly left of
+    ``band_start`` / wholly right of ``band_end`` stays rigid (translated by
+    ``below_offset`` / ``above_offset`` according to the chosen anchor); only
+    straight moves parallel to X absorb the length change. A move whose two
+    junction offsets differ must be an axial straight line with an X word —
+    an arc would be distorted, a Y-bearing line would be skewed, and a line
+    without an X word cannot carry the new coordinate — each is rejected
+    instead of being guessed at.
+
+    Offsets are decided per *junction* from the untouched coordinates: left of
+    the band keeps ``below_offset``, right of it keeps ``above_offset``, a
+    junction strictly inside stays put so the axial move next to it absorbs
+    the whole stretch. Because the rule is a pure function of the junction X,
+    connected chains — including Z-only modal carries between cut moves — and
+    closed-loop wrap points stay consistent automatically.
+    """
+    tol = 1e-6
+    motions = block.motions
+    moves = [move for move in motions if move.motion in ("linear", "arc_cw", "arc_ccw")]
+    if not moves:
+        raise TransformError(f"Feature {feature_id}: the block has no cutting motion to resize")
+    first = moves[0]
+    if (first.start is None or first.start.x is None or first.start.y is None
+            or first.end is None or first.end.x is None or first.end.y is None):
+        raise TransformError(f"Feature {feature_id}: the first cutting move has unresolved coordinates")
+    entry = motions[0]
+    if entry.motion != "rapid" or entry.machine_coordinates:
+        raise TransformError(
+            f"Feature {feature_id}: the block does not start with an independent positioning rapid; "
+            "resizing it would cut a diagonal from the stale entry position")
+    if entry.end is None or entry.end.x is None or entry.end.y is None:
+        raise TransformError(f"Feature {feature_id}: the positioning rapid has unresolved coordinates")
+    if abs(entry.end.x - first.start.x) > 1e-6 or abs(entry.end.y - first.start.y) > 1e-6:
+        raise TransformError(
+            f"Feature {feature_id}: the positioning rapid does not end at the first cutting move; "
+            "unsupported block structure")
+    for move in motions[1:]:
+        if move.motion == "rapid" and ("x" in (move.raw_words or {}) or "y" in (move.raw_words or {})):
+            # Unreachable by parser construction (an XY-bearing rapid starts
+            # its own PathBlock); kept fail-closed for defense in depth.
+            raise TransformError(
+                f"Feature {feature_id}: an internal repositioning rapid is not supported; "
+                "blocks are expected to contain Z-only rapids only")
+
+    junctions = [moves[0].start.x] + [move.end.x for move in moves]
+    if any(value is None for value in junctions):
+        raise TransformError(f"Feature {feature_id}: unresolved X coordinates in the motion chain")
+    if min(junctions) > band_start + tol or max(junctions) < band_end - tol:
+        raise TransformError(
+            f"Feature {feature_id}: the feature's X extremes include arc bulges rather than move "
+            "endpoints; segment-level X stretch needs endpoints at both extremes "
+            "(arc-ended shapes are not stretchable in phase one)")
+
+    def junction_offset(value: float) -> float:
+        if value <= band_start + tol:
+            return below_offset
+        if value >= band_end - tol:
+            return above_offset
+        return 0.0
+
+    offsets = [junction_offset(value) for value in junctions]
+
+    previous_end = None
+    for index, move in enumerate(moves):
+        if (move.start is None or move.end is None or move.start.x is None or move.end.x is None
+                or move.start.y is None or move.end.y is None):
+            raise TransformError(f"Feature {feature_id}: move {move.id} has unresolved coordinates")
+        if previous_end is not None and (
+                abs(move.start.x - previous_end[0]) > 1e-6 or abs(move.start.y - previous_end[1]) > 1e-6):
+            raise TransformError(f"Feature {feature_id}: disconnected motion chain before move {move.id}")
+        previous_end = (move.end.x, move.end.y)
+        if abs(offsets[index] - offsets[index + 1]) > 1e-9:
+            if move.motion != "linear":
+                raise TransformError(
+                    f"Feature {feature_id}: resizing keeps arcs rigid; an arc would need different "
+                    "offsets at its two ends and would be distorted")
+            if abs(move.end.y - move.start.y) > tol:
+                raise TransformError(
+                    f"Feature {feature_id}: resizing lengthens only straight moves parallel to X; "
+                    "a move with a Y change would be skewed")
+            if "x" not in (move.raw_words or {}):
+                raise TransformError(
+                    f"Feature {feature_id}: move {move.id} would need a new X but its line has no X "
+                    "word; the stretch cannot be expressed as a coordinate patch")
+
+    if abs(offsets[0]) > 1e-9:
+        entry.end.x += offsets[0]
+        # NOTE: the parser aliases block.start to the entry rapid's end Point3
+        # (start=end), so block.start already moved with entry.end — never
+        # shift it again.
+    for index, move in enumerate(moves):
+        start_offset, end_offset = offsets[index], offsets[index + 1]
+        if move.motion == "rapid":
+            continue  # Z-only modal carry: the line has no X/Y words
+        if "x" in (move.raw_words or {}) and abs(end_offset) > 1e-12:
+            move.end.x += end_offset
+        if move.arc is not None:
+            # Arcs never straddle the offsets (rejected above): start, end and
+            # centre translate by the same offset, so every I/J offset stays
+            # identical and the serializer never needs to touch I/J words.
+            if move.start is None or move.start.x is None:
+                raise TransformError(f"Feature {feature_id}: move {move.id} has unresolved coordinates")
+            if abs(start_offset) > 1e-12:
+                move.start.x += start_offset
+                if move.arc.center and "x" in move.arc.center:
+                    move.arc.center["x"] += start_offset
+
+
+def preview_edits(program: Program, request: dict[str, Any], source_text: str) -> dict[str, Any]:
+    """Interactive rigid per-feature edits (phase one: whole-block shift and
+    X-axis segment stretch).
+
+    A ``shift`` edit translates one recognized feature's whole block by
+    ``(dx, dy)``; a ``resize_x`` edit stretches one feature's own X span to
+    ``new_length`` around an anchor (``min``/``max``/``center``). The candidate
+    is accepted only after the pure-coordinate-patch serializer accepts it AND
+    a runtime reparse of the patched draft proves every edited feature reached
+    exactly its requested geometry while every untouched feature stayed put
+    and no Z value changed. Features sharing the same XY path at multiple
+    depths must be edited together with identical parameters or not at all.
     """
     if not isinstance(request, dict):
         raise TransformError("Edits request must be an object")
@@ -470,40 +593,66 @@ def preview_edits(program: Program, request: dict[str, Any], source_text: str) -
     seen: set[str] = set()
     for index, edit in enumerate(edits):
         label = f"Edit {index + 1}"
-        if not isinstance(edit, dict) or edit.get("op") != "shift":
-            raise TransformError(f"{label}: only op='shift' is supported in phase one")
+        if not isinstance(edit, dict) or edit.get("op") not in ("shift", "resize_x"):
+            raise TransformError(f"{label}: only op='shift' or op='resize_x' are supported in phase one")
         feature_id = edit.get("feature_id")
         if not isinstance(feature_id, str) or feature_id not in feature_by_id:
             raise TransformError(f"{label}: unknown feature_id {feature_id!r}")
         if feature_id in seen:
             raise TransformError(f"{label}: feature {feature_id} is edited twice")
         seen.add(feature_id)
-        dx = _finite_number(edit.get("dx"), f"{label} dx")
-        dy = _finite_number(edit.get("dy"), f"{label} dy")
-        if dx == 0 and dy == 0:
-            raise TransformError(f"{label}: shift distance is zero")
         feature = feature_by_id[feature_id]
         if not feature.get("bounds"):
             raise TransformError(f"{label}: feature {feature_id} has unresolved geometry bounds")
-        normalized.append({"op": "shift", "feature_id": feature_id, "dx": dx, "dy": dy,
-                           "block_id": feature["block_id"]})
+        if edit["op"] == "shift":
+            dx = _finite_number(edit.get("dx"), f"{label} dx")
+            dy = _finite_number(edit.get("dy"), f"{label} dy")
+            if dx == 0 and dy == 0:
+                raise TransformError(f"{label}: shift distance is zero")
+            normalized.append({"op": "shift", "feature_id": feature_id, "dx": dx, "dy": dy,
+                               "block_id": feature["block_id"]})
+        else:
+            new_length = _finite_number(edit.get("new_length"), f"{label} new_length")
+            if new_length <= 0:
+                raise TransformError(f"{label}: new_length must be greater than zero")
+            anchor = edit.get("anchor", "min")
+            if anchor not in ("min", "max", "center"):
+                raise TransformError(f"{label}: anchor must be one of 'min', 'max', 'center'")
+            bounds = feature["bounds"]
+            span = bounds["x_max"] - bounds["x_min"]
+            if span <= 1e-6:
+                raise TransformError(f"{label}: feature {feature_id} has no X extent to resize")
+            if abs(new_length - span) <= 1e-6:
+                raise TransformError(
+                    f"{label}: new_length {new_length} matches the feature's current X span "
+                    f"({span:.3f}); nothing would change")
+            normalized.append({"op": "resize_x", "feature_id": feature_id, "new_length": new_length,
+                               "anchor": anchor, "block_id": feature["block_id"],
+                               "band_start": bounds["x_min"], "band_end": bounds["x_max"]})
 
-    deltas = {item["feature_id"]: (item["dx"], item["dy"]) for item in normalized}
+    edit_by_feature = {item["feature_id"]: item for item in normalized}
+
+    def edit_signature(item: dict[str, Any]) -> tuple:
+        return tuple(sorted((key, value) for key, value in item.items()
+                            if key not in ("feature_id", "block_id")))
+
     for pattern in recognition["patterns"]:
         if pattern["kind"] != "same_xy_path_at_multiple_depths":
             continue
         group = list(pattern["feature_ids"])
-        touched = [fid for fid in group if fid in deltas]
+        touched = [fid for fid in group if fid in edit_by_feature]
         if not touched:
             continue
         if len(touched) < len(group):
             raise TransformError(
                 "Features " + ", ".join(sorted(group)) + " share the same XY path at multiple depths; "
-                "shift all of them by the same delta or none of them")
-        reference = deltas[touched[0]]
-        if any(deltas[fid] != reference for fid in touched):
+                "apply the identical edit to all of them or none of them")
+        reference = edit_signature(edit_by_feature[touched[0]])
+        if any(edit_signature(edit_by_feature[fid]) != reference for fid in touched):
+            detail = ("identical shift delta" if reference and dict(reference).get("op") == "shift"
+                      else "identical resize_x parameters")
             raise TransformError(
-                "Features sharing the same XY path at multiple depths must receive the identical shift delta")
+                "Features sharing the same XY path at multiple depths must receive the " + detail)
 
     transformed = copy.deepcopy(program)
     blocks = {block.id: block for block in transformed.blocks}
@@ -511,7 +660,14 @@ def preview_edits(program: Program, request: dict[str, Any], source_text: str) -
         block = blocks.get(item["block_id"])
         if block is None:
             raise TransformError(f"Feature {item['feature_id']}: source block vanished")
-        _shift_block_rigid(block, item["dx"], item["dy"], item["feature_id"])
+        if item["op"] == "shift":
+            _shift_block_rigid(block, item["dx"], item["dy"], item["feature_id"])
+        else:
+            delta = item["new_length"] - (item["band_end"] - item["band_start"])
+            below, above = {"min": (0.0, delta), "max": (-delta, 0.0),
+                            "center": (-delta / 2.0, delta / 2.0)}[item["anchor"]]
+            _stretch_feature_x(block, item["feature_id"], item["band_start"], item["band_end"],
+                               below, above)
 
     provisional = {"validation": {"passed": True, "errors": [], "warnings": []},
                    "source_sha256": program.source_sha256,
@@ -531,19 +687,35 @@ def preview_edits(program: Program, request: dict[str, Any], source_text: str) -
     if len(runtime.moves) != len(program.moves) or len(runtime.blocks) != len(program.blocks):
         errors.append("Patched draft changed the program structure (move/block count)")
     for item in normalized:
-        feature_id, dx, dy = item["feature_id"], item["dx"], item["dy"]
+        feature_id = item["feature_id"]
         original_bounds = feature_by_id[feature_id]["bounds"]
         runtime_bounds = (runtime_features.get(feature_id) or {}).get("bounds")
         if not runtime_bounds:
-            errors.append(f"Feature {feature_id}: shifted feature is missing from the runtime reparse")
+            errors.append(f"Feature {feature_id}: edited feature is missing from the runtime reparse")
             continue
-        for key, delta in (("x_min", dx), ("x_max", dx), ("y_min", dy), ("y_max", dy)):
-            if abs(runtime_bounds[key] - (original_bounds[key] + delta)) > tolerance:
+        if item["op"] == "shift":
+            expected = {"x_min": original_bounds["x_min"] + item["dx"],
+                        "x_max": original_bounds["x_max"] + item["dx"],
+                        "y_min": original_bounds["y_min"] + item["dy"],
+                        "y_max": original_bounds["y_max"] + item["dy"]}
+        elif item["anchor"] == "min":
+            expected = {"x_min": item["band_start"], "x_max": item["band_start"] + item["new_length"],
+                        "y_min": original_bounds["y_min"], "y_max": original_bounds["y_max"]}
+        elif item["anchor"] == "max":
+            expected = {"x_min": item["band_end"] - item["new_length"], "x_max": item["band_end"],
+                        "y_min": original_bounds["y_min"], "y_max": original_bounds["y_max"]}
+        else:
+            middle = (item["band_start"] + item["band_end"]) / 2
+            expected = {"x_min": middle - item["new_length"] / 2,
+                        "x_max": middle + item["new_length"] / 2,
+                        "y_min": original_bounds["y_min"], "y_max": original_bounds["y_max"]}
+        for key, target in expected.items():
+            if abs(runtime_bounds[key] - target) > tolerance:
                 errors.append(
                     f"Feature {feature_id}: runtime {key} {runtime_bounds[key]:.4f} does not match "
-                    f"the requested shift ({original_bounds[key] + delta:.4f})")
+                    f"the requested edit ({target:.4f})")
     for feature_id, feature in feature_by_id.items():
-        if feature_id in deltas or not feature.get("bounds"):
+        if feature_id in edit_by_feature or not feature.get("bounds"):
             continue
         runtime_bounds = (runtime_features.get(feature_id) or {}).get("bounds")
         if not runtime_bounds:

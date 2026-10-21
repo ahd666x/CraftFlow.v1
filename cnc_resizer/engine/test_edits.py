@@ -126,6 +126,33 @@ WORKSHOP_ROUNDED_RECT = "\r\n".join([
     "G0Z5.000", "G0X0Y0", "G53Z0", "G53X0Y3950", "M30", "%",
 ]) + "\r\n"
 
+# Workshop-dialect rectangle without corner arcs: stretchable in X. The two
+# vertical lines carry only Y words (X is modal), so a stretch must prove the
+# modal carry at runtime instead of patching those lines.
+WORKSHOP_RECT = "\r\n".join([
+    "%", "G90G21G54", "G53Z0", "T2M6", "M141", "M6T2", "G43H2",
+    "G0X0.000Y0.000Z5.000M3 S16000", "G1Z-3.000F9000.0",
+    "G1X120.000Y0.000",
+    "G1Y200.000",
+    "G1X0.000Y200.000",
+    "G1Y0.000",
+    "G0Z5.000", "G0X0Y0", "G53Z0", "G53X0Y3950", "M30", "%",
+]) + "\r\n"
+
+# Triangle: the move from (100,0) to (50,40) is diagonal and would be skewed
+# by an X stretch, so the whole edit must fail closed.
+DIAGONAL_LF = "\n".join([
+    "G21 G90 G17",
+    "G0 X0 Y0 Z5",
+    "G1 Z-1",
+    "G1 X100 Y0",
+    "G1 X50 Y40",
+    "G1 X0 Y0",
+    "G0 Z5",
+    "M30",
+    "",
+])
+
 
 def shift_preview(text, feature_picker, dx, dy):
     program = parse_program(text)
@@ -286,6 +313,173 @@ class PreviewEditsTests(SimpleTestCase):
         self.assertIn("N2130G1Z-16.000", serialized["text"])  # mid-pass plunge untouched
 
 
+def resize_preview(text, feature_picker, new_length, anchor="min"):
+    program = parse_program(text)
+    feature = feature_picker(recognize(program)["features"])
+    return preview_edits(program, {"edits": [{"op": "resize_x", "feature_id": feature["id"],
+                                              "new_length": new_length, "anchor": anchor}]},
+                         source_text=text)
+
+
+class PreviewResizeEditsTests(SimpleTestCase):
+    """Package-E phase-one X resize: segment-level stretch of one feature."""
+
+    def test_resize_x_grows_rectangle_anchored_at_min(self):
+        result = resize_preview(TWO_BLOCKS_LF, second_feature, 70)  # 20 -> 70
+        self.assertTrue(result["validation"]["passed"], result["validation"]["errors"])
+        after = {feature["id"]: feature["bounds"] for feature in result["resized"]["features"]
+                 if feature["bounds"]}
+        self.assertAlmostEqual(after["feature-block-0002"]["x_min"], 30.0)
+        self.assertAlmostEqual(after["feature-block-0002"]["x_max"], 100.0)
+        self.assertAlmostEqual(after["feature-block-0002"]["y_min"], 60.0)
+        self.assertAlmostEqual(after["feature-block-0002"]["y_max"], 80.0)
+        self.assertAlmostEqual(after["feature-block-0001"]["x_max"], 100.0)  # untouched neighbour
+
+    def test_resize_x_grows_big_rectangle_anchored_at_min(self):
+        result = resize_preview(TWO_BLOCKS_LF, lambda features: features[0], 130)
+        self.assertTrue(result["validation"]["passed"], result["validation"]["errors"])
+        after = {feature["id"]: feature["bounds"] for feature in result["resized"]["features"]
+                 if feature["bounds"]}
+        self.assertAlmostEqual(after["feature-block-0001"]["x_min"], 0.0)
+        self.assertAlmostEqual(after["feature-block-0001"]["x_max"], 130.0)
+        self.assertAlmostEqual(after["feature-block-0001"]["y_min"], 0.0)
+        self.assertAlmostEqual(after["feature-block-0001"]["y_max"], 50.0)
+
+    def test_resize_x_anchored_at_max_moves_min_edge_and_entry_rapid(self):
+        result = resize_preview(TWO_BLOCKS_LF, lambda features: features[0], 130, anchor="max")
+        self.assertTrue(result["validation"]["passed"], result["validation"]["errors"])
+        after = {feature["id"]: feature["bounds"] for feature in result["resized"]["features"]
+                 if feature["bounds"]}
+        self.assertAlmostEqual(after["feature-block-0001"]["x_min"], -30.0)
+        self.assertAlmostEqual(after["feature-block-0001"]["x_max"], 100.0)
+        serialized = serialize_candidate(TWO_BLOCKS_LF, result)
+        self.assertIn("G0 X-30.000 Y0 Z5", serialized["text"])  # entry rapid follows junction 0
+        self.assertIn("G1 X-30.000 Y50", serialized["text"])
+
+    def test_resize_x_anchored_at_center(self):
+        result = resize_preview(TWO_BLOCKS_LF, lambda features: features[0], 130, anchor="center")
+        self.assertTrue(result["validation"]["passed"], result["validation"]["errors"])
+        after = {feature["id"]: feature["bounds"] for feature in result["resized"]["features"]
+                 if feature["bounds"]}
+        self.assertAlmostEqual(after["feature-block-0001"]["x_min"], -15.0)
+        self.assertAlmostEqual(after["feature-block-0001"]["x_max"], 115.0)
+
+    def test_resize_x_shrinks(self):
+        result = resize_preview(TWO_BLOCKS_LF, lambda features: features[0], 80)
+        self.assertTrue(result["validation"]["passed"], result["validation"]["errors"])
+        after = {feature["id"]: feature["bounds"] for feature in result["resized"]["features"]
+                 if feature["bounds"]}
+        self.assertAlmostEqual(after["feature-block-0001"]["x_max"], 80.0)
+
+    def test_resize_x_patches_only_axial_lines(self):
+        result = resize_preview(TWO_BLOCKS_LF, lambda features: features[0], 130)
+        serialized = serialize_candidate(TWO_BLOCKS_LF, result)
+        source_lines = TWO_BLOCKS_LF.split("\n")
+        patched_lines = serialized["text"].split("\n")
+        self.assertEqual(len(source_lines), len(patched_lines))
+        touched = set(serialized["changed_line_numbers"])
+        self.assertEqual(touched, {4, 5}, touched)  # the two axial moves only
+        for index, (before, after) in enumerate(zip(source_lines, patched_lines)):
+            if index + 1 not in touched:
+                self.assertEqual(before, after, f"line {index + 1} must stay byte-identical")
+        self.assertIn("G1 X130.000 Y0", patched_lines[3])
+        self.assertIn("G1 X130.000 Y50", patched_lines[4])
+
+    def test_resize_x_rejects_arc_at_extremes(self):
+        with self.assertRaises(TransformError) as caught:
+            resize_preview(ROUNDED_RECT_LF, closed_feature, 250)
+        self.assertIn("arc", str(caught.exception))
+
+    def test_resize_x_rejects_skewed_diagonal(self):
+        with self.assertRaises(TransformError) as caught:
+            resize_preview(DIAGONAL_LF, lambda features: features[0], 150)
+        self.assertIn("skewed", str(caught.exception))
+
+    def test_resize_x_rejects_noop_length(self):
+        with self.assertRaises(TransformError) as caught:
+            resize_preview(TWO_BLOCKS_LF, lambda features: features[0], 100)
+        self.assertIn("current X span", str(caught.exception))
+
+    def test_resize_x_rejects_invalid_length(self):
+        program = parse_program(TWO_BLOCKS_LF)
+        for new_length in (0, -5, "abc"):
+            with self.assertRaises(TransformError):
+                preview_edits(program, {"edits": [{"op": "resize_x", "feature_id": "feature-block-0001",
+                                                   "new_length": new_length}]}, source_text=TWO_BLOCKS_LF)
+
+    def test_resize_x_rejects_unknown_anchor(self):
+        with self.assertRaises(TransformError) as caught:
+            resize_preview(TWO_BLOCKS_LF, lambda features: features[0], 130, anchor="left")
+        self.assertIn("anchor", str(caught.exception))
+
+    def test_resize_x_depth_repeat_partial_rejected(self):
+        program = parse_program(TWO_DEPTH_LF)
+        with self.assertRaises(TransformError) as caught:
+            preview_edits(program, {"edits": [{"op": "resize_x", "feature_id": "feature-block-0001",
+                                               "new_length": 40}]}, source_text=TWO_DEPTH_LF)
+        self.assertIn("multiple depths", str(caught.exception))
+
+    def test_resize_x_depth_repeat_identical_allowed(self):
+        program = parse_program(TWO_DEPTH_LF)
+        result = preview_edits(program, {"edits": [
+            {"op": "resize_x", "feature_id": "feature-block-0001", "new_length": 40},
+            {"op": "resize_x", "feature_id": "feature-block-0002", "new_length": 40},
+        ]}, source_text=TWO_DEPTH_LF)
+        self.assertTrue(result["validation"]["passed"], result["validation"]["errors"])
+
+    def test_resize_x_depth_repeat_different_lengths_rejected(self):
+        program = parse_program(TWO_DEPTH_LF)
+        with self.assertRaises(TransformError) as caught:
+            preview_edits(program, {"edits": [
+                {"op": "resize_x", "feature_id": "feature-block-0001", "new_length": 40},
+                {"op": "resize_x", "feature_id": "feature-block-0002", "new_length": 60},
+            ]}, source_text=TWO_DEPTH_LF)
+        self.assertIn("identical resize_x parameters", str(caught.exception))
+
+    def test_depth_repeat_mixed_ops_rejected(self):
+        program = parse_program(TWO_DEPTH_LF)
+        with self.assertRaises(TransformError) as caught:
+            preview_edits(program, {"edits": [
+                {"op": "shift", "feature_id": "feature-block-0001", "dx": 5, "dy": 0},
+                {"op": "resize_x", "feature_id": "feature-block-0002", "new_length": 40},
+            ]}, source_text=TWO_DEPTH_LF)
+        self.assertIn("must receive the identical", str(caught.exception))
+
+    def test_mixed_shift_and_resize_x_across_blocks_allowed(self):
+        program = parse_program(TWO_BLOCKS_LF)
+        result = preview_edits(program, {"edits": [
+            {"op": "resize_x", "feature_id": "feature-block-0001", "new_length": 120},
+            {"op": "shift", "feature_id": "feature-block-0002", "dx": 5, "dy": 3},
+        ]}, source_text=TWO_BLOCKS_LF)
+        self.assertTrue(result["validation"]["passed"], result["validation"]["errors"])
+        after = {feature["id"]: feature["bounds"] for feature in result["resized"]["features"]
+                 if feature["bounds"]}
+        self.assertAlmostEqual(after["feature-block-0001"]["x_max"], 120.0)
+        self.assertAlmostEqual(after["feature-block-0002"]["x_min"], 35.0)
+        self.assertAlmostEqual(after["feature-block-0002"]["y_min"], 63.0)
+
+    def test_real_workshop_sample_rejects_loop_resize(self):
+        with open(SAMPLE, "r", encoding="utf-8") as stream:
+            text = stream.read()
+        with self.assertRaises(TransformError) as caught:
+            resize_preview(text, closed_feature, 400)
+        self.assertIn("arc", str(caught.exception))
+
+    def test_workshop_rectangle_stretch_proves_modal_carry(self):
+        result = resize_preview(WORKSHOP_RECT, lambda features: features[0], 150)
+        self.assertTrue(result["validation"]["passed"], result["validation"]["errors"])
+        after = {feature["id"]: feature["bounds"] for feature in result["resized"]["features"]
+                 if feature["bounds"]}
+        self.assertAlmostEqual(after["feature-block-0001"]["x_min"], 0.0)
+        self.assertAlmostEqual(after["feature-block-0001"]["x_max"], 150.0)
+        self.assertAlmostEqual(after["feature-block-0001"]["y_max"], 200.0)
+        serialized = serialize_candidate(WORKSHOP_RECT, result)
+        self.assertIn("G1X150.000Y0.000", serialized["text"])
+        self.assertIn("G1Y200.000", serialized["text"])  # X-less vertical: modal carry, byte-identical
+        self.assertIn("G1X0.000Y200.000", serialized["text"])  # left edge untouched
+        self.assertIn("G0X0.000Y0.000Z5.000M3 S16000", serialized["text"])  # entry rapid untouched
+
+
 class ClosedStretchEntryGuardTests(SimpleTestCase):
     def test_stretch_rejects_band_that_moves_loop_entry(self):
         program = parse_program(ENTRY_MOVE_LOOP_LF)
@@ -387,6 +581,33 @@ class EngineEditsViewTests(TestCase):
                                     content_type="application/json")
         self.assertEqual(response.status_code, 400)
         self.assertIn("unknown feature_id", response.json()["error"])
+
+    @override_settings(CNC_RESIZER_IMPLICIT_UNITS="mm", CNC_RESIZER_SHEET_ADAPTER="minimal_xy_router")
+    def test_output_produces_machine_file_from_resize_x(self):
+        self.client.login(username="cnc-manager-e", password="testpass")
+        payload = {"filename": "plate.cnc", "content": WORKSHOP_RECT,
+                   "edits": [{"op": "resize_x", "feature_id": "feature-block-0001",
+                              "new_length": 150, "anchor": "min"}]}
+        response = self.client.post(self.output_url(), data=json.dumps(payload),
+                                    content_type="application/json")
+        self.assertEqual(response.status_code, 200, response.content)
+        body = response.json()
+        self.assertTrue(body["allowed"], body)
+        self.assertTrue(body["safe_for_execution"])
+        self.assertIn("G1X150.000Y0.000", body["cnc_text"])
+        self.assertIn("G1Y200.000", body["cnc_text"])  # modal-carry line stays byte-identical
+        self.assertIn("G0X0.000Y0.000Z5.000M3 S16000", body["cnc_text"])  # entry rapid untouched
+        self.assertEqual(len(body["cnc_text"].split("\r\n")), len(WORKSHOP_RECT.split("\r\n")))
+
+    def test_preview_endpoint_400_on_invalid_resize_x(self):
+        self.client.login(username="cnc-manager-e", password="testpass")
+        payload = {"filename": "parts.cnc", "content": TWO_BLOCKS_LF,
+                   "edits": [{"op": "resize_x", "feature_id": "feature-block-0001",
+                              "new_length": 130, "anchor": "left"}]}
+        response = self.client.post(self.preview_url(), data=json.dumps(payload),
+                                    content_type="application/json")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("anchor", response.json()["error"])
 
 
 if __name__ == "__main__":
