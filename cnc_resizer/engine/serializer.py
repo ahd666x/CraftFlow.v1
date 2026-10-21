@@ -25,6 +25,14 @@ fail-closed and both verified at runtime by the engine's reparse walk:
 * ``arc_direction_flips`` — a ``mirror`` edit reverses every arc of the
   mirrored block, so the serializer accepts a ``G2 <-> G3`` swap (and the
   resulting I/J sign flip) on lines that carry an explicit G2/G3 word.
+* ``rotated_move_ids`` — a ``rotate`` edit turns a block by 90°; rotation is
+  orientation-preserving so G2/G3 and G41/G42 stay untouched, but a rotated
+  line whose source carried only one axis word must end up explicit on both
+  axes (the other coordinate changes too). For such declared moves the
+  serializer INSERTS the missing word (``X``/``Y``, and for I/J arcs the
+  missing centre offset) right after the last existing XY/I/J word of that
+  line instead of blocking. Every other structural rule stays as strict as
+  before.
 
 Everything that cannot be expressed as such a patch is blocked here with a
 precise reason list: incremental coordinates, machine-coordinate (G53)
@@ -116,13 +124,19 @@ def _patch_plan(program: Any, preview: dict[str, Any]) -> dict[int, tuple[str, d
         blockers.append("arc_direction_flips must be a list of move ids")
         raw_flips = []
     arc_flips = set(raw_flips)
-    plan: dict[int, tuple[str, dict[str, float]]] = {}
+    raw_rotated = preview.get("rotated_move_ids") or []
+    if not isinstance(raw_rotated, list) or any(not isinstance(item, str) for item in raw_rotated):
+        blockers.append("rotated_move_ids must be a list of move ids")
+        raw_rotated = []
+    rotated_moves = set(raw_rotated)
+    plan: dict[int, tuple[str, dict[str, float], dict[str, float]]] = {}
     for item in candidate_moves:
         move_id = item.get("id")
         source = source_moves.get(move_id)
         if source is None:
             blockers.append(f"Candidate move {move_id} does not exist in the source")
             continue
+        is_rotated = move_id in rotated_moves
         motion_flipped = False
         if item.get("motion") != source.motion:
             if (move_id in arc_flips and source.arc is not None
@@ -136,6 +150,8 @@ def _patch_plan(program: Any, preview: dict[str, Any]) -> dict[int, tuple[str, d
             continue
         start, end = item.get("start") or {}, item.get("end") or {}
         words: dict[str, float] = {}
+        inserted: dict[str, float] = {}
+        source_words = source.raw_words or {}
         # Absolute (G90) lines carry only the END coordinate as X/Y words; the
         # START is modal state resolved from the previous line. Patching from
         # the start would corrupt downward/sideways moves, so X/Y words are
@@ -147,7 +163,15 @@ def _patch_plan(program: Any, preview: dict[str, Any]) -> dict[int, tuple[str, d
                 if (before is None) != (after is None):
                     blockers.append(f"Move {move_id} end {axis} resolution changed")
             elif abs(before - after) > 1e-8:
-                words[letter] = after
+                if letter.lower() in source_words or not is_rotated:
+                    # Unchanged contract: a needed change lands in `words` and
+                    # an absent word then fails at patch time ("cannot be
+                    # patched unambiguously").
+                    words[letter] = after
+                else:
+                    # Rotated blocks end up fully explicit: the missing axis
+                    # word is inserted next to the existing ones.
+                    inserted[letter] = after
         for point_name, candidate_point in (("start", start), ("end", end)):
             before = _point_value(getattr(source, point_name), "z")
             after = candidate_point.get("z")
@@ -176,10 +200,12 @@ def _patch_plan(program: Any, preview: dict[str, Any]) -> dict[int, tuple[str, d
                     new_offset = after_center - candidate_start
                     old_offset = before_center - (_point_value(source.start, axis) or 0.0)
                     if abs(new_offset - old_offset) > 1e-8:
-                        if letter.lower() not in (source.raw_words or {}):
-                            blockers.append(f"Move {move_id} arc centre {letter} changed but the word is absent")
-                        else:
+                        if letter.lower() in source_words:
                             words[letter] = new_offset
+                        elif is_rotated:
+                            inserted[letter] = new_offset
+                        else:
+                            blockers.append(f"Move {move_id} arc centre {letter} changed but the word is absent")
         elif candidate_arc:
             blockers.append(f"Move {move_id} gained arc geometry; semantics must not change")
         if motion_flipped:
@@ -188,7 +214,12 @@ def _patch_plan(program: Any, preview: dict[str, Any]) -> dict[int, tuple[str, d
             else:
                 blockers.append(
                     f"Move {move_id}: arc direction flip needs an explicit G2/G3 word on its line")
-        if not words:
+        if is_rotated and inserted and not any(
+                letter.lower() in source_words for letter in "XYIJ"):
+            blockers.append(
+                f"Move {move_id}: a rotated line needs at least one existing X/Y/I/J word to "
+                "anchor the inserted words next to")
+        if not words and not inserted:
             continue  # untouched move: the line passes through byte-identical
         # Only moves that actually need a patch must be patchable:
         if source.coordinate_mode != "absolute":
@@ -198,7 +229,7 @@ def _patch_plan(program: Any, preview: dict[str, Any]) -> dict[int, tuple[str, d
         if not source.raw_line or any(mark in source.raw_line for mark in _COMMENT_MARKS):
             blockers.append(f"Move {move_id} source line cannot be patched safely (comment or missing text)")
             continue
-        plan[source.source_line - 1] = (source.raw_line, words)
+        plan[source.source_line - 1] = (source.raw_line, words, inserted)
     if blockers:
         raise SerializerBlocked("Candidate cannot be serialized safely", blockers)
     return plan
@@ -221,7 +252,7 @@ def serialize_candidate(source_text: str, preview: dict[str, Any]) -> dict[str, 
     plan = _patch_plan(program, preview)
     lines = source_text.splitlines(True)
     changed_lines: list[int] = []
-    for line_index, (raw_line, words) in plan.items():
+    for line_index, (raw_line, words, insertions) in plan.items():
         if not 0 <= line_index < len(lines):
             raise SerializerBlocked(f"Source line {line_index + 1} is out of range")
         raw = lines[line_index]
@@ -237,6 +268,21 @@ def serialize_candidate(source_text: str, preview: dict[str, Any]) -> dict[str, 
                     f"Source line {line_index + 1}: word {letter} cannot be patched unambiguously")
             match = matches[0]
             patched = patched[:match.start(1)] + _format_word(letter, value) + patched[match.end(1):]
+        if insertions:
+            # A rotated line must end up explicit on both axes: the missing
+            # words are inserted right after the last existing X/Y/I/J word so
+            # the line's own dialect style (spaces or compact) is preserved.
+            anchor = None
+            for letter in "XYIJ":
+                for match in _PATCH_RES[letter].finditer(patched):
+                    if anchor is None or match.end() > anchor:
+                        anchor = match.end()
+            if anchor is None:  # guarded in _patch_plan; defense in depth
+                raise SerializerBlocked(
+                    f"Source line {line_index + 1}: no existing X/Y/I/J word to anchor the inserted words")
+            text = "".join(f"{letter}{_format_word(letter, value)}"
+                           for letter, value in sorted(insertions.items()))
+            patched = patched[:anchor] + text + patched[anchor:]
         lines[line_index] = patched + eol
         changed_lines.append(line_index + 1)
     insertions, copy_move_count = _copy_plan(program, preview, source_text)

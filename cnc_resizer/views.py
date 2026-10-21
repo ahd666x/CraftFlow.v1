@@ -408,7 +408,7 @@ def engine_profile(request):
                         json_dumps_params={'ensure_ascii': False})
 
 
-_EDIT_TEMPLATE_OPS = frozenset({"shift", "resize_x", "array", "grid", "mirror",
+_EDIT_TEMPLATE_OPS = frozenset({"shift", "resize_x", "array", "grid", "mirror", "rotate",
                                 "center_on", "set_gap", "center_between"})
 
 

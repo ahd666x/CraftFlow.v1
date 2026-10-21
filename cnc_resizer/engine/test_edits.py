@@ -1568,5 +1568,232 @@ class EnginePhaseThreeViewTests(TestCase):
         self.assertTrue(any("overlap" in item for item in body["blockers"]), body["blockers"])
 
 
+# Rectangle whose vertical/horizontal lines carry only ONE axis word (the
+# other is modal): a 90-degree rotation changes BOTH coordinates of every
+# endpoint, so the serializer must INSERT the missing word next to the
+# existing one on those lines.
+MODAL_RECT_LF = "\n".join([
+    "G21 G90 G17",
+    "G0 X0 Y0 Z5",
+    "G1 Z-2",
+    "G1 X100 Y0",
+    "G1 Y50",
+    "G1 X0",
+    "G1 Y0",
+    "G0 Z5",
+    "M30",
+    "",
+])
+
+
+def rotate_preview(text, feature_picker, direction):
+    program = parse_program(text)
+    feature = feature_picker(recognize(program)["features"])
+    return preview_edits(program, {"edits": [
+        {"op": "rotate", "feature_id": feature["id"], "dir": direction}]}, source_text=text)
+
+
+def first_feature(features):
+    return features[0]
+
+
+class RotateTests(SimpleTestCase):
+    """Package G: 90-degree rotation about the feature's own centre.
+
+    Rotation preserves orientation, so G2/G3 and G41/G42 never flip (unlike
+    mirroring); the width/height of the feature swap around the same centre
+    and every rotated cut line ends up explicit on both axes.
+    """
+
+    def test_rotate_ccw_swaps_width_and_height(self):
+        result = rotate_preview(MODAL_RECT_LF, first_feature, "ccw")
+        self.assertTrue(result["validation"]["passed"], result["validation"]["errors"])
+        self.assertEqual(result["edits_applied"][0]["op"], "rotate")
+        runtime = result["resized"]["features"][0]["bounds"]
+        # (0..100, 0..50) around (50, 25) CCW -> x 25..75, y -25..75
+        for key, target in (("x_min", 25), ("x_max", 75), ("y_min", -25), ("y_max", 75)):
+            self.assertAlmostEqual(runtime[key], target, places=6, msg=key)
+
+    def test_rotate_cw_lands_on_the_other_side(self):
+        result = rotate_preview(MODAL_RECT_LF, first_feature, "cw")
+        self.assertTrue(result["validation"]["passed"], result["validation"]["errors"])
+        # CW maps (0,0) -> (25, 75): the entry rapid moves to the opposite corner
+        self.assertAlmostEqual(result["resized"]["features"][0]["bounds"]["x_min"], 25, places=6)
+        self.assertAlmostEqual(result["resized"]["features"][0]["bounds"]["y_min"], -25, places=6)
+
+    def test_result_carries_rotated_move_ids_for_the_output_path(self):
+        result = rotate_preview(MODAL_RECT_LF, first_feature, "ccw")
+        self.assertTrue(result["validation"]["passed"], result["validation"]["errors"])
+        self.assertTrue(result.get("rotated_move_ids"))
+        # The machine-output path re-serializes from this dict: the inserted
+        # words must survive that round-trip (they were once silently lost).
+        draft = serialize_candidate(MODAL_RECT_LF, result)
+        self.assertIn("G1 Y75.000X25.000", draft["text"])
+
+    def test_rotate_inserts_missing_axis_words_and_proves_runtime(self):
+        result = rotate_preview(MODAL_RECT_LF, first_feature, "ccw")
+        self.assertTrue(result["validation"]["passed"], result["validation"]["errors"])
+        draft = serialize_candidate(MODAL_RECT_LF, result)
+        # vertical/horizontal lines get the missing word inserted:
+        self.assertIn("G1 Y75.000X25.000", draft["text"])
+        self.assertIn("G1 X25.000Y-25.000", draft["text"])
+        self.assertIn("G1 Y-25.000X75.000", draft["text"])
+        runtime = parse_program(draft["text"])
+        endpoints = [(move.end.x, move.end.y) for move in runtime.moves
+                     if move.motion in ("linear", "rapid") and move.end is not None]
+        self.assertEqual(endpoints[:6], [(75.0, -25.0), (75.0, -25.0), (75.0, 75.0),
+                                         (25.0, 75.0), (25.0, -25.0), (75.0, -25.0)])
+
+    def test_rotate_keeps_arc_direction_and_rotates_ij_offsets(self):
+        result = rotate_preview(ROUNDED_RECT_LF, closed_feature, "ccw")
+        self.assertTrue(result["validation"]["passed"], result["validation"]["errors"])
+        draft = serialize_candidate(ROUNDED_RECT_LF, result)
+        # (I, J) -> (-J, I) under CCW; G3 stays G3 (rotation preserves orientation)
+        self.assertIn("G3 X150.000 Y170.000 I-10.000 J0.000", draft["text"])
+        self.assertIn("G3 X-40.000 Y160.000 I0.000 J-10.000", draft["text"])
+        self.assertIn("G3 X-30.000 Y30.000 I10.000 J0.000", draft["text"])
+        self.assertIn("G3 X160.000 Y40.000 I0.000 J10.000", draft["text"])
+        self.assertNotIn("G2 ", draft["text"])  # no direction flip happened
+        runtime = result["resized"]["features"][0]["bounds"]
+        for key, target in (("x_min", -40), ("x_max", 160), ("y_min", 30), ("y_max", 170)):
+            self.assertAlmostEqual(runtime[key], target, places=6, msg=key)
+
+    def test_rotate_invalid_direction_rejected(self):
+        with self.assertRaises(TransformError) as caught:
+            rotate_preview(TWO_BLOCKS_LF, first_feature, "left")
+        self.assertIn("rotation direction", str(caught.exception))
+
+    def test_rotate_rejects_partial_entry_rapid(self):
+        # feature-block-0002 is entered by "G0 X30" (no Y word): the rotated
+        # entry position cannot be made explicit on that line.
+        with self.assertRaises(TransformError) as caught:
+            rotate_preview(PARTIAL_ENTRY_LF, second_feature, "ccw")
+        self.assertIn("entry rapid", str(caught.exception))
+
+    def test_rotate_rejects_arc_without_both_ij_words(self):
+        text = "\n".join([
+            "G21 G90 G17", "G0 X0 Y0 Z5", "G1 Z-3",
+            "G1 X120 Y0",
+            "G3 X130 Y10 I0",
+            "G1 Y190",
+            "G3 X120 Y200 I-10 J0",
+            "G1 X0 Y200",
+            "G3 X-10 Y190 I0 J-10",
+            "G1 Y10",
+            "G3 X0 Y0 I10 J0", "",
+        ])
+        with self.assertRaises(TransformError) as caught:
+            rotate_preview(text, closed_feature, "ccw")
+        self.assertIn("both I and J", str(caught.exception))
+
+    def test_rotate_depth_repeat_group_broadcasts(self):
+        program = parse_program(TWO_DEPTH_LF)
+        result = preview_edits(program, {"edits": [
+            {"op": "rotate", "feature_id": "feature-block-0001", "dir": "ccw"}]},
+            source_text=TWO_DEPTH_LF)
+        self.assertTrue(result["validation"]["passed"], result["validation"]["errors"])
+        rotated = [item for item in result["edits_applied"] if item["op"] == "rotate"]
+        self.assertEqual(len(rotated), 2)
+        self.assertEqual({item["feature_id"] for item in rotated},
+                         {"feature-block-0001", "feature-block-0002"})
+        self.assertEqual(rotated[1].get("derived_from"), "rotate:feature-block-0001")
+
+    def test_rotate_depth_repeat_member_conflict_rejected(self):
+        program = parse_program(TWO_DEPTH_LF)
+        with self.assertRaises(TransformError) as caught:
+            preview_edits(program, {"edits": [
+                {"op": "rotate", "feature_id": "feature-block-0001", "dir": "ccw"},
+                {"op": "shift", "feature_id": "feature-block-0002", "dx": 5, "dy": 0}]},
+                source_text=TWO_DEPTH_LF)
+        self.assertIn("already edited", str(caught.exception))
+
+    def test_rotate_composes_with_shift_across_features(self):
+        program = parse_program(TWO_BLOCKS_LF)
+        result = preview_edits(program, {"edits": [
+            {"op": "rotate", "feature_id": "feature-block-0002", "dir": "cw"},
+            {"op": "shift", "feature_id": "feature-block-0001", "dx": 60, "dy": 60}]},
+            source_text=TWO_BLOCKS_LF)
+        self.assertTrue(result["validation"]["passed"], result["validation"]["errors"])
+
+    def test_rotate_new_partial_overlap_rejected(self):
+        # rotating the wide bar 1 (0..100, 0..50) around its centre lands it on
+        # (25..75, -25..75) and covers part of feature 2 (30..50, 60..80) —
+        # a NEW partial overlap the source did not have.
+        result = rotate_preview(TWO_BLOCKS_LF, first_feature, "ccw")
+        self.assertFalse(result["validation"]["passed"])
+        self.assertEqual(len(result["collision_check"]["flagged"]), 1)
+        self.assertIn("newly partially overlap", result["validation"]["errors"][0])
+
+
+class RotateEndpointTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.manager = User.objects.create_user("cnc-manager-g", password="testpass")
+        manager_group = Group.objects.create(name="2")
+        cls.manager.groups.add(manager_group)
+        cls.regular = User.objects.create_user("cnc-user-g", password="testpass")
+
+    def preview_url(self):
+        return reverse("cnc_resizer:engine_preview")
+
+    def output_url(self):
+        return reverse("cnc_resizer:engine_output")
+
+    def test_preview_endpoint_accepts_rotate_and_reports_warning(self):
+        self.client.login(username="cnc-manager-g", password="testpass")
+        payload = {"filename": "r.cnc", "content": TWO_BLOCKS_LF,
+                   "edits": [{"op": "rotate", "feature_id": "feature-block-0002", "dir": "cw"}]}
+        response = self.client.post(self.preview_url(), data=json.dumps(payload),
+                                    content_type="application/json")
+        self.assertEqual(response.status_code, 200, response.content)
+        body = response.json()
+        self.assertEqual(body["operation"], "interactive_edits")
+        self.assertTrue(body["validation"]["passed"], body["validation"]["errors"])
+        self.assertTrue(any("Rotating by 90 degrees" in item for item in body["validation"]["warnings"]))
+
+    def test_preview_endpoint_rejects_invalid_rotate(self):
+        self.client.login(username="cnc-manager-g", password="testpass")
+        payload = {"filename": "r.cnc", "content": TWO_BLOCKS_LF,
+                   "edits": [{"op": "rotate", "feature_id": "feature-block-0002", "dir": "up"}]}
+        response = self.client.post(self.preview_url(), data=json.dumps(payload),
+                                    content_type="application/json")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("rotation direction", response.json()["error"])
+
+    @override_settings(CNC_RESIZER_IMPLICIT_UNITS="mm", CNC_RESIZER_SHEET_ADAPTER="minimal_xy_router")
+    def test_output_endpoint_rotate_passes_dialect_gate(self):
+        self.client.login(username="cnc-manager-g", password="testpass")
+        feature = closed_feature(recognize(parse_program(WORKSHOP_ROUNDED_RECT))["features"])
+        payload = {"filename": "door.cnc", "content": WORKSHOP_ROUNDED_RECT,
+                   "edits": [{"op": "rotate", "feature_id": feature["id"], "dir": "ccw"}]}
+        response = self.client.post(self.output_url(), data=json.dumps(payload),
+                                    content_type="application/json")
+        self.assertEqual(response.status_code, 200, response.content)
+        body = response.json()
+        self.assertTrue(body["allowed"], body)
+        self.assertTrue(body["safe_for_execution"])
+        text = body["cnc_text"]
+        self.assertIn("G0X160.000Y40.000Z5.000M3 S16000", text)
+        self.assertIn("G3X150.000Y170.000I-10.000J0.000", text)  # G3 stays G3, (I,J)->(-J,I)
+        self.assertIn("G1Y170.000X-30.000", text)  # missing X word inserted
+        self.assertIn("G1Y30.000X150.000", text)
+        self.assertIn("G3X160.000Y40.000I0.000J10.000", text)
+        self.assertIn("G1Z-3.000F9000.0", text)  # modal plunge untouched
+        self.assertIn("G0X0Y0", text)  # program-zero park untouched
+        self.assertEqual(len(text.split("\r\n")), len(WORKSHOP_ROUNDED_RECT.split("\r\n")))
+
+    @override_settings(CNC_RESIZER_IMPLICIT_UNITS="mm", CNC_RESIZER_SHEET_ADAPTER="minimal_xy_router")
+    def test_output_endpoint_rotate_blocked_by_collision(self):
+        self.client.login(username="cnc-manager-g", password="testpass")
+        payload = {"filename": "parts.cnc", "content": TWO_BLOCKS_LF,
+                   "edits": [{"op": "rotate", "feature_id": "feature-block-0001", "dir": "ccw"}]}
+        response = self.client.post(self.output_url(), data=json.dumps(payload),
+                                    content_type="application/json")
+        self.assertEqual(response.status_code, 200, response.content)
+        body = response.json()
+        self.assertFalse(body["allowed"])
+        self.assertTrue(any("overlap" in item for item in body["blockers"]), body["blockers"])
+
+
 if __name__ == "__main__":
     unittest.main()

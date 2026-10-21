@@ -536,6 +536,87 @@ def _mirror_feature(block: Any, axis: str, center: float, feature_id: str, flips
             flips.append(move.id)
 
 
+def _rotate_feature(block: Any, direction: str, center_x: float, center_y: float,
+                    feature_id: str) -> None:
+    """Rotate one parsed block by exactly 90 degrees around its own centre.
+
+    Rotation is orientation-preserving (det = +1), so — unlike mirroring — the
+    arc direction (G2/G3) and the cutter-compensation side (G41/G42) both stay
+    valid and untouched; only coordinates move. Relative to the centre a CCW
+    rotation maps ``(dx, dy) -> (-dy, dx)`` and a CW rotation maps
+    ``(dx, dy) -> (dy, -dx)``; the arc centre offset (I, J) rotates by the
+    same rule. Every cut line of a rotated block must end up carrying BOTH
+    axis words explicitly (the serializer inserts a missing X/Y word next to
+    the existing ones and, for arcs, a missing I/J), so the candidate IR holds
+    the true rotated end coordinates on both axes. Arc lines must carry both I
+    and J words up front: a missing centre offset is an invalid arc for the
+    parser anyway and rotation cannot express a half-resolved centre. Z-only
+    modal carries inside the block stay untouched exactly like a rigid shift.
+    """
+    motions = block.motions
+    cut = [move for move in motions if move.motion in ("linear", "arc_cw", "arc_ccw")]
+    if not cut:
+        raise TransformError(f"Feature {feature_id}: the block has no cutting motion to rotate")
+    entry = motions[0]
+    if entry.motion != "rapid" or entry.machine_coordinates:
+        raise TransformError(
+            f"Feature {feature_id}: the block does not start with an independent positioning rapid; "
+            "rotating it would cut a diagonal from the stale entry position")
+    if entry.end is None or entry.end.x is None or entry.end.y is None:
+        raise TransformError(f"Feature {feature_id}: the positioning rapid has unresolved coordinates")
+    entry_words = entry.raw_words or {}
+    if "x" not in entry_words or "y" not in entry_words:
+        raise TransformError(
+            f"Feature {feature_id}: the entry rapid line must carry both X and Y words so the "
+            "rotated entry position is fully explicit on its own line")
+    for move in motions[1:]:
+        raw_words = move.raw_words or {}
+        if move.motion == "rapid":
+            if "x" in raw_words or "y" in raw_words:
+                raise TransformError(
+                    f"Feature {feature_id}: an internal repositioning rapid is not supported; "
+                    "blocks are expected to contain Z-only rapids only")
+            continue
+        if move.motion not in ("linear", "arc_cw", "arc_ccw"):
+            continue
+        if move.end is None or move.end.x is None or move.end.y is None:
+            raise TransformError(f"Feature {feature_id}: move {move.id} has unresolved coordinates")
+        if move.arc is not None and ("i" not in raw_words or "j" not in raw_words):
+            raise TransformError(
+                f"Feature {feature_id}: arc move {move.id} must carry both I and J words on its line; "
+                "rotation re-expresses both centre offsets and fails closed on a half-resolved arc")
+
+    def rotate_point(x: float, y: float) -> tuple[float, float]:
+        dx, dy = x - center_x, y - center_y
+        if direction == "ccw":
+            return center_x - dy, center_y + dx
+        return center_x + dy, center_y - dx
+
+    entry.end.x, entry.end.y = rotate_point(entry.end.x, entry.end.y)
+    # NOTE: the parser aliases block.start to the entry rapid's end Point3
+    # (start=end), so block.start is already rotated with entry.end — never
+    # rotate it again.
+    for move in motions[1:]:
+        if move.motion not in ("linear", "arc_cw", "arc_ccw"):
+            continue
+        raw_words = move.raw_words or {}
+        # A line carrying at least one axis word ends up fully explicit in the
+        # patched output (existing word patched, missing word inserted), so
+        # both of its end axes get the true rotated values. A line with NO
+        # X/Y word (a Z-only plunge/retract) stays byte-identical and its
+        # endpoint follows the modal chain at runtime — its static IR end
+        # stays stale on purpose, exactly like a rigid shift leaves it.
+        if "x" in raw_words or "y" in raw_words:
+            move.end.x, move.end.y = rotate_point(move.end.x, move.end.y)
+        if move.arc is not None:
+            if move.start is None or move.start.x is None or move.start.y is None:
+                raise TransformError(f"Feature {feature_id}: move {move.id} has unresolved coordinates")
+            move.start.x, move.start.y = rotate_point(move.start.x, move.start.y)
+            if move.arc.center and "x" in move.arc.center and "y" in move.arc.center:
+                move.arc.center["x"], move.arc.center["y"] = rotate_point(
+                    move.arc.center["x"], move.arc.center["y"])
+
+
 def _stretch_feature_x(block: Any, feature_id: str, band_start: float, band_end: float,
                        below_offset: float, above_offset: float) -> None:
     """Segment-level X stretch of one parsed block for interactive editing.
@@ -669,7 +750,7 @@ def preview_edits(program: Program, request: dict[str, Any], source_text: str) -
     Package F adds ``grid``: ``count_x`` x ``count_y`` translated copies
     (cartesian product of the two signed pitches, row-major order) forming an
     ``(count_x+1) x (count_y+1)`` arrangement with the untouched original at
-    its corner. A constraint or an array/grid/mirror on a member of a
+    its corner. A constraint or an array/grid/mirror/rotate on a member of a
     depth-repeat group broadcasts to every member. The candidate is accepted
     only after the serializer accepts it AND a runtime reparse of the patched
     draft proves every move (original or copy) reached exactly its expected
@@ -678,6 +759,13 @@ def preview_edits(program: Program, request: dict[str, Any], source_text: str) -
     source stay the operator's responsibility; full containment counts as
     legitimate nesting). Features sharing the same XY path at multiple
     depths must be edited together with identical parameters or not at all.
+
+    ``rotate`` turns one feature by exactly 90 degrees around its own bounds
+    centre (``dir`` = ``cw``/``ccw``). Rotation preserves orientation, so arc
+    directions and cutter-compensation sides never change; the serializer
+    inserts missing X/Y (and arc I/J) words so every rotated cut line ends up
+    fully explicit, and the width/height of the feature swap around the same
+    centre.
     """
     if not isinstance(request, dict):
         raise TransformError("Edits request must be an object")
@@ -692,10 +780,10 @@ def preview_edits(program: Program, request: dict[str, Any], source_text: str) -
     for index, edit in enumerate(edits):
         label = f"Edit {index + 1}"
         if not isinstance(edit, dict) or edit.get("op") not in ("shift", "resize_x", "array", "grid", "mirror",
-                                                                "center_on", "set_gap", "center_between"):
+                                                                "rotate", "center_on", "set_gap", "center_between"):
             raise TransformError(
-                f"{label}: op must be one of shift, resize_x, array, grid, mirror, center_on, "
-                "set_gap, center_between")
+                f"{label}: op must be one of shift, resize_x, array, grid, mirror, rotate, "
+                "center_on, set_gap, center_between")
         feature_id = edit.get("feature_id")
         if not isinstance(feature_id, str) or feature_id not in feature_by_id:
             raise TransformError(f"{label}: unknown feature_id {feature_id!r}")
@@ -724,6 +812,20 @@ def preview_edits(program: Program, request: dict[str, Any], source_text: str) -
                     f"{axis.upper()} for feature {feature_id} (no {axis.upper()} extent)")
             normalized.append({"op": "mirror", "feature_id": feature_id, "axis": axis,
                                "center": (bounds[low] + bounds[high]) / 2,
+                               "block_id": feature["block_id"]})
+        elif edit["op"] == "rotate":
+            direction = edit.get("dir")
+            if direction not in ("cw", "ccw"):
+                raise TransformError(f"{label}: rotation direction must be 'cw' or 'ccw'")
+            bounds = feature["bounds"]
+            if (bounds["x_max"] - bounds["x_min"] <= 1e-6
+                    and bounds["y_max"] - bounds["y_min"] <= 1e-6):
+                raise TransformError(
+                    f"{label}: rotating feature {feature_id} around its own centre is a no-op "
+                    "(no extent on either axis)")
+            normalized.append({"op": "rotate", "feature_id": feature_id, "dir": direction,
+                               "center_x": (bounds["x_min"] + bounds["x_max"]) / 2,
+                               "center_y": (bounds["y_min"] + bounds["y_max"]) / 2,
                                "block_id": feature["block_id"]})
         elif edit["op"] == "array":
             axis = edit.get("axis")
@@ -910,6 +1012,33 @@ def preview_edits(program: Program, request: dict[str, Any], source_text: str) -
                                "center": (bounds[low] + bounds[high]) / 2,
                                "block_id": member_feature["block_id"],
                                "derived_from": f"mirror:{fid}"})
+    rotate_seeds = [entry for entry in normalized if entry["op"] == "rotate"]
+    for item in rotate_seeds:
+        fid = item["feature_id"]
+        direction = item["dir"]
+        for member in group_of.get(fid, [fid]):
+            if member == fid:
+                continue
+            if member in seen or member in taken:
+                raise TransformError(
+                    f"Rotation on feature {fid}: depth-repeat group member {member} is already "
+                    "edited; a group rotates only as one unit and every member must be free")
+        for member in group_of.get(fid, [fid]):
+            if member == fid:
+                continue
+            member_feature = feature_by_id[member]
+            bounds = member_feature["bounds"]
+            if (bounds["x_max"] - bounds["x_min"] <= 1e-6
+                    and bounds["y_max"] - bounds["y_min"] <= 1e-6):
+                raise TransformError(
+                    f"Rotation on feature {fid}: group member {member} has no extent on either axis")
+            seen.add(member)
+            taken.add(member)
+            normalized.append({"op": "rotate", "feature_id": member, "dir": direction,
+                               "center_x": (bounds["x_min"] + bounds["x_max"]) / 2,
+                               "center_y": (bounds["y_min"] + bounds["y_max"]) / 2,
+                               "block_id": member_feature["block_id"],
+                               "derived_from": f"rotate:{fid}"})
     # ---- phase two: resolve constraints into derived rigid shifts ----
     constraints_applied: list[dict[str, Any]] = []
     for index, constraint in enumerate(raw_constraints):
@@ -987,8 +1116,9 @@ def preview_edits(program: Program, request: dict[str, Any], source_text: str) -
                 "apply the identical edit to all of them or none of them")
         reference = edit_signature(edit_by_feature[touched[0]])
         if any(edit_signature(edit_by_feature[fid]) != reference for fid in touched):
-            detail = ("identical shift delta" if reference and dict(reference).get("op") == "shift"
-                      else "identical resize_x parameters")
+            reference_op = dict(reference).get("op") if reference else None
+            detail = {"shift": "identical shift delta", "resize_x": "identical resize_x parameters",
+                      "rotate": "identical rotation direction"}.get(reference_op, "identical parameters")
             raise TransformError(
                 "Features sharing the same XY path at multiple depths must receive the " + detail)
 
@@ -1003,6 +1133,8 @@ def preview_edits(program: Program, request: dict[str, Any], source_text: str) -
             _shift_block_rigid(block, item["dx"], item["dy"], item["feature_id"])
         elif item["op"] == "mirror":
             _mirror_feature(block, item["axis"], item["center"], item["feature_id"], mirror_flips)
+        elif item["op"] == "rotate":
+            _rotate_feature(block, item["dir"], item["center_x"], item["center_y"], item["feature_id"])
         elif item["op"] == "resize_x":
             delta = item["new_length"] - (item["band_end"] - item["band_start"])
             below, above = {"min": (0.0, delta), "max": (-delta, 0.0),
@@ -1026,6 +1158,11 @@ def preview_edits(program: Program, request: dict[str, Any], source_text: str) -
         provisional["block_copies"] = block_copies
     if mirror_flips:
         provisional["arc_direction_flips"] = mirror_flips
+    rotated_block_ids = {item["block_id"] for item in normalized if item["op"] == "rotate"}
+    rotated_move_ids = [move.id for block_id in sorted(rotated_block_ids)
+                        for move in blocks[block_id].motions] if rotated_block_ids else []
+    if rotated_move_ids:
+        provisional["rotated_move_ids"] = rotated_move_ids
     try:
         draft = serialize_candidate(source_text, provisional)
     except SerializerBlocked as exc:
@@ -1040,6 +1177,7 @@ def preview_edits(program: Program, request: dict[str, Any], source_text: str) -
     runtime_features = {feature["id"]: feature for feature in runtime_recognition["features"]}
     has_copies = bool(block_copies)
     has_mirror = bool(mirror_flips)
+    has_rotated = bool(rotated_block_ids)
 
     # ---- expected-block / expected-move walk (arrays and mirrors) ----
     # Every runtime move must equal the transformed move (or the transformed
@@ -1049,7 +1187,7 @@ def preview_edits(program: Program, request: dict[str, Any], source_text: str) -
     # of the whole patched draft, copy or original.
     block_map: dict[str, Any] = {}
     copy_blocks: list[tuple[Any, tuple[float, float], Any]] = []
-    if has_copies or has_mirror:
+    if has_copies or has_mirror or has_rotated:
         copy_plan: dict[str, list[tuple[float, float]]] = {}
         for item in normalized:
             if item["op"] in ("array", "grid"):
@@ -1074,10 +1212,17 @@ def preview_edits(program: Program, request: dict[str, Any], source_text: str) -
                                        "center": None, "id": move.id})
                 return
             words = move.raw_words or {}
+            # A rotated block's cut lines that already carried at least one
+            # axis word end up explicit on BOTH axes (existing word patched,
+            # missing word inserted), so both axes resolve from the candidate
+            # IR. Z-only lines (plunges) stay modal exactly like a shift.
+            rotated_explicit = (move.source_block in rotated_block_ids
+                                and ("x" in words or "y" in words))
             end_expected = {}
             for axis in ("x", "y", "z"):
                 axis_delta = ddx if axis == "x" else ddy if axis == "y" else 0.0
-                if axis in words and move.end is not None and getattr(move.end, axis) is not None:
+                explicit = axis in words or (rotated_explicit and axis in ("x", "y"))
+                if explicit and move.end is not None and getattr(move.end, axis) is not None:
                     end_expected[axis] = getattr(move.end, axis) + axis_delta
                 else:
                     end_expected[axis] = position[axis]
@@ -1219,6 +1364,16 @@ def preview_edits(program: Program, request: dict[str, Any], source_text: str) -
                 expected = {"x_min": middle - item["new_length"] / 2,
                             "x_max": middle + item["new_length"] / 2,
                             "y_min": original_bounds["y_min"], "y_max": original_bounds["y_max"]}
+        elif item["op"] == "rotate":
+            cx, cy = item["center_x"], item["center_y"]
+            x_min, x_max = original_bounds["x_min"], original_bounds["x_max"]
+            y_min, y_max = original_bounds["y_min"], original_bounds["y_max"]
+            if item["dir"] == "ccw":
+                expected = {"x_min": cx - (y_max - cy), "x_max": cx - (y_min - cy),
+                            "y_min": cy + (x_min - cx), "y_max": cy + (x_max - cx)}
+            else:
+                expected = {"x_min": cx + (y_min - cy), "x_max": cx + (y_max - cy),
+                            "y_min": cy - (x_max - cx), "y_max": cy - (x_min - cx)}
         else:  # mirror / array: the feature's own bounds are preserved
             expected = {key: original_bounds[key] for key in ("x_min", "x_max", "y_min", "y_max")}
         for key, target in expected.items():
@@ -1290,7 +1445,8 @@ def preview_edits(program: Program, request: dict[str, Any], source_text: str) -
         provenance: dict[str, str] = {}
         is_copy: set[str] = set()
         pure_translation: dict[str, bool] = {}
-        resized_block_ids = {item["block_id"] for item in normalized if item["op"] == "resize_x"}
+        resized_block_ids = {item["block_id"] for item in normalized
+                             if item["op"] in ("resize_x", "rotate")}
         for block in transformed.blocks:
             rt_block = block_map.get(block.id)
             if rt_block is None:
@@ -1364,7 +1520,7 @@ def preview_edits(program: Program, request: dict[str, Any], source_text: str) -
                        "checked_pairs": checked_pairs, "preexisting_skipped": preexisting_skipped,
                        "replicated_skipped": replicated_skipped, "flagged": collision_flagged}
 
-    if not has_copies and not has_mirror:
+    if not has_copies and not has_mirror and not has_rotated:
         for before, after in zip(program.moves, runtime.moves):
             z_before = before.end.z if before.end is not None else None
             z_after = after.end.z if after.end is not None else None
@@ -1385,11 +1541,23 @@ def preview_edits(program: Program, request: dict[str, Any], source_text: str) -
         result_warnings.append(
             "Mirroring keeps the feature's bounds but reverses every arc direction and the cutting "
             "direction (climb <-> conventional); feed, tool and Z stay untouched.")
+    if has_rotated:
+        result_warnings.append(
+            "Rotating by 90 degrees keeps arc directions (G2/G3 stay, unlike mirroring) and "
+            "cutter-compensation sides; every cut line of a rotated block ends up explicit on both "
+            "axes (a missing X/Y word is inserted next to the existing words) and the feature's "
+            "width and height swap around the same centre.")
     extras = {"array_applied": array_summaries}
     if block_copies:
         extras["block_copies"] = block_copies
     if mirror_flips:
         extras["arc_direction_flips"] = mirror_flips
+    if rotated_move_ids:
+        # The machine-output path re-serializes from this result dict, so the
+        # rotated-move declaration must travel with it (same contract as
+        # arc_direction_flips for mirrors) or the word insertions would be
+        # silently lost on the way to the dialect gate.
+        extras["rotated_move_ids"] = rotated_move_ids
     if errors:
         return {
             "preview_only": True, "safe_for_execution": False,
