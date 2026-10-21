@@ -280,6 +280,26 @@ def engine_analyze(request):
     return JsonResponse(result, json_dumps_params={'ensure_ascii': False})
 
 
+def _engine_candidate(payload: dict, filename: str):
+    """Build an engine preview candidate from an interactive ``edits`` list
+    (phase-one rigid shifts, runtime-verified) or from a parametric
+    ``profile``. Sending both is rejected — they do not compose yet."""
+    from .engine.service import edits_program, preview_program
+    has_edits = 'edits' in payload
+    has_profile = 'profile' in payload
+    if has_edits and has_profile:
+        raise ValueError('edits and profile cannot be combined in phase one; send one of them')
+    if has_edits:
+        edits = payload.get('edits')
+        if not isinstance(edits, list):
+            raise ValueError('edits must be a list')
+        return edits_program(payload['content'], {'edits': edits}, filename=filename)
+    profile = payload.get('profile')
+    if not isinstance(profile, dict):
+        raise ValueError('profile must be an object')
+    return preview_program(payload['content'], profile, filename=filename)
+
+
 @login_required
 @cnc_operator_required
 @require_POST
@@ -289,38 +309,39 @@ def engine_preview(request):
     import os
     from .engine.parametric import TransformError
     from .engine.parser import ParseError
-    from .engine.service import preview_program
     try:
         payload = json.loads(request.body.decode('utf-8'))
         if not isinstance(payload, dict) or not isinstance(payload.get('content'), str):
             raise ValueError('content must be a string')
+        filename = os.path.basename(payload.get('filename') or 'uploaded.cnc')
         profile = payload.get('profile')
-        if not isinstance(profile, dict):
-            raise ValueError('profile must be an object')
-        result = preview_program(payload['content'], profile, filename=os.path.basename(payload.get('filename') or 'uploaded.cnc'))
-        interpretations = profile.get('operator_interpretations') or {}
-        if not isinstance(interpretations, dict):
-            raise ValueError('operator_interpretations must be an object')
-        known_ids = {feature['id'] for feature in result['original']['features']}
-        if set(interpretations) - known_ids:
-            raise ValueError('operator_interpretations contains unknown feature IDs')
-        allowed_interpretations = {
-            'unconfirmed', 'hole_or_loop_candidate', 'slot_or_groove_candidate',
-            'surface_or_raster_candidate', 'outer_contour_candidate', 'other_candidate',
-        }
-        invalid = {key: value for key, value in interpretations.items() if value not in allowed_interpretations}
-        if invalid:
-            raise ValueError('unsupported operator interpretation label')
-        result['operator_review'] = {
-            'physical_operation_confirmed': False,
-            'features': [{
-                'feature_id': feature['id'],
-                'selected_interpretation': interpretations.get(feature['id'], 'unconfirmed'),
-                'transform_rule': (profile['features'][feature['id']].get('mode')
-                                   if isinstance(profile['features'][feature['id']], dict)
-                                   else profile['features'][feature['id']]),
-            } for feature in result['original']['features']],
-        }
+        result = _engine_candidate(payload, filename)
+        if 'edits' in payload and 'profile' not in payload:
+            pass  # interactive edits carry their own runtime verification
+        else:
+            interpretations = profile.get('operator_interpretations') or {}
+            if not isinstance(interpretations, dict):
+                raise ValueError('operator_interpretations must be an object')
+            known_ids = {feature['id'] for feature in result['original']['features']}
+            if set(interpretations) - known_ids:
+                raise ValueError('operator_interpretations contains unknown feature IDs')
+            allowed_interpretations = {
+                'unconfirmed', 'hole_or_loop_candidate', 'slot_or_groove_candidate',
+                'surface_or_raster_candidate', 'outer_contour_candidate', 'other_candidate',
+            }
+            invalid = {key: value for key, value in interpretations.items() if value not in allowed_interpretations}
+            if invalid:
+                raise ValueError('unsupported operator interpretation label')
+            result['operator_review'] = {
+                'physical_operation_confirmed': False,
+                'features': [{
+                    'feature_id': feature['id'],
+                    'selected_interpretation': interpretations.get(feature['id'], 'unconfirmed'),
+                    'transform_rule': (profile['features'][feature['id']].get('mode')
+                                       if isinstance(profile['features'][feature['id']], dict)
+                                       else profile['features'][feature['id']]),
+                } for feature in result['original']['features']],
+            }
     except (TypeError, ValueError, json.JSONDecodeError, ParseError, TransformError) as exc:
         return JsonResponse({'ok': False, 'error': str(exc)}, status=400, json_dumps_params={'ensure_ascii': False})
     return JsonResponse(result, json_dumps_params={'ensure_ascii': False})
@@ -400,17 +421,13 @@ def engine_preflight(request):
     from .engine.output_validation import validate_output_candidate
     from .engine.parametric import TransformError
     from .engine.parser import ParseError, parse_program
-    from .engine.service import preview_program
     try:
         payload = json.loads(request.body.decode('utf-8'))
         if not isinstance(payload, dict) or not isinstance(payload.get('content'), str):
             raise ValueError('content باید متن CNC باشد.')
-        profile = payload.get('profile')
-        if not isinstance(profile, dict):
-            raise ValueError('profile باید یک شیء باشد.')
         filename = os.path.basename(payload.get('filename') or 'uploaded.cnc')
         source = parse_program(payload['content'], filename=filename)
-        candidate = preview_program(payload['content'], profile, filename=filename)
+        candidate = _engine_candidate(payload, filename)
         gate = (controller.postprocess_resize
                 if controller.controller_adapter_key() == controller.ADAPTER_KEY else None)
         report = validate_output_candidate(
@@ -435,17 +452,13 @@ def engine_output(request):
     import os
     from .engine.parametric import TransformError
     from .engine.parser import ParseError
-    from .engine.service import preview_program
     from .services import engine_machine_output
     try:
         payload = json.loads(request.body.decode('utf-8'))
         if not isinstance(payload, dict) or not isinstance(payload.get('content'), str):
             raise ValueError('content باید متن CNC باشد.')
-        profile = payload.get('profile')
-        if not isinstance(profile, dict):
-            raise ValueError('profile باید یک شیء باشد.')
         filename = os.path.basename(payload.get('filename') or 'uploaded.cnc')
-        candidate = preview_program(payload['content'], profile, filename=filename)
+        candidate = _engine_candidate(payload, filename)
         result = engine_machine_output(payload['content'], candidate)
     except (TypeError, ValueError, json.JSONDecodeError, ParseError, TransformError) as exc:
         return JsonResponse({'ok': False, 'error': str(exc)}, status=400, json_dumps_params={'ensure_ascii': False})

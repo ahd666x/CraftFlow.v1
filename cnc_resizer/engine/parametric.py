@@ -7,7 +7,9 @@ from typing import Any
 
 from .geometry import program_geometry
 from .ir import Program, to_dict
+from .parser import parse_program
 from .recognition import recognize
+from .serializer import SerializerBlocked, serialize_candidate
 from .validation import validate_equivalence
 
 
@@ -154,6 +156,15 @@ def _stretch_closed_feature(block: Any, axis: str, start: float, end: float,
         raise TransformError(
             f"Feature {feature_id}: the reference band does not separate two rigid regions "
             "of the closed path; nothing would stretch consistently")
+    if offsets[0] is not None and abs(offsets[0]) > 1e-9:
+        # The loop's entry point would move. The positioning rapid before the
+        # loop is the only thing that delivers the tool there; patching it is
+        # not part of the closed-stretch contract, so a moved entry point
+        # would cut a diagonal from the stale rapid position. Fail closed.
+        raise TransformError(
+            f"Feature {feature_id}: this reference band would move the closed path's entry point; "
+            "the positioning rapid before the loop cannot be patched by closed stretch — "
+            "choose a band that keeps the loop start rigid")
 
     for index, move in enumerate(moves):
         start_offset = offsets[index]
@@ -363,5 +374,215 @@ def preview_resize(program: Program, request: dict[str, Any]) -> dict[str, Any]:
         "resized": recognize(transformed),
         "validation": {"passed": not validation_errors, "errors": validation_errors, "warnings": validation_warnings,
                        "controller_approved": False, "machine_output_written": False},
+        "program_ir": to_dict(transformed),
+    }
+
+
+def _shift_block_rigid(block: Any, dx: float, dy: float, feature_id: str) -> None:
+    """Rigidly translate one parsed block for interactive editing.
+
+    The parser starts a PathBlock exactly at its XY positioning rapid, so the
+    block always carries its own tool entry and a rigid shift stays expressible
+    as a pure coordinate patch: the entry rapid's END and every XY-bearing cut
+    move's END are what the source lines can patch. Z-only plunges/retracts
+    inside the block carry their XY modally at runtime (their lines have no
+    X/Y words), so they are intentionally left untouched in the candidate IR.
+    Cut moves shift start+end together and arc centres translate with them,
+    which keeps every I/J offset identical.
+    """
+    motions = block.motions
+    cut = [move for move in motions if move.motion in ("linear", "arc_cw", "arc_ccw")]
+    if not cut:
+        raise TransformError(f"Feature {feature_id}: the block has no cutting motion to shift")
+    first = cut[0]
+    if (first.start is None or first.start.x is None or first.start.y is None
+            or first.end is None or first.end.x is None or first.end.y is None):
+        raise TransformError(f"Feature {feature_id}: the first cutting move has unresolved coordinates")
+    entry = motions[0]
+    if entry.motion != "rapid" or entry.machine_coordinates:
+        raise TransformError(
+            f"Feature {feature_id}: the block does not start with an independent positioning rapid; "
+            "shifting it would cut a diagonal from the stale entry position")
+    if entry.end is None or entry.end.x is None or entry.end.y is None:
+        raise TransformError(f"Feature {feature_id}: the positioning rapid has unresolved coordinates")
+    if abs(entry.end.x - first.start.x) > 1e-6 or abs(entry.end.y - first.start.y) > 1e-6:
+        raise TransformError(
+            f"Feature {feature_id}: the positioning rapid does not end at the first cutting move; "
+            "unsupported block structure")
+    entry.end.x += dx
+    entry.end.y += dy
+    # NOTE: the parser aliases block.start to the entry rapid's end Point3
+    # (start=end), so block.start is already shifted with entry.end — shifting
+    # it again would double the delta.
+    for move in motions[1:]:
+        if move.motion == "rapid":
+            # Z-only rapid inside the block (retract/plunge): XY is modal at
+            # runtime and the line carries no X/Y words — leave untouched.
+            continue
+        if move.motion not in ("linear", "arc_cw", "arc_ccw"):
+            continue
+        raw_words = move.raw_words or {}
+        if move.end is None or move.end.x is None or move.end.y is None:
+            raise TransformError(f"Feature {feature_id}: move {move.id} has unresolved coordinates")
+        # Per-axis word rule: an axis is patched only when its word exists on
+        # the line. A line without the word (e.g. "G1Y190.000" with modal X)
+        # carries that axis modally at runtime — the patched chain around it
+        # moves the modal position — so its static IR value must stay stale
+        # and the source line byte-identical.
+        if "x" in raw_words:
+            move.end.x += dx
+        if "y" in raw_words:
+            move.end.y += dy
+        if move.arc is not None:
+            # Arcs: start and centre always move. The runtime start is the
+            # modal chain position (already shifted) and I/J offsets are
+            # relative, so the centre follows the start; keeping both in sync
+            # leaves every I/J offset identical.
+            if move.start is None or move.start.x is None or move.start.y is None:
+                raise TransformError(f"Feature {feature_id}: move {move.id} has unresolved coordinates")
+            move.start.x += dx
+            move.start.y += dy
+            if move.arc.center:
+                if "x" in move.arc.center:
+                    move.arc.center["x"] += dx
+                if "y" in move.arc.center:
+                    move.arc.center["y"] += dy
+
+
+def preview_edits(program: Program, request: dict[str, Any], source_text: str) -> dict[str, Any]:
+    """Interactive rigid per-feature edits (phase one: whole-block shift).
+
+    Each edit translates one recognized feature's whole block by ``(dx, dy)``.
+    The candidate is accepted only after the pure-coordinate-patch serializer
+    accepts it AND a runtime reparse of the patched draft proves the shifted
+    features moved by exactly the requested delta while every untouched
+    feature stayed put and no Z value changed. Features sharing the same XY
+    path at multiple depths must move together or not at all.
+    """
+    if not isinstance(request, dict):
+        raise TransformError("Edits request must be an object")
+    edits = request.get("edits")
+    if not isinstance(edits, list) or not edits:
+        raise TransformError("edits must be a non-empty list")
+    recognition = recognize(program)
+    feature_by_id = {feature["id"]: feature for feature in recognition["features"]}
+    normalized: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for index, edit in enumerate(edits):
+        label = f"Edit {index + 1}"
+        if not isinstance(edit, dict) or edit.get("op") != "shift":
+            raise TransformError(f"{label}: only op='shift' is supported in phase one")
+        feature_id = edit.get("feature_id")
+        if not isinstance(feature_id, str) or feature_id not in feature_by_id:
+            raise TransformError(f"{label}: unknown feature_id {feature_id!r}")
+        if feature_id in seen:
+            raise TransformError(f"{label}: feature {feature_id} is edited twice")
+        seen.add(feature_id)
+        dx = _finite_number(edit.get("dx"), f"{label} dx")
+        dy = _finite_number(edit.get("dy"), f"{label} dy")
+        if dx == 0 and dy == 0:
+            raise TransformError(f"{label}: shift distance is zero")
+        feature = feature_by_id[feature_id]
+        if not feature.get("bounds"):
+            raise TransformError(f"{label}: feature {feature_id} has unresolved geometry bounds")
+        normalized.append({"op": "shift", "feature_id": feature_id, "dx": dx, "dy": dy,
+                           "block_id": feature["block_id"]})
+
+    deltas = {item["feature_id"]: (item["dx"], item["dy"]) for item in normalized}
+    for pattern in recognition["patterns"]:
+        if pattern["kind"] != "same_xy_path_at_multiple_depths":
+            continue
+        group = list(pattern["feature_ids"])
+        touched = [fid for fid in group if fid in deltas]
+        if not touched:
+            continue
+        if len(touched) < len(group):
+            raise TransformError(
+                "Features " + ", ".join(sorted(group)) + " share the same XY path at multiple depths; "
+                "shift all of them by the same delta or none of them")
+        reference = deltas[touched[0]]
+        if any(deltas[fid] != reference for fid in touched):
+            raise TransformError(
+                "Features sharing the same XY path at multiple depths must receive the identical shift delta")
+
+    transformed = copy.deepcopy(program)
+    blocks = {block.id: block for block in transformed.blocks}
+    for item in normalized:
+        block = blocks.get(item["block_id"])
+        if block is None:
+            raise TransformError(f"Feature {item['feature_id']}: source block vanished")
+        _shift_block_rigid(block, item["dx"], item["dy"], item["feature_id"])
+
+    provisional = {"validation": {"passed": True, "errors": [], "warnings": []},
+                   "source_sha256": program.source_sha256,
+                   "program_ir": to_dict(transformed)}
+    try:
+        draft = serialize_candidate(source_text, provisional)
+    except SerializerBlocked as exc:
+        blockers = getattr(exc, "blockers", None) or [str(exc)]
+        raise TransformError(
+            "Interactive edit cannot be expressed as a safe coordinate patch: " + "؛ ".join(blockers)) from exc
+
+    tolerance = 1e-6
+    errors: list[str] = []
+    runtime = parse_program(draft["text"])
+    runtime_recognition = recognize(runtime)
+    runtime_features = {feature["id"]: feature for feature in runtime_recognition["features"]}
+    if len(runtime.moves) != len(program.moves) or len(runtime.blocks) != len(program.blocks):
+        errors.append("Patched draft changed the program structure (move/block count)")
+    for item in normalized:
+        feature_id, dx, dy = item["feature_id"], item["dx"], item["dy"]
+        original_bounds = feature_by_id[feature_id]["bounds"]
+        runtime_bounds = (runtime_features.get(feature_id) or {}).get("bounds")
+        if not runtime_bounds:
+            errors.append(f"Feature {feature_id}: shifted feature is missing from the runtime reparse")
+            continue
+        for key, delta in (("x_min", dx), ("x_max", dx), ("y_min", dy), ("y_max", dy)):
+            if abs(runtime_bounds[key] - (original_bounds[key] + delta)) > tolerance:
+                errors.append(
+                    f"Feature {feature_id}: runtime {key} {runtime_bounds[key]:.4f} does not match "
+                    f"the requested shift ({original_bounds[key] + delta:.4f})")
+    for feature_id, feature in feature_by_id.items():
+        if feature_id in deltas or not feature.get("bounds"):
+            continue
+        runtime_bounds = (runtime_features.get(feature_id) or {}).get("bounds")
+        if not runtime_bounds:
+            errors.append(f"Feature {feature_id}: untouched feature is missing from the runtime reparse")
+            continue
+        for key in ("x_min", "x_max", "y_min", "y_max"):
+            if abs(runtime_bounds[key] - feature["bounds"][key]) > tolerance:
+                errors.append(f"Feature {feature_id}: untouched feature moved on {key}")
+    for before, after in zip(program.moves, runtime.moves):
+        z_before = before.end.z if before.end is not None else None
+        z_after = after.end.z if after.end is not None else None
+        if z_before != z_after:
+            errors.append(f"Move {before.id} changed Z at runtime")
+            break
+
+    if errors:
+        return {
+            "preview_only": True, "safe_for_execution": False,
+            "source_sha256": program.source_sha256,
+            "operation": "interactive_edits",
+            "edits_applied": normalized,
+            "original": recognition,
+            # Runtime truth (modal chains re-resolved on the patched draft) —
+            # what the map preview should draw, not the static stale IR.
+            "resized": runtime_recognition,
+            "validation": {"passed": False, "errors": errors,
+                           "warnings": ["Collision/overlap checking between features arrives in phase two; "
+                                        "verify placement yourself for now."]},
+            "program_ir": to_dict(transformed),
+        }
+    return {
+        "preview_only": True, "safe_for_execution": False,
+        "source_sha256": program.source_sha256,
+        "operation": "interactive_edits",
+        "edits_applied": normalized,
+        "original": recognition,
+        "resized": runtime_recognition,
+        "validation": {"passed": True, "errors": [],
+                       "warnings": ["Collision/overlap checking between features arrives in phase two; "
+                                    "verify placement yourself for now."]},
         "program_ir": to_dict(transformed),
     }
