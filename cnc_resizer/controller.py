@@ -151,13 +151,15 @@ def verify_program(text: str) -> dict:
     }
 
 
-def postprocess_resize(source_text: str, resized_text: str) -> dict:
+def postprocess_resize(source_text: str, resized_text: str, serialized: dict | None = None) -> dict:
     """Post-process a resized program into controller-ready machine text.
 
     Both the source and the Y-translated candidate must verify against the
     exact controller dialect and keep a 1:1 line structure (the resize may
     only rewrite Y numbers, never add/remove lines). The returned text is
     unit-normalized (explicit ``G21``) when the implicit-mm setting is on.
+    ``serialized`` is accepted for signature parity with
+    :func:`postprocess_structural` and ignored.
     """
     source_report = verify_program(source_text)
     if not source_report["ok"]:
@@ -189,4 +191,112 @@ def postprocess_resize(source_text: str, resized_text: str) -> dict:
         "h": candidate["h"],
         "mid_tool_switches": len(candidate["switches"]),
         "source_warnings": source_report["warnings"],
+    }
+
+
+def _line_signature(line: str):
+    """Patch-insensitive word signature of one raw G-code line.
+
+    Comments, ``N`` numbers and blank lines are ignored (N numbering is
+    stripped by design on array copy lines; the dialect gate ignores it).
+    Coordinate letters keep only their letter (values may be patched);
+    ``G2``/``G3`` count as one signature token because mirroring legally
+    swaps them; every other word keeps its raw value.
+    """
+    cleaned = gcode_sheet._clean(line)
+    if not cleaned:
+        return None
+    signature = []
+    for letter, value, raw in gcode_sheet._words(cleaned):
+        if letter in "XYIJ":
+            signature.append((letter, letter))
+        elif letter == "G" and value in (2.0, 3.0):
+            signature.append(("G", "2|3"))
+        else:
+            signature.append((letter, raw))
+    return tuple(signature)
+
+
+def postprocess_structural(source_text: str, resized_text: str, serialized: dict | None = None) -> dict:
+    """Dialect gate for structural candidates (interactive array copies).
+
+    Identical to :func:`postprocess_resize` except that declared line
+    insertions are allowed: the serializer reports the final 1-based
+    ``inserted_line_numbers`` of its copy lines, and this gate proves the
+    remaining candidate lines correspond 1:1 IN ORDER to the source lines
+    with patch-insensitive signatures. Everything else — full dialect
+    verification of the final text, preamble/postamble preservation, M141 —
+    stays as strict as the resize gate.
+    """
+    source_report = verify_program(source_text)
+    if not source_report["ok"]:
+        raise ControllerPostprocessError("؛ ".join(source_report["violations"]), source_report["violations"])
+
+    normalized, injected = normalize_units(resized_text)
+    try:
+        candidate = sheet_adapter.analyze_piece(normalized)
+    except (gcode_sheet.GcodeError, sheet_adapter.SheetAdapterError) as exc:
+        raise ControllerPostprocessError(f"خروجی از دیالکت کنترلر خارج شد: {exc}", [str(exc)]) from exc
+
+    inserted = list((serialized or {}).get("inserted_line_numbers") or [])
+    if not inserted:
+        raise ControllerPostprocessError(
+            "ساختار خروجی تغییر کرده است ولی فهرست خط‌های درج‌شده گزارش نشد؛ خروجی مسدود شد.",
+            ["inserted_line_numbers missing for a structural candidate"])
+    if any(not isinstance(item, int) or item < 1 for item in inserted):
+        raise ControllerPostprocessError(
+            "شماره خط‌های درج‌شده نامعتبر است؛ خروجی مسدود شد.",
+            ["inserted_line_numbers must be positive integers"])
+    inserted_set = set(inserted)
+    candidate_entries = []
+    for index, raw in enumerate(resized_text.splitlines(), start=1):
+        signature = _line_signature(raw)
+        if signature is not None:
+            candidate_entries.append((index, signature))
+    source_entries = []
+    for raw in source_text.splitlines():
+        signature = _line_signature(raw)
+        if signature is not None:
+            source_entries.append(signature)
+    pointer = 0
+    skipped_inserted = 0
+    for source_signature in source_entries:
+        while pointer < len(candidate_entries) and candidate_entries[pointer][0] in inserted_set:
+            skipped_inserted += 1
+            pointer += 1
+        if pointer >= len(candidate_entries):
+            raise ControllerPostprocessError(
+                "خروجی خط‌هایی از فایل پایه را از دست داده است؛ خروجی مسدود شد.",
+                ["structural gate: candidate lost source lines"])
+        candidate_index, candidate_signature = candidate_entries[pointer]
+        if candidate_signature != source_signature:
+            raise ControllerPostprocessError(
+                f"تطابق خط‌به‌خط خراب شد (خط {candidate_index} خروجی)؛ خروجی مسدود شد.",
+                [f"structural gate: line correspondence broken at candidate line {candidate_index}"])
+        pointer += 1
+    while pointer < len(candidate_entries) and candidate_entries[pointer][0] in inserted_set:
+        skipped_inserted += 1
+        pointer += 1
+    if pointer < len(candidate_entries):
+        raise ControllerPostprocessError(
+            f"خروجی خط اضافهٔ حساب‌نشده دارد (خط {candidate_entries[pointer][0]})؛ خروجی مسدود شد.",
+            [f"structural gate: unaccounted extra line at candidate line {candidate_entries[pointer][0]}"])
+    if skipped_inserted != len(inserted_set):
+        raise ControllerPostprocessError(
+            "خط‌های درج‌شدهٔ گزارش‌شده در خروجی یافت نشدند؛ خروجی مسدود شد.",
+            ["structural gate: declared insertions were not found in the candidate"])
+
+    if candidate is not None and not candidate.get("m141"):
+        raise ControllerPostprocessError("M141 سربرگ در خروجی یافت نشد؛ خروجی مسدود شد.")
+
+    return {
+        "text": normalized,
+        "adapter_key": ADAPTER_KEY,
+        "units_injected": injected or source_report["units_injected"],
+        "tool": candidate["tool"],
+        "h": candidate["h"],
+        "mid_tool_switches": len(candidate["switches"]),
+        "source_warnings": source_report["warnings"],
+        "gate": "structural_with_declared_insertions",
+        "inserted_line_count": len(inserted_set),
     }

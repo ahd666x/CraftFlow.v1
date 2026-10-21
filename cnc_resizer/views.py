@@ -471,6 +471,7 @@ def engine_output(request):
                          'cnc_text': result['text'], 'postprocessor': result['postprocessor'],
                          'changed_move_count': result['changed_move_count'],
                          'changed_line_numbers': result['changed_line_numbers'],
+                         'inserted_line_count': result.get('inserted_line_count', 0),
                          'candidate_sha256': result['candidate_sha256']},
                         json_dumps_params={'ensure_ascii': False})
 

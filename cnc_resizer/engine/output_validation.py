@@ -128,6 +128,10 @@ def validate_output_candidate(source: Any, preview: dict[str, Any],
     if any(code == "G43" or code.startswith("G43.") for code in source.observed_g_codes):
         warnings.append("Tool-length compensation is not included in reconstructed machine coordinates")
     original_moves = {move.id: move for move in source.moves}
+    raw_flips = preview.get("arc_direction_flips") or []
+    if not isinstance(raw_flips, list) or any(not isinstance(item, str) for item in raw_flips):
+        raise ValueError("arc_direction_flips must be a list of move ids")
+    arc_flips = set(raw_flips)
     changed_ids = []
     lost_moves = []
     motion_semantics_changed = []
@@ -145,7 +149,11 @@ def validate_output_candidate(source: Any, preview: dict[str, Any],
                 before_value = getattr(before, axis) if before is not None else None
                 if before_value is not None and after_value is not None and abs(before_value - after_value) > 1e-8:
                     changed_ids.append(move_id)
-        if item.get("motion") != original.motion or item.get("feed") != original.feed or item.get("spindle") != original.spindle or item.get("tool") != original.tool:
+        motion_changed = item.get("motion") != original.motion
+        if (motion_changed and move_id in arc_flips and original.arc is not None
+                and {original.motion, item.get("motion")} == {"arc_cw", "arc_ccw"}):
+            motion_changed = False  # declared mirror flip: G2 <-> G3
+        if motion_changed or item.get("feed") != original.feed or item.get("spindle") != original.spindle or item.get("tool") != original.tool:
             motion_semantics_changed.append(move_id)
     if lost_moves or len(candidate_moves) != len(source.moves):
         blockers.append("Candidate move count/source traceability does not match source")
@@ -163,7 +171,7 @@ def validate_output_candidate(source: Any, preview: dict[str, Any],
     if bridge_active:
         try:
             serialized = serialize_candidate(source_text, preview)
-            postprocessed = dialect_gate(source_text, serialized["text"])
+            postprocessed = dialect_gate(source_text, serialized["text"], serialized)
         except (SerializerBlocked, ValueError) as exc:
             blockers.append("Machine output via the dialect postprocessor is blocked: " + str(exc))
         else:

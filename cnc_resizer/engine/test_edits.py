@@ -1040,5 +1040,348 @@ class EngineEditsViewTests(TestCase):
         self.assertTrue(any("partially overlap" in item for item in body["blockers"]), body["blockers"])
 
 
+# ---------------------------------------------------------------------------
+# Package-E phase three: linear arrays and mirroring.
+
+ARRAY_SOURCE_LF = "\n".join([
+    "G21 G90 G17",
+    "G0 X10 Y10 Z5",
+    "G1 Z-2",
+    "G1 X30 Y10",
+    "G1 X30 Y30",
+    "G1 X10 Y30",
+    "G1 X10 Y10",
+    "G0 Z5",
+    "G0 X60 Y10",
+    "G1 Z-2",
+    "G1 X90 Y10",
+    "G1 X90 Y40",
+    "G1 X60 Y40",
+    "G1 X60 Y10",
+    "G0 Z5",
+    "M30",
+    "",
+])
+
+# Workshop-dialect fixture for the array output gate: two blocks, N×10
+# numbering, CRLF endings, M141 preamble and G53 park.
+WORKSHOP_ARRAY_CRLF = "\r\n".join([
+    "%", "G90G21G54", "G53Z0", "T2M6", "M141", "M6T2", "G43H2",
+    "N10G0X10.000Y10.000Z5.000M3 S16000",
+    "N20G1Z-2.000F9000.0",
+    "N30G1X30.000Y10.000",
+    "N40G1X30.000Y30.000",
+    "N50G1X10.000Y30.000",
+    "N60G1X10.000Y10.000",
+    "N70G0Z5.000",
+    "N80G0X60.000Y10.000",
+    "N90G1Z-2.000F9000.0",
+    "N100G1X90.000Y10.000",
+    "N110G1X90.000Y40.000",
+    "N120G1X60.000Y40.000",
+    "N130G1X60.000Y10.000",
+    "N140G0Z5.000",
+    "G0X0Y0", "G53Z0", "G53X0Y3950", "M30", "%",
+]) + "\r\n"
+
+# Arc move without an explicit G2/G3 word on its line (modal arc): mirroring
+# cannot flip the direction fail-closed.
+MODAL_ARC_LF = "\n".join([
+    "G21 G90 G17",
+    "G0 X0 Y0 Z5",
+    "G1 Z-2",
+    "G2 X20 Y0 I10 J0",
+    "X40 Y0 I10 J0",
+    "G0 Z5",
+    "M30",
+    "",
+])
+
+# Cutter compensation flips tool side under mirroring and must be rejected.
+CUTTER_COMP_LF = "\n".join([
+    "G21 G90 G17",
+    "G0 X0 Y0 Z5",
+    "G1 Z-2",
+    "G41 X10 Y0",
+    "G1 X30 Y0",
+    "G40 X40 Y0",
+    "G0 Z5",
+    "M30",
+    "",
+])
+
+# Zero X extent: mirroring around the feature's own centre is a no-op on X.
+VERTICAL_LINE_LF = "\n".join([
+    "G21 G90 G17",
+    "G0 X10 Y10 Z5",
+    "G1 Z-2",
+    "G1 X10 Y30",
+    "G0 Z5",
+    "M30",
+    "",
+])
+
+
+def array_preview(text, feature_id, axis="x", count=2, pitch=25.0):
+    program = parse_program(text)
+    return preview_edits(program, {"edits": [{"op": "array", "feature_id": feature_id,
+                                             "axis": axis, "count": count, "pitch": pitch}]},
+                         source_text=text)
+
+
+def mirror_preview(text, feature_id, axis="x"):
+    program = parse_program(text)
+    return preview_edits(program, {"edits": [{"op": "mirror", "feature_id": feature_id, "axis": axis}]},
+                         source_text=text)
+
+
+class ArrayPreviewTests(SimpleTestCase):
+    def test_array_x_places_copies_right_after_the_source_block(self):
+        result = array_preview(ARRAY_SOURCE_LF, "feature-block-0001")
+        self.assertTrue(result["validation"]["passed"], result["validation"]["errors"])
+        runtime_features = result["resized"]["features"]
+        self.assertEqual(len(runtime_features), 4)  # 2 source + 2 copies
+        spans = sorted(round(f["bounds"]["x_min"], 3) for f in runtime_features
+                       if abs(f["bounds"]["y_min"] - 10) < 1e-6 and f["bounds"]["x_max"] - f["bounds"]["x_min"] < 21)
+        self.assertEqual(spans, [10.0, 35.0, 60.0])  # source, copy@+25, untouched rect start
+        self.assertEqual(result["array_applied"][0]["targets"], ["feature-block-0001"])
+
+    def test_array_negative_pitch_goes_opposite(self):
+        result = array_preview(ARRAY_SOURCE_LF, "feature-block-0001", pitch=-25)
+        self.assertTrue(result["validation"]["passed"], result["validation"]["errors"])
+        lows = sorted(round(f["bounds"]["x_min"], 3) for f in result["resized"]["features"]
+                      if f["bounds"]["x_max"] - f["bounds"]["x_min"] < 21
+                      and abs(f["bounds"]["y_max"] - f["bounds"]["y_min"] - 20) < 1e-6)
+        self.assertIn(-15.0, lows)
+
+    def test_array_y_axis(self):
+        result = array_preview(ARRAY_SOURCE_LF, "feature-block-0001", axis="y", pitch=40)
+        self.assertTrue(result["validation"]["passed"], result["validation"]["errors"])
+        tops = sorted(round(f["bounds"]["y_min"], 3) for f in result["resized"]["features"]
+                      if f["bounds"]["x_max"] - f["bounds"]["x_min"] < 21)
+        self.assertEqual(tops, [10.0, 50.0, 90.0])
+
+    def test_array_depth_repeat_group_broadcasts_to_every_member(self):
+        result = array_preview(TWO_DEPTH_LF, "feature-block-0001", pitch=40)
+        self.assertTrue(result["validation"]["passed"], result["validation"]["errors"])
+        self.assertEqual(sorted(result["array_applied"][0]["targets"]),
+                         ["feature-block-0001", "feature-block-0002"])
+        # every depth pass got its own copy at +40
+        squares = sorted(round(f["bounds"]["x_min"], 3) for f in result["resized"]["features"]
+                         if f["bounds"]["x_max"] - f["bounds"]["x_min"] < 21)
+        self.assertEqual(squares, [10.0, 10.0, 50.0, 50.0, 90.0, 90.0])
+
+    def test_array_rejects_invalid_parameters(self):
+        cases = [
+            {"axis": "x", "count": 0, "pitch": 10},
+            {"axis": "x", "count": 2.5, "pitch": 10},
+            {"axis": "x", "count": True, "pitch": 10},
+            {"axis": "x", "count": 65, "pitch": 10},
+            {"axis": "x", "count": 2, "pitch": 0},
+            {"axis": "z", "count": 2, "pitch": 10},
+            {"count": 2, "pitch": 10},
+        ]
+        for extra in cases:
+            with self.subTest(extra=extra):
+                program = parse_program(ARRAY_SOURCE_LF)
+                edit = {"op": "array", "feature_id": "feature-block-0001", **extra}
+                with self.assertRaises(TransformError):
+                    preview_edits(program, {"edits": [edit]}, source_text=ARRAY_SOURCE_LF)
+
+    def test_array_conflicts_with_other_edits_on_depth_group(self):
+        program = parse_program(TWO_DEPTH_LF)
+        with self.assertRaises(TransformError) as ctx:
+            preview_edits(program, {"edits": [
+                {"op": "shift", "feature_id": "feature-block-0002", "dx": 5, "dy": 0},
+                {"op": "array", "feature_id": "feature-block-0001", "axis": "x", "count": 2, "pitch": 40},
+            ]}, source_text=TWO_DEPTH_LF)
+        self.assertIn("already edited", str(ctx.exception))
+        with self.assertRaises(TransformError) as ctx:
+            preview_edits(program, {"edits": [
+                {"op": "array", "feature_id": "feature-block-0001", "axis": "x", "count": 2, "pitch": 40},
+                {"op": "shift", "feature_id": "feature-block-0002", "dx": 5, "dy": 0},
+            ]}, source_text=TWO_DEPTH_LF)
+        self.assertIn("already edited", str(ctx.exception))
+
+    def test_array_twice_on_same_feature_rejected(self):
+        program = parse_program(ARRAY_SOURCE_LF)
+        with self.assertRaises(TransformError) as ctx:
+            preview_edits(program, {"edits": [
+                {"op": "array", "feature_id": "feature-block-0001", "axis": "x", "count": 2, "pitch": 40},
+                {"op": "array", "feature_id": "feature-block-0001", "axis": "x", "count": 3, "pitch": 50},
+            ]}, source_text=ARRAY_SOURCE_LF)
+        self.assertIn("edited twice", str(ctx.exception))
+
+    def test_array_pitch_smaller_than_feature_rejected_by_collision(self):
+        result = array_preview(ARRAY_SOURCE_LF, "feature-block-0001", pitch=10)
+        self.assertFalse(result["validation"]["passed"])
+        self.assertTrue(any("newly partially overlap" in item for item in result["validation"]["errors"]))
+        self.assertGreaterEqual(len(result["collision_check"]["flagged"]), 1)
+        self.assertEqual(len(result["collision_check"]["flagged"][0]["features"]), 2)
+
+    def test_array_same_pitch_replicates_a_preexisting_crossing(self):
+        # the bar crosses the band in the SOURCE; arraying both by the same
+        # pitch keeps that relative arrangement -> replicated, not blocked
+        program = parse_program(CROSSING_LF)
+        result = preview_edits(program, {"edits": [
+            {"op": "array", "feature_id": "feature-block-0001", "axis": "x", "count": 1, "pitch": 200},
+            {"op": "array", "feature_id": "feature-block-0002", "axis": "x", "count": 1, "pitch": 200},
+        ]}, source_text=CROSSING_LF)
+        self.assertTrue(result["validation"]["passed"], result["validation"]["errors"])
+        self.assertGreaterEqual(result["collision_check"]["replicated_skipped"], 1)
+
+    def test_array_copy_landing_on_a_third_feature_rejected(self):
+        program = parse_program(THREE_BLOCKS_LF)
+        result = preview_edits(program, {"edits": [
+            {"op": "array", "feature_id": "feature-block-0003", "axis": "x", "count": 2, "pitch": -45},
+        ]}, source_text=THREE_BLOCKS_LF)
+        self.assertFalse(result["validation"]["passed"])
+        self.assertTrue(any("newly partially overlap" in item for item in result["validation"]["errors"]))
+
+    def test_array_and_shift_compose_across_features(self):
+        program = parse_program(ARRAY_SOURCE_LF)
+        result = preview_edits(program, {"edits": [
+            {"op": "array", "feature_id": "feature-block-0001", "axis": "x", "count": 2, "pitch": 25},
+            {"op": "shift", "feature_id": "feature-block-0002", "dx": 0, "dy": 100},
+        ]}, source_text=ARRAY_SOURCE_LF)
+        self.assertTrue(result["validation"]["passed"], result["validation"]["errors"])
+
+
+class MirrorPreviewTests(SimpleTestCase):
+    def test_mirror_x_keeps_bounds_and_reverses_arcs(self):
+        result = mirror_preview(ROUNDED_RECT_LF, "feature-block-0001", axis="x")
+        self.assertTrue(result["validation"]["passed"], result["validation"]["errors"])
+        runtime = result["resized"]["features"][0]
+        self.assertAlmostEqual(runtime["bounds"]["x_min"], -10, places=6)
+        self.assertAlmostEqual(runtime["bounds"]["x_max"], 130, places=6)
+        self.assertEqual(runtime["arc_count"], 4)
+
+    def test_mirror_y(self):
+        result = mirror_preview(ROUNDED_RECT_LF, "feature-block-0001", axis="y")
+        self.assertTrue(result["validation"]["passed"], result["validation"]["errors"])
+        runtime = result["resized"]["features"][0]
+        self.assertAlmostEqual(runtime["bounds"]["y_min"], 0, places=6)
+        self.assertAlmostEqual(runtime["bounds"]["y_max"], 200, places=6)
+
+    def test_mirror_noop_rejected(self):
+        program = parse_program(VERTICAL_LINE_LF)
+        with self.assertRaises(TransformError) as ctx:
+            preview_edits(program, {"edits": [
+                {"op": "mirror", "feature_id": "feature-block-0001", "axis": "x"}]},
+                source_text=VERTICAL_LINE_LF)
+        self.assertIn("no-op", str(ctx.exception))
+
+    def test_mirror_modal_arc_rejected(self):
+        program = parse_program(MODAL_ARC_LF)
+        with self.assertRaises(TransformError) as ctx:
+            preview_edits(program, {"edits": [
+                {"op": "mirror", "feature_id": "feature-block-0001", "axis": "x"}]},
+                source_text=MODAL_ARC_LF)
+        self.assertIn("explicit G2/G3", str(ctx.exception))
+
+    def test_mirror_cutter_compensation_rejected(self):
+        program = parse_program(CUTTER_COMP_LF)
+        with self.assertRaises(TransformError) as ctx:
+            preview_edits(program, {"edits": [
+                {"op": "mirror", "feature_id": "feature-block-0001", "axis": "x"}]},
+                source_text=CUTTER_COMP_LF)
+        self.assertIn("cutter compensation", str(ctx.exception))
+
+    def test_mirror_depth_repeat_group_broadcasts(self):
+        result = mirror_preview(TWO_DEPTH_LF, "feature-block-0001", axis="x")
+        self.assertTrue(result["validation"]["passed"], result["validation"]["errors"])
+        self.assertEqual(len([item for item in result["edits_applied"] if item["op"] == "mirror"]), 2)
+
+    def test_mirror_and_shift_compose_across_features(self):
+        program = parse_program(TWO_BLOCKS_LF)
+        result = preview_edits(program, {"edits": [
+            {"op": "mirror", "feature_id": "feature-block-0002", "axis": "x"},
+            {"op": "shift", "feature_id": "feature-block-0001", "dx": 5, "dy": 0},
+        ]}, source_text=TWO_BLOCKS_LF)
+        self.assertTrue(result["validation"]["passed"], result["validation"]["errors"])
+
+
+class EnginePhaseThreeViewTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.manager = User.objects.create_user("cnc-manager-p3", password="testpass")
+        manager_group = Group.objects.create(name="2")
+        cls.manager.groups.add(manager_group)
+
+    def preview_url(self):
+        return reverse("cnc_resizer:engine_preview")
+
+    def output_url(self):
+        return reverse("cnc_resizer:engine_output")
+
+    @override_settings(CNC_RESIZER_IMPLICIT_UNITS="mm", CNC_RESIZER_SHEET_ADAPTER="minimal_xy_router")
+    def test_output_endpoint_array_structural_gate(self):
+        self.client.login(username="cnc-manager-p3", password="testpass")
+        payload = {"filename": "array.cnc", "content": WORKSHOP_ARRAY_CRLF,
+                   "edits": [{"op": "array", "feature_id": "feature-block-0001",
+                              "axis": "x", "count": 2, "pitch": 50}]}
+        response = self.client.post(self.output_url(), data=json.dumps(payload),
+                                    content_type="application/json")
+        self.assertEqual(response.status_code, 200, response.content)
+        body = response.json()
+        self.assertTrue(body["allowed"], body)
+        self.assertTrue(body["safe_for_execution"])
+        self.assertEqual(body["postprocessor"]["gate"], "structural_with_declared_insertions")
+        self.assertEqual(body["inserted_line_count"], 14)  # two copies of a 7-line block
+        text = body["cnc_text"]
+        self.assertEqual(len(text.split("\r\n")), len(WORKSHOP_ARRAY_CRLF.split("\r\n")) + 14)
+        self.assertIn("N30G1X30.000Y10.000", text)  # original untouched
+        self.assertIn("G1X80.000Y10.000", text)  # copy line translated by +50
+        self.assertIn("G1X130.000Y10.000", text)  # second copy translated by +100
+        self.assertIn("G0X60.000Y10.000Z5.000M3 S16000", text)  # copy entry rapid
+        self.assertNotIn("N30G1X80.000", text)  # copy lines carry no N word
+
+    @override_settings(CNC_RESIZER_IMPLICIT_UNITS="mm", CNC_RESIZER_SHEET_ADAPTER="minimal_xy_router")
+    def test_output_endpoint_array_collision_blocked(self):
+        self.client.login(username="cnc-manager-p3", password="testpass")
+        payload = {"filename": "array.cnc", "content": WORKSHOP_ARRAY_CRLF,
+                   "edits": [{"op": "array", "feature_id": "feature-block-0001",
+                              "axis": "x", "count": 2, "pitch": 10}]}
+        response = self.client.post(self.output_url(), data=json.dumps(payload),
+                                    content_type="application/json")
+        self.assertEqual(response.status_code, 200, response.content)
+        body = response.json()
+        self.assertFalse(body["allowed"])
+        self.assertTrue(any("overlap" in item for item in body["blockers"]), body["blockers"])
+
+    @override_settings(CNC_RESIZER_IMPLICIT_UNITS="mm", CNC_RESIZER_SHEET_ADAPTER="minimal_xy_router")
+    def test_output_endpoint_mirror_patches_g_words_and_ij(self):
+        self.client.login(username="cnc-manager-p3", password="testpass")
+        payload = {"filename": "door.cnc", "content": WORKSHOP_ROUNDED_RECT,
+                   "edits": [{"op": "mirror", "feature_id": "feature-block-0001", "axis": "x"}]}
+        response = self.client.post(self.output_url(), data=json.dumps(payload),
+                                    content_type="application/json")
+        self.assertEqual(response.status_code, 200, response.content)
+        body = response.json()
+        self.assertTrue(body["allowed"], body)
+        text = body["cnc_text"]
+        self.assertIn("G0X120.000Y0.000Z5.000M3 S16000", text)  # entry mirrored around cx=60
+        self.assertIn("G1X0.000Y0.000", text)
+        self.assertIn("G2X-10.000Y10.000I0.000J10.000", text)  # G3->G2, I flipped, J kept
+        self.assertIn("G1Y190.000", text)  # modal X line byte-identical
+        self.assertIn("G2X120.000Y0.000I-10.000J0.000", text)  # closing arc
+        self.assertEqual(len(text.split("\r\n")), len(WORKSHOP_ROUNDED_RECT.split("\r\n")))
+
+    def test_preview_endpoint_accepts_array_and_mirror(self):
+        self.client.login(username="cnc-manager-p3", password="testpass")
+        payload = {"filename": "parts.cnc", "content": ARRAY_SOURCE_LF,
+                   "edits": [{"op": "array", "feature_id": "feature-block-0001",
+                              "axis": "x", "count": 2, "pitch": 25},
+                             {"op": "mirror", "feature_id": "feature-block-0002", "axis": "x"}]}
+        response = self.client.post(self.preview_url(), data=json.dumps(payload),
+                                    content_type="application/json")
+        self.assertEqual(response.status_code, 200, response.content)
+        body = response.json()
+        self.assertTrue(body["validation"]["passed"], body["validation"]["errors"])
+        self.assertEqual(body["array_applied"][0]["count"], 2)
+        self.assertEqual(len(body["resized"]["features"]), 4)
+        self.assertTrue(any("Array copies" in warning for warning in body["validation"]["warnings"]))
+
+
 if __name__ == "__main__":
     unittest.main()

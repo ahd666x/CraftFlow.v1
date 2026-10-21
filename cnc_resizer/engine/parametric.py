@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 import math
+import re
 from typing import Any
 
 from .geometry import program_geometry
@@ -457,6 +458,84 @@ def _shift_block_rigid(block: Any, dx: float, dy: float, feature_id: str) -> Non
                     move.arc.center["y"] += dy
 
 
+_MIRROR_ARC_G_RE = re.compile(r"(?<![A-Z])G\s*[23](?![.\d])", re.IGNORECASE)
+_CUTTER_COMP_RE = re.compile(r"(?<![A-Z])G\s*4[12](?![.\d])", re.IGNORECASE)
+
+
+def _mirror_feature(block: Any, axis: str, center: float, feature_id: str, flips: list[str]) -> None:
+    """Mirror one parsed block across its own centre on one axis.
+
+    The block stays in place (its bounds are preserved); every mirrored-axis
+    coordinate reflects around ``center`` and every arc reverses direction
+    (``G2 <-> G3``, I/J offset sign flips on the mirrored axis). The entry
+    rapid must carry the mirrored axis explicitly, and every arc line must
+    carry an explicit G2/G3 word — otherwise the flip cannot be expressed as
+    a text patch and the edit fails closed. Cutter compensation flips sides
+    under mirroring and is rejected outright.
+    """
+    motions = block.motions
+    cut = [move for move in motions if move.motion in ("linear", "arc_cw", "arc_ccw")]
+    if not cut:
+        raise TransformError(f"Feature {feature_id}: the block has no cutting motion to mirror")
+    entry = motions[0]
+    if entry.motion != "rapid" or entry.machine_coordinates:
+        raise TransformError(
+            f"Feature {feature_id}: the block does not start with an independent positioning rapid; "
+            "mirroring is not supported")
+    if entry.end is None or entry.end.x is None or entry.end.y is None:
+        raise TransformError(f"Feature {feature_id}: the positioning rapid has unresolved coordinates")
+    for move in motions:
+        if _CUTTER_COMP_RE.search(move.raw_line or ""):
+            raise TransformError(
+                f"Feature {feature_id}: cutter compensation (G41/G42) flips tool side under "
+                "mirroring; mirroring a compensated block is not supported")
+    entry_words = entry.raw_words or {}
+    if axis not in entry_words:
+        raise TransformError(
+            f"Feature {feature_id}: the entry rapid line carries no {axis.upper()} word; "
+            "the mirrored entry position cannot be patched")
+    if axis == "x":
+        entry.end.x = 2 * center - entry.end.x
+    else:
+        entry.end.y = 2 * center - entry.end.y
+    for move in motions[1:]:
+        raw_words = move.raw_words or {}
+        if move.motion == "rapid":
+            if "x" in raw_words or "y" in raw_words:
+                raise TransformError(
+                    f"Feature {feature_id}: an internal repositioning rapid is not supported; "
+                    "blocks are expected to contain Z-only rapids only")
+            continue
+        if move.motion not in ("linear", "arc_cw", "arc_ccw"):
+            continue
+        if move.end is None or move.end.x is None or move.end.y is None:
+            raise TransformError(f"Feature {feature_id}: move {move.id} has unresolved coordinates")
+        if axis in raw_words:
+            if axis == "x":
+                move.end.x = 2 * center - move.end.x
+            else:
+                move.end.y = 2 * center - move.end.y
+        if move.arc is not None:
+            if move.start is None or move.start.x is None or move.start.y is None:
+                raise TransformError(f"Feature {feature_id}: move {move.id} has unresolved coordinates")
+            if not _MIRROR_ARC_G_RE.search(move.raw_line or ""):
+                raise TransformError(
+                    f"Feature {feature_id}: arc move {move.id} carries no explicit G2/G3 word on its "
+                    "line; mirroring cannot flip the arc direction and fails closed")
+            if move.arc.center and axis in move.arc.center:
+                if axis == "x":
+                    move.arc.center["x"] = 2 * center - move.arc.center["x"]
+                else:
+                    move.arc.center["y"] = 2 * center - move.arc.center["y"]
+            if axis == "x":
+                move.start.x = 2 * center - move.start.x
+            else:
+                move.start.y = 2 * center - move.start.y
+            move.motion = "arc_ccw" if move.motion == "arc_cw" else "arc_cw"
+            move.arc.direction = "ccw" if move.arc.direction == "cw" else "cw"
+            flips.append(move.id)
+
+
 def _stretch_feature_x(block: Any, feature_id: str, band_start: float, band_end: float,
                        below_offset: float, above_offset: float) -> None:
     """Segment-level X stretch of one parsed block for interactive editing.
@@ -570,8 +649,8 @@ def _stretch_feature_x(block: Any, feature_id: str, band_start: float, band_end:
 
 
 def preview_edits(program: Program, request: dict[str, Any], source_text: str) -> dict[str, Any]:
-    """Interactive rigid per-feature edits (phase one/two: shift, X stretch,
-    declarative placement constraints).
+    """Interactive rigid per-feature edits (phases one to three: shift, X
+    stretch, declarative placement constraints, linear arrays, mirroring).
 
     A ``shift`` edit translates one recognized feature's whole block by
     ``(dx, dy)``; a ``resize_x`` edit stretches one feature's own X span to
@@ -580,16 +659,18 @@ def preview_edits(program: Program, request: dict[str, Any], source_text: str) -
     into derived rigid shifts: ``center_on`` (feature or program-envelope
     centre), ``set_gap`` (exact edge-to-edge gap to an anchor feature on one
     axis) and ``center_between`` (equidistant midpoint of two anchor
-    features). A constraint on a member of a depth-repeat group broadcasts the
-    identical derived shift to every member. The candidate is accepted only
-    after the pure-coordinate-patch serializer accepts it AND a runtime
-    reparse of the patched draft proves every edited feature reached exactly
-    its requested geometry while every untouched feature stayed put, no Z
-    value changed, and no edit CREATED a new partial bounds overlap between
-    two features (overlaps already present in the source stay the operator's
-    responsibility; full containment counts as legitimate nesting). Features
-    sharing the same XY path at multiple depths must be edited together with
-    identical parameters or not at all.
+    features). Phase three adds ``array`` (``count`` translated copies of the
+    feature's block, inserted right after it as text duplications) and
+    ``mirror`` (the block reflected across its own centre, arcs reversed).
+    A constraint or an array/mirror on a member of a depth-repeat group
+    broadcasts to every member. The candidate is accepted only after the
+    serializer accepts it AND a runtime reparse of the patched draft proves
+    every move (original or copy) reached exactly its expected position
+    while no Z value changed, and no edit CREATED a new partial bounds
+    overlap between two features (overlaps already present in the source
+    stay the operator's responsibility; full containment counts as
+    legitimate nesting). Features sharing the same XY path at multiple
+    depths must be edited together with identical parameters or not at all.
     """
     if not isinstance(request, dict):
         raise TransformError("Edits request must be an object")
@@ -603,10 +684,10 @@ def preview_edits(program: Program, request: dict[str, Any], source_text: str) -
     seen: set[str] = set()
     for index, edit in enumerate(edits):
         label = f"Edit {index + 1}"
-        if not isinstance(edit, dict) or edit.get("op") not in ("shift", "resize_x",
+        if not isinstance(edit, dict) or edit.get("op") not in ("shift", "resize_x", "array", "mirror",
                                                                 "center_on", "set_gap", "center_between"):
             raise TransformError(
-                f"{label}: op must be one of shift, resize_x, center_on, set_gap, center_between")
+                f"{label}: op must be one of shift, resize_x, array, mirror, center_on, set_gap, center_between")
         feature_id = edit.get("feature_id")
         if not isinstance(feature_id, str) or feature_id not in feature_by_id:
             raise TransformError(f"{label}: unknown feature_id {feature_id!r}")
@@ -622,6 +703,38 @@ def preview_edits(program: Program, request: dict[str, Any], source_text: str) -
             if dx == 0 and dy == 0:
                 raise TransformError(f"{label}: shift distance is zero")
             normalized.append({"op": "shift", "feature_id": feature_id, "dx": dx, "dy": dy,
+                               "block_id": feature["block_id"]})
+        elif edit["op"] == "mirror":
+            axis = edit.get("axis")
+            if axis not in ("x", "y"):
+                raise TransformError(f"{label}: mirror axis must be 'x' or 'y'")
+            bounds = feature["bounds"]
+            low, high = axis + "_min", axis + "_max"
+            if bounds[high] - bounds[low] <= 1e-6:
+                raise TransformError(
+                    f"{label}: mirroring around the feature's own centre is a no-op on "
+                    f"{axis.upper()} for feature {feature_id} (no {axis.upper()} extent)")
+            normalized.append({"op": "mirror", "feature_id": feature_id, "axis": axis,
+                               "center": (bounds[low] + bounds[high]) / 2,
+                               "block_id": feature["block_id"]})
+        elif edit["op"] == "array":
+            axis = edit.get("axis")
+            if axis not in ("x", "y"):
+                raise TransformError(f"{label}: array axis must be 'x' or 'y'")
+            count = edit.get("count")
+            if isinstance(count, bool) or not isinstance(count, int) or not 1 <= count <= 64:
+                raise TransformError(
+                    f"{label}: count must be an integer between 1 and 64 (copies to add)")
+            pitch = _finite_number(edit.get("pitch"), f"{label} pitch")
+            if abs(pitch) <= 1e-6:
+                raise TransformError(f"{label}: pitch must not be zero")
+            deltas = []
+            for step in range(1, count + 1):
+                offset = pitch * step
+                deltas.append({"dx": offset if axis == "x" else 0.0,
+                               "dy": offset if axis == "y" else 0.0})
+            normalized.append({"op": "array", "feature_id": feature_id, "axis": axis,
+                               "count": count, "pitch": pitch, "deltas": deltas,
                                "block_id": feature["block_id"]})
         elif edit["op"] == "resize_x":
             new_length = _finite_number(edit.get("new_length"), f"{label} new_length")
@@ -695,8 +808,7 @@ def preview_edits(program: Program, request: dict[str, Any], source_text: str) -
                 entry["anchor"] = "envelope"
             raw_constraints.append(entry)
 
-    # ---- phase two: resolve constraints into derived rigid shifts ----
-    constraints_applied: list[dict[str, Any]] = []
+    # ---- depth-repeat groups; array/mirror broadcast to every member ----
     group_of: dict[str, list[str]] = {}
     for pattern in recognition["patterns"]:
         if pattern["kind"] == "same_xy_path_at_multiple_depths":
@@ -704,6 +816,55 @@ def preview_edits(program: Program, request: dict[str, Any], source_text: str) -
             for fid in ids:
                 group_of[fid] = ids
     taken: set[str] = {item["feature_id"] for item in normalized}
+    array_summaries: list[dict[str, Any]] = []
+    for item in [entry for entry in normalized if entry["op"] == "array"]:
+        fid = item["feature_id"]
+        targets = list(group_of.get(fid, [fid]))
+        for member in targets:
+            if member != fid and (member in seen or member in taken):
+                raise TransformError(
+                    f"Array on feature {fid}: depth-repeat group member {member} is already edited; "
+                    "a group arrays only as one unit and every member must be free")
+        copy_targets = []
+        for member in targets:
+            member_feature = feature_by_id[member]
+            if not member_feature.get("bounds"):
+                raise TransformError(
+                    f"Array on feature {fid}: group member {member} has unresolved geometry bounds")
+            copy_targets.append({"feature_id": member, "block_id": member_feature["block_id"]})
+            seen.add(member)
+            taken.add(member)
+        item["copy_targets"] = copy_targets
+        array_summaries.append({"feature_id": fid, "axis": item["axis"], "count": item["count"],
+                                "pitch": item["pitch"], "targets": targets})
+    mirror_seeds = [entry for entry in normalized if entry["op"] == "mirror"]
+    for item in mirror_seeds:
+        fid = item["feature_id"]
+        axis = item["axis"]
+        for member in group_of.get(fid, [fid]):
+            if member == fid:
+                continue
+            if member in seen or member in taken:
+                raise TransformError(
+                    f"Mirror on feature {fid}: depth-repeat group member {member} is already edited; "
+                    "a group mirrors only as one unit and every member must be free")
+        for member in group_of.get(fid, [fid]):
+            if member == fid:
+                continue
+            member_feature = feature_by_id[member]
+            bounds = member_feature["bounds"]
+            low, high = axis + "_min", axis + "_max"
+            if bounds[high] - bounds[low] <= 1e-6:
+                raise TransformError(
+                    f"Mirror on feature {fid}: group member {member} has no {axis.upper()} extent")
+            seen.add(member)
+            taken.add(member)
+            normalized.append({"op": "mirror", "feature_id": member, "axis": axis,
+                               "center": (bounds[low] + bounds[high]) / 2,
+                               "block_id": member_feature["block_id"],
+                               "derived_from": f"mirror:{fid}"})
+    # ---- phase two: resolve constraints into derived rigid shifts ----
+    constraints_applied: list[dict[str, Any]] = []
     for index, constraint in enumerate(raw_constraints):
         cid = f"constraint-{index + 1}"
         fid = constraint["feature_id"]
@@ -763,13 +924,14 @@ def preview_edits(program: Program, request: dict[str, Any], source_text: str) -
 
     def edit_signature(item: dict[str, Any]) -> tuple:
         return tuple(sorted((key, value) for key, value in item.items()
-                            if key not in ("feature_id", "block_id")))
+                            if key not in ("feature_id", "block_id", "copy_targets", "derived_from")))
 
     for pattern in recognition["patterns"]:
         if pattern["kind"] != "same_xy_path_at_multiple_depths":
             continue
         group = list(pattern["feature_ids"])
-        touched = [fid for fid in group if fid in edit_by_feature]
+        touched = [fid for fid in group if fid in edit_by_feature
+                   and edit_by_feature[fid]["op"] != "array"]
         if not touched:
             continue
         if len(touched) < len(group):
@@ -785,22 +947,38 @@ def preview_edits(program: Program, request: dict[str, Any], source_text: str) -
 
     transformed = copy.deepcopy(program)
     blocks = {block.id: block for block in transformed.blocks}
+    mirror_flips: list[str] = []
     for item in normalized:
         block = blocks.get(item["block_id"])
         if block is None:
             raise TransformError(f"Feature {item['feature_id']}: source block vanished")
         if item["op"] == "shift":
             _shift_block_rigid(block, item["dx"], item["dy"], item["feature_id"])
-        else:
+        elif item["op"] == "mirror":
+            _mirror_feature(block, item["axis"], item["center"], item["feature_id"], mirror_flips)
+        elif item["op"] == "resize_x":
             delta = item["new_length"] - (item["band_end"] - item["band_start"])
             below, above = {"min": (0.0, delta), "max": (-delta, 0.0),
                             "center": (-delta / 2.0, delta / 2.0)}[item["anchor"]]
             _stretch_feature_x(block, item["feature_id"], item["band_start"], item["band_end"],
                                below, above)
+        # array: the originals stay put; the copies are text-level block
+        # duplications handled by the serializer (block_copies below)
+
+    block_copies: list[dict[str, Any]] = []
+    for item in normalized:
+        if item["op"] != "array":
+            continue
+        for target in item["copy_targets"]:
+            block_copies.append({"source_block_id": target["block_id"], "deltas": item["deltas"]})
 
     provisional = {"validation": {"passed": True, "errors": [], "warnings": []},
                    "source_sha256": program.source_sha256,
                    "program_ir": to_dict(transformed)}
+    if block_copies:
+        provisional["block_copies"] = block_copies
+    if mirror_flips:
+        provisional["arc_direction_flips"] = mirror_flips
     try:
         draft = serialize_candidate(source_text, provisional)
     except SerializerBlocked as exc:
@@ -813,12 +991,167 @@ def preview_edits(program: Program, request: dict[str, Any], source_text: str) -
     runtime = parse_program(draft["text"])
     runtime_recognition = recognize(runtime)
     runtime_features = {feature["id"]: feature for feature in runtime_recognition["features"]}
-    if len(runtime.moves) != len(program.moves) or len(runtime.blocks) != len(program.blocks):
-        errors.append("Patched draft changed the program structure (move/block count)")
+    has_copies = bool(block_copies)
+    has_mirror = bool(mirror_flips)
+
+    # ---- expected-block / expected-move walk (arrays and mirrors) ----
+    # Every runtime move must equal the transformed move (or the transformed
+    # move plus its copy delta), with modal carries resolved the same way the
+    # parser resolves them. This is the strongest proof available: it pins
+    # every end coordinate, every arc centre, every motion word and every Z
+    # of the whole patched draft, copy or original.
+    block_map: dict[str, Any] = {}
+    copy_blocks: list[tuple[Any, tuple[float, float], Any]] = []
+    if has_copies or has_mirror:
+        copy_plan: dict[str, list[tuple[float, float]]] = {}
+        for item in normalized:
+            if item["op"] == "array":
+                for target in item["copy_targets"]:
+                    copy_plan.setdefault(target["block_id"], []).extend(
+                        (delta["dx"], delta["dy"]) for delta in item["deltas"])
+        expected_count = len(program.blocks) + sum(len(deltas) for deltas in copy_plan.values())
+        if len(runtime.blocks) != expected_count:
+            errors.append("Patched draft changed the block structure "
+                          f"({len(runtime.blocks)} runtime blocks vs {expected_count} expected)")
+        expected_moves: list[dict[str, Any]] = []
+        position: dict[str, Any] = {"x": None, "y": None, "z": None}
+        last_move_of_block = {block.id: (block.motions[-1].id if block.motions else None)
+                              for block in transformed.blocks}
+        pending_copies = {block_id: list(deltas) for block_id, deltas in copy_plan.items()}
+
+        def _emit(move: Any, ddx: float, ddy: float) -> None:
+            if move.machine_coordinates:
+                # G53 moves live in the machine frame (work-frame unknown):
+                # only the motion word is comparable
+                expected_moves.append({"motion": move.motion, "end": None,
+                                       "center": None, "id": move.id})
+                return
+            words = move.raw_words or {}
+            end_expected = {}
+            for axis in ("x", "y", "z"):
+                axis_delta = ddx if axis == "x" else ddy if axis == "y" else 0.0
+                if axis in words and move.end is not None and getattr(move.end, axis) is not None:
+                    end_expected[axis] = getattr(move.end, axis) + axis_delta
+                else:
+                    end_expected[axis] = position[axis]
+            center_expected = None
+            if move.arc is not None and move.arc.center:
+                center_expected = {}
+                for axis in ("x", "y"):
+                    axis_delta = ddx if axis == "x" else ddy
+                    if move.arc.center.get(axis) is not None:
+                        center_expected[axis] = move.arc.center[axis] + axis_delta
+            expected_moves.append({"motion": move.motion, "end": end_expected,
+                                   "center": center_expected, "id": move.id})
+            position.clear()
+            position.update(end_expected)
+
+        for move in transformed.moves:
+            _emit(move, 0.0, 0.0)
+            if last_move_of_block.get(move.source_block) == move.id:
+                for ddx, ddy in pending_copies.get(move.source_block, []):
+                    for copy_move in blocks[move.source_block].motions:
+                        _emit(copy_move, ddx, ddy)
+        if len(runtime.moves) != len(expected_moves):
+            errors.append("Patched draft changed the move structure "
+                          f"({len(runtime.moves)} runtime moves vs {len(expected_moves)} expected)")
+        else:
+            for runtime_move, expected_move in zip(runtime.moves, expected_moves):
+                if runtime_move.motion != expected_move["motion"]:
+                    errors.append(f"Move {expected_move['id']} changed motion at runtime "
+                                  f"({runtime_move.motion} vs {expected_move['motion']})")
+                    break
+                if expected_move["end"] is None:
+                    continue  # machine-coordinate move: frame is unknown by design
+                for axis in ("x", "y", "z"):
+                    expected_value = expected_move["end"][axis]
+                    runtime_value = (getattr(runtime_move.end, axis, None)
+                                     if runtime_move.end is not None else None)
+                    if expected_value is None or runtime_value is None:
+                        if (expected_value is None) != (runtime_value is None):
+                            errors.append(
+                                f"Move {expected_move['id']}: {axis} resolution changed at runtime")
+                            break
+                    elif abs(runtime_value - expected_value) > tolerance:
+                        errors.append(
+                            f"Move {expected_move['id']}: runtime {axis} {runtime_value:.4f} does "
+                            f"not match the expected {expected_value:.4f}")
+                        break
+                else:
+                    runtime_center = (runtime_move.arc.center if runtime_move.arc is not None else None) or {}
+                    expected_center = expected_move["center"] or {}
+                    for axis in ("x", "y"):
+                        expected_axis = expected_center.get(axis)
+                        runtime_axis = runtime_center.get(axis)
+                        if expected_axis is None or runtime_axis is None:
+                            if (expected_axis is None) != (runtime_axis is None):
+                                errors.append(f"Move {expected_move['id']}: arc centre {axis} "
+                                              "resolution changed at runtime")
+                                break
+                        elif abs(runtime_axis - expected_axis) > tolerance:
+                            errors.append(
+                                f"Move {expected_move['id']}: runtime arc centre {axis} "
+                                f"{runtime_axis:.4f} does not match the expected {expected_axis:.4f}")
+                            break
+                if errors:
+                    break
+        # order-based block mapping (runtime ids shift after insertions)
+        if not errors:
+            transformed_orig_blocks = [block for block in transformed.blocks]
+            runtime_orig_blocks = []
+            runtime_copy_blocks = []
+            runtime_index = 0
+            for block in transformed_orig_blocks:
+                if runtime_index >= len(runtime.blocks):
+                    errors.append("Patched draft lost blocks at runtime")
+                    break
+                block_map[block.id] = runtime.blocks[runtime_index]
+                runtime_orig_blocks.append(runtime.blocks[runtime_index])
+                runtime_index += 1
+                for delta in copy_plan.get(block.id, []):
+                    if runtime_index >= len(runtime.blocks):
+                        errors.append("Patched draft lost array copies at runtime")
+                        break
+                    runtime_copy_blocks.append((block, delta, runtime.blocks[runtime_index]))
+                    runtime_index += 1
+            copy_blocks = runtime_copy_blocks
+            if runtime_index != len(runtime.blocks) and not errors:
+                errors.append("Patched draft has unaccounted blocks at runtime")
+
+        # copy bounds proof
+        orig_feature_by_block = {feature["block_id"]: feature for feature in recognition["features"]}
+        for source_block, delta, rt_block in copy_blocks:
+            source_feature = orig_feature_by_block.get(source_block.id) or {}
+            source_bounds = source_feature.get("bounds")
+            runtime_bounds = (runtime_features.get(f"feature-{rt_block.id}") or {}).get("bounds")
+            if not source_bounds or not runtime_bounds:
+                errors.append(f"Array copy of {source_block.id}: bounds unavailable at runtime")
+                continue
+            for key in ("x_min", "x_max", "y_min", "y_max"):
+                axis_delta = delta[0] if key.startswith("x") else delta[1]
+                target = source_bounds[key] + axis_delta
+                if abs(runtime_bounds[key] - target) > tolerance:
+                    errors.append(
+                        f"Array copy of {source_block.id}: runtime {key} {runtime_bounds[key]:.4f} "
+                        f"does not match the requested offset ({target:.4f})")
+
+        # Z never changes anywhere in the walk (already covered per move)
+    else:
+        if len(runtime.moves) != len(program.moves) or len(runtime.blocks) != len(program.blocks):
+            errors.append("Patched draft changed the program structure (move/block count)")
+
+    def _runtime_feature_bounds(feature_id: str, feature: dict[str, Any]) -> dict[str, Any] | None:
+        if has_copies:
+            rt_block = block_map.get(feature["block_id"])
+            if rt_block is None:
+                return None
+            return (runtime_features.get(f"feature-{rt_block.id}") or {}).get("bounds")
+        return (runtime_features.get(feature_id) or {}).get("bounds")
+
     for item in normalized:
         feature_id = item["feature_id"]
         original_bounds = feature_by_id[feature_id]["bounds"]
-        runtime_bounds = (runtime_features.get(feature_id) or {}).get("bounds")
+        runtime_bounds = _runtime_feature_bounds(feature_id, feature_by_id[feature_id])
         if not runtime_bounds:
             errors.append(f"Feature {feature_id}: edited feature is missing from the runtime reparse")
             continue
@@ -827,17 +1160,20 @@ def preview_edits(program: Program, request: dict[str, Any], source_text: str) -
                         "x_max": original_bounds["x_max"] + item["dx"],
                         "y_min": original_bounds["y_min"] + item["dy"],
                         "y_max": original_bounds["y_max"] + item["dy"]}
-        elif item["anchor"] == "min":
-            expected = {"x_min": item["band_start"], "x_max": item["band_start"] + item["new_length"],
-                        "y_min": original_bounds["y_min"], "y_max": original_bounds["y_max"]}
-        elif item["anchor"] == "max":
-            expected = {"x_min": item["band_end"] - item["new_length"], "x_max": item["band_end"],
-                        "y_min": original_bounds["y_min"], "y_max": original_bounds["y_max"]}
-        else:
-            middle = (item["band_start"] + item["band_end"]) / 2
-            expected = {"x_min": middle - item["new_length"] / 2,
-                        "x_max": middle + item["new_length"] / 2,
-                        "y_min": original_bounds["y_min"], "y_max": original_bounds["y_max"]}
+        elif item["op"] == "resize_x":
+            if item["anchor"] == "min":
+                expected = {"x_min": item["band_start"], "x_max": item["band_start"] + item["new_length"],
+                            "y_min": original_bounds["y_min"], "y_max": original_bounds["y_max"]}
+            elif item["anchor"] == "max":
+                expected = {"x_min": item["band_end"] - item["new_length"], "x_max": item["band_end"],
+                            "y_min": original_bounds["y_min"], "y_max": original_bounds["y_max"]}
+            else:
+                middle = (item["band_start"] + item["band_end"]) / 2
+                expected = {"x_min": middle - item["new_length"] / 2,
+                            "x_max": middle + item["new_length"] / 2,
+                            "y_min": original_bounds["y_min"], "y_max": original_bounds["y_max"]}
+        else:  # mirror / array: the feature's own bounds are preserved
+            expected = {key: original_bounds[key] for key in ("x_min", "x_max", "y_min", "y_max")}
         for key, target in expected.items():
             if abs(runtime_bounds[key] - target) > tolerance:
                 errors.append(
@@ -846,7 +1182,7 @@ def preview_edits(program: Program, request: dict[str, Any], source_text: str) -
     for feature_id, feature in feature_by_id.items():
         if feature_id in edit_by_feature or not feature.get("bounds"):
             continue
-        runtime_bounds = (runtime_features.get(feature_id) or {}).get("bounds")
+        runtime_bounds = _runtime_feature_bounds(feature_id, feature)
         if not runtime_bounds:
             errors.append(f"Feature {feature_id}: untouched feature is missing from the runtime reparse")
             continue
@@ -867,6 +1203,7 @@ def preview_edits(program: Program, request: dict[str, Any], source_text: str) -
     collision_flagged: list[dict[str, Any]] = []
     checked_pairs = 0
     preexisting_skipped = 0
+    replicated_skipped = 0
     bounds_ids = sorted(fid for fid, item in runtime_features.items() if item.get("bounds"))
 
     def _contains(outer: dict[str, float], inner: dict[str, float]) -> bool:
@@ -884,44 +1221,127 @@ def preview_edits(program: Program, request: dict[str, Any], source_text: str) -
             return "contained"
         return "partial"
 
-    for index_a in range(len(bounds_ids)):
-        for index_b in range(index_a + 1, len(bounds_ids)):
-            id_a, id_b = bounds_ids[index_a], bounds_ids[index_b]
-            if id_a not in edited_ids and id_b not in edited_ids:
-                continue  # untouched pairs already coexist in the source
-            if id_b in group_of.get(id_a, ()):  # same XY path at multiple depths
+    def _flag(id_a: str, id_b: str) -> None:
+        overlap_x = min(runtime_features[id_a]["bounds"]["x_max"], runtime_features[id_b]["bounds"]["x_max"]) \
+            - max(runtime_features[id_a]["bounds"]["x_min"], runtime_features[id_b]["bounds"]["x_min"])
+        overlap_y = min(runtime_features[id_a]["bounds"]["y_max"], runtime_features[id_b]["bounds"]["y_max"]) \
+            - max(runtime_features[id_a]["bounds"]["y_min"], runtime_features[id_b]["bounds"]["y_min"])
+        collision_flagged.append({"features": [id_a, id_b],
+                                  "overlap_x": round(overlap_x, 6), "overlap_y": round(overlap_y, 6)})
+        errors.append(
+            f"Features {id_a} and {id_b} newly partially overlap after the edits "
+            f"({overlap_x:.3f} x {overlap_y:.3f} mm at bounds level); move or shrink one of them")
+
+    if has_copies:
+        # Generalized gate for array copies: each runtime feature maps back to
+        # a source feature (provenance). A copy that partially overlaps its own
+        # source or a sibling copy means the pitch is smaller than the feature;
+        # a partial overlap whose relative arrangement differs from the source
+        # arrangement is new and rejected. A pair of features that moved by the
+        # SAME delta keeps the source's own relative arrangement and is
+        # skipped as replicated; original-only pairs keep the phase-two rule.
+        provenance: dict[str, str] = {}
+        is_copy: set[str] = set()
+        pure_translation: dict[str, bool] = {}
+        resized_block_ids = {item["block_id"] for item in normalized if item["op"] == "resize_x"}
+        for block in transformed.blocks:
+            rt_block = block_map.get(block.id)
+            if rt_block is None:
                 continue
-            if _pair_state(feature_by_id[id_a]["bounds"], feature_by_id[id_b]["bounds"]) == "partial":
-                preexisting_skipped += 1
-                continue  # the source already lets these coexist
-            checked_pairs += 1
-            state = _pair_state(runtime_features[id_a]["bounds"], runtime_features[id_b]["bounds"])
-            if state != "partial":
-                continue  # disjoint, touching or nested at runtime
-            overlap_x = min(runtime_features[id_a]["bounds"]["x_max"], runtime_features[id_b]["bounds"]["x_max"]) \
-                - max(runtime_features[id_a]["bounds"]["x_min"], runtime_features[id_b]["bounds"]["x_min"])
-            overlap_y = min(runtime_features[id_a]["bounds"]["y_max"], runtime_features[id_b]["bounds"]["y_max"]) \
-                - max(runtime_features[id_a]["bounds"]["y_min"], runtime_features[id_b]["bounds"]["y_min"])
-            collision_flagged.append({"features": [id_a, id_b],
-                                      "overlap_x": round(overlap_x, 6), "overlap_y": round(overlap_y, 6)})
-            errors.append(
-                f"Features {id_a} and {id_b} newly partially overlap after the edits "
-                f"({overlap_x:.3f} x {overlap_y:.3f} mm at bounds level); move or shrink one of them")
+            rt_fid = f"feature-{rt_block.id}"
+            provenance[rt_fid] = f"feature-{block.id}"
+            pure_translation[rt_fid] = block.id not in resized_block_ids
+        for source_block, delta, rt_block in copy_blocks:
+            rt_fid = f"feature-{rt_block.id}"
+            provenance[rt_fid] = f"feature-{source_block.id}"
+            is_copy.add(rt_fid)
+            pure_translation[rt_fid] = True
+    if has_copies and not errors:
+        for index_a in range(len(bounds_ids)):
+            for index_b in range(index_a + 1, len(bounds_ids)):
+                id_a, id_b = bounds_ids[index_a], bounds_ids[index_b]
+                provenance_a = provenance.get(id_a, id_a)
+                provenance_b = provenance.get(id_b, id_b)
+                if provenance_a not in feature_by_id or provenance_b not in feature_by_id:
+                    continue  # structure errors already reported above
+                copy_involved = id_a in is_copy or id_b in is_copy
+                if not copy_involved and provenance_a not in edited_ids and provenance_b not in edited_ids:
+                    continue
+                if provenance_b in group_of.get(provenance_a, ()):
+                    continue
+                if _pair_state(runtime_features[id_a]["bounds"], runtime_features[id_b]["bounds"]) != "partial":
+                    continue
+                if copy_involved:
+                    checked_pairs += 1
+                    if provenance_a == provenance_b:
+                        _flag(id_a, id_b)
+                        continue
+                    if pure_translation.get(id_a) and pure_translation.get(id_b):
+                        source_a = feature_by_id[provenance_a]["bounds"]
+                        source_b = feature_by_id[provenance_b]["bounds"]
+                        relative_runtime = {key: runtime_features[id_a]["bounds"][key]
+                                            - runtime_features[id_b]["bounds"][key]
+                                            for key in ("x_min", "y_min")}
+                        relative_source = {key: source_a[key] - source_b[key]
+                                           for key in ("x_min", "y_min")}
+                        if all(abs(relative_runtime[key] - relative_source[key]) <= tolerance
+                               for key in relative_runtime):
+                            replicated_skipped += 1
+                            continue
+                    _flag(id_a, id_b)
+                else:
+                    if _pair_state(feature_by_id[provenance_a]["bounds"],
+                                   feature_by_id[provenance_b]["bounds"]) == "partial":
+                        preexisting_skipped += 1
+                        continue
+                    checked_pairs += 1
+                    _flag(id_a, id_b)
+    else:
+        for index_a in range(len(bounds_ids)):
+            for index_b in range(index_a + 1, len(bounds_ids)):
+                id_a, id_b = bounds_ids[index_a], bounds_ids[index_b]
+                if id_a not in edited_ids and id_b not in edited_ids:
+                    continue  # untouched pairs already coexist in the source
+                if id_b in group_of.get(id_a, ()):  # same XY path at multiple depths
+                    continue
+                if _pair_state(feature_by_id[id_a]["bounds"], feature_by_id[id_b]["bounds"]) == "partial":
+                    preexisting_skipped += 1
+                    continue  # the source already lets these coexist
+                checked_pairs += 1
+                state = _pair_state(runtime_features[id_a]["bounds"], runtime_features[id_b]["bounds"])
+                if state != "partial":
+                    continue  # disjoint, touching or nested at runtime
+                _flag(id_a, id_b)
 
     collision_check = {"method": "bounds_level_new_overlaps_rejected",
                        "checked_pairs": checked_pairs, "preexisting_skipped": preexisting_skipped,
-                       "flagged": collision_flagged}
+                       "replicated_skipped": replicated_skipped, "flagged": collision_flagged}
 
-    for before, after in zip(program.moves, runtime.moves):
-        z_before = before.end.z if before.end is not None else None
-        z_after = after.end.z if after.end is not None else None
-        if z_before != z_after:
-            errors.append(f"Move {before.id} changed Z at runtime")
-            break
+    if not has_copies and not has_mirror:
+        for before, after in zip(program.moves, runtime.moves):
+            z_before = before.end.z if before.end is not None else None
+            z_after = after.end.z if after.end is not None else None
+            if z_before != z_after:
+                errors.append(f"Move {before.id} changed Z at runtime")
+                break
 
     collision_warning = ("Collision check ran at bounds level (new partial overlaps rejected; containment "
                          "counts as nesting; overlaps already present in the source are left to the operator); "
                          "thin-wall and material-edge placement still needs operator eyes.")
+    result_warnings = [collision_warning]
+    if array_summaries:
+        result_warnings.append(
+            "Array copies are inserted right after their source block (per depth-pass member), carry no "
+            "N sequence word, and each copy keeps the source block's own cutting order.")
+    if has_mirror:
+        result_warnings.append(
+            "Mirroring keeps the feature's bounds but reverses every arc direction and the cutting "
+            "direction (climb <-> conventional); feed, tool and Z stay untouched.")
+    extras = {"array_applied": array_summaries}
+    if block_copies:
+        extras["block_copies"] = block_copies
+    if mirror_flips:
+        extras["arc_direction_flips"] = mirror_flips
     if errors:
         return {
             "preview_only": True, "safe_for_execution": False,
@@ -929,12 +1349,13 @@ def preview_edits(program: Program, request: dict[str, Any], source_text: str) -
             "operation": "interactive_edits",
             "edits_applied": normalized,
             "constraints_applied": constraints_applied,
+            **extras,
             "collision_check": collision_check,
             "original": recognition,
             # Runtime truth (modal chains re-resolved on the patched draft) —
             # what the map preview should draw, not the static stale IR.
             "resized": runtime_recognition,
-            "validation": {"passed": False, "errors": errors, "warnings": [collision_warning]},
+            "validation": {"passed": False, "errors": errors, "warnings": result_warnings},
             "program_ir": to_dict(transformed),
         }
     return {
@@ -943,9 +1364,10 @@ def preview_edits(program: Program, request: dict[str, Any], source_text: str) -
         "operation": "interactive_edits",
         "edits_applied": normalized,
         "constraints_applied": constraints_applied,
+        **extras,
         "collision_check": collision_check,
         "original": recognition,
         "resized": runtime_recognition,
-        "validation": {"passed": True, "errors": [], "warnings": [collision_warning]},
+        "validation": {"passed": True, "errors": [], "warnings": result_warnings},
         "program_ir": to_dict(transformed),
     }

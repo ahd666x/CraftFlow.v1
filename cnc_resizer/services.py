@@ -244,7 +244,12 @@ def engine_machine_output(source_text, preview):
         ]}
     try:
         serialized = serialize_candidate(source_text, preview)
-        output = controller.postprocess_resize(source_text, serialized["text"])
+        if serialized.get("inserted_line_numbers"):
+            # structural candidate (array copies): the gate must verify the
+            # declared insertions instead of a 1:1 line structure
+            output = controller.postprocess_structural(source_text, serialized["text"], serialized)
+        else:
+            output = controller.postprocess_resize(source_text, serialized["text"], serialized)
     except SerializerBlocked as exc:
         return {"allowed": False, "blockers": getattr(exc, "blockers", None) or [str(exc)]}
     except controller.ControllerPostprocessError as exc:
@@ -258,8 +263,10 @@ def engine_machine_output(source_text, preview):
             "units_injected": output["units_injected"],
             "tool": output["tool"],
             "h": output["h"],
+            "gate": output.get("gate", "resize_1to1"),
         },
         "changed_move_count": serialized["changed_move_count"],
         "changed_line_numbers": serialized["changed_line_numbers"],
+        "inserted_line_count": serialized.get("inserted_line_count", 0),
         "candidate_sha256": serialized["candidate_sha256"],
     }
