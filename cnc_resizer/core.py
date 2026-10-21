@@ -377,6 +377,339 @@ def apply_resize(lines, shift_for):
     return out, warnings
 
 
+# ---------------------------------------------------------------- kerf-bend mode (خم‌کاری MDF)
+KERF_MIN_PASS = 20.0     # mm — a horizontal cut shorter than this is not a kerf pass
+KERF_MIN_PASSES = 3      # a serpentine band needs at least this many passes
+KERF_PITCH_TOL = 1e-3    # mm — CAM raster pitch is exact; looser spacing is not kerf
+
+
+def _detect_serpentine_blocks(lines):
+    """Find transverse back-and-forth (serpentine) kerf raster blocks.
+
+    A block qualifies when, between its plunge (G1 Z…) and its retract (G0 …),
+    every move is either a wide horizontal pass (|dX| >= KERF_MIN_PASS at
+    constant Y), a pure vertical transition, or a no-op word; passes alternate
+    direction and consecutive pass gaps are uniform.  A vertical connector of a
+    different length (e.g. a solid middle zone) splits the block into bands —
+    still one serpentine block.  Blocks that do not qualify are simply not
+    returned (fail-soft); kerf mode then fails loudly if nothing qualifies.
+
+    Returns dicts in line order:
+      {g0_idx, plunge_idx, retract_idx, span, passes=[(y, x_from, x_to), ...],
+       first_dir, x_min, x_max, bands=[(y_hi, y_lo, pitch), ...], pitch}
+    """
+    parsed = []
+    x = y = 0.0
+    g = None
+    for raw in lines:
+        s = raw.strip()
+        if not s or s == '%' or 'G53' in s:
+            parsed.append(None)
+            continue
+        for gm in re.finditer(r'G(\d+)', s):
+            gv = int(gm.group(1))
+            if gv in (0, 1, 2, 3):
+                g = gv
+        px, py = x, y
+        gx, gy, gz = get_val(s, 'X'), get_val(s, 'Y'), get_val(s, 'Z')
+        if gx is not None:
+            x = gx
+        if gy is not None:
+            y = gy
+        parsed.append((g, px, py, x, y, gz))
+
+    def _split_bands(pl):
+        """pass Y list -> [(y_hi, y_lo, pitch), ...] or None when not uniform."""
+        bands_, pitch_ = [], None
+        cur = [pl[0]]
+        for prev, nxt in zip(pl, pl[1:]):
+            d = abs(nxt[0] - prev[0])
+            if pitch_ is None:
+                pitch_ = d
+            if abs(d - pitch_) > KERF_PITCH_TOL:
+                if len(cur) < KERF_MIN_PASSES:
+                    return None
+                bands_.append((cur[0][0], cur[-1][0], pitch_))
+                cur, pitch_ = [nxt], None
+            else:
+                cur.append(nxt)
+        if len(cur) < KERF_MIN_PASSES:
+            return None
+        bands_.append((cur[0][0], cur[-1][0], pitch_))
+        return bands_
+
+    blocks = []
+    i, n = 0, len(parsed)
+    while i < n:
+        ev = parsed[i]
+        if ev is None or ev[0] != 0 or (ev[3] == ev[1] and ev[4] == ev[2]):
+            i += 1
+            continue
+        # candidate block start: a G0 with an XY move
+        g0_idx = i
+        j, plunge_idx, restart = i + 1, None, None
+        while j < n:
+            ev2 = parsed[j]
+            if ev2 is None:
+                j += 1
+                continue
+            if ev2[0] == 1 and ev2[5] is not None:
+                plunge_idx = j
+                break
+            if ev2[0] == 0:
+                if ev2[5] is None and ev2[3] == ev2[1] and ev2[4] == ev2[2]:
+                    j += 1
+                    continue
+                restart = j
+                break
+            if ev2[0] in (2, 3):
+                break
+            j += 1
+        if restart is not None:
+            i = restart
+            continue
+        if plunge_idx is None:
+            i += 1
+            continue
+        moves, k, retract_idx, bad = [], plunge_idx + 1, None, False
+        while k < n:
+            ev3 = parsed[k]
+            if ev3 is None:
+                k += 1
+                continue
+            if ev3[0] == 0:
+                retract_idx = k
+                break
+            if ev3[0] != 1:
+                bad = True
+                break
+            dx, dy = ev3[3] - ev3[1], ev3[4] - ev3[2]
+            if abs(dx) < 1e-9 and abs(dy) < 1e-9:
+                k += 1
+                continue
+            if abs(dy) < 1e-9 and abs(dx) >= KERF_MIN_PASS:
+                moves.append(('P', ev3[4], ev3[1], ev3[3]))
+            elif abs(dx) < 1e-9:
+                moves.append(('T', ev3[4], None, None))
+            else:
+                bad = True
+                break
+            k += 1
+        if retract_idx is None or bad or not moves:
+            i = (retract_idx + 1) if retract_idx is not None else (k + 1)
+            continue
+        passes = []
+        for mv in moves:
+            if mv[0] != 'P':
+                continue
+            if passes and abs(passes[-1][0] - mv[1]) < 1e-9:
+                passes[-1][2] = mv[3]        # split pass continuation
+            else:
+                passes.append([mv[1], mv[2], mv[3]])
+        ok = len(passes) >= KERF_MIN_PASSES
+        dirs = []
+        if ok:
+            for p_ in passes:
+                if abs(p_[2] - p_[1]) < 1e-9:
+                    ok = False
+                    break
+                dirs.append(1 if p_[2] > p_[1] else -1)
+        if ok:
+            for a, b_ in zip(dirs, dirs[1:]):
+                if a == b_:
+                    ok = False
+                    break
+        bands_ = _split_bands(passes) if ok else None
+        if ok and bands_:
+            blocks.append(dict(
+                g0_idx=g0_idx, plunge_idx=plunge_idx, retract_idx=retract_idx,
+                span=(g0_idx, retract_idx), passes=passes, first_dir=dirs[0],
+                x_min=min(min(p_[1], p_[2]) for p_ in passes),
+                x_max=max(max(p_[1], p_[2]) for p_ in passes),
+                bands=bands_, pitch=bands_[0][2],
+            ))
+        i = retract_idx + 1 if retract_idx != g0_idx else i + 1
+    return blocks
+
+
+def _process_kerf(text, lines, eol, delta, tool_dia, params):
+    """mode='kerf': regenerate the transverse serpentine field so the pitch stays
+    exactly uniform, the previously solid middle zone gets grooves too, and the
+    extra length is realised as NEW passes — never by stretching the pitch.
+    The remainder (delta mod pitch) grows the zone below the field."""
+    try:
+        levels, edge_lo, edge_hi = detect_geometry(lines)
+    except CncError as exc:
+        if params.get('allow_view_only'):
+            return view_only_result(text, lines, eol, tool_dia, str(exc))
+        raise
+    blocks = _detect_serpentine_blocks(lines)
+    if not blocks:
+        raise CncError("مود kerf: هیچ نوار شیار رفت‌وبرگشتی (سرپنتاین) در فایل پیدا نشد؛ "
+                       "برای این فایل از روش‌های معمولی استفاده کنید")
+    pitch = blocks[0]['pitch']
+    all_bands = [band for b in blocks for band in b['bands']]
+    if any(abs(band[2] - pitch) > KERF_PITCH_TOL for band in all_bands):
+        raise CncError("مود kerf: گام شیارها در نوارهای فایل یکی نیست؛ بازتولید امن نیست")
+    base_ys = sorted(round(p_[0], 6) for p_ in blocks[0]['passes'])
+    for b in blocks[1:]:
+        ys = sorted(round(p_[0], 6) for p_ in b['passes'])
+        if len(ys) != len(base_ys) or any(abs(a - c) > 1e-6 for a, c in zip(base_ys, ys)):
+            raise CncError("مود kerf: موقعیت شیارها بین لایه‌های عمق هم‌راست نیست؛ بازتولید امن نیست")
+    F0 = min(p_[0] for b in blocks for p_ in b['passes'])
+    F1 = max(p_[0] for b in blocks for p_ in b['passes'])
+    for cy, _xs in levels:
+        if F0 + 1e-6 < cy < F1 - 1e-6:
+            raise CncError(f"مود kerf: سوراخ داخل ناحیهٔ شیار است (Y={cy:.3f})؛ "
+                           "الگوی خم‌کاری با سوراخ داخل ناحیهٔ خم سازگار نیست")
+    serp_idx = set()
+    for b in blocks:
+        serp_idx.update(range(b['span'][0], b['span'][1] + 1))
+
+    def _modal(s_, g_, x_, y_):
+        for gm in re.finditer(r'G(\d+)', s_):
+            gv = int(gm.group(1))
+            if gv in (0, 1, 2, 3):
+                g_ = gv
+        gx_, gy_ = get_val(s_, 'X'), get_val(s_, 'Y')
+        if gx_ is not None:
+            x_ = gx_
+        if gy_ is not None:
+            y_ = gy_
+        return g_, x_, y_
+
+    # any other motion vertex strictly inside the field breaks regeneration
+    x = y = 0.0
+    g = None
+    for idx, raw in enumerate(lines):
+        s = raw.strip()
+        if not s or s == '%' or 'G53' in s:
+            continue
+        g, x, y = _modal(s, g, x, y)
+        if idx in serp_idx:
+            continue
+        if get_val(s, 'X') is None and get_val(s, 'Y') is None:
+            continue
+        if g in (0, 1, 2, 3) and F0 + 1e-6 < y < F1 - 1e-6:
+            raise CncError(f"مود kerf: هندسهٔ دیگری داخل ناحیهٔ شیار است (Y={y:.3f})؛ بازتولید امن نیست")
+
+    S = F1 - F0
+    m = math.floor(delta / pitch + 1e-9)
+    S_new = S + m * pitch
+    if S_new < pitch:
+        raise CncError("مود kerf: با این کاهش طول، ناحیهٔ شیار از بین می‌رود؛ کاهش را کمتر کنید")
+    r = round(delta - m * pitch, 6)
+    K = int(math.floor(S_new / pitch + 1e-9))
+    if K < 1:
+        raise CncError("مود kerf: ناحیهٔ شیار پس از این تغییر خیلی کوتاه است")
+    F0_new = F0 + r
+    F1_new = F0_new + S_new
+
+    def shift_for(y_):
+        return 0.0 if y_ <= F0 + 1e-6 else delta
+
+    # regenerate every serpentine block: same corner, same X span, uniform pitch
+    gen, gen_end, span_end = {}, {}, {}
+    for b in blocks:
+        xs0, xs1, d0 = b['x_min'], b['x_max'], b['first_dir']
+        out_b = [re.sub(r'Y' + NUM, f"Y{F1_new:.3f}", lines[b['g0_idx']], count=1),
+                 lines[b['plunge_idx']]]
+        xt = yk = None
+        for k in range(K + 1):
+            yk = F1_new - k * pitch
+            xt = (xs1 if d0 > 0 else xs0) if k % 2 == 0 else (xs0 if d0 > 0 else xs1)
+            if k == 0:
+                out_b.append(f"G1X{xt:.3f}")
+            else:
+                out_b.append(f"Y{yk:.3f}")
+                out_b.append(f"X{xt:.3f}")
+        out_b.append(lines[b['retract_idx']])
+        gen[b['g0_idx']] = out_b
+        gen_end[b['g0_idx']] = (xt, yk)
+        span_end[b['g0_idx']] = b['span'][1]
+
+    out, warnings = [], []
+    x = y = 0.0
+    idx, n = 0, len(lines)
+    while idx < n:
+        if idx in gen:
+            out.extend(gen[idx])
+            x, y = gen_end[idx]
+            idx = span_end[idx] + 1
+            continue
+        raw = lines[idx]
+        s = raw.strip()
+        if not s or s == '%' or 'G53' in s:
+            out.append(raw)
+            idx += 1
+            continue
+        gy, gx = get_val(s, 'Y'), get_val(s, 'X')
+        if gx is not None:
+            x = gx
+        y_before = y
+        if gy is not None:
+            y = gy
+        if gy is None:
+            out.append(raw)
+            idx += 1
+            continue
+        sh = shift_for(y)
+        mG = re.search(r'G([123])(?!\d)', s)
+        if mG and mG.group(1) in ('2', '3') and abs(shift_for(y_before) - sh) > 1e-6:
+            warnings.append(f"قوس نزدیک Y={y_before:.1f} روی مرز ناحیهٔ شیار افتاده؛ شکل آن را بررسی کنید")
+        out.append(re.sub(r'Y' + NUM, f"Y{y + sh:.3f}", raw, count=1))
+        idx += 1
+
+    # uniform N numbering for the regenerated program (N10, N20, …)
+    res, nv = [], 0
+    for raw in out:
+        s = raw.strip()
+        if not s or s == '%':
+            res.append(raw)
+            continue
+        nv += 10
+        res.append(re.sub(r'^N\d+', f'N{nv}', raw, count=1) if re.match(r'^N\d+', s)
+                   else f"N{nv}{s}")
+    out = res
+
+    v0 = extract_vectors(lines, tool_dia)
+    v1 = extract_vectors(out, tool_dia)
+    a0, b0 = _span(v0)
+    a1, b1 = _span(v1)
+    if abs((b1 - a1) - (b0 - a0) - delta) > 0.05:
+        raise CncError(f"مود kerf: اعتبارسنجی طول شکست خورد "
+                       f"(Δ={b1 - a1 - (b0 - a0):.3f} در برابر {delta:.3f})")
+    blocks2 = _detect_serpentine_blocks(out)
+    if len(blocks2) != len(blocks):
+        raise CncError("مود kerf: اعتبارسنجی ساختار شکست خورد (تعداد بلوک‌های شیار تغییر کرد)")
+    for b2 in blocks2:
+        if len(b2['bands']) != 1:
+            raise CncError("مود kerf: اعتبارسنجی پیوستگی شکست خورد (ناحیهٔ خالی باقی مانده است)")
+        if len(b2['passes']) != K + 1:
+            raise CncError("مود kerf: اعتبارسنجی تعداد شیار شکست خورد")
+    passes_before = len(blocks[0]['passes'])
+    warnings.insert(0, (
+        f"مود kerf: گام {pitch:.3f} میلی‌متر ثابت ماند و ناحیهٔ خالی وسط با شیار پر شد؛ "
+        f"تعداد شیار در هر عمق: {passes_before} ← {K + 1}؛ "
+        f"باقیماندهٔ {r:.3f} میلی‌متر به ناحیهٔ پایین افزوده شد"
+    ))
+    changed = [i for i, (p_, q_) in enumerate(zip(lines, out)) if p_ != q_]
+    return dict(
+        ok=True, resizable=True, kerf=dict(
+            pitch=round(pitch, 3), passes_before=passes_before, passes_after=K + 1,
+            remainder=round(r, 3), field=(round(F0_new, 3), round(F1_new, 3)),
+        ),
+        features=[dict(y=round(f, 3)) for f in [edge_lo] + [l[0] for l in levels] + [edge_hi]],
+        hole_rows=[dict(y=round(l[0], 3), xs=[round(xx, 2) for xx in l[1]]) for l in levels],
+        gaps=[], families=[], cuts=[],
+        delta=round(delta, 3),
+        length_before=round(b0 - a0, 3), length_after=round(b1 - a1, 3),
+        original=vectors_for_json(v0), resized=vectors_for_json(v1),
+        warnings=warnings, changed_lines=changed,
+        cnc_text=eol.join(out) + eol, dxf_text=to_dxf(v1),
+    )
+
+
 # ---------------------------------------------------------------- DXF
 def to_dxf(vec):
     """R12 ASCII DXF: layer OUTLINE (polylines with bulge) and layer HOLES (circles)."""
@@ -475,11 +808,14 @@ def process(text, params=None):
         return result
 
     mode = params.get('mode', 'equal')
-    if mode not in ('equal', 'proportional', 'manual'):
+    if mode not in ('equal', 'proportional', 'manual', 'kerf'):
         raise CncError("روش توزیع نامعتبر است")
     delta = _num(params, 'delta', 0.0, -5000, 5000)
     tool_dia = _num(params, 'tool_dia', 8.0, 0.1, 100)
     symmetric = bool(params.get('symmetric', True))
+
+    if mode == 'kerf':
+        return _process_kerf(text, lines, eol, delta, tool_dia, params)
 
     try:
         levels, edge_lo, edge_hi = detect_geometry(lines)

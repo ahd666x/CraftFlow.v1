@@ -288,13 +288,15 @@
       <h2>۳. توزیع بین سوراخ‌ها</h2>
       <div class="radios" id="modes">
         <label><input type="radio" name="mode" value="equal" checked>
-          <span>مساوی بین گروه‌ها <small>همان روش قبلی: تغییر کل به‌طور مساوی بین فاصله‌ها (با تقارن آینه‌ای)</small></span></label>
+          <span>مساوی بین گروه‌ها <small>هر گروه آینه‌ای سهم برابر می‌گیرد؛ فاصلهٔ وسطِ روی محور سهم کامل یک گروه دارد (دو برابر هر فاصلهٔ جفتی). برای سهم برابر تک‌تک فاصله‌ها، تقارن را بردارید</small></span></label>
         <label><input type="radio" name="mode" value="proportional">
           <span>متناسب با طول فاصله‌ها <small>فاصله‌ی بلندتر سهم بیشتری می‌گیرد</small></span></label>
         <label><input type="radio" name="mode" value="manual">
           <span>دستی <small>برای هر فاصله مقدار دلخواه بنویسید؛ تغییر کل از جمع آن‌ها به‌دست می‌آید</small></span></label>
+        <label><input type="radio" name="mode" value="kerf">
+          <span>خم‌کاری kerf (شیار پیوسته) <small>نوارهای شیار رفت‌وبرگشتی شناسایی و ناحیهٔ خالی وسط هم شیار می‌خورد؛ گام ثابت می‌ماند و طول اضافه با شیار جدید ساخته می‌شود — کاملاً خودکار</small></span></label>
       </div>
-      <label class="check"><input type="checkbox" id="sym" checked> تقارن آینه‌ای (فاصله‌ی بالا و پایین یکسان تغییر کنند)</label>
+      <label class="check" id="symRow"><input type="checkbox" id="sym" checked> تقارن آینه‌ای (فاصله‌ی بالا و پایین یکسان تغییر کنند)</label>
       <table class="gaps" id="gapTable" hidden>
         <thead><tr><th></th><th class="n">بازه Y (mm)</th><th class="n">طول</th><th class="n">تغییر</th><th class="n">جدید</th></tr></thead>
         <tbody></tbody>
@@ -757,6 +759,7 @@
     const man = S.mode === 'manual';
     $('delta').readOnly = man; $('chips').style.opacity = man ? .4 : 1;
     $('target').disabled = man || !S.res;
+    $('symRow').style.display = S.mode === 'kerf' ? 'none' : '';
   }
 
   function famOf(k) {
@@ -780,7 +783,7 @@
       tr.onmouseenter = () => hiliteGap(g.index, true);
       tr.onmouseleave = () => hiliteGap(g.index, false);
     });
-    $('gapTable').hidden = false; $('gapHint').hidden = false;
+    $('gapTable').hidden = !r.gaps.length; $('gapHint').hidden = !r.gaps.length;
   }
   function fillTable() {
     const r = S.res, rows = document.querySelectorAll('#gapTable tbody tr');
@@ -969,6 +972,13 @@
 
     if (document.querySelectorAll('#gapTable tbody tr').length !== r.gaps.length || first) buildTable();
     fillTable();
+    if (S.mode === 'kerf') {
+      const kf = r.kerf;
+      $('gapHint').hidden = !kf;
+      $('gapHint').textContent = kf
+        ? ('مود kerf: گام ' + kf.pitch + 'mm ثابت ماند؛ شیار در هر عمق: ' + kf.passes_before + ' ← ' + kf.passes_after + ' (وسط خالی پر شد)؛ باقیماندهٔ ' + kf.remainder + 'mm به ناحیهٔ پایین رفت')
+        : '';
+    }
     if (S.mode === 'manual') $('delta').value = Number(r.delta.toFixed(3));
     $('target').value = Number(r.length_after.toFixed(3));
     syncModeUI();
