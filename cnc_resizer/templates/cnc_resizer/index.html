@@ -15,6 +15,7 @@
   parts: "{{ parts_api_url }}",
   engineAnalyze: "{{ engine_analyze_url }}",
   enginePreview: "{{ engine_preview_url }}",
+  engineResize: "{{ engine_resize_url }}",
   enginePreflight: "{{ engine_preflight_url }}",
   engineOutput: "{{ engine_output_url }}",
   archive: "{{ archive_api_url }}",
@@ -53,6 +54,8 @@
   <button type="button" id="btnFile" title="بازکردن فایل (بارگذاری یا آرشیو)"><span class="tb-ico">📂</span><span class="tb-lbl">فایل</span></button>
   <button type="button" id="btnTools" title="میز ابزار (قطر پارکینگ T)"><span class="tb-ico">🧰</span><span class="tb-lbl">ابزار</span></button>
   <button type="button" id="btnCode" title="نمای کد و همگامی با نقشه"><span class="tb-ico">⌨</span><span class="tb-lbl">کد</span></button>
+  <button type="button" id="btnResize" title="تغییر طول خودکار فایل: توزیع بین فاصله‌ها یا بازتولید شیار kerf (روش‌های محیط قدیمی)"><span class="tb-ico">↔</span><span class="tb-lbl">طول</span></button>
+  <button type="button" id="btnHelp" title="راهنمای کار با نقشه"><span class="tb-ico">؟</span><span class="tb-lbl">راهنما</span></button>
   <span class="sep"></span>
   <span id="gateChip" role="status" title="وضعیت پست‌پروسسور">
     <span class="dot"></span><span class="txt">بدون فایل</span>
@@ -104,6 +107,51 @@
 
 <section id="layersPanel" class="fpanel" hidden aria-label="لایه‌ها"></section>
 <section id="historyPanel" class="fpanel" hidden aria-label="تاریخچهٔ ویرایش"></section>
+
+<section id="resizePanel" class="fpanel" hidden aria-label="تغییر طول فایل">
+  <h2>تغییر طول فایل (خودکار)</h2>
+  <p class="statusline">همان روش‌های محیط قدیمی: طول کل فایل با توزیع بین فاصله‌ها یا با بازتولید شیار kerf تغییر می‌کند.
+    برای جابه‌جایی/کششِ یک قطعهٔ مشخص، از ویرایش روی خود نقشه (درگ/نوار کشش) استفاده کنید.</p>
+  <div class="resradios" id="resizeModes">
+    <label><input type="radio" name="resizeMode" value="equal" checked>
+      <span>مساوی بین گروه‌ها <small>هر گروه فاصله سهم برابر می‌گیرد</small></span></label>
+    <label><input type="radio" name="resizeMode" value="proportional">
+      <span>متناسب با طول فاصله‌ها <small>فاصلهٔ بلندتر سهم بیشتری می‌گیرد</small></span></label>
+    <label><input type="radio" name="resizeMode" value="kerf">
+      <span>خم‌کاری kerf (شیار پیوسته) <small>نوارهای شیار رفت‌وبرگشتی شناسایی و ناحیهٔ خالی وسط هم شیار می‌خورد؛ گام ثابت می‌ماند و طول اضافه با شیار جدید ساخته می‌شود — کاملاً خودکار</small></span></label>
+  </div>
+  <div class="resgrid">
+    <label>تغییر کل (mm) <input type="number" id="resizeDelta" value="0" step="1"></label>
+    <label>طول نهایی (mm) <input type="number" id="resizeTarget" step="1" placeholder="—"></label>
+  </div>
+  <div class="reschips" id="resizeChips">
+    <button type="button" data-d="-100">−۱۰۰</button>
+    <button type="button" data-d="-50">−۵۰</button>
+    <button type="button" data-d="-10">−۱۰</button>
+    <button type="button" data-d="10">+۱۰</button>
+    <button type="button" data-d="50">+۵۰</button>
+    <button type="button" data-d="100">+۱۰۰</button>
+    <button type="button" data-d="0">صفر</button>
+  </div>
+  <label class="laycheck"><input type="checkbox" id="resizeSym" checked> تقارن آینه‌ای (فاصلهٔ بالا و پایین یکسان تغییر کند)</label>
+  <div class="toolbtns">
+    <button type="button" id="resizeApply" class="primary">محاسبهٔ تغییر طول</button>
+  </div>
+  <div id="resizeResult" hidden></div>
+</section>
+
+<section id="helpPanel" class="fpanel" hidden aria-label="راهنما">
+  <h2>راهنمای کار با نقشه</h2>
+  <ol class="helpsteps">
+    <li><b>بازکردن فایل:</b> دکمهٔ «فایل» — از آرشیو یا فایل محلی؛ قطعه‌ها خودکار شناسایی و رنگ‌بندی می‌شوند.</li>
+    <li><b>انتخاب:</b> کلیک روی هر نقطهٔ قطعه (حتی روی مسیرهای داخلش) همان قطعه را انتخاب می‌کند؛ <kbd>Shift</kbd>+کلیک چندانتخابی، <kbd>Tab</kbd> پیمایش. انتخابِ مستقیم یک عملیات (راستر/شیار): <kbd>Shift</kbd>+کلیک روی آن.</li>
+    <li><b>ویرایش روی نقشه:</b> درگ برای جابه‌جایی (با اسنپ)، نوارهای سبز لبه برای کشش، کلیک روی ابعاد برای ورود عددی، راست‌کلیک برای آرایه/آینه/چرخش/فاصله.</li>
+    <li><b>تغییر طول کل فایل:</b> دکمهٔ «طول» — توزیع مساوی/متناسب بین فاصله‌ها یا خم‌کاری kerf؛ نتیجه می‌تواند جایگزین فایل روی نقشه شود.</li>
+    <li><b>واگرد/ازنو:</b> <kbd>Ctrl+Z</kbd> / <kbd>Ctrl+Shift+Z</kbd> — هر مرحلهٔ ویرایش قابل بازگشت است؛ قالب‌های ذخیره‌شده در «تاریخچه»اند.</li>
+    <li><b>خروجی:</b> «دانلود G-code» فقط وقتی فعال است که گتهٔ دیالکت کنترلر (چیپ وضعیت) پاس شود. خطای هم‌پوشانی واقعی یعنی دو مسیر برش به هم رسیده‌اند — قطعه را برگردانید یا فاصله را بیشتر کنید.</li>
+  </ol>
+  <p class="statusline">هشدار «فقط کادری» یعنی کادر محیطی دو قطعه هم‌پوشان است ولی مسیرهای برش فاصله دارند — پیش‌نمایش صادر شده و فقط فاصلهٔ قطعات پس از برش (قطر ابزار) باید چک شود.</p>
+</section>
 
 <div id="alertBox" role="region" aria-label="هشدارها"></div>
 <div class="maphud" id="liveHud" hidden></div>

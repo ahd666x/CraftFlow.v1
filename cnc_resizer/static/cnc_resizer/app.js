@@ -235,7 +235,7 @@
   function togglePanel(id, btn) {
     const panel = $(id);
     const show = panel.hidden;
-    ['filePanel', 'toolsPanel', 'layersPanel', 'historyPanel'].forEach((pid) => {
+    ['filePanel', 'toolsPanel', 'layersPanel', 'historyPanel', 'resizePanel', 'helpPanel'].forEach((pid) => {
       const p = $(pid);
       if (p && pid !== id) p.hidden = true;
     });
@@ -243,9 +243,92 @@
     if (btn) btn.classList.toggle('on', show);
     if (show && id === 'toolsPanel') renderToolsPanel();
     if (show && id === 'layersPanel') renderLayersPanel();
+    if (show && id === 'resizePanel') syncResizeTarget();
     CNC.emit('panel-opened', { id, open: show });
   }
   CNC.togglePanel = togglePanel;
+
+  // -------------------------------------------_تغییر طول فایل (روش‌های محیط قدیمی)
+  // بازخورد اپراتور: جریان «دلتا/طول نهایی + توزیع مساوی/متناسب + خم‌کاری kerf»
+  // که با بازنویسی نقشه‌محور حذف شده بود، روی همان موتور core برمی‌گردد.
+  function currentFileLength() {
+    // محور طول فایل CNC همان Y است (قرارداد پروفایل قطعه) — ارتفاع کادر ورق.
+    const bbox = (state.fileMeta && state.fileMeta.sheet_bbox) || {};
+    return bbox.height != null ? Number(bbox.height) : null;
+  }
+  function syncResizeTarget() {
+    const deltaIn = $('resizeDelta'), targetIn = $('resizeTarget');
+    if (!deltaIn || !targetIn) return;
+    const cur = currentFileLength();
+    if (cur == null) { targetIn.value = ''; targetIn.disabled = true; return; }
+    targetIn.disabled = false;
+    const delta = Number(deltaIn.value);
+    if (Number.isFinite(delta)) targetIn.value = Math.round((cur + delta) * 10) / 10;
+  }
+  function resizeStatus(kind, html) {
+    const box = $('resizeResult');
+    box.hidden = false;
+    box.innerHTML = `<div class="banner ${kind}">${html}</div>`;
+  }
+  function renderResizeResult(res, mode) {
+    if (res.ok === false) { resizeStatus('err', esc(res.error || 'تغییر طول ناموفق بود.')); return; }
+    const warnings = (res.warnings || []).map(esc).join('<br>• ');
+    if (res.resizable === false) {
+      resizeStatus('warn', 'این فایل قابل تغییر طول خودکار نیست.<br>• ' + (warnings || 'دلیل در پیام‌ها آمده است.'));
+      return;
+    }
+    const before = res.length_before != null ? CNC.f1(res.length_before) : '—';
+    const after = res.length_after != null ? CNC.f1(res.length_after) : '—';
+    const modeName = { equal: 'مساوی بین گروه‌ها', proportional: 'متناسب با فاصله‌ها', kerf: 'خم‌کاری kerf', manual: 'دستی' }[mode] || mode;
+    resizeStatus('ok',
+      `تغییر طول با روش «${esc(modeName)}» محاسبه شد: طول <span class="num">${before}</span> → <span class="num">${after}</span> mm`
+      + (warnings ? `<br>• ${warnings}` : '')
+      + '<div class="toolbtns" style="margin-top:8px"><button type="button" id="resizeReplace" class="primary">جایگزینی فایل روی نقشه با نسخهٔ جدید</button></div>');
+    const replaceBtn = $('resizeReplace');
+    if (replaceBtn) replaceBtn.onclick = async () => {
+      if (!res.cnc_text || !String(res.cnc_text).trim()) { resizeStatus('err', 'متن نتیجه خالی است.'); return; }
+      if (CNC.hasOps() && !confirm('ویرایش‌های فعلی نقشه و تاریخچهٔ واگرد با جایگزینی فایل پاک می‌شوند. ادامه می‌دهید؟')) return;
+      const baseName = (state.filename || 'part.cnc').replace(/\.[^.]+$/, '');
+      await CNC.loadText(`${baseName}_L${CNC.f1(res.length_after ?? 0)}.cnc`, res.cnc_text);
+      resizeStatus('ok', 'فایل جایگزین شد و نقشه دوباره شناسایی شد. فایل دستگاه همچنان فقط از مسیر «دانلود G-code» (گتهٔ دیالکت کنترلر) صادر می‌شود.');
+    };
+  }
+  function bindResizePanel() {
+    const deltaIn = $('resizeDelta'), targetIn = $('resizeTarget');
+    deltaIn.oninput = () => {
+      const cur = currentFileLength();
+      if (cur != null && Number.isFinite(Number(deltaIn.value))) {
+        targetIn.value = Math.round((cur + Number(deltaIn.value)) * 10) / 10;
+      }
+    };
+    targetIn.oninput = () => {
+      const cur = currentFileLength();
+      const t = Number(targetIn.value);
+      if (cur != null && Number.isFinite(t)) deltaIn.value = Math.round((t - cur) * 10) / 10;
+    };
+    $('resizeChips').querySelectorAll('button[data-d]').forEach((btn) => {
+      btn.onclick = () => { deltaIn.value = btn.dataset.d; syncResizeTarget(); };
+    });
+    $('resizeApply').onclick = async () => {
+      const mode = (document.querySelector('input[name="resizeMode"]:checked') || {}).value || 'equal';
+      const delta = Number(deltaIn.value);
+      if (!Number.isFinite(delta) || delta === 0) {
+        resizeStatus('err', 'ابتدا میزان تغییر (Δ) را وارد کنید — مثلاً ۱۰+ یا ۱۰−.');
+        return;
+      }
+      if (!state.text) { resizeStatus('err', 'اول یک فایل CNC باز کنید.'); return; }
+      const btn = $('resizeApply');
+      btn.disabled = true;
+      try {
+        const res = await CNC.api.resize(state.text, state.filename, {
+          mode, delta, symmetric: $('resizeSym').checked,
+        });
+        renderResizeResult(res, mode);
+      } catch (err) {
+        resizeStatus('err', esc(err.message));
+      } finally { btn.disabled = false; }
+    };
+  }
 
   // فایل
   function renderFilePanel() {
@@ -529,6 +612,12 @@
     $('btnLayers').onclick = (e) => togglePanel('layersPanel', e.currentTarget);
     $('btnHistory').onclick = (e) => togglePanel('historyPanel', e.currentTarget);
     $('btnCode').onclick = () => CNC.emit('code-toggle', {});
+    $('btnResize').onclick = (e) => {
+      togglePanel('resizePanel', e.currentTarget);
+      syncResizeTarget();
+    };
+    $('btnHelp').onclick = (e) => togglePanel('helpPanel', e.currentTarget);
+    bindResizePanel();
     $('btnDownload').onclick = downloadOutput;
     $('gateChip').onclick = () => {
       const g = state.gate;

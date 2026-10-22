@@ -65,11 +65,14 @@
           if (m.motion === 'linear') {
             segments.push({ t: 'line', x1, y1, x2, y2, line: m.source_line });
           } else if (m.arc && m.arc.valid && m.arc.radius) {
-            // بعد از وارونگی y (آینهٔ عمودی): CNC پادساعت‌گرد (G3) روی صفحه
-            // ساعت‌گرد دیده می‌شود → sweep SVG = 1؛ CNC ساعت‌گرد (G2) → 0.
+            // جهت قوس پس از وارونگی y (آینهٔ عمودی): پارسر sweep_radians را با
+            // قرارداد ریاضی (y رو به بالا، CCW مثبت) می‌دهد — G2 منفی، G3 مثبت.
+            // وارونگی y جهت دیداری را عوض می‌کند، پس G2 ساعت‌گردِ CNC روی
+            // صفحه هم ساعت‌گرد دیده می‌شود → sweep SVG = 1؛ G3 → 0.
+            // (قبلاً برعکس بود و هر قوس از سمت اشتباه وتر رسم می‌شد.)
             segments.push({
               t: 'arc', x1, y1, x2, y2, r: m.arc.radius,
-              sweep: m.motion === 'arc_ccw' ? 1 : 0,
+              sweep: m.motion === 'arc_cw' ? 1 : 0,
               large: Math.abs(m.arc.sweep_radians || 0) > Math.PI,
               line: m.source_line,
             });

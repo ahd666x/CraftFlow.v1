@@ -48,13 +48,22 @@
   CNC.on('map-click', (info) => {
     if (state.tool === 'measure') { CNC.emit('measure-click', info); return; }
     if (info.dimId) return;   // خطوط اندازه خودش رفتار دارند (edit-tools)
-    if (info.partId) {
+    // بازخورد اپراتور: روی فایل‌هایی مثل پنل خم‌کاری، تقریباً همهٔ سطح قطعه
+    // پوشیده از مسیر عملیات (راستر سرپنتاین) است — کلیک روی آن مسیرها باید
+    // همان قطعهٔ مالک را انتخاب کند، وگرنه قطعه عملاً قابل انتخاب/درگ نیست.
+    // انتخاب مستقیم خودِ عملیات: Shift+کلیک؛ عملیات بی‌مالک هم خودش انتخاب می‌شود.
+    let partId = info.partId;
+    if (!partId && info.opId && !info.shift) {
+      const op = ((state.detection && state.detection.operations) || []).find((o) => o.id === info.opId);
+      partId = op && op.assigned_part;
+    }
+    if (partId) {
       if (info.shift) {
-        CNC.selection.toggle({ type: 'part', id: info.partId }, true);
+        CNC.selection.toggle({ type: 'part', id: partId }, true);
       } else {
         // انتخاب تکْ idempotent است (کلیک دوباره، انتخاب را نمی‌زند —
         // چون همان کلیک شروع‌کنندهٔ درگ/ویرایش هم هست)
-        CNC.selection.set([{ type: 'part', id: info.partId }]);
+        CNC.selection.set([{ type: 'part', id: partId }]);
       }
     } else if (info.opId) {
       if (info.shift) {

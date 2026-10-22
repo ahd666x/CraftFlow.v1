@@ -138,6 +138,11 @@
     preview(content, filename, edits) {
       return postJSON(CNC.urls.enginePreview, { content, filename, edits });
     },
+    // تغییر طول کل فایل (توزیع مساوی/متناسب/kerf) — خروجی فقط برای جایگزینی
+    // روی نقشه است؛ فایل دستگاه همچنان فقط از مسیر گتهٔ output صادر می‌شود.
+    resize(content, filename, params) {
+      return postJSON(CNC.urls.engineResize, { content, filename, params });
+    },
     preflight(content, filename, edits) {
       return postJSON(CNC.urls.enginePreflight,
                       { content, filename, edits, machine_limits: CNC.machineLimits() });

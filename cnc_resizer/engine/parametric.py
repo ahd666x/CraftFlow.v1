@@ -18,6 +18,136 @@ class TransformError(ValueError):
     pass
 
 
+# --- geometry-verified collision refinement ---------------------------------
+# The bounds-level gate is deliberately conservative: a bbox-level partial
+# overlap that an edit CREATES is rejected. But bboxes overlap whenever two
+# shapes are near each other (L-shapes interleaved, a part pushed 0.5 mm
+# toward a neighbour whose real paths stay far away), so operators on tightly
+# nested sheets hit "newly partially overlap" for edits that cannot collide.
+# The refinement checks the RUNTIME cutting paths themselves: crossing paths
+# stay a hard error, bbox-only overlaps become a non-blocking warning that
+# still travels to the map UI (collision_check.flagged, severity="warning").
+_GEOM_PAIR_BUDGET = 400_000   # max segment-count product per checked pair
+_ARC_SAMPLE_STEP = math.pi / 12   # 15° per chord
+
+
+def _feature_cut_segments(prog: Program, block_id: str) -> list[tuple[float, float, float, float]]:
+    """Flat cutting segments (x1, y1, x2, y2) of one block; arcs are chord-sampled.
+
+    Rapid/plunge moves are excluded — the gate is about cut paths. This mirrors
+    the block-bounds convention (cuts only), so bbox-partial pairs are exactly
+    the pairs this geometry can clear or condemn.
+    """
+    segs: list[tuple[float, float, float, float]] = []
+    for block in prog.blocks:
+        if block.id != block_id:
+            continue
+        for move in block.motions:
+            if move.motion not in ("linear", "arc_cw", "arc_ccw"):
+                continue
+            if move.start is None or move.end is None:
+                continue
+            x1, y1, x2, y2 = move.start.x, move.start.y, move.end.x, move.end.y
+            if x1 is None or y1 is None or x2 is None or y2 is None:
+                continue
+            arc = move.arc
+            if (move.motion in ("arc_cw", "arc_ccw") and arc is not None and arc.valid
+                    and arc.center is not None and arc.center.get("x") is not None
+                    and arc.center.get("y") is not None and arc.radius and arc.sweep_radians):
+                cx, cy = arc.center["x"], arc.center["y"]
+                steps = max(2, min(96, int(math.ceil(abs(arc.sweep_radians) / _ARC_SAMPLE_STEP))))
+                a0 = math.atan2(y1 - cy, x1 - cx)
+                px, py = x1, y1
+                for k in range(1, steps + 1):
+                    ang = a0 + arc.sweep_radians * (k / steps)
+                    qx, qy = cx + arc.radius * math.cos(ang), cy + arc.radius * math.sin(ang)
+                    segs.append((px, py, qx, qy))
+                    px, py = qx, qy
+            else:
+                segs.append((x1, y1, x2, y2))
+    return segs
+
+
+def _orient(ax: float, ay: float, bx: float, by: float, cx: float, cy: float) -> int:
+    v = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax)
+    if abs(v) < 1e-12:
+        return 0
+    return 1 if v > 0 else -1
+
+
+def _on_seg(ax: float, ay: float, bx: float, by: float, px: float, py: float) -> bool:
+    return (min(ax, bx) - 1e-9 <= px <= max(ax, bx) + 1e-9
+            and min(ay, by) - 1e-9 <= py <= max(ay, by) + 1e-9)
+
+
+def _seg_intersect(s1: tuple[float, float, float, float],
+                   s2: tuple[float, float, float, float]) -> bool:
+    ax1, ay1, ax2, ay2 = s1
+    bx1, by1, bx2, by2 = s2
+    # bbox rejection first (cheap)
+    if (max(ax1, ax2) < min(bx1, bx2) - 1e-12 or max(bx1, bx2) < min(ax1, ax2) - 1e-12
+            or max(ay1, ay2) < min(by1, by2) - 1e-12 or max(by1, by2) < min(ay1, ay2) - 1e-12):
+        return False
+    d1 = _orient(bx1, by1, bx2, by2, ax1, ay1)
+    d2 = _orient(bx1, by1, bx2, by2, ax2, ay2)
+    d3 = _orient(ax1, ay1, ax2, ay2, bx1, by1)
+    d4 = _orient(ax1, ay1, ax2, ay2, bx2, by2)
+    if ((d1 > 0 and d2 < 0) or (d1 < 0 and d2 > 0)) and ((d3 > 0 and d4 < 0) or (d3 < 0 and d4 > 0)):
+        return True
+    if d1 == 0 and _on_seg(bx1, by1, bx2, by2, ax1, ay1):
+        return True
+    if d2 == 0 and _on_seg(bx1, by1, bx2, by2, ax2, ay2):
+        return True
+    if d3 == 0 and _on_seg(ax1, ay1, ax2, ay2, bx1, by1):
+        return True
+    if d4 == 0 and _on_seg(ax1, ay1, ax2, ay2, bx2, by2):
+        return True
+    return False
+
+
+def _point_seg_distance(px: float, py: float,
+                        x1: float, y1: float, x2: float, y2: float) -> float:
+    dx, dy = x2 - x1, y2 - y1
+    span2 = dx * dx + dy * dy
+    if span2 <= 1e-18:
+        return math.hypot(px - x1, py - y1)
+    t = ((px - x1) * dx + (py - y1) * dy) / span2
+    t = max(0.0, min(1.0, t))
+    return math.hypot(px - (x1 + t * dx), py - (y1 + t * dy))
+
+
+def _segments_intersect_any(segs_a, segs_b) -> bool:
+    for sa in segs_a:
+        for sb in segs_b:
+            if _seg_intersect(sa, sb):
+                return True
+    return False
+
+
+def _segments_min_distance(segs_a, segs_b) -> float:
+    best = float("inf")
+    for (ax1, ay1, ax2, ay2) in segs_a:
+        a_lo = (min(ax1, ax2), min(ay1, ay2))
+        a_hi = (max(ax1, ax2), max(ay1, ay2))
+        for (bx1, by1, bx2, by2) in segs_b:
+            bx_lo = min(bx1, bx2)
+            bx_hi = max(bx1, bx2)
+            by_lo = min(by1, by2)
+            by_hi = max(by1, by2)
+            dx_bb = max(a_lo[0] - bx_hi, bx_lo - a_hi[0], 0.0)
+            dy_bb = max(a_lo[1] - by_hi, by_lo - a_hi[1], 0.0)
+            if math.hypot(dx_bb, dy_bb) >= best:
+                continue
+            if _seg_intersect((ax1, ay1, ax2, ay2), (bx1, by1, bx2, by2)):
+                return 0.0
+            best = min(best,
+                       _point_seg_distance(ax1, ay1, bx1, by1, bx2, by2),
+                       _point_seg_distance(ax2, ay2, bx1, by1, bx2, by2),
+                       _point_seg_distance(bx1, by1, ax1, ay1, ax2, ay2),
+                       _point_seg_distance(bx2, by2, ax1, ay1, ax2, ay2))
+    return best
+
+
 def _finite_number(value: Any, label: str) -> float:
     try:
         number = float(value)
@@ -1406,6 +1536,8 @@ def preview_edits(program: Program, request: dict[str, Any], source_text: str) -
     checked_pairs = 0
     preexisting_skipped = 0
     replicated_skipped = 0
+    geometry_cleared = 0
+    gate_warnings: list[str] = []
     bounds_ids = sorted(fid for fid, item in runtime_features.items() if item.get("bounds"))
 
     def _contains(outer: dict[str, float], inner: dict[str, float]) -> bool:
@@ -1424,12 +1556,36 @@ def preview_edits(program: Program, request: dict[str, Any], source_text: str) -
         return "partial"
 
     def _flag(id_a: str, id_b: str) -> None:
+        nonlocal geometry_cleared
         overlap_x = min(runtime_features[id_a]["bounds"]["x_max"], runtime_features[id_b]["bounds"]["x_max"]) \
             - max(runtime_features[id_a]["bounds"]["x_min"], runtime_features[id_b]["bounds"]["x_min"])
         overlap_y = min(runtime_features[id_a]["bounds"]["y_max"], runtime_features[id_b]["bounds"]["y_max"]) \
             - max(runtime_features[id_a]["bounds"]["y_min"], runtime_features[id_b]["bounds"]["y_min"])
-        collision_flagged.append({"features": [id_a, id_b],
-                                  "overlap_x": round(overlap_x, 6), "overlap_y": round(overlap_y, 6)})
+        entry: dict[str, Any] = {"features": [id_a, id_b],
+                                 "overlap_x": round(overlap_x, 6), "overlap_y": round(overlap_y, 6)}
+        # Geometry-verified refinement: bbox partial overlap with clear cutting
+        # paths is a false alarm on nested sheets — downgrade to a non-blocking
+        # warning (the map UI still draws it). Crossing paths stay a hard error.
+        min_dist: float | None = None
+        segs_a = _feature_cut_segments(runtime, id_a[len("feature-"):])
+        segs_b = _feature_cut_segments(runtime, id_b[len("feature-"):])
+        if segs_a and segs_b and len(segs_a) * len(segs_b) <= _GEOM_PAIR_BUDGET:
+            if _segments_intersect_any(segs_a, segs_b):
+                entry["path_intersection"] = True
+            else:
+                min_dist = _segments_min_distance(segs_a, segs_b)
+                entry["path_min_distance"] = round(min_dist, 4)
+        if entry.get("path_intersection") is not True and min_dist is not None:
+            entry["severity"] = "warning"
+            geometry_cleared += 1
+            collision_flagged.append(entry)
+            gate_warnings.append(
+                f"Features {id_a} and {id_b} overlap only at bbox level ({overlap_x:.3f} x "
+                f"{overlap_y:.3f} mm) but their cutting paths stay {min_dist:.3f} mm apart — "
+                "no path collision; check the finished clearance (tool diameter) yourself")
+            return
+        entry["severity"] = "error"
+        collision_flagged.append(entry)
         errors.append(
             f"Features {id_a} and {id_b} newly partially overlap after the edits "
             f"({overlap_x:.3f} x {overlap_y:.3f} mm at bounds level); move or shrink one of them")
@@ -1518,7 +1674,8 @@ def preview_edits(program: Program, request: dict[str, Any], source_text: str) -
 
     collision_check = {"method": "bounds_level_new_overlaps_rejected",
                        "checked_pairs": checked_pairs, "preexisting_skipped": preexisting_skipped,
-                       "replicated_skipped": replicated_skipped, "flagged": collision_flagged}
+                       "replicated_skipped": replicated_skipped, "geometry_cleared": geometry_cleared,
+                       "flagged": collision_flagged}
 
     if not has_copies and not has_mirror and not has_rotated:
         for before, after in zip(program.moves, runtime.moves):
@@ -1530,8 +1687,10 @@ def preview_edits(program: Program, request: dict[str, Any], source_text: str) -
 
     collision_warning = ("Collision check ran at bounds level (new partial overlaps rejected; containment "
                          "counts as nesting; overlaps already present in the source are left to the operator); "
-                         "thin-wall and material-edge placement still needs operator eyes.")
-    result_warnings = [collision_warning]
+                         "bbox-only overlaps whose runtime cutting paths stay clear are downgraded to a "
+                         "warning with the real path distance; thin-wall and material-edge placement still "
+                         "needs operator eyes.")
+    result_warnings = [collision_warning] + gate_warnings
     if array_summaries:
         result_warnings.append(
             "Array and grid copies are inserted right after their source block (per depth-pass member, "

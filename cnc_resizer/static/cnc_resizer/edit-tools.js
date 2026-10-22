@@ -18,6 +18,42 @@
   const el = CNC.svgEl;
 
   // ================================================================_پیش‌نمایش سرور
+  // بازخورد اپراتور: «feature-block-0001» هیچ معنایی برای اپراتور ندارد؛
+  // جفت‌های پرچم‌شدهٔ گتهٔ برخورد به نام قطعه/عملیات و اعداد فارسی ترجمه می‌شوند.
+  function featureOwnerLabel(fid) {
+    const blockId = String(fid || '').replace(/^feature-/, '');
+    for (const p of (state.detection && state.detection.parts) || []) {
+      if ((p.contour_block_ids || []).includes(blockId)) return CNC.partName(p);
+      for (const c of p.children || []) {
+        if ((c.block_ids || []).includes(blockId)) {
+          return `${CNC.partName(p)} (${CNC.KIND_FA[c.kind] || c.kind})`;
+        }
+      }
+    }
+    for (const o of (state.detection && state.detection.operations) || []) {
+      if ((o.block_ids || []).includes(blockId)) return CNC.KIND_FA[o.kind] || o.id;
+    }
+    return fid;
+  }
+  function describeCollision(res) {
+    const flagged = (res && res.collision_check && res.collision_check.flagged) || [];
+    if (!flagged.length) return null;
+    const items = flagged.slice(0, 4).map((f) => {
+      const a = featureOwnerLabel(f.features && f.features[0]);
+      const b = featureOwnerLabel(f.features && f.features[1]);
+      const dims = `<span class="num">${CNC.f1(f.overlap_x)}×${CNC.f1(f.overlap_y)} mm</span>`;
+      if (f.severity === 'warning') {
+        return `<b>${esc(a)}</b> و <b>${esc(b)}</b> فقط در کادر محیطی هم‌پوشانی دارند (${dims})`
+          + (f.path_min_distance != null
+              ? ` ولی مسیرهای برششان <span class="num">${CNC.f1(f.path_min_distance)} mm</span> فاصله دارد`
+              : '');
+      }
+      return `<b>${esc(a)}</b> و <b>${esc(b)}</b> (${dims})`;
+    }).join('؛ ');
+    const more = flagged.length > 4 ? ` و ${flagged.length - 4} جفت دیگر` : '';
+    return `${items}${more}`;
+  }
+
   const requestPreview = CNC.debounce(async function requestPreview() {
     if (!state.text) return;
     const seq = ++state.previewSeq;   // race-guard: آخرین پاسخ می‌برد، کهنه‌ها دور ریخته می‌شوند
@@ -44,10 +80,18 @@
       CNC.refreshGate();
       const errs = (res.validation && res.validation.errors) || [];
       if (errs.length) {
-        CNC.alert('err', 'پیش‌نمایش با خطا: ' + errs.map(esc).join(' — '), 'preview');
+        const human = describeCollision(res);
+        CNC.alert('err', 'پیش‌نمایش با خطا: '
+          + (human ? human + ' — ' : '')
+          + errs.map(esc).join(' — ')
+          + '<br>یکی از قطعه‌ها را جابه‌جا یا کوچک‌تر کنید؛ با واگرد (Ctrl+Z) هم آخرین تغییر برمی‌گردد.', 'preview');
       } else {
-        CNC.clearAlert('preview');
-        CNC.clearAlert('preview-api');
+        // جفت‌های «فقط کادری» (مسیرها فاصله دارند) به هشدار downgrade شده‌اند —
+        // اپراتور باید ببیند که پیش‌نمایش صادر شده ولی کدام جفت‌ها نزدیک‌اند.
+        const soft = describeCollision(res);
+        if (soft) CNC.alert('warn', 'توجه — ' + soft
+          + '. مسیرها تداخل ندارند و پیش‌نمایش صادر شد؛ فاصلهٔ قطعات پس از برش (قطر ابزار) را خودتان چک کنید.', 'preview');
+        else { CNC.clearAlert('preview'); CNC.clearAlert('preview-api'); }
       }
     } catch (err) {
       if (seq !== state.previewSeq) return;
@@ -538,9 +582,17 @@
     // اولویت: دستهٔ تغییر اندازه → نوار کشش → درگ قطعه
     if (info.handle) { startHandleDrag(info); return; }
     if (info.bar) { startBarDrag(info); return; }
-    if (info.partId && !info.dimId) {
+    // بازخورد اپراتور: درگ از روی مسیر عملیاتِ متعلق به قطعه (راستر سرپنتاین
+    // پنل خم‌کاری) هم باید درگ همان قطعه باشد — وگرنه از هیچ‌جای قطعه نمی‌شد
+    // درگش کرد چون همهٔ سطحش پوشیده از مسیر عملیات است.
+    let downPartId = info.partId;
+    if (!downPartId && info.opId) {
+      const op = ((state.detection && state.detection.operations) || []).find((o) => o.id === info.opId);
+      downPartId = op && op.assigned_part;
+    }
+    if (downPartId && !info.dimId) {
       if (partEditBlocked(info.client)) return;
-      const part = findPart(info.partId);
+      const part = findPart(downPartId);
       if (!part || part.locked) {
         if (part && part.locked && info.pointerType === 'mouse') {
           CNC.showTransient(info.client, `<b>${CNC.partName(part)}</b> قفل است — ${esc(part.warnings?.[0] || 'کانتورهای هم‌پوشان')}`);
@@ -548,12 +600,12 @@
         return;
       }
       if (!part.capabilities || !part.capabilities.can_translate) return;
-      if (state.partOp.get(info.partId)?.op === 'stretch_part') {
+      if (state.partOp.get(downPartId)?.op === 'stretch_part') {
         CNC.showTransient(info.client, 'درگ، کشش قبلی این قطعه را جایگزین می‌کند (هر قطعه یک تبدیل)؛ اگر نمی‌خواهید، Esc یا واگرد کنید.');
       }
       state._gestureClaimed = true;
-      moveDrag = { partId: info.partId, startWorld: info.world, dx: 0, dy: 0, shift: info.shift };
-      CNC.selection.set([{ type: 'part', id: info.partId }]);
+      moveDrag = { partId: downPartId, startWorld: info.world, dx: 0, dy: 0, shift: info.shift };
+      CNC.selection.set([{ type: 'part', id: downPartId }]);
     }
   });
 

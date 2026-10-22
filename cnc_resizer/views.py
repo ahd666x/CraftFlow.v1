@@ -64,6 +64,7 @@ def index(request):
         "parts_api_url": reverse("cnc_resizer:parts_api"),
         "engine_analyze_url": reverse("cnc_resizer:engine_analyze"),
         "engine_preview_url": reverse("cnc_resizer:engine_preview"),
+        "engine_resize_url": reverse("cnc_resizer:engine_resize"),
         "engine_preflight_url": reverse("cnc_resizer:engine_preflight"),
         "engine_output_url": reverse("cnc_resizer:engine_output"),
         "archive_api_url": reverse("cnc_resizer:archive_files"),
@@ -166,6 +167,38 @@ def process(request):
             }
             data.setdefault("warnings", []).extend(output["source_warnings"])
     return JsonResponse(data, status=status, json_dumps_params={"ensure_ascii": False})
+
+
+@login_required
+@cnc_operator_required
+@require_POST
+def engine_resize(request):
+    """Whole-file length change for the map workspace (operator feedback).
+
+    The map-centric page had lost the old CAD flow (delta/target with
+    equal/proportional/kerf distribution); this endpoint brings it back on
+    the same core engine. It returns the RESIZED CANDIDATE text for the
+    workspace (``cnc_text``) plus before/after lengths — clearly marked
+    ``preview_only``/``safe_for_execution=False``. The machine-ready file
+    keeps flowing exclusively through the engine_output dialect gate.
+    """
+    import json
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+        if not isinstance(payload, dict) or not isinstance(payload.get("content"), str):
+            raise ValueError("content باید متن CNC باشد.")
+        params = payload.get("params") if isinstance(payload.get("params"), dict) else {}
+        params = {**params, "tool_map": _current_tool_map()}
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        return JsonResponse({"ok": False, "error": str(exc)}, status=400,
+                            json_dumps_params={"ensure_ascii": False})
+    status, data = core.handle_payload({"content": payload["content"], "params": params})
+    if status != 200:
+        return JsonResponse(data, status=status, json_dumps_params={"ensure_ascii": False})
+    # خروجی این نقطه فقط برای «جایگزینی روی نقشه» است، هرگز برای دستگاه.
+    data["preview_only"] = True
+    data["safe_for_execution"] = False
+    return JsonResponse(data, json_dumps_params={"ensure_ascii": False})
 
 
 @login_required
