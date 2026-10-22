@@ -58,6 +58,13 @@ class CncIntegrationTests(TestCase):
         self.assertContains(page, "کنار هم")
         self.assertContains(page, "renderAfterPanel")
         self.assertContains(page, "بعد — پیش‌نمایش ویرایش‌ها")
+        # Package Y: geometry point snap + feature pin guards.
+        self.assertContains(page, 'id="pointSnap"')
+        self.assertContains(page, 'id="pinFeature"')
+        self.assertContains(page, "جذب به نقاط هندسه")
+        self.assertContains(page, "سنجاق کردن ویژگی انتخاب‌شده")
+        self.assertContains(page, "pointSnapCandidate")
+        self.assertContains(page, "pinnedFeatures.has(selectedFeature)")
         content = "\n".join(["G21 G90 G17", "G0 X0 Y0 Z5", "G1 Z-2", "G1 X10 Y0",
                               "G1 X10 Y100", "G1 X20 Y100", "G1 X20 Y0", ""])
         response = self.client.post(
