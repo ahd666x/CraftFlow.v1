@@ -51,6 +51,13 @@ class CncIntegrationTests(TestCase):
         self.assertContains(page, "center_to_center")
         self.assertContains(page, "$('source').addEventListener('input'")
         self.assertContains(page, "if(other.id===f.id||!other.bounds)continue")
+        # Package H: side-by-side before/after comparison UI markers.
+        self.assertContains(page, 'id="compareMode"')
+        self.assertContains(page, 'id="svgAfter"')
+        self.assertContains(page, 'id="canvasAfter"')
+        self.assertContains(page, "کنار هم")
+        self.assertContains(page, "renderAfterPanel")
+        self.assertContains(page, "بعد — پیش‌نمایش ویرایش‌ها")
         content = "\n".join(["G21 G90 G17", "G0 X0 Y0 Z5", "G1 Z-2", "G1 X10 Y0",
                               "G1 X10 Y100", "G1 X20 Y100", "G1 X20 Y0", ""])
         response = self.client.post(
