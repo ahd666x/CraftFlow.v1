@@ -31,6 +31,8 @@ TAU = 2 * math.pi
 HOLE_MAX_SIZE = 5.0        # closed toolpath loops smaller than this (mm) are holes
 MAX_BYTES = 2 * 1024 * 1024   # Django's default request limit is 2.5 MB
 
+_COMMENT_PAREN_RE = re.compile(r'\([^)]*\)')
+
 
 class CncError(Exception):
     """Problem with the input the user should be told about (message is Persian)."""
@@ -45,9 +47,50 @@ def split_lines(text):
     return lines, eol
 
 
+def _code_only(line):
+    """The line's executable part: (...)-comments and after-; dropped.
+
+    get_val used to search the RAW line, so ``G1 X10 (see Y5.5)`` reported
+    Y=5.5 and ``(T9 tool) G1 X1 Y2`` reported T=9 — comment words leaked into
+    geometry and metadata (archive-review bug #4)."""
+    s = line.split(';', 1)[0]
+    if '(' in s:
+        s = _COMMENT_PAREN_RE.sub(' ', s)
+    return s
+
+
 def get_val(line, letter):
-    m = re.search(letter + '(' + NUM + ')', line)
+    m = re.search(letter + '(' + NUM + ')', _code_only(line))
     return float(m.group(1)) if m else None
+
+
+def _sub_word_outside_comments(raw, letter, replacement):
+    """Replace the FIRST ``<letter><number>`` word that lives OUTSIDE (...)
+    and ;-comment spans; return the line unchanged when there is none.
+
+    ``apply_resize`` used ``re.sub(..., count=1)`` on the raw line, so a
+    leading comment's Y was rewritten instead of the real word."""
+    spans = []
+    i, n = 0, len(raw)
+    while i < n:
+        ch = raw[i]
+        if ch == '(':
+            close = raw.find(')', i + 1)
+            if close == -1:
+                spans.append((i, n))
+                break
+            spans.append((i, close + 1))
+            i = close + 1
+        elif ch == ';':
+            spans.append((i, n))
+            break
+        else:
+            i += 1
+    for m in re.finditer(letter + '(' + NUM + ')', raw):
+        if any(s <= m.start() < e for s, e in spans):
+            continue
+        return raw[:m.start()] + replacement + raw[m.end():]
+    return raw
 
 
 def _blocks(lines):
@@ -94,6 +137,13 @@ def _blocks(lines):
                 if feed is not None:
                     cur['feed'] = feed
             continue
+        # The block depth is the LAST Z active during cutting: a ramp entry
+        # (G1 X.. Y.. Z..), a G0 Z re-approach followed by cutting, and the
+        # classic G1 Z plunge all end up recorded (archive-review bug #5 —
+        # ramp entries used to leave the G0 safe height in place).
+        cur['z'] = z
+        if feed is not None:
+            cur['feed'] = feed
         if g == 1:
             if abs(x - px) < 1e-9 and abs(y - py) < 1e-9:
                 continue
@@ -378,10 +428,15 @@ def apply_resize(lines, shift_for):
             out.append(raw)
             continue
         sh = shift_for(y)
-        mG = re.search(r'G([123])(?!\d)', s)
+        mG = re.search(r'G([123])(?!\d)', _code_only(s))
         if mG and mG.group(1) in ('2', '3') and abs(shift_for(y_before) - sh) > 1e-6:
             warnings.append(f"قوس نزدیک Y={y_before:.1f} روی مرز تغییر افتاده؛ شکل آن را بررسی کنید")
-        out.append(re.sub(r'Y' + NUM, f"Y{y + sh:.3f}", raw, count=1))
+        if abs(sh) <= 1e-9:
+            # zero shift: the line passes through byte-identical (archive-review
+            # bug #9 — rewriting Y0 as Y0.000 made changed_lines meaningless)
+            out.append(raw)
+            continue
+        out.append(_sub_word_outside_comments(raw, 'Y', f"Y{y + sh:.3f}"))
     return out, warnings
 
 
@@ -551,7 +606,8 @@ def _process_kerf(text, lines, eol, delta, tool_dia, params):
         levels, edge_lo, edge_hi = detect_geometry(lines)
     except CncError as exc:
         if params.get('allow_view_only'):
-            return view_only_result(text, lines, eol, tool_dia, str(exc), extra_warnings=tool_warn)
+            return view_only_result(text, lines, eol, tool_dia, str(exc),
+                                    extra_warnings=tool_warn, tool_map=tool_map)
         raise
     blocks = _detect_serpentine_blocks(lines)
     if not blocks:
@@ -715,6 +771,9 @@ def _process_kerf(text, lines, eol, delta, tool_dia, params):
         gaps=[], families=[], cuts=[],
         delta=round(delta, 3),
         length_before=round(b0 - a0, 3), length_after=round(b1 - a1, 3),
+        finished_length_before=round(b0 - a0 + _finished_tool_dia(lines, tool_map, tool_dia)[0], 3),
+        finished_length_after=round(b1 - a1 + _finished_tool_dia(lines, tool_map, tool_dia)[0], 3),
+        finished_tool_dia=round(_finished_tool_dia(lines, tool_map, tool_dia)[0], 3),
         original=vectors_for_json(v0), resized=vectors_for_json(v1),
         warnings=warnings, changed_lines=changed,
         cnc_text=eol.join(out) + eol, dxf_text=to_dxf(v1),
@@ -817,14 +876,31 @@ def _tool_warnings(lines, tool_map, tool_dia):
     return ws
 
 
-def view_only_result(text, lines, eol, tool_dia, reason, extra_warnings=()):
+def _finished_tool_dia(lines, tool_map, fallback):
+    """Diameter used for finished-size reporting (archive-review bug #8): the
+    mapped diameter of the file's tool(s) from the operator's tool table, else
+    the request fallback. Returns ``(dia, from_table, ambiguous)``."""
+    tools = _tools_in_file(lines)
+    dias = sorted({round(float(tool_map[t]), 4) for t in tools if t in tool_map})
+    if len(dias) == 1:
+        return dias[0], True, False
+    if len(dias) > 1:
+        return dias[0], True, True
+    return float(fallback), False, False
+
+
+def view_only_result(text, lines, eol, tool_dia, reason, extra_warnings=(), tool_map=None):
     """Return geometry for viewing without permitting an automatic resize."""
     vectors = extract_vectors(lines, tool_dia)
     a, b = _span(vectors)
+    fin_dia, _, _ = _finished_tool_dia(lines, tool_map or {}, tool_dia)
     shown = vectors_for_json(vectors)
     return dict(
         ok=True, resizable=False, features=[], hole_rows=[], gaps=[], families=[], cuts=[],
         delta=0.0, length_before=round(b - a, 3), length_after=round(b - a, 3),
+        finished_length_before=round(b - a + fin_dia, 3),
+        finished_length_after=round(b - a + fin_dia, 3),
+        finished_tool_dia=round(fin_dia, 3),
         original=shown, resized=shown,
         warnings=[f"این فایل فقط نمایش داده می‌شود و قابل تغییر طول نیست: {reason}"] + list(extra_warnings),
         changed_lines=[], cnc_text=text, dxf_text=to_dxf(vectors),
@@ -895,7 +971,8 @@ def process(text, params=None):
         levels, edge_lo, edge_hi = detect_geometry(lines)
     except CncError as exc:
         if params.get('allow_view_only'):
-            return view_only_result(text, lines, eol, tool_dia, str(exc), extra_warnings=tool_warn)
+            return view_only_result(text, lines, eol, tool_dia, str(exc),
+                                    extra_warnings=tool_warn, tool_map=tool_map)
         raise
     mids = [l for l in levels if edge_lo < l[0] < edge_hi]
     features = [edge_lo] + [l[0] for l in mids] + [edge_hi]
@@ -929,6 +1006,12 @@ def process(text, params=None):
     a1, b1 = _span(v1)
 
     changed = [i for i, (p, q) in enumerate(zip(lines, out_lines)) if p != q]
+    fin_dia, fin_from_table, fin_ambiguous = _finished_tool_dia(lines, tool_map, tool_dia)
+    if fin_ambiguous:
+        warnings.append("چند قطر ابزار مختلف در فایل هست؛ جبران اندازهٔ نهایی با کوچک‌ترین قطر ثبت‌شده انجام شد.")
+    warnings.append(
+        f"طول نهایی قطعه (finished) = مسیر مرکز ابزار + قطر ابزار برش ({fin_dia:g}mm) گزارش شد؛ "
+        "«طول قبل/بعد» همچنان مسیر مرکز ابزار است و هدف طول را بر اساس finished_length وارد کنید.")
     return dict(
         ok=True, resizable=True,
         features=[dict(y=round(f, 3)) for f in features],
@@ -942,6 +1025,9 @@ def process(text, params=None):
         delta=round(total, 3),
         length_before=round(b0 - a0, 3),
         length_after=round(b1 - a1, 3),
+        finished_length_before=round(b0 - a0 + fin_dia, 3),
+        finished_length_after=round(b1 - a1 + fin_dia, 3),
+        finished_tool_dia=round(fin_dia, 3),
         original=vectors_for_json(v0),
         resized=vectors_for_json(v1),
         warnings=warnings,

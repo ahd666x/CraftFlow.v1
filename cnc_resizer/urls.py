@@ -8,6 +8,7 @@ urlpatterns = [
     path("", views.index, name="index"),
     path("api/process/", views.process, name="process"),
     path("api/analyze/", views.analyze, name="analyze"),
+    path("api/parts/", views.parts_api, name="parts_api"),
     path("api/engine/analyze/", views.engine_analyze, name="engine_analyze"),
     path("api/engine/preview/", views.engine_preview, name="engine_preview"),
     path("api/engine/profile/", views.engine_profile, name="engine_profile"),

@@ -269,6 +269,38 @@ def tool_sets(request):
 @login_required
 @cnc_operator_required
 @require_POST
+def parts_api(request):
+    """Read-only part-level detection (prompt-1 phase one).
+
+    Returns the reconstructed workpieces (outer contour + depth passes +
+    children + capabilities), the leftover operations (groove / saw_line /
+    raster / engraving / orphan), the sheet bbox and the warnings. Never
+    returns G-code text and never mutates anything; the editing path is the
+    engine preview/output chain with part-level ops.
+    """
+    import json
+    import os
+    from .engine.parser import ParseError, parse_program
+    from .engine.parts import detect_parts
+    try:
+        payload = json.loads(request.body.decode('utf-8'))
+        if not isinstance(payload, dict) or not isinstance(payload.get('content'), str):
+            raise ValueError('content باید متن CNC باشد.')
+        filename = os.path.basename(payload.get('filename') or 'uploaded.cnc')
+        params = payload.get('params') if isinstance(payload.get('params'), dict) else {}
+        params = {**params, 'tool_map': _current_tool_map()}
+        program = parse_program(payload['content'], filename=filename)
+        result = detect_parts(program, params)
+    except (TypeError, ValueError, json.JSONDecodeError, ParseError) as exc:
+        return JsonResponse({'ok': False, 'error': str(exc)}, status=400,
+                            json_dumps_params={'ensure_ascii': False})
+    return JsonResponse({'ok': True, 'preview_only': True, 'safe_for_execution': False,
+                         **result}, json_dumps_params={'ensure_ascii': False})
+
+
+@login_required
+@cnc_operator_required
+@require_POST
 def engine_analyze(request):
     """Parse a CNC file into the independent IR and return preview diagnostics."""
     import json
@@ -285,11 +317,30 @@ def engine_analyze(request):
     return JsonResponse(result, json_dumps_params={'ensure_ascii': False})
 
 
-def _engine_candidate(payload: dict, filename: str):
+def _looks_like_part_edit(item) -> bool:
+    """Distinguish part-level ops from feature-level ops that share a name
+    (``set_gap`` exists in both vocabularies): a part edit references parts
+    (``part_id`` / ``part_a``/``part_b`` / ``parts``), a feature edit
+    references ``feature_id``."""
+    if not isinstance(item, dict):
+        return False
+    op = item.get('op')
+    if op in ('move_part', 'stretch_part'):
+        return 'part_id' in item
+    if op == 'set_gap':
+        return 'part_a' in item or 'part_b' in item
+    if op == 'distribute':
+        return 'parts' in item
+    return False
+
+
+def _engine_candidate(payload: dict, filename: str, tool_map: dict | None = None):
     """Build an engine preview candidate from an interactive ``edits`` list
-    (rigid shifts, X stretches and placement constraints, runtime-verified)
-    or from a parametric ``profile``. Sending both is rejected — they do not
-    compose yet."""
+    (rigid shifts, X stretches and placement constraints, runtime-verified),
+    from a part-level ``edits`` list (move_part / stretch_part / set_gap /
+    distribute, lowered onto the same runtime-proven block machinery), or
+    from a parametric ``profile``. Mixing feature-level and part-level ops in
+    one list is rejected by the feature parser (fail-closed)."""
     from .engine.service import edits_program, preview_program
     has_edits = 'edits' in payload
     has_profile = 'profile' in payload
@@ -299,6 +350,13 @@ def _engine_candidate(payload: dict, filename: str):
         edits = payload.get('edits')
         if not isinstance(edits, list):
             raise ValueError('edits must be a list')
+        if edits and all(_looks_like_part_edit(item) for item in edits):
+            from .engine.part_edits import edits_part_program
+            params = payload.get('params') if isinstance(payload.get('params'), dict) else {}
+            if tool_map:
+                params = {**params, 'tool_map': tool_map}
+            return edits_part_program(payload['content'], {'edits': edits},
+                                      filename=filename, params=params or None)
         return edits_program(payload['content'], {'edits': edits}, filename=filename)
     profile = payload.get('profile')
     if not isinstance(profile, dict):
@@ -663,7 +721,7 @@ def engine_preflight(request):
             raise ValueError('content باید متن CNC باشد.')
         filename = os.path.basename(payload.get('filename') or 'uploaded.cnc')
         source = parse_program(payload['content'], filename=filename)
-        candidate = _engine_candidate(payload, filename)
+        candidate = _engine_candidate(payload, filename, tool_map=_current_tool_map())
         gate = (controller.postprocess_resize
                 if controller.controller_adapter_key() == controller.ADAPTER_KEY else None)
         report = validate_output_candidate(
@@ -694,7 +752,7 @@ def engine_output(request):
         if not isinstance(payload, dict) or not isinstance(payload.get('content'), str):
             raise ValueError('content باید متن CNC باشد.')
         filename = os.path.basename(payload.get('filename') or 'uploaded.cnc')
-        candidate = _engine_candidate(payload, filename)
+        candidate = _engine_candidate(payload, filename, tool_map=_current_tool_map())
         result = engine_machine_output(payload['content'], candidate)
     except (TypeError, ValueError, json.JSONDecodeError, ParseError, TransformError) as exc:
         return JsonResponse({'ok': False, 'error': str(exc)}, status=400, json_dumps_params={'ensure_ascii': False})
