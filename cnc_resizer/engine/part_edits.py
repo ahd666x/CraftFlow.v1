@@ -13,9 +13,11 @@ per-block transforms that already exist and are runtime-proven:
                               are rejected; children stay anchored to the
                               lower edge by default, and wholly upper parts
                               follow the expanded contour);
-* ``stretch_chain``        -> equal per-part axis stretch with cumulative
-                              lower/upper offsets, so each successor and its
-                              child features follow the preceding growth;
+* ``stretch_chain``        -> equal per-part axis stretch; members may sit
+                              STACKED (lower edges follow the finished growth
+                              of the column below them: offsets 0, d, 2d, ...)
+                              or SIDE BY SIDE (doors cut from one G-code —
+                              each grows at its own band with offset 0);
 * ``set_gap`` / ``distribute`` -> rigid shifts derived from the FINISHED
                               bounding boxes (tool diameter compensated).
 
@@ -206,6 +208,21 @@ def _interval_state(bbox: dict[str, float], band: tuple[float, float], axis: str
     if low >= band[1] - _FINITE_TOL:
         return "above"
     return "straddle"
+
+
+def _ranges_share_area(a: dict[str, float], b: dict[str, float],
+                       lo_key: str, hi_key: str) -> bool:
+    """True when the two 1-D ranges share actual length (edge touching does
+    not count as sharing — a zero-width contact cannot tear geometry)."""
+    return a[lo_key] < b[hi_key] - _FINITE_TOL and a[hi_key] > b[lo_key] + _FINITE_TOL
+
+
+def _boxes_overlap_2d(a: dict[str, float], b: dict[str, float]) -> bool:
+    """True when two bounding boxes share AREA on the sheet. Parts that are
+    merely side by side (disjoint on one axis) are NOT overlapping — a
+    stretch confined to one part's contour cannot tear its neighbour."""
+    return (_ranges_share_area(a, b, "x_min", "x_max")
+            and _ranges_share_area(a, b, "y_min", "y_max"))
 
 
 def _clear_sub_bands(interval: tuple[float, float],
@@ -427,6 +444,12 @@ def preview_part_edits(program: Program, request: dict[str, Any], source_text: s
                                  delta if axis == "y" else 0.0)
                     touched_parts.add(other["id"])
                     continue
+                # straddle: harmless when the neighbour is laterally separated
+                # (2D-disjoint boxes, e.g. doors side by side on one sheet) —
+                # the band cut lives inside THIS part's contour only, so a
+                # side-by-side part is never torn and simply stays put.
+                if not _boxes_overlap_2d(other["bbox"], part["bbox"]):
+                    continue
                 raise TransformError(
                     f"{label}: قطعهٔ {other['id']} روی نوار کشش قرار دارد و کشیدن آن را پاره می‌کند؛ "
                     "نوار را فقط داخل قطعهٔ انتخابی بگذارید")
@@ -437,6 +460,8 @@ def preview_part_edits(program: Program, request: dict[str, Any], source_text: s
                 if state == "above":
                     assign_shift(orphan["block_ids"], delta if axis == "x" else 0.0,
                                  delta if axis == "y" else 0.0, label)
+                    continue
+                if not _boxes_overlap_2d(orphan["bbox"], part["bbox"]):
                     continue
                 raise TransformError(
                     f"{label}: عملیات {orphan['id']} روی نوار کشش می‌گذرد و کشیدن آن را خراب می‌کند")
@@ -473,19 +498,40 @@ def preview_part_edits(program: Program, request: dict[str, Any], source_text: s
                     raise TransformError(
                         f"{label}: قطعهٔ {part['id']} نوار صاف {axis.upper()} برای کشش ندارد")
             lo_key, hi_key = f"{axis}_min", f"{axis}_max"
+            cross_lo, cross_hi = ("y_min", "y_max") if axis == "x" else ("x_min", "x_max")
             chain.sort(key=lambda item: item["bbox"][lo_key])
-            for lower, upper in zip(chain, chain[1:]):
-                if lower["bbox"][hi_key] > upper["bbox"][lo_key] + _FINITE_TOL:
-                    raise TransformError(
-                        f"{label}: قطعه‌های زنجیره در راستای {axis.upper()} هم‌پوشانی دارند؛ "
-                        "ترتیب تغییر تجمعی تعریف‌پذیر نیست")
+            # Lateral awareness: a sheet often carries several copies of the
+            # same part SIDE BY SIDE (three doors cut from one G-code). Such
+            # members are 2D-disjoint and stretch independently; only members
+            # whose boxes share actual AREA are rejected as interlocked. A
+            # pair disjoint along the axis but sharing the cross axis keeps
+            # the stacked follow semantics below.
+            for index_a in range(len(chain)):
+                for index_b in range(index_a + 1, len(chain)):
+                    if _boxes_overlap_2d(chain[index_a]["bbox"], chain[index_b]["bbox"]):
+                        raise TransformError(
+                            f"{label}: قطعه‌های زنجیرهٔ {chain[index_a]['id']} و "
+                            f"{chain[index_b]['id']} روی هم افتاده‌اند (هم‌پوشانی دوبعدی)؛ "
+                            "کشش زنجیره‌ای برای قطعات درهم‌تنیده تعریف‌پذیر نیست")
 
-            # A part at rank i receives the sum of all preceding increments
-            # at its lower edge, then its own increment at the upper edge.
-            # Thus equal +deltas produce offsets 0, d, 2d, ... and retain all
-            # inter-part gaps without requiring serial manual edits.
-            accumulated = 0.0
+            # A member's lower edge follows the finished growth of every
+            # cross-axis-overlapping member stacked fully below it (upper
+            # offset), so equal +deltas still produce 0, d, 2d, ... down a
+            # column while laterally separated members stay at offset 0 and
+            # each grows at its own band.
+            below_offsets: dict[str, float] = {}
+            upper_offsets: dict[str, float] = {}
             selected_ids = {part["id"] for part in chain}
+            for part in chain:  # sorted by lower edge: leaders resolve first
+                below = 0.0
+                for leader in chain:
+                    if leader["id"] not in upper_offsets:
+                        continue
+                    if (_ranges_share_area(leader["bbox"], part["bbox"], cross_lo, cross_hi)
+                            and leader["bbox"][hi_key] <= part["bbox"][lo_key] + _FINITE_TOL):
+                        below = max(below, upper_offsets[leader["id"]])
+                below_offsets[part["id"]] = below
+                upper_offsets[part["id"]] = below + delta
             for rank, part in enumerate(chain):
                 band_value = part.get(f"stretch_band_{axis}")
                 if not band_value:
@@ -493,50 +539,52 @@ def preview_part_edits(program: Program, request: dict[str, Any], source_text: s
                         f"{label}: قطعهٔ {part['id']} بازهٔ صاف {axis.upper()} ندارد")
                 band = (band_value[0], band_value[1])
                 contour_ids = list(part["contour_block_ids"])
+                below = below_offsets[part["id"]]
                 assign_stretch(contour_ids, axis, band, delta, label,
-                               below_offset=accumulated)
-                if abs(accumulated) > 1e-9:
+                               below_offset=below)
+                if abs(below) > 1e-9:
                     for child in part["children"]:
                         assign_shift(child["block_ids"],
-                                     accumulated if axis == "x" else 0.0,
-                                     accumulated if axis == "y" else 0.0, label)
+                                     below if axis == "x" else 0.0,
+                                     below if axis == "y" else 0.0, label)
                     for feature in detection["operations"]:
                         if feature.get("assigned_part") == part["id"]:
                             assign_shift(feature["block_ids"],
-                                         accumulated if axis == "x" else 0.0,
-                                         accumulated if axis == "y" else 0.0, label)
+                                         below if axis == "x" else 0.0,
+                                         below if axis == "y" else 0.0, label)
                 touched_parts.add(part["id"])
                 part_stretched.add(part["id"])
                 normalized_summary.append({
                     "op": op, "part_id": part["id"], "axis": axis,
                     "rank": rank + 1, "delta": delta,
-                    "lower_offset": accumulated,
-                    "upper_offset": accumulated + delta,
+                    "lower_offset": below,
+                    "upper_offset": below + delta,
                     "child_anchor": "lower", "band": list(band),
                     "blocks": contour_ids,
                 })
-                accumulated += delta
 
-            # Non-selected pieces above a selected piece follow every resize
-            # below them; pieces between selected members receive the partial
-            # cumulative delta. Geometry crossing a selected boundary is
-            # rejected rather than sheared or guessed.
-            chain_low, chain_high = chain[0]["bbox"][lo_key], chain[-1]["bbox"][hi_key]
+            # Non-selected geometry: a piece interlocking a member (shared
+            # area) is rejected fail-closed; a piece laterally separated from
+            # every member is untouched; a piece stacked above members in its
+            # own column follows the largest finished upper offset below it
+            # (once per growth layer, not once per member).
+            def _follower_shift(box: dict[str, float], kind: str, piece_id: str) -> float:
+                shift = 0.0
+                for member in chain:
+                    if _boxes_overlap_2d(box, member["bbox"]):
+                        raise TransformError(
+                            f"{label}: {kind} {piece_id} با قطعهٔ زنجیرهٔ "
+                            f"{member['id']} هم‌پوشانی دوبعدی دارد؛ آن را هم انتخاب کنید "
+                            "یا زنجیره را بازبینی کنید")
+                    if (_ranges_share_area(member["bbox"], box, cross_lo, cross_hi)
+                            and member["bbox"][hi_key] <= box[lo_key] + _FINITE_TOL):
+                        shift = max(shift, upper_offsets[member["id"]])
+                return shift
+
             for other in detection["parts"]:
                 if other["id"] in selected_ids:
                     continue
-                box = other["bbox"]
-                if box[hi_key] <= chain_low + _FINITE_TOL:
-                    continue
-                if any(box[lo_key] < part["bbox"][hi_key] - _FINITE_TOL
-                       and box[hi_key] > part["bbox"][lo_key] + _FINITE_TOL
-                       for part in chain):
-                    raise TransformError(
-                        f"{label}: قطعهٔ انتخاب‌نشدهٔ {other['id']} با یکی از قطعات زنجیره "
-                        "در امتداد محور هم‌پوشانی دارد؛ آن را هم انتخاب کنید یا زنجیره را بازبینی کنید")
-                count_below = sum(1 for part in chain
-                                  if part["bbox"][hi_key] <= box[lo_key] + _FINITE_TOL)
-                shift = count_below * delta
+                shift = _follower_shift(other["bbox"], "قطعهٔ انتخاب‌نشدهٔ", other["id"])
                 if abs(shift) > 1e-9:
                     assign_shift(_member_blocks(other), shift if axis == "x" else 0.0,
                                  shift if axis == "y" else 0.0, label)
@@ -545,19 +593,7 @@ def preview_part_edits(program: Program, request: dict[str, Any], source_text: s
                     touched_parts.add(other["id"])
 
             for orphan in orphan_ops:
-                box = orphan["bbox"]
-                if box[hi_key] <= chain_low + _FINITE_TOL:
-                    continue
-                if any(box[lo_key] < part["bbox"][hi_key] - _FINITE_TOL
-                       and box[hi_key] > part["bbox"][lo_key] + _FINITE_TOL
-                       for part in chain):
-                    raise TransformError(
-                        f"{label}: عملیاتِ بدون مالک {orphan['id']} با یکی از قطعات زنجیره "
-                        "در امتداد محور هم‌پوشانی دارد؛ "
-                        "تبدیل امن ممکن نیست")
-                count_below = sum(1 for part in chain
-                                  if part["bbox"][hi_key] <= box[lo_key] + _FINITE_TOL)
-                shift = count_below * delta
+                shift = _follower_shift(orphan["bbox"], "عملیاتِ بدون مالک", orphan["id"])
                 if abs(shift) > 1e-9:
                     assign_shift(orphan["block_ids"], shift if axis == "x" else 0.0,
                                  shift if axis == "y" else 0.0, label)

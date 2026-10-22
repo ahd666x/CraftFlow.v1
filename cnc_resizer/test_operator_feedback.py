@@ -316,3 +316,130 @@ class LegacyGapDistributionTests(SimpleTestCase):
         for gap in result["gaps"][1:]:
             self.assertAlmostEqual(gap["increment"], 0.0, places=6)
         self.assertAlmostEqual(result["length_after"] - result["length_before"], 12.5, places=1)
+
+
+def _door_block(x0, y0, x1, y1):
+    """One closed rectangular door contour (contour-only part, no children)."""
+    return "\n".join([
+        "G21 G90 G17",
+        f"G0 X{x0:.3f} Y{y0:.3f} Z5.000",
+        "G1 Z-16.000 F10000.0",
+        f"G1 X{x1:.3f} Y{y0:.3f}",
+        f"G1 X{x1:.3f} Y{y1:.3f}",
+        f"G1 X{x0:.3f} Y{y1:.3f}",
+        f"G1 X{x0:.3f} Y{y0:.3f}",
+        "G0 Z5.000",
+    ]) + "\n"
+
+
+class LateralChainStretchTests(SimpleTestCase):
+    """Doors / plain panels cut SIDE BY SIDE from one G-code: several copies
+    of the same part share the sheet Y-range, so the old axis-overlap guards
+    rejected both the chain and the single stretch. 2D-disjoint (lateral)
+    parts must stretch independently; only truly interlocked boxes stay
+    fail-closed."""
+
+    @classmethod
+    def setUpClass(cls):
+        from .engine.parser import parse_program
+        from .engine.parts import detect_parts
+        cls.text = (_door_block(0, 0, 396, 1970)
+                    + _door_block(420, 0, 816, 1970)
+                    + _door_block(840, 0, 1236, 1970))
+        cls.program = parse_program(cls.text)
+        detection = detect_parts(cls.program)
+        cls.parts = sorted(detection["parts"], key=lambda item: item["bbox"]["x_min"])
+        cls.ids = [part["id"] for part in cls.parts]
+
+    def _edit(self, edits):
+        from .engine.part_edits import edits_part_program
+        return edits_part_program(self.text, {"edits": edits})
+
+    def test_chain_stretches_three_side_by_side_doors_independently(self):
+        result = self._edit([{
+            "op": "stretch_chain", "axis": "y", "parts": self.ids, "delta": 50.0,
+        }])
+        self.assertTrue(result["validation"]["passed"],
+                        msg=str(result["validation"]["errors"]))
+        resized = sorted(result["resized"]["parts"],
+                         key=lambda item: item["bbox"]["x_min"])
+        for before, after in zip(self.parts, resized):
+            self.assertAlmostEqual(after["bbox"]["y_min"], before["bbox"]["y_min"])
+            self.assertAlmostEqual(after["bbox"]["y_max"],
+                                   before["bbox"]["y_max"] + 50.0, places=1)
+            self.assertAlmostEqual(after["bbox"]["x_min"], before["bbox"]["x_min"])
+            self.assertAlmostEqual(after["bbox"]["x_max"], before["bbox"]["x_max"])
+        offsets = [(entry["lower_offset"], entry["upper_offset"])
+                   for entry in result["edits_applied"]
+                   if entry.get("op") == "stretch_chain"]
+        self.assertEqual(offsets, [(0.0, 50.0), (0.0, 50.0), (0.0, 50.0)])
+
+    def test_single_stretch_ignores_laterally_separated_neighbours(self):
+        result = self._edit([{
+            "op": "stretch_part", "part_id": self.ids[1], "axis": "y", "delta": 50.0,
+        }])
+        self.assertTrue(result["validation"]["passed"],
+                        msg=str(result["validation"]["errors"]))
+        resized = sorted(result["resized"]["parts"],
+                         key=lambda item: item["bbox"]["x_min"])
+        for index, (before, after) in enumerate(zip(self.parts, resized)):
+            if index == 1:
+                self.assertAlmostEqual(after["bbox"]["y_max"],
+                                       before["bbox"]["y_max"] + 50.0, places=1)
+            else:
+                self.assertAlmostEqual(after["bbox"]["y_max"],
+                                       before["bbox"]["y_max"], places=1)
+                self.assertAlmostEqual(after["bbox"]["y_min"],
+                                       before["bbox"]["y_min"], places=1)
+
+    def test_chain_follows_stacked_column_but_not_lateral_column(self):
+        text = (_door_block(0, 0, 396, 780) + _door_block(420, 0, 816, 780)
+                + _door_block(0, 800, 396, 1580))
+        from .engine.parser import parse_program
+        from .engine.parts import detect_parts
+        parts = detect_parts(parse_program(text))["parts"]
+        bottom = next(p for p in parts if p["bbox"]["x_min"] < 1 and p["bbox"]["y_min"] < 1)
+        lateral = next(p for p in parts if p["bbox"]["x_min"] > 400)
+        stacked = next(p for p in parts if p["bbox"]["y_min"] > 790)
+        from .engine.part_edits import edits_part_program
+        result = edits_part_program(text, {"edits": [{
+            "op": "stretch_chain", "axis": "y",
+            "parts": [bottom["id"], lateral["id"], stacked["id"]], "delta": 50.0,
+        }]})
+        self.assertTrue(result["validation"]["passed"],
+                        msg=str(result["validation"]["errors"]))
+        summary = {entry["part_id"]: entry for entry in result["edits_applied"]
+                   if entry.get("op") == "stretch_chain"}
+        self.assertAlmostEqual(summary[bottom["id"]]["lower_offset"], 0.0)
+        self.assertAlmostEqual(summary[lateral["id"]]["lower_offset"], 0.0)
+        self.assertAlmostEqual(summary[stacked["id"]]["lower_offset"], 50.0)
+
+    def test_chain_rejects_truly_interlocked_members(self):
+        # L-shaped part + a rectangle nested in its notch: the boxes share
+        # area (so the chain is undefined) but the paths never cross, so
+        # detection does NOT lock them — the 2D-overlap guard must reject.
+        text = "\n".join([
+            "G21 G90 G17",
+            "G0 X0.000 Y0.000 Z5.000",
+            "G1 Z-16.000 F10000.0",
+            "G1 X100.000 Y0.000", "G1 X100.000 Y40.000", "G1 X40.000 Y40.000",
+            "G1 X40.000 Y100.000", "G1 X0.000 Y100.000", "G1 X0.000 Y0.000",
+            "G0 Z5.000",
+            "G0 X50.000 Y50.000 Z5.000",
+            "G1 Z-16.000 F10000.0",
+            "G1 X90.000 Y50.000", "G1 X90.000 Y90.000", "G1 X50.000 Y90.000",
+            "G1 X50.000 Y50.000",
+            "G0 Z5.000",
+        ]) + "\n"
+        from .engine.parser import parse_program
+        from .engine.parts import detect_parts
+        from .engine.part_edits import TransformError, edits_part_program
+        parts = detect_parts(parse_program(text))["parts"]
+        self.assertEqual(len(parts), 2)
+        self.assertFalse(any(part["locked"] for part in parts))
+        with self.assertRaises(TransformError) as caught:
+            edits_part_program(text, {"edits": [{
+                "op": "stretch_chain", "axis": "y",
+                "parts": [part["id"] for part in parts], "delta": 50.0,
+            }]})
+        self.assertIn("هم‌پوشانی دوبعدی", str(caught.exception))
