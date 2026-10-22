@@ -80,7 +80,7 @@
     preview: null,           // نتیجهٔ engine/preview (وقتی ویرایشی هست)
     currentIR: null,         // program_ir پس از preview، وگرنه sourceIR
     partOp: new Map(),       // part_id -> {op:'move_part'|'stretch_part', ...}
-    gapOps: [],              // [{op:'set_gap'|'distribute', ...}] مکمل partOp
+    gapOps: [],              // set_gap/distribute/stretch_chain: چندقطعه‌ای و مکمل partOp
     featureOps: [],          // فقط وقتی partOp/gapOps خالی است (array/mirror/rotate)
     outputsExcluded: new Set(),  // part_id هایی که اپراتور از خروجی حذف کرده (advisory)
     fixedParts: new Set(),       // part_id هایی که «ثابت» علامت خورده‌اند
@@ -105,8 +105,9 @@
 
   // فهرست ویرایش‌ها برای سرور — یا همهٔ part-level یا همهٔ feature-level.
   // هر قطعه حداکثر یک op «مطلق نسبت به فایل اصلی» (set_gap هم به‌عنوان op
-  // قطعهٔ جابه‌جاشونده در همین map ذخیره می‌شود؛ distribute در gapOps است چون
-  // به چند قطعه تعلق دارد و برای هر قطعه نباید تکرار شود).
+  // قطعهٔ جابه‌جاشونده در همین map ذخیره می‌شود؛ distribute و stretch_chain
+  // در gapOps هستند چون هر کدام فقط یک op چندقطعه‌ای دارند و موتور سرور
+  // ترتیب/offset را محاسبه می‌کند.
   CNC.opsPayload = function opsPayload() {
     const st = CNC.state;
     if (st.featureOps.length) {

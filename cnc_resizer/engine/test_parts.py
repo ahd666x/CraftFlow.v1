@@ -7,6 +7,7 @@ extracted archive directory exists (skipped otherwise, like sample.cnc).
 """
 import math
 import os
+import re
 import unittest
 
 from .parser import parse_program
@@ -232,6 +233,87 @@ class SyntheticDetectionTests(unittest.TestCase):
         self.assertIn("operations", result)
 
 
+class ParametricPartEditTests(unittest.TestCase):
+    @staticmethod
+    def _three_panels_with_holes():
+        text = ""
+        for low in (0.0, 120.0, 240.0):
+            text += _rect(0, low, 100, low + 100)
+            text += _rect(20, low + 20, 35, low + 30)
+        return text
+
+    def test_chain_stretch_applies_cumulative_offsets_and_lower_anchors_children(self):
+        from .part_edits import edits_part_program
+        text = self._three_panels_with_holes()
+        parts = sorted(detect_parts(parse_program(text))["parts"],
+                       key=lambda part: part["bbox"]["y_min"])
+        result = edits_part_program(text, {"edits": [{
+            "op": "stretch_chain", "axis": "y",
+            "parts": [part["id"] for part in parts], "delta": 10.0,
+        }]})
+        self.assertTrue(result["validation"]["passed"], result["validation"]["errors"])
+        resized = sorted(result["resized"]["parts"], key=lambda part: part["bbox"]["y_min"])
+        for rank, (before, after) in enumerate(zip(parts, resized)):
+            self.assertAlmostEqual(after["bbox"]["y_min"], before["bbox"]["y_min"] + 10 * rank)
+            self.assertAlmostEqual(after["bbox"]["y_max"], before["bbox"]["y_max"] + 10 * (rank + 1))
+            self.assertEqual(len(after["children"]), 1)
+            self.assertAlmostEqual(after["children"][0]["bbox"]["y_min"],
+                                   before["children"][0]["bbox"]["y_min"] + 10 * rank)
+
+    def test_single_part_stretch_keeps_child_distance_from_lower_edge(self):
+        from .part_edits import edits_part_program
+        text = self._three_panels_with_holes()
+        part = sorted(detect_parts(parse_program(text))["parts"],
+                      key=lambda item: item["bbox"]["y_min"])[0]
+        result = edits_part_program(text, {"edits": [{
+            "op": "stretch_part", "part_id": part["id"], "axis": "y", "delta": 10.0,
+        }]})
+        self.assertTrue(result["validation"]["passed"], result["validation"]["errors"])
+        resized = next(item for item in result["resized"]["parts"]
+                       if item["contour_block_ids"] == part["contour_block_ids"])
+        self.assertAlmostEqual(resized["children"][0]["bbox"]["y_min"],
+                               part["children"][0]["bbox"]["y_min"])
+
+    def test_translation_materializes_missing_absolute_axis_word(self):
+        from .part_edits import edits_part_program
+        from .serializer import serialize_candidate
+        text = "\n".join([
+            "G21 G90 G17", "G0 X0 Y0 Z5", "G1 Z-3 F1000",
+            "G1 X100", "G1 Y100", "G1 X0", "G1 Y0", "G0 Z5", "",
+        ])
+        program = parse_program(text)
+        part = detect_parts(program)["parts"][0]
+        result = edits_part_program(text, {"edits": [{
+            "op": "move_part", "part_id": part["id"], "dx": 10.0, "dy": 0.0,
+        }]})
+        serialized = serialize_candidate(text, {
+            "validation": result["validation"], "source_sha256": program.source_sha256,
+            "program_ir": result["program_ir"],
+        })
+        self.assertIn("G1 Y100X110.000", serialized["text"])
+        reparsed = parse_program(serialized["text"])
+        self.assertEqual(len(reparsed.moves), len(program.moves))
+
+    def test_duplicate_axis_word_is_still_blocked_as_a_real_ambiguity(self):
+        from .ir import to_dict
+        from .serializer import SerializerBlocked, serialize_candidate
+        text = "\n".join([
+            "G21 G90 G17", "G0 X0 Y0 Z5", "G1 Z-3 F1000",
+            "G1 X100 X90", "G1 Y100", "G1 X0", "G1 Y0", "G0 Z5", "",
+        ])
+        program = parse_program(text)
+        candidate = to_dict(program)
+        move = next(item for item in candidate["moves"]
+                    if item["raw_line"].strip() == "G1 X100 X90")
+        move["end"]["x"] += 1.0
+        with self.assertRaises(SerializerBlocked) as ctx:
+            serialize_candidate(text, {
+                "validation": {"passed": True, "errors": []},
+                "source_sha256": program.source_sha256, "program_ir": candidate,
+            })
+        self.assertIn("expected one X word, found 2", str(ctx.exception))
+
+
 @unittest.skipUnless(os.path.exists(FLAGSHIP), "flagship fixture not shipped")
 class FlagshipAcceptanceTests(unittest.TestCase):
     """Acceptance criterion 1 of the archive review, on the real workshop file."""
@@ -304,11 +386,11 @@ class FlagshipAcceptanceTests(unittest.TestCase):
         for line_no in changed:
             source_word = source_lines[line_no].replace(" ", "")
             out_word = out_lines[line_no].replace(" ", "")
-            # only coordinate digits may change on a patched line
-            letters_src = [ch for ch in source_word if ch.isalpha() or ch in "%."]
-            letters_out = [ch for ch in out_word if ch.isalpha() or ch in "%."]
-            self.assertEqual(letters_src, letters_out,
-                             msg=f"line {line_no + 1} changed non-coordinate characters")
+            # Only XY words may be added or rewritten on a patched line.
+            strip_xy = lambda line: re.sub(
+                r"(?<![A-Z])[XY][+-]?(?:\d+(?:\.\d*)?|\.\d+)", "", line, flags=re.I)
+            self.assertEqual(strip_xy(source_word), strip_xy(out_word),
+                             msg=f"line {line_no + 1} changed non-coordinate words")
 
     def test_stretch_rejects_arc_band_and_locked_parts(self):
         from ..engine.part_edits import edits_part_program

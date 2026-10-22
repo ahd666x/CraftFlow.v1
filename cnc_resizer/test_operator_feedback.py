@@ -150,9 +150,8 @@ class EngineResizeEndpointTests(TestCase):
 
 
 # A 100x200 panel with two square hole rows at y=60..70 and y=130..140:
-# the whole height is one contour-clean band, so the capability band
-# [0..200] straddles both children — the legacy behaviour rejected the
-# whole stretch; it must now relocate the cut into the nearest clear gap.
+# the whole height is one contour-clean band. Child features must remain
+# anchored to the lower edge even when the default stretch band crosses them.
 PANEL_TEXT = "\n".join([
     "%",
     "N10G90G54",
@@ -187,10 +186,9 @@ PANEL_TEXT = "\n".join([
 ]) + "\n"
 
 
-class StretchBandRelocationTests(SimpleTestCase):
-    """A stretch whose band crosses child features inserts the extra length
-    in the nearest clear gap BETWEEN them — the legacy engine semantics —
-    instead of rejecting the edit outright."""
+class StretchLowerAnchorTests(SimpleTestCase):
+    """Default stretch keeps child features at their lower-edge offset; the
+    stretch band no longer has to be relocated into a child-free gap."""
 
     @classmethod
     def setUpClass(cls):
@@ -207,21 +205,16 @@ class StretchBandRelocationTests(SimpleTestCase):
              "axis": "y", "delta": 40.0, **extra},
         ]}, filename="panel.cnc")
 
-    def test_capability_band_relocates_between_hole_groups(self):
-        # the capability band [0..200] straddles both holes; the cut must land
-        # in the most central clear gap (between the two hole rows)
+    def test_capability_band_can_cross_hole_groups_without_relocation(self):
         self.assertTrue(self.part["stretch_bands_y"])
         result = self._edit(PANEL_TEXT)
         self.assertTrue(result["validation"]["passed"],
                         msg=str(result["validation"]["errors"]))
         entry = result["edits_applied"][0]
-        self.assertIn("band_relocated", entry)
-        lo, hi = entry["band"]
-        self.assertAlmostEqual(lo, 70.25, places=2)
-        self.assertAlmostEqual(hi, 129.75, places=2)
-        self.assertTrue(any("منتقل شد" in w for w in result["validation"]["warnings"]))
+        self.assertNotIn("band_relocated", entry)
+        self.assertEqual(entry["band"], self.part["stretch_band_y"])
 
-    def test_children_shift_rigidly_around_relocated_cut(self):
+    def test_child_features_keep_their_distance_from_lower_edge(self):
         from .engine.parser import parse_program
         from .engine.parts import detect_parts
         from .engine.part_edits import edits_part_program
@@ -235,12 +228,12 @@ class StretchBandRelocationTests(SimpleTestCase):
         ys = sorted((c["bbox"]["y_min"], c["bbox"]["y_max"]) for c in after["children"])
         self.assertAlmostEqual(ys[0][0], 60.0, places=1)    # bottom row: pinned
         self.assertAlmostEqual(ys[0][1], 70.0, places=1)
-        self.assertAlmostEqual(ys[1][0], 170.0, places=1)   # top row: +40
-        self.assertAlmostEqual(ys[1][1], 180.0, places=1)
+        self.assertAlmostEqual(ys[1][0], 130.0, places=1)   # top row stays lower-anchored
+        self.assertAlmostEqual(ys[1][1], 140.0, places=1)
 
-    def test_no_clear_gap_fails_closed_with_panel_hint(self):
-        # a pocket child spanning nearly the whole height leaves no 0.5mm
-        # clear zone: fail-closed, and the message points to the length panel
+    def test_no_clear_gap_is_no_longer_required_for_parametric_anchor(self):
+        # A child spanning nearly the whole height does not need a free cut
+        # gap because child geometry remains fixed relative to the lower edge.
         text = PANEL_TEXT.replace(
             "N250G0Z5.000M3 S16000",
             "N245G0X40.000Y0.300Z5.000M3 S16000\n"
@@ -250,15 +243,15 @@ class StretchBandRelocationTests(SimpleTestCase):
             "N249G1X40.000\n"
             "N251G1Y0.300\n"
             "N250G0Z5.000M3 S16000")
-        from .engine.part_edits import TransformError
-        with self.assertRaises(TransformError) as ctx:
-            self._edit(text)
-        self.assertIn("پنل", str(ctx.exception))
-        self.assertIn("طول", str(ctx.exception))
+        result = self._edit(text)
+        self.assertTrue(result["validation"]["passed"],
+                        msg=str(result["validation"]["errors"]))
+        after = next(p for p in result["resized"]["parts"]
+                     if p["contour_block_ids"] == self.part["contour_block_ids"])
+        self.assertAlmostEqual(after["bbox"]["y_max"] - after["bbox"]["y_min"], 240.0, places=1)
 
-    def test_face_raster_relocates_cut_below_the_field(self):
-        # a serpentine raster child covers y=50..170; the cut lands below the
-        # field and the whole raster shifts rigidly with the upper section
+    def test_face_raster_does_not_force_band_relocation(self):
+        # A face-raster child may cross the band; lower anchoring keeps it in place.
         text = PANEL_TEXT.replace(
             "N250G0Z5.000M3 S16000",
             "N245G0X10.000Y50.000Z5.000M3 S16000\n"
@@ -283,7 +276,7 @@ class StretchBandRelocationTests(SimpleTestCase):
         self.assertTrue(result["validation"]["passed"],
                         msg=str(result["validation"]["errors"]))
         entry = result["edits_applied"][0]
-        self.assertLessEqual(entry["band"][1], 49.75 + 1e-6)
+        self.assertNotIn("band_relocated", entry)
 
     def test_explicit_clear_band_needs_no_relocation(self):
         result = self._edit(PANEL_TEXT, band=[70.25, 129.75])
@@ -323,4 +316,3 @@ class LegacyGapDistributionTests(SimpleTestCase):
         for gap in result["gaps"][1:]:
             self.assertAlmostEqual(gap["increment"], 0.0, places=6)
         self.assertAlmostEqual(result["length_after"] - result["length_before"], 12.5, places=1)
-

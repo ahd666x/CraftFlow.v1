@@ -6,7 +6,9 @@ an engine candidate is possible only as a *pure coordinate patch* of the
 original source text: every source line is preserved byte-for-byte (header,
 ``N`` numbering, comments, blank lines, CRLF endings) except the X/Y (and,
 defensively, I/J) words of moves whose resolved coordinates the preview
-actually changed. The legacy ``controller.postprocess_resize`` dialect gate
+actually changed; when an absolute XY value was modal in the source, the
+serializer may materialize its missing X/Y word on that same source line.
+The legacy ``controller.postprocess_resize`` dialect gate
 then re-verifies the final text line-by-line (exact workshop dialect, M141
 preamble, I/J-only arcs, unchanged header/body/post structure) before
 anything reaches a machine.
@@ -26,13 +28,12 @@ fail-closed and both verified at runtime by the engine's reparse walk:
   mirrored block, so the serializer accepts a ``G2 <-> G3`` swap (and the
   resulting I/J sign flip) on lines that carry an explicit G2/G3 word.
 * ``rotated_move_ids`` — a ``rotate`` edit turns a block by 90°; rotation is
-  orientation-preserving so G2/G3 and G41/G42 stay untouched, but a rotated
-  line whose source carried only one axis word must end up explicit on both
-  axes (the other coordinate changes too). For such declared moves the
-  serializer INSERTS the missing word (``X``/``Y``, and for I/J arcs the
-  missing centre offset) right after the last existing XY/I/J word of that
-  line instead of blocking. Every other structural rule stays as strict as
-  before.
+  orientation-preserving so G2/G3 and G41/G42 stay untouched. For moved
+  endpoints whose absolute axis value was modal, the serializer inserts the
+  missing word on that same source line (after its existing XY/I/J word, or
+  after the N/G prefix when no coordinate word exists). This also supports
+  rigid translation and stretch without changing a different line's modal
+  state. Every other structural rule stays as strict as before.
 
 Everything that cannot be expressed as such a patch is blocked here with a
 precise reason list: incremental coordinates, machine-coordinate (G53)
@@ -58,6 +59,7 @@ _PATCH_RES = {letter: re.compile(rf"(?<![A-Z]){letter}{_NUMBER}", re.IGNORECASE)
 _PATCH_RES["G"] = re.compile(r"(?<![A-Z])G([23])(?![.\d])", re.IGNORECASE)
 _COMMENT_MARKS = ("(", ";")
 _N_PREFIX_RE = re.compile(r"^\s*N\d+\s*")
+_G_WORD_RE = re.compile(r"(?<![A-Z])G\s*[+-]?(?:\d+(?:\.\d*)?|\.\d+)", re.IGNORECASE)
 _COPY_ALLOWED_M = frozenset({3, 7, 8})  # spindle/coolant-on: modal re-issue is harmless
 _M_WORD_RE = re.compile(r"\bM\s*(\d+)", re.IGNORECASE)
 _T_WORD_RE = re.compile(r"\bT\s*\d+", re.IGNORECASE)
@@ -163,14 +165,14 @@ def _patch_plan(program: Any, preview: dict[str, Any]) -> dict[int, tuple[str, d
                 if (before is None) != (after is None):
                     blockers.append(f"Move {move_id} end {axis} resolution changed")
             elif abs(before - after) > 1e-8:
-                if letter.lower() in source_words or not is_rotated:
-                    # Unchanged contract: a needed change lands in `words` and
-                    # an absent word then fails at patch time ("cannot be
-                    # patched unambiguously").
+                if letter.lower() in source_words:
                     words[letter] = after
                 else:
-                    # Rotated blocks end up fully explicit: the missing axis
-                    # word is inserted next to the existing ones.
+                    # In absolute mode an omitted axis is modal carry. When a
+                    # transform changes that resolved endpoint, write it
+                    # explicitly on this same source line. This preserves the
+                    # transformed motion without editing a different line's
+                    # modal state (and avoids false "ambiguous" blockers).
                     inserted[letter] = after
         for point_name, candidate_point in (("start", start), ("end", end)):
             before = _point_value(getattr(source, point_name), "z")
@@ -214,11 +216,6 @@ def _patch_plan(program: Any, preview: dict[str, Any]) -> dict[int, tuple[str, d
             else:
                 blockers.append(
                     f"Move {move_id}: arc direction flip needs an explicit G2/G3 word on its line")
-        if is_rotated and inserted and not any(
-                letter.lower() in source_words for letter in "XYIJ"):
-            blockers.append(
-                f"Move {move_id}: a rotated line needs at least one existing X/Y/I/J word to "
-                "anchor the inserted words next to")
         if not words and not inserted:
             continue  # untouched move: the line passes through byte-identical
         # Only moves that actually need a patch must be patchable:
@@ -265,21 +262,28 @@ def serialize_candidate(source_text: str, preview: dict[str, Any]) -> dict[str, 
             matches = list(_PATCH_RES[letter].finditer(patched))
             if len(matches) != 1:
                 raise SerializerBlocked(
-                    f"Source line {line_index + 1}: word {letter} cannot be patched unambiguously")
+                    f"Source line {line_index + 1}: expected one {letter} word, found "
+                    f"{len(matches)}; duplicate/malformed coordinates cannot be patched safely")
             match = matches[0]
             patched = patched[:match.start(1)] + _format_word(letter, value) + patched[match.end(1):]
         if insertions:
-            # A rotated line must end up explicit on both axes: the missing
-            # words are inserted right after the last existing X/Y/I/J word so
-            # the line's own dialect style (spaces or compact) is preserved.
+            # Keep the line's coordinate style: insert after its last XYIJ
+            # word; with modal coordinates, keep N first then insert after the
+            # motion G word when present, so strict dialects retain G-before-XY.
             anchor = None
             for letter in "XYIJ":
                 for match in _PATCH_RES[letter].finditer(patched):
                     if anchor is None or match.end() > anchor:
                         anchor = match.end()
-            if anchor is None:  # guarded in _patch_plan; defense in depth
-                raise SerializerBlocked(
-                    f"Source line {line_index + 1}: no existing X/Y/I/J word to anchor the inserted words")
+            if anchor is None:
+                number_prefix = _N_PREFIX_RE.match(patched)
+                motion_word = _G_WORD_RE.search(patched)
+                if motion_word:
+                    anchor = motion_word.end()
+                elif number_prefix:
+                    anchor = number_prefix.end()
+                else:
+                    anchor = len(patched) - len(patched.lstrip())
             text = "".join(f"{letter}{_format_word(letter, value)}"
                            for letter, value in sorted(insertions.items()))
             patched = patched[:anchor] + text + patched[anchor:]

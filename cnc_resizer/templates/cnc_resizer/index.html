@@ -112,6 +112,17 @@
   <h2>تغییر طول فایل (خودکار)</h2>
   <p class="statusline">همان روش‌های محیط قدیمی: طول کل فایل با توزیع بین فاصله‌ها یا با بازتولید شیار kerf تغییر می‌کند.
     برای جابه‌جایی/کششِ یک قطعهٔ مشخص، از ویرایش روی خود نقشه (درگ/نوار کشش) استفاده کنید.</p>
+  <hr>
+  <h3>کشش پارامتریک زنجیرهٔ قطعات</h3>
+  <p class="statusline">با Shift+کلیک قطعاتِ مرتب‌شده را انتخاب کنید. هر قطعه به‌اندازهٔ دلتا کشیده می‌شود؛
+    قطعات بعدی به‌صورت تجمعی جابه‌جا می‌شوند (۰، دلتا، ۲×دلتا، ...). ویژگی‌های فرزند پیش‌فرض فاصله‌شان را از لبهٔ پایین حفظ می‌کنند.</p>
+  <div class="resgrid">
+    <label>محور <select id="chainStretchAxis"><option value="y" selected>Y — ارتفاع</option><option value="x">X — عرض</option></select></label>
+    <label>دلتا برای هر قطعه (mm) <input type="number" id="chainStretchDelta" value="100" step="1"></label>
+  </div>
+  <p class="statusline" id="chainStretchSelection">حداقل دو قطعه را با Shift+کلیک انتخاب کنید.</p>
+  <div class="toolbtns"><button type="button" id="chainStretchApply" class="primary">اعمال کشش زنجیره‌ای</button></div>
+  <hr>
   <div class="resradios" id="resizeModes">
     <label><input type="radio" name="resizeMode" value="equal" checked>
       <span>مساوی بین گروه‌ها <small>هر گروه فاصله سهم برابر می‌گیرد</small></span></label>

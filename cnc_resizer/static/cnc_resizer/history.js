@@ -164,7 +164,7 @@
     // الگو پیش‌بارگذاری می‌شود؛ اعمال نهایی از همان پیش‌نمایش fail-closed می‌گذرد
     const edits = Array.isArray(tpl.payload) ? tpl.payload : [];
     const partEdits = edits.filter((e) => ['move_part', 'stretch_part'].includes(e.op));
-    const gapEdits = edits.filter((e) => ['set_gap', 'distribute'].includes(e.op));
+    const gapEdits = edits.filter((e) => ['set_gap', 'distribute', 'stretch_chain'].includes(e.op));
     const featureEdits = edits.filter((e) => ['array', 'grid', 'mirror', 'rotate'].includes(e.op));
     state.partOp = new Map();
     state.gapOps = [];      // بارگذاری الگو جایگزین کامل وضعیت است — باگ شناور نماند

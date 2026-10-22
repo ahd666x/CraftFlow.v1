@@ -1033,6 +1033,52 @@
              `تغییر اندازهٔ ${CNC.partName(findPart(drag.partId) || {})} ${drag.axis.toUpperCase()}`);
   }
 
+  function selectedChainParts() {
+    const ids = [...new Set(state.selection.filter((item) => item.type === 'part').map((item) => item.id))];
+    return ids.map((id) => findPart(id)).filter(Boolean);
+  }
+  function updateChainSelectionHint() {
+    const hint = document.getElementById('chainStretchSelection');
+    if (!hint) return;
+    const parts = selectedChainParts();
+    hint.textContent = parts.length >= 2
+      ? `انتخاب شده: ${parts.map((part) => CNC.partName(part)).join(' ← ')}؛ ترتیب نهایی با محور و مختصات قطعات تعیین می‌شود.`
+      : 'حداقل دو قطعه را با Shift+کلیک انتخاب کنید.';
+  }
+  document.getElementById('chainStretchApply')?.addEventListener('click', () => {
+    if (partEditBlocked()) return;
+    const parts = selectedChainParts();
+    if (parts.length < 2) {
+      CNC.alert('warn', 'برای کشش زنجیره‌ای حداقل دو قطعه را با Shift+کلیک انتخاب کنید.');
+      return;
+    }
+    const locked = parts.find((part) => part.locked || state.fixedParts.has(part.id));
+    if (locked) {
+      CNC.alert('warn', `قطعهٔ ${CNC.partName(locked)} قفل/ثابت است؛ ابتدا آن را کشیدنی کنید.`);
+      return;
+    }
+    const axis = document.getElementById('chainStretchAxis')?.value || 'y';
+    const delta = Number(document.getElementById('chainStretchDelta')?.value);
+    if (!Number.isFinite(delta) || Math.abs(delta) < 1e-9) {
+      CNC.alert('warn', 'دلتا باید عددی غیرصفر باشد.');
+      return;
+    }
+    const occupied = parts.find((part) => state.partOp.has(part.id));
+    if (occupied) {
+      CNC.alert('warn', `برای ${CNC.partName(occupied)} ویرایش دیگری ثبت شده است؛ ابتدا آن را واگرد کنید.`);
+      return;
+    }
+    const ids = parts.map((part) => part.id);
+    state.gapOps = state.gapOps.filter((op) => op.op !== 'stretch_chain');
+    state.gapOps.push({ op: 'stretch_chain', axis, parts: ids, delta });
+    CNC.emit('ops-changed', {
+      label: `کشش زنجیره‌ای ${parts.length} قطعه ${axis.toUpperCase()} (${CNC.sgn(delta)} mm/قطعه)`,
+    });
+    requestPreview();
+  });
+  CNC.on('selection', updateChainSelectionHint);
+  updateChainSelectionHint();
+
   // ================================================================_منوی راست‌کلیک
   let ctxMenu = null;
   function closeCtx() { if (ctxMenu) { ctxMenu.remove(); ctxMenu = null; } }

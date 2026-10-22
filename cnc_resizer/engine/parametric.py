@@ -515,11 +515,12 @@ def _shift_block_rigid(block: Any, dx: float, dy: float, feature_id: str) -> Non
     The parser starts a PathBlock exactly at its XY positioning rapid, so the
     block always carries its own tool entry and a rigid shift stays expressible
     as a pure coordinate patch: the entry rapid's END and every XY-bearing cut
-    move's END are what the source lines can patch. Z-only plunges/retracts
-    inside the block carry their XY modally at runtime (their lines have no
-    X/Y words), so they are intentionally left untouched in the candidate IR.
-    Cut moves shift start+end together and arc centres translate with them,
-    which keeps every I/J offset identical.
+    move's END are what the source lines can patch. For a transformed move,
+    resolved modal XY values are also shifted; the serializer materializes a
+    missing absolute axis word on that same source line. This keeps the
+    translated geometry explicit without relying on a prior line's modal side
+    effect. Cut moves shift start+end together and arc centres translate with
+    them, which keeps every I/J offset identical.
     """
     motions = block.motions
     cut = [move for move in motions if move.motion in ("linear", "arc_cw", "arc_ccw")]
@@ -560,18 +561,16 @@ def _shift_block_rigid(block: Any, dx: float, dy: float, feature_id: str) -> Non
             continue
         if move.motion not in ("linear", "arc_cw", "arc_ccw"):
             continue
-        raw_words = move.raw_words or {}
         if move.end is None or move.end.x is None or move.end.y is None:
             raise TransformError(f"Feature {feature_id}: move {move.id} has unresolved coordinates")
-        # Per-axis word rule: an axis is patched only when its word exists on
-        # the line. A line without the word (e.g. "G1Y190.000" with modal X)
-        # carries that axis modally at runtime — the patched chain around it
-        # moves the modal position — so its static IR value must stay stale
-        # and the source line byte-identical.
-        if "x" in raw_words:
-            move.end.x += dx
-        if "y" in raw_words:
-            move.end.y += dy
+        raw_words = move.raw_words or {}
+        # A Z-only plunge/retract must remain Z-only; adding XY here would
+        # turn the vertical plunge into a diagonal cut. Its XY position follows
+        # the already translated preceding cut move by normal modal carry.
+        if not ("x" in raw_words or "y" in raw_words):
+            continue
+        move.end.x += dx
+        move.end.y += dy
         if move.arc is not None:
             # Arcs: start and centre always move. The runtime start is the
             # modal chain position (already shifted) and I/J offsets are

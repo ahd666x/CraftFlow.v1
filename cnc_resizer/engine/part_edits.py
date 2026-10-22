@@ -10,10 +10,12 @@ per-block transforms that already exist and are runtime-proven:
 * ``stretch_part``         -> an axis-generalised :func:`_stretch_feature_x`
                               per contour pass (straight axial moves inside
                               the band absorb the change, arcs and diagonals
-                              are rejected, modal carries stay stale exactly
-                              like the serializer contract requires) plus
-                              rigid shifts of everything wholly beyond the
-                              band;
+                              are rejected; children stay anchored to the
+                              lower edge by default, and wholly upper parts
+                              follow the expanded contour);
+* ``stretch_chain``        -> equal per-part axis stretch with cumulative
+                              lower/upper offsets, so each successor and its
+                              child features follow the preceding growth;
 * ``set_gap`` / ``distribute`` -> rigid shifts derived from the FINISHED
                               bounding boxes (tool diameter compensated).
 
@@ -40,7 +42,7 @@ from .parametric import TransformError, _shift_block_rigid
 from .parser import parse_program
 from .serializer import SerializerBlocked, serialize_candidate
 
-PART_OP_LIST = ("move_part", "stretch_part", "set_gap", "distribute")
+PART_OP_LIST = ("move_part", "stretch_part", "stretch_chain", "set_gap", "distribute")
 _RUNTIME_TOL = 1.5e-3     # serializer writes 3 decimals: half a micron of slack
 _FINITE_TOL = 1e-6
 # The canvas sends stretch-band endpoints rounded to 0.001 units. Snap only
@@ -71,11 +73,9 @@ def _stretch_feature_axis(block: Any, axis: str, feature_id: str,
 
     Axis-generalised twin of ``parametric._stretch_feature_x`` with the same
     fail-closed guards: only straight moves parallel to the stretch axis may
-    bridge the band, such a move must carry its axis word (a line without the
-    word cannot express the new coordinate as a patch), arcs never take
-    different offsets at their two ends, and a moved entry point is applied to
-    the block's own positioning rapid — but only when that rapid carries the
-    axis word explicitly.
+    bridge the band, arcs never take different offsets at their two ends, and
+    moved modal endpoints are materialized by the serializer as explicit
+    absolute axis words on their original source lines.
     """
     tol = _FINITE_TOL
     cross = "x" if axis == "y" else "y"
@@ -144,14 +144,10 @@ def _stretch_feature_axis(block: Any, axis: str, feature_id: str,
                     f"حرکت با تغییر {cross.upper()} کج می‌شود")
             if axis not in (move.raw_words or {}):
                 raise TransformError(
-                    f"Feature {feature_id}: حرکت {move.id} به واژهٔ تازهٔ {axis.upper()} نیاز دارد ولی سطرش "
-                    f"واژهٔ {axis.upper()} ندارد؛ کشش به‌صورت وصلهٔ مختصاتی قابل بیان نیست")
+                    f"Feature {feature_id}: حرکت {move.id} در محور {axis.upper()} از مختصات modal "
+                    "استفاده می‌کند و نمی‌تواند مرز کشش را به‌طور امن قطع کند")
 
     if abs(offsets[0]) > 1e-9:
-        if axis not in (entry.raw_words or {}):
-            raise TransformError(
-                f"Feature {feature_id}: این نوار نقطهٔ ورود را جابه‌جا می‌کند ولی rapid موقعیت‌یابی "
-                f"واژهٔ صریح {axis.upper()} ندارد؛ وصله مبهم می‌شود")
         setattr(entry.end, axis, getattr(entry.end, axis) + offsets[0])
         # NOTE: the parser aliases block.start to the entry rapid's end Point3
         # (start=end), so block.start already moved with entry.end.
@@ -288,7 +284,7 @@ def preview_part_edits(program: Program, request: dict[str, Any], source_text: s
             lowering[block_id] = {"op": "shift", "dx": dx, "dy": dy}
 
     def assign_stretch(block_ids: list[str], axis: str, band: tuple[float, float],
-                       delta: float, label: str) -> None:
+                       delta: float, label: str, below_offset: float = 0.0) -> None:
         for block_id in block_ids:
             existing = lowering.get(block_id)
             if existing is not None:
@@ -296,7 +292,9 @@ def preview_part_edits(program: Program, request: dict[str, Any], source_text: s
                     f"{label}: بلوک {block_id} قبلاً توسط ویرایش دیگری تغییر کرده؛ "
                     "هر بلوک در یک درخواست فقط یک تبدیل می‌گیرد")
             lowering[block_id] = {"op": "stretch", "axis": axis,
-                                  "band_start": band[0], "band_end": band[1], "delta": delta}
+                                  "band_start": band[0], "band_end": band[1],
+                                  "below_offset": below_offset,
+                                  "above_offset": below_offset + delta}
 
     def part_or_error(part_id: Any, label: str) -> dict[str, Any]:
         if not isinstance(part_id, str) or part_id not in part_by_id:
@@ -402,62 +400,14 @@ def preview_part_edits(program: Program, request: dict[str, Any], source_text: s
                         "(قوس/لبهٔ مایل خراب می‌شود)؛ فقط جابه‌جایی/چرخش/آینه در دسترس است")
                 band = (band_value[0], band_value[1])
             contour_ids = list(part["contour_block_ids"])
-            # children + assigned operations: rigid beyond the band.  If a
-            # child straddles the band, the band is RELOCATED into the nearest
-            # gap between child features (legacy gap-resize semantics) instead
-            # of rejecting the whole edit; only when no clear gap exists
-            # anywhere on the part does the edit stay fail-closed.
-            intervals = parts_mod._band_intervals(part["_canonical"], axis,
-                                                  params.get("merge_tol", 0.6))
-            child_boxes: list[dict[str, float]] = []
-            for child in part["children"]:
-                boxes = []
-                for block_id in child["block_ids"]:
-                    geometry = source_geometry.get(block_id)
-                    bbox = geometry["bounds"] if geometry else None
-                    if bbox is None:
-                        raise TransformError(
-                            f"{label}: child block {block_id} has unresolved geometry")
-                    boxes.append(bbox)
-                child_boxes.append({
-                    f"{axis}_min": min(box[f"{axis}_min"] for box in boxes),
-                    f"{axis}_max": max(box[f"{axis}_max"] for box in boxes),
-                })
-            if any(not (box[f"{axis}_max"] <= band[0] + _FINITE_TOL
-                        or box[f"{axis}_min"] >= band[1] - _FINITE_TOL)
-                   for box in child_boxes):
-                relocated = _relocate_band(intervals, band, child_boxes, axis)
-                if relocated is None:
-                    raise TransformError(
-                        f"{label}: ویژگی فرزند قطعهٔ {part['id']} نوار کشش را پوشانده و "
-                        "هیچ فاصلهٔ خالی بین فرزندها برای گذاشتن برش کشش وجود ندارد "
-                        "(مثلاً راستر/شیار تمام‌صفحه) — تغییر طول این قطعه را از پنل "
-                        "«طول» (توزیع بین فاصله‌ها یا kerf) انجام دهید")
-                band_relocated = {"from": [round(band[0], 4), round(band[1], 4)],
-                                  "to": [round(relocated[0], 4), round(relocated[1], 4)]}
-                band = relocated
-            else:
-                band_relocated = None
+            # Parametric default: child features are anchored to the lower
+            # edge (min Y / min X).  A child is therefore not pushed with the
+            # upper side of the cut band; its distance from the reference edge
+            # remains unchanged.  Since only the parent contour is stretched,
+            # a child may safely lie across the band.
+            band_relocated = None
             assign_stretch(contour_ids, axis, band, delta, label)
             part_stretched.add(part["id"])
-            for child in part["children"]:
-                for block_id in child["block_ids"]:
-                    geometry = source_geometry.get(block_id)
-                    bbox = geometry["bounds"] if geometry else None
-                    if bbox is None:
-                        raise TransformError(
-                            f"{label}: child block {block_id} has unresolved geometry")
-                    state = _interval_state(bbox, band, axis)
-                    if state == "below":
-                        continue
-                    if state == "above":
-                        assign_shift([block_id], delta if axis == "x" else 0.0,
-                                     delta if axis == "y" else 0.0, label)
-                        continue
-                    raise TransformError(
-                        f"{label}: ویژگی فرزند قطعهٔ {part['id']} روی نوار کشش می‌گذارد؛ "
-                        "کشش آن را خراب می‌کند — قطعه را جابه‌جا کنید یا فرزند را جداگانه "
-                        "در میزکار ویژگی‌محور ویرایش کنید")
             # everything else on the sheet follows the band: rigid beyond it
             member_ids = set(_member_blocks(part))
             for other in detection["parts"]:
@@ -502,6 +452,114 @@ def preview_part_edits(program: Program, request: dict[str, Any], source_text: s
                     f"{band_relocated['to'][0]:.1f}–{band_relocated['to'][1]:.1f} mm روی "
                     f"{axis.upper()}).")
             normalized_summary.append(summary_entry)
+        elif op == "stretch_chain":
+            axis = edit.get("axis")
+            if axis not in ("x", "y"):
+                raise TransformError(f"{label}: axis باید x یا y باشد")
+            raw_ids = edit.get("parts")
+            if (not isinstance(raw_ids, list) or len(raw_ids) < 2
+                    or any(not isinstance(item, str) for item in raw_ids)):
+                raise TransformError(f"{label}: parts باید فهرست حداقل دو شناسهٔ قطعه باشد")
+            if len(set(raw_ids)) != len(raw_ids):
+                raise TransformError(f"{label}: فهرست parts تکراری دارد")
+            delta = _finite(edit.get("delta"), f"{label} delta")
+            if abs(delta) <= 1e-9:
+                raise TransformError(f"{label}: دلتای هر قطعه نباید صفر باشد")
+            chain = [part_or_error(item, label) for item in raw_ids]
+            for part in chain:
+                require_free(part, label)
+                if not part["capabilities"].get(f"can_stretch_{axis}"):
+                    raise TransformError(
+                        f"{label}: قطعهٔ {part['id']} نوار صاف {axis.upper()} برای کشش ندارد")
+            lo_key, hi_key = f"{axis}_min", f"{axis}_max"
+            chain.sort(key=lambda item: item["bbox"][lo_key])
+            for lower, upper in zip(chain, chain[1:]):
+                if lower["bbox"][hi_key] > upper["bbox"][lo_key] + _FINITE_TOL:
+                    raise TransformError(
+                        f"{label}: قطعه‌های زنجیره در راستای {axis.upper()} هم‌پوشانی دارند؛ "
+                        "ترتیب تغییر تجمعی تعریف‌پذیر نیست")
+
+            # A part at rank i receives the sum of all preceding increments
+            # at its lower edge, then its own increment at the upper edge.
+            # Thus equal +deltas produce offsets 0, d, 2d, ... and retain all
+            # inter-part gaps without requiring serial manual edits.
+            accumulated = 0.0
+            selected_ids = {part["id"] for part in chain}
+            for rank, part in enumerate(chain):
+                band_value = part.get(f"stretch_band_{axis}")
+                if not band_value:
+                    raise TransformError(
+                        f"{label}: قطعهٔ {part['id']} بازهٔ صاف {axis.upper()} ندارد")
+                band = (band_value[0], band_value[1])
+                contour_ids = list(part["contour_block_ids"])
+                assign_stretch(contour_ids, axis, band, delta, label,
+                               below_offset=accumulated)
+                if abs(accumulated) > 1e-9:
+                    for child in part["children"]:
+                        assign_shift(child["block_ids"],
+                                     accumulated if axis == "x" else 0.0,
+                                     accumulated if axis == "y" else 0.0, label)
+                    for feature in detection["operations"]:
+                        if feature.get("assigned_part") == part["id"]:
+                            assign_shift(feature["block_ids"],
+                                         accumulated if axis == "x" else 0.0,
+                                         accumulated if axis == "y" else 0.0, label)
+                touched_parts.add(part["id"])
+                part_stretched.add(part["id"])
+                normalized_summary.append({
+                    "op": op, "part_id": part["id"], "axis": axis,
+                    "rank": rank + 1, "delta": delta,
+                    "lower_offset": accumulated,
+                    "upper_offset": accumulated + delta,
+                    "child_anchor": "lower", "band": list(band),
+                    "blocks": contour_ids,
+                })
+                accumulated += delta
+
+            # Non-selected pieces above a selected piece follow every resize
+            # below them; pieces between selected members receive the partial
+            # cumulative delta. Geometry crossing a selected boundary is
+            # rejected rather than sheared or guessed.
+            chain_low, chain_high = chain[0]["bbox"][lo_key], chain[-1]["bbox"][hi_key]
+            for other in detection["parts"]:
+                if other["id"] in selected_ids:
+                    continue
+                box = other["bbox"]
+                if box[hi_key] <= chain_low + _FINITE_TOL:
+                    continue
+                if any(box[lo_key] < part["bbox"][hi_key] - _FINITE_TOL
+                       and box[hi_key] > part["bbox"][lo_key] + _FINITE_TOL
+                       for part in chain):
+                    raise TransformError(
+                        f"{label}: قطعهٔ انتخاب‌نشدهٔ {other['id']} با یکی از قطعات زنجیره "
+                        "در امتداد محور هم‌پوشانی دارد؛ آن را هم انتخاب کنید یا زنجیره را بازبینی کنید")
+                count_below = sum(1 for part in chain
+                                  if part["bbox"][hi_key] <= box[lo_key] + _FINITE_TOL)
+                shift = count_below * delta
+                if abs(shift) > 1e-9:
+                    assign_shift(_member_blocks(other), shift if axis == "x" else 0.0,
+                                 shift if axis == "y" else 0.0, label)
+                    record_shift(other["id"], shift if axis == "x" else 0.0,
+                                 shift if axis == "y" else 0.0)
+                    touched_parts.add(other["id"])
+
+            for orphan in orphan_ops:
+                box = orphan["bbox"]
+                if box[hi_key] <= chain_low + _FINITE_TOL:
+                    continue
+                if any(box[lo_key] < part["bbox"][hi_key] - _FINITE_TOL
+                       and box[hi_key] > part["bbox"][lo_key] + _FINITE_TOL
+                       for part in chain):
+                    raise TransformError(
+                        f"{label}: عملیاتِ بدون مالک {orphan['id']} با یکی از قطعات زنجیره "
+                        "در امتداد محور هم‌پوشانی دارد؛ "
+                        "تبدیل امن ممکن نیست")
+                count_below = sum(1 for part in chain
+                                  if part["bbox"][hi_key] <= box[lo_key] + _FINITE_TOL)
+                shift = count_below * delta
+                if abs(shift) > 1e-9:
+                    assign_shift(orphan["block_ids"], shift if axis == "x" else 0.0,
+                                 shift if axis == "y" else 0.0, label)
         elif op == "set_gap":
             part_a = part_or_error(edit.get("part_a"), label)
             part_b = part_or_error(edit.get("part_b"), label)
@@ -589,7 +647,8 @@ def preview_part_edits(program: Program, request: dict[str, Any], source_text: s
             _shift_block_rigid(block, item["dx"], item["dy"], block_id)
         else:
             _stretch_feature_axis(block, item["axis"], block_id,
-                                  item["band_start"], item["band_end"], 0.0, item["delta"])
+                                  item["band_start"], item["band_end"],
+                                  item["below_offset"], item["above_offset"])
 
     provisional = {"validation": {"passed": True, "errors": [], "warnings": []},
                    "source_sha256": program.source_sha256,
@@ -639,7 +698,8 @@ def preview_part_edits(program: Program, request: dict[str, Any], source_text: s
                                 "y_min": source_bounds["y_min"] + item["dy"],
                                 "y_max": source_bounds["y_max"] + item["dy"]}
                 else:
-                    mapping = _band_mapping(item["band_start"], item["band_end"], 0.0, item["delta"])
+                    mapping = _band_mapping(item["band_start"], item["band_end"],
+                                            item["below_offset"], item["above_offset"])
                     if item["axis"] == "y":
                         expected = {"x_min": source_bounds["x_min"], "x_max": source_bounds["x_max"],
                                     "y_min": source_bounds["y_min"] + mapping(source_bounds["y_min"]),

@@ -374,6 +374,8 @@ def _looks_like_part_edit(item) -> bool:
     op = item.get('op')
     if op in ('move_part', 'stretch_part'):
         return 'part_id' in item
+    if op == 'stretch_chain':
+        return 'parts' in item
     if op == 'set_gap':
         return 'part_a' in item or 'part_b' in item
     if op == 'distribute':
@@ -384,8 +386,8 @@ def _looks_like_part_edit(item) -> bool:
 def _engine_candidate(payload: dict, filename: str, tool_map: dict | None = None):
     """Build an engine preview candidate from an interactive ``edits`` list
     (rigid shifts, X stretches and placement constraints, runtime-verified),
-    from a part-level ``edits`` list (move_part / stretch_part / set_gap /
-    distribute, lowered onto the same runtime-proven block machinery), or
+    from a part-level ``edits`` list (move_part / stretch_part / stretch_chain /
+    set_gap / distribute, lowered onto the same runtime-proven block machinery), or
     from a parametric ``profile``. Mixing feature-level and part-level ops in
     one list is rejected by the feature parser (fail-closed)."""
     from .engine.service import edits_program, preview_program
@@ -520,10 +522,10 @@ def engine_profile(request):
 
 _EDIT_TEMPLATE_OPS = frozenset({"shift", "resize_x", "array", "grid", "mirror", "rotate",
                                 "center_on", "set_gap", "center_between"})
-# واژگان قطعه‌ای پرامپت ۱ (move_part / stretch_part / set_gap / distribute)
+# واژگان قطعه‌ای (move_part / stretch_part / stretch_chain / set_gap / distribute)
 # هم به‌عنوان «فرم ذخیره‌شدنی» مجاز است؛ اعمال نهایی همیشه از همان
 # پیش‌نمایش fail-closed سرور می‌گذرد.
-_EDIT_TEMPLATE_PART_OPS = frozenset({"move_part", "stretch_part", "set_gap", "distribute"})
+_EDIT_TEMPLATE_PART_OPS = frozenset({"move_part", "stretch_part", "stretch_chain", "set_gap", "distribute"})
 
 
 def _validate_template_payload(edits):
@@ -548,6 +550,14 @@ def _validate_template_payload(edits):
             if op == 'move_part' or op == 'stretch_part':
                 if not isinstance(edit.get('part_id'), str) or not edit['part_id']:
                     raise ValueError(f'ویرایش {index + 1}: part_id باید رشتهٔ غیرخالی باشد.')
+            elif op == 'stretch_chain':
+                if (not isinstance(edit.get('parts'), list) or len(edit['parts']) < 2
+                        or any(not isinstance(part_id, str) or not part_id for part_id in edit['parts'])):
+                    raise ValueError(f'ویرایش {index + 1}: stretch_chain به فهرست حداقل دو part_id نیاز دارد.')
+                if edit.get('axis') not in ('x', 'y'):
+                    raise ValueError(f'ویرایش {index + 1}: stretch_chain به محور x یا y نیاز دارد.')
+                if not isinstance(edit.get('delta'), (int, float)):
+                    raise ValueError(f'ویرایش {index + 1}: stretch_chain به delta عددی نیاز دارد.')
             elif op == 'set_gap':
                 if not (isinstance(edit.get('part_a'), str) and isinstance(edit.get('part_b'), str)):
                     raise ValueError(f'ویرایش {index + 1}: set_gap به part_a و part_b نیاز دارد.')
