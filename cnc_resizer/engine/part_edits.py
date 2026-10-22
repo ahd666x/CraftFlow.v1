@@ -43,6 +43,10 @@ from .serializer import SerializerBlocked, serialize_candidate
 PART_OP_LIST = ("move_part", "stretch_part", "set_gap", "distribute")
 _RUNTIME_TOL = 1.5e-3     # serializer writes 3 decimals: half a micron of slack
 _FINITE_TOL = 1e-6
+# The canvas sends stretch-band endpoints rounded to 0.001 units. Snap only
+# near-identical endpoints back to the detected straight interval; never use
+# this tolerance to admit a band that crosses an arc or a slanted edge.
+_BAND_ENDPOINT_TOL = 5.1e-4
 # a relocated stretch band must keep this clearance from every child path
 # (far above the 3-decimal serializer rounding, far below operator scale)
 _BAND_CLEAR_MARGIN = 0.25
@@ -377,12 +381,19 @@ def preview_part_edits(program: Program, request: dict[str, Any], source_text: s
                     raise TransformError(f"{label}: طول نوار باید مثبت باشد")
                 canonical = part["_canonical"]
                 intervals = parts_mod._band_intervals(canonical, axis, params.get("merge_tol", 0.6))
-                if not any(band[0] >= lo - _FINITE_TOL and band[1] <= hi + _FINITE_TOL
-                           for lo, hi in intervals):
+                snapped_band = next((
+                    (lo if abs(band[0] - lo) <= _BAND_ENDPOINT_TOL else band[0],
+                     hi if abs(band[1] - hi) <= _BAND_ENDPOINT_TOL else band[1])
+                    for lo, hi in intervals
+                    if band[0] >= lo - _BAND_ENDPOINT_TOL
+                    and band[1] <= hi + _BAND_ENDPOINT_TOL
+                ), None)
+                if snapped_band is None:
                     raise TransformError(
                         f"{label}: نوار روی قوس یا لبهٔ مایل می‌گذرد؛ نوار را فقط روی "
                         "خطوط صاف موازی محور انتخاب کنید (نگاه کنید به stretch_band_"
                         f"{axis} همین قطعه)")
+                band = snapped_band
             else:
                 band_value = part.get(f"stretch_band_{axis}")
                 if not capability or not band_value:

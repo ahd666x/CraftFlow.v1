@@ -167,6 +167,22 @@ class PartApiTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("نوار", response.json().get("error", ""))
 
+    def test_canvas_rounded_band_endpoint_is_accepted(self):
+        from .engine.parser import parse_program
+        from .engine.parts import detect_parts
+        self.client.login(username="parts-manager", password="testpass")
+        detection = detect_parts(parse_program(self.flagship_text))
+        part = max(detection["parts"], key=lambda item: item["bbox"]["y_max"])
+        band = [round(value, 3) for value in part["stretch_band_y"]]
+        self.assertGreater(band[1], part["stretch_band_y"][1])
+        response = self._post("engine_preview", {
+            "content": self.flagship_text,
+            "edits": [{"op": "stretch_part", "part_id": part["id"], "axis": "y",
+                       "band": band, "delta": 10.0}],
+        })
+        self.assertEqual(response.status_code, 200, msg=response.content.decode())
+        self.assertTrue(response.json()["validation"]["passed"])
+
     def test_preflight_part_edit_ships_candidate_bounds(self):
         """Stage-7 preflight can evaluate the envelope of a part-level
         candidate: the runtime detection must expose program ``bounds``
