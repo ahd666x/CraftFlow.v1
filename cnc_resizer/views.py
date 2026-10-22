@@ -20,24 +20,34 @@ def _current_tool_map():
     return {s.slot: s.dia_value for s in ToolSlot.objects.all() if s.dia is not None}
 
 
-def cnc_operator_required(view_func):
-    """Allow managers and the CNC worker who opened a part from scanning."""
+def cnc_operator_required(view_func=None, *, html=False):
+    """Allow managers and the CNC worker who opened a part from scanning.
+
+    ``html=True`` marks the server-rendered flow (sheet plans, issue forms…):
+    a denied user gets Django's real 403 page instead of a bare JSON body —
+    those views are reached via browser navigation/form posts, never fetch.
+    API views keep the JSON 403 the client JS expects.
+    """
     from functools import wraps
-    @wraps(view_func)
-    def wrapped(request, *args, **kwargs):
-        user = request.user
-        from cutting.permissions import can_operate
-        allowed = can_operate(user)
-        try:
-            allowed = allowed or user.workerprofile.stage == 'cnc'
-        except Exception:
-            pass
-        if not allowed:
-            if view_func.__name__ == 'index':
-                raise PermissionDenied
-            return JsonResponse({'success': False, 'error': 'دسترسی به ابزار CNC مجاز نیست.'}, status=403)
-        return view_func(request, *args, **kwargs)
-    return wrapped
+    def decorator(func):
+        @wraps(func)
+        def wrapped(request, *args, **kwargs):
+            user = request.user
+            from cutting.permissions import can_operate
+            allowed = can_operate(user)
+            try:
+                allowed = allowed or user.workerprofile.stage == 'cnc'
+            except Exception:
+                pass
+            if not allowed:
+                if html or func.__name__ == 'index':
+                    raise PermissionDenied
+                return JsonResponse({'success': False, 'error': 'دسترسی به ابزار CNC مجاز نیست.'}, status=403)
+            return func(request, *args, **kwargs)
+        return wrapped
+    if view_func is None:
+        return decorator
+    return decorator(view_func)
 
 
 @login_required
@@ -102,8 +112,14 @@ def process(request):
     except Exception:
         payload = None
     # میز ابزار دیتابیس، مرجع قطر ابزارهاست؛ کلاینت آن را نمی‌فرستد (اگر بفرستد بازنویسی می‌شود).
-    if isinstance(payload, dict) and isinstance(payload.get('params'), dict):
-        payload['params']['tool_map'] = _current_tool_map()
+    # bugfix: تزریق میز ابزار مشروط به فرستادن params نبود؛ کلاینتی که params
+    # نمی‌فرستد هم باید قطر دیتابیس را بگیرد (همان قرارداد docstring و تست‌ها).
+    if isinstance(payload, dict):
+        params = payload.get('params')
+        if not isinstance(params, dict):
+            params = {}
+            payload['params'] = params
+        params['tool_map'] = _current_tool_map()
     status, data = core.handle_payload(payload if isinstance(payload, dict) else {})
     if status != 200 or "cnc_text" not in data:
         return JsonResponse(data, status=status, json_dumps_params={"ensure_ascii": False})
@@ -377,7 +393,9 @@ def engine_preview(request):
             raise ValueError('content must be a string')
         filename = os.path.basename(payload.get('filename') or 'uploaded.cnc')
         profile = payload.get('profile')
-        result = _engine_candidate(payload, filename)
+        # bugfix: پیش‌نمایش هم باید با میز ابزار دیتابیس حساب شود؛ وگرنه
+        # bbox_finished/set_gap/گتِ برخوردِ پیش‌نمایش با خروجی نهایی فرق داشت.
+        result = _engine_candidate(payload, filename, tool_map=_current_tool_map())
         if 'edits' in payload and 'profile' not in payload:
             pass  # interactive edits carry their own runtime verification
         else:
@@ -535,8 +553,18 @@ def edit_templates(request):
             raise ValueError('نام قالب لازم است.')
         edits = _validate_template_payload(payload.get('edits'))
         note = str(payload.get('note') or '').strip()[:200]
-        template, created = EditTemplate.objects.update_or_create(
-            name=name, defaults={'payload': edits, 'note': note, 'created_by': request.user})
+        # bugfix: update نباید created_by را به کاربر فعلی بازنویسی کند؛
+        # ردّ حسابرسیِ سازندهٔ اصلی از بین می‌رفت.
+        template = EditTemplate.objects.filter(name=name).first()
+        if template is None:
+            template = EditTemplate.objects.create(name=name, payload=edits, note=note,
+                                                   created_by=request.user)
+            created = True
+        else:
+            template.payload = edits
+            template.note = note
+            template.save(update_fields=('payload', 'note', 'updated_at'))
+            created = False
         return JsonResponse({'ok': True, 'created': created, 'template_id': template.pk,
                              'message': f'قالب «{name}» ذخیره شد.'},
                             json_dumps_params={'ensure_ascii': False})
@@ -611,6 +639,15 @@ def part_templates(request):
         if not isinstance(part_id, int):
             raise ValueError('قطعهٔ مقصد قالب را انتخاب کنید.')
         edits = _validate_template_payload(payload.get('edits'))
+        # bugfix: قالب قطعه (بستهٔ ق) نقش‌هایش را فقط از feature_id می‌سازد؛
+        # ویرایش‌های قطعه‌ای (move_part/set_gap/distribute…) شناسهٔ قطعه دارند نه
+        # ویژگی — قبلاً بی‌صدا قالبی با ۰ نقش ساخته می‌شد که در apply خطا می‌داد.
+        # حالا از همان لحظهٔ ذخیره با دلیل روشن رد می‌شود (fail-closed).
+        if any(edit.get('op') in _EDIT_TEMPLATE_PART_OPS for edit in edits):
+            raise ValueError(
+                'قالب قطعه از ویرایش‌های قطعه‌ای (move_part/stretch_part/set_gap/distribute) '
+                'پشتیبانی نمی‌کند؛ نقش‌های هندسی فقط از ویژگی‌ها ساخته می‌شوند — این ویرایش‌ها '
+                'را به‌عنوان «قالب ویرایش» (الگوی کارگاهی) ذخیره کنید.')
         note = str(payload.get('note') or '').strip()[:200]
         content = payload.get('content')
         if not isinstance(content, str) or not content.strip():
@@ -622,14 +659,28 @@ def part_templates(request):
         features = recognize(parsed)['features']
         roles = capture_roles(features, edits)
         digest = hashlib.sha256(content.encode('utf-8')).hexdigest()
-        template, created = CncPartTemplate.objects.update_or_create(
-            part=part, name=name,
-            defaults={'payload': edits, 'roles': roles,
-                      'source_bounds': capture_envelope_for_storage(features),
-                      'source_feature_count': len(usable_features(features)),
-                      'source_sha256': digest,
-                      'source_filename': parsed.filename[:255],
-                      'note': note, 'created_by': request.user})
+        # bugfix: update نباید created_by را بازنویسی کند (حفظ حسابرسی سازنده).
+        template = CncPartTemplate.objects.filter(part=part, name=name).first()
+        if template is None:
+            template = CncPartTemplate.objects.create(
+                part=part, name=name, payload=edits, roles=roles,
+                source_bounds=capture_envelope_for_storage(features),
+                source_feature_count=len(usable_features(features)),
+                source_sha256=digest, source_filename=parsed.filename[:255],
+                note=note, created_by=request.user)
+            created = True
+        else:
+            template.payload = edits
+            template.roles = roles
+            template.source_bounds = capture_envelope_for_storage(features)
+            template.source_feature_count = len(usable_features(features))
+            template.source_sha256 = digest
+            template.source_filename = parsed.filename[:255]
+            template.note = note
+            template.save(update_fields=('payload', 'roles', 'source_bounds',
+                                         'source_feature_count', 'source_sha256',
+                                         'source_filename', 'note', 'updated_at'))
+            created = False
         return JsonResponse({'ok': True, 'created': created, 'template_id': template.pk,
                              'role_count': len(roles),
                              'message': f'قالب قطعهٔ «{name}» برای {part} ذخیره شد ({len(roles)} نقش).'},
@@ -927,7 +978,7 @@ def _layout_preview(plan):
 
 
 @login_required
-@cnc_operator_required
+@cnc_operator_required(html=True)
 @require_GET
 def sheet_plans(request):
     from cutting.permissions import can_manage
@@ -956,7 +1007,7 @@ def sheet_plans(request):
 
 
 @login_required
-@cnc_operator_required
+@cnc_operator_required(html=True)
 @require_POST
 def cancel_sheet_plan(request, plan_id):
     """Release a planned sheet so its stock and its parts can be planned again."""
@@ -985,7 +1036,7 @@ def cancel_sheet_plan(request, plan_id):
 
 
 @login_required
-@cnc_operator_required
+@cnc_operator_required(html=True)
 @require_POST
 def complete_sheet_plan(request, plan_id):
     """Record CNC sheet outcome, consume inventory if used/scrapped, and complete cut tasks if used."""
@@ -1140,7 +1191,7 @@ def complete_sheet_plan(request, plan_id):
 
 
 @login_required
-@cnc_operator_required
+@cnc_operator_required(html=True)
 @require_POST
 def update_planning_issue(request, issue_id):
     from django.contrib import messages
@@ -1165,7 +1216,7 @@ def update_planning_issue(request, issue_id):
 
 
 @login_required
-@cnc_operator_required
+@cnc_operator_required(html=True)
 @require_GET
 def download_sheet_plan(request, plan_id):
     from django.shortcuts import get_object_or_404

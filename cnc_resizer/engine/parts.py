@@ -550,18 +550,10 @@ def part_index(program: Program, params: dict[str, Any] | None = None) -> dict[s
 
     # paths whose edges CROSS another closed path are machining operations
     # overlapping a contour (t.7 side pockets that cut through the outline),
-    # never standalone parts
-    crossing: dict[int, set[int]] = {i: set() for i in range(len(closed_paths))}
-    for i in range(len(closed_paths)):
-        for j in range(i + 1, len(closed_paths)):
-            a, b = closed_paths[i].canonical, closed_paths[j].canonical
-            overlap_x = min(a.bbox["x_max"], b.bbox["x_max"]) - max(a.bbox["x_min"], b.bbox["x_min"])
-            overlap_y = min(a.bbox["y_max"], b.bbox["y_max"]) - max(a.bbox["y_min"], b.bbox["y_min"])
-            if overlap_x <= merge_tol or overlap_y <= merge_tol:
-                continue
-            if _segments_cross(a, b):
-                crossing[i].add(j)
-                crossing[j].add(i)
+    # never standalone parts — that case is decided by the candidate-lock
+    # intrusion check below (mutual intrusion + _segments_cross), so no
+    # separate precomputed crossing table is needed (the old O(n²) pre-pass
+    # built a map nobody read).
 
     candidates: list[int] = []
     for i, path in enumerate(closed_paths):

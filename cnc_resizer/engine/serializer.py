@@ -291,6 +291,14 @@ def serialize_candidate(source_text: str, preview: dict[str, Any]) -> dict[str, 
         for position, new_lines in insertions:
             grouped.setdefault(position, []).extend(new_lines)
         entries: list[list[Any]] = [[text, False] for text in lines]
+        # bugfix: an unterminated FINAL source line glues onto the first copy
+        # inserted after it ("...J0" + "G0 X160…"). The copies carry their own
+        # EOL (see _copy_plan), so the source line itself must be terminated
+        # with the file's own EOL before anything is appended after it — a
+        # formatting repair only, never a structural change.
+        file_eol = "\r\n" if "\r\n" in source_text else "\n"
+        if entries and not entries[-1][0].endswith(("\r\n", "\n")):
+            entries[-1][0] += file_eol
         for position in sorted(grouped, reverse=True):
             # ``position`` is the 1-based source line the copy follows
             # (block.ended_at_line); the insertion slice index equals it.
@@ -430,7 +438,12 @@ def _copy_plan(program: Any, preview: dict[str, Any],
                     raise SerializerBlocked(f"{delta_label}: source line {line_no} is out of range")
                 raw = lines[line_no - 1]
                 eol = "\r\n" if raw.endswith("\r\n") else ("\n" if raw.endswith("\n") else "")
-                body = _N_PREFIX_RE.sub("", raw[: len(raw) - len(eol)])
+                if not eol:
+                    # bugfix: an unterminated LAST source line used to produce
+                    # unterminated copy lines that glued onto whatever follows.
+                    # Copies are new text, so they always get the file's own EOL.
+                    eol = "\r\n" if "\r\n" in source_text else "\n"
+                body = _N_PREFIX_RE.sub("", raw[: len(raw) - len(eol) if raw.endswith(("\r\n", "\n")) else len(raw)])
                 move = moves_by_line.get(line_no)
                 if move is not None:
                     body = _patch_copy_line(body, move, dx, dy, delta_label, line_no)

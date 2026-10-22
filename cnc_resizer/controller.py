@@ -46,6 +46,18 @@ from . import gcode_sheet, sheet_adapter
 ADAPTER_KEY = sheet_adapter.DIALECT_ADAPTER_KEY  # "minimal_xy_router"
 
 _G90_LINE_RE = re.compile(r"(G90)(?!G21)")
+_G20_WORD_RE = re.compile(r"G20(?![\d.])")
+_G21_WORD_RE = re.compile(r"G21(?![\d.])")
+
+
+def _has_unit_word(text: str, word_re: re.Pattern) -> bool:
+    """Comment-safe G20/G21 word search (a 'G21' inside a comment or glued to
+    digits like 'G91.1' must not count as a unit declaration)."""
+    for line in text.splitlines():
+        cleaned = gcode_sheet._clean(line)
+        if cleaned and word_re.search(cleaned):
+            return True
+    return False
 
 
 class ControllerPostprocessError(ValueError):
@@ -68,22 +80,61 @@ def controller_adapter_key() -> str:
     return ""
 
 
+def unapproved_controller_blocker() -> str | None:
+    """DB governance kill-switch over the machine-output path (bugfix).
+
+    An ACTIVE ``CncControllerProfile`` row for this adapter whose ``approved``
+    is False blocks every machine-output gate — «تأیید حسابرسی‌شده» was
+    previously a dead flag that nothing in the output path consulted. With no
+    profile row at all, the documented settings-only behaviour is unchanged
+    (the .env enablement keeps working for deployments that do not use the
+    audit admin)."""
+    try:
+        from .models import CncControllerProfile
+        profile = (CncControllerProfile.objects
+                   .filter(adapter_key=ADAPTER_KEY, active=True)
+                   .order_by("-updated_at").first())
+    except Exception:
+        # The governance layer is additive on top of the settings gate: when
+        # the DB is unavailable (or a SimpleTestCase forbids queries), the
+        # documented settings-only behaviour must keep working — never take
+        # the machine-output path down because of the audit table.
+        return None
+    if profile is not None and not profile.approved:
+        return (f"پروفایل کنترلر فعال «{profile.key}» تأیید حسابرسی ندارد (approved=False)؛ "
+                "خروجی دستگاه مسدود است — پروفایل را در ادمین تأیید کنید یا غیرفعالش کنید.")
+    return None
+
+
 def implicit_units_mm() -> bool:
     """True when the operator declared that unit-less sources are millimetre."""
     return str(getattr(settings, "CNC_RESIZER_IMPLICIT_UNITS", "") or "").strip().lower() == "mm"
 
 
 def normalize_units(text: str) -> tuple[str, bool]:
-    """Inject ``G21`` into the ``G90`` block for unit-less millimetre sources.
+    """Substitute ``G21`` INTO the ``G90`` block for unit-less millimetre sources.
 
     Mirrors the sheet planner's normalization contract: an implicit-units
     source is accepted only when ``CNC_RESIZER_IMPLICIT_UNITS=mm`` is set,
     and the normalized text (with an explicit ``G21``) is what gets stored
     and downloaded. Returns ``(text, injected)``.
+
+    bugfix contract: this function NEVER changes the line count. The old
+    fallback inserted a standalone ``G21`` line when no ``G90`` anchor exists,
+    which broke the 1:1 header check of ``postprocess_resize`` with the
+    misleading «تعداد خطوط سربرگ تفاوت دارد». Now:
+    * an explicit ``G20`` (inch) file is NOT unit-less — no injection, the
+      real unit conflict surfaces in the dialect report instead;
+    * without a ``G90`` anchor the text is returned untouched and the dialect
+      verification reports the actual structural reason.
     """
-    if "G21" in text:
+    if _has_unit_word(text, _G21_WORD_RE):
         return text, False
     if not implicit_units_mm():
+        return text, False
+    if _has_unit_word(text, _G20_WORD_RE):
+        # explicit inch units: the mm assumption does not apply (the file is
+        # not unit-less); the dialect gate reports the true cause downstream.
         return text, False
     lines, eol = text.splitlines(), "\r\n" if "\r\n" in text else "\n"
     out, injected = [], False
@@ -93,15 +144,10 @@ def normalize_units(text: str) -> tuple[str, bool]:
             injected = True
         else:
             out.append(line)
-    if not injected:  # no G90 line to anchor on — insert before first motion line
-        for index, line in enumerate(out):
-            if re.search(r"G[0-3](?!\d)", line):
-                out.insert(index, "G21")
-                injected = True
-                break
     if not injected:
-        out.append("G21")
-        injected = True
+        # no G90 anchor: inserting a line would silently break the header
+        # line-count contract of the resize/structural gates — leave as-is.
+        return text, False
     return eol.join(out) + eol, injected
 
 
@@ -164,6 +210,10 @@ def postprocess_resize(source_text: str, resized_text: str, serialized: dict | N
     source_report = verify_program(source_text)
     if not source_report["ok"]:
         raise ControllerPostprocessError("؛ ".join(source_report["violations"]), source_report["violations"])
+
+    blocker = unapproved_controller_blocker()
+    if blocker:
+        raise ControllerPostprocessError(blocker, [blocker])
 
     normalized, injected = normalize_units(resized_text)
     try:
@@ -231,6 +281,10 @@ def postprocess_structural(source_text: str, resized_text: str, serialized: dict
     source_report = verify_program(source_text)
     if not source_report["ok"]:
         raise ControllerPostprocessError("؛ ".join(source_report["violations"]), source_report["violations"])
+
+    blocker = unapproved_controller_blocker()
+    if blocker:
+        raise ControllerPostprocessError(blocker, [blocker])
 
     normalized, injected = normalize_units(resized_text)
     try:

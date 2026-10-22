@@ -259,6 +259,22 @@ def preview_part_edits(program: Program, request: dict[str, Any], source_text: s
             raise TransformError(f"{label}: قطعهٔ {part['id']} در این درخواست دوبار ویرایش شده است")
 
     normalized_summary: list[dict[str, Any]] = []
+    # bugfix: pure-translation bookkeeping so a later set_gap/distribute in the
+    # SAME request composes against the moved position instead of the source
+    # one ("move part_a, then set_gap to part_b" must measure from where
+    # part_a actually is now). Stretches are not pure translations, so any
+    # set_gap that references a stretched part is rejected instead.
+    part_shift: dict[str, tuple[float, float]] = {}
+    part_stretched: set[str] = set()
+
+    def record_shift(part_id: str, dx: float, dy: float) -> None:
+        previous = part_shift.get(part_id, (0.0, 0.0))
+        part_shift[part_id] = (previous[0] + dx, previous[1] + dy)
+
+    def shifted_bbox(bbox: dict[str, float], shift: tuple[float, float]) -> dict[str, float]:
+        dx, dy = shift
+        return {"x_min": bbox["x_min"] + dx, "x_max": bbox["x_max"] + dx,
+                "y_min": bbox["y_min"] + dy, "y_max": bbox["y_max"] + dy}
 
     for index, edit in enumerate(edits):
         label = f"Edit {index + 1}"
@@ -274,6 +290,7 @@ def preview_part_edits(program: Program, request: dict[str, Any], source_text: s
             if abs(dx) <= 1e-9 and abs(dy) <= 1e-9:
                 raise TransformError(f"{label}: جابه‌جایی صفر است")
             assign_shift(_member_blocks(part), dx, dy, label)
+            record_shift(part["id"], dx, dy)
             touched_parts.add(part["id"])
             normalized_summary.append({"op": op, "part_id": part["id"], "dx": dx, "dy": dy,
                                        "blocks": _member_blocks(part)})
@@ -325,6 +342,7 @@ def preview_part_edits(program: Program, request: dict[str, Any], source_text: s
                 band = (band_value[0], band_value[1])
             contour_ids = list(part["contour_block_ids"])
             assign_stretch(contour_ids, axis, band, delta, label)
+            part_stretched.add(part["id"])
             # children + assigned operations: rigid beyond the band, rejected inside it
             for child in part["children"]:
                 for block_id in child["block_ids"]:
@@ -358,6 +376,8 @@ def preview_part_edits(program: Program, request: dict[str, Any], source_text: s
                             f"{label}: قطعهٔ {other['id']} دوبار ویرایش شده است (هم پیرو کشش، هم صریح)")
                     assign_shift(_member_blocks(other), delta if axis == "x" else 0.0,
                                  delta if axis == "y" else 0.0, label)
+                    record_shift(other["id"], delta if axis == "x" else 0.0,
+                                 delta if axis == "y" else 0.0)
                     touched_parts.add(other["id"])
                     continue
                 raise TransformError(
@@ -389,7 +409,16 @@ def preview_part_edits(program: Program, request: dict[str, Any], source_text: s
             gap = _finite(edit.get("gap"), f"{label} gap")
             if gap < 0:
                 raise TransformError(f"{label}: فاصله نمی‌تواند منفی باشد؛ هم‌پوشانی رد می‌شود")
-            a_fin, b_fin = part_a["bbox_finished"], part_b["bbox_finished"]
+            # bugfix: part_a may have been moved EARLIER in this same request;
+            # the gap must be measured from where part_a actually is now.
+            if part_a["id"] in part_stretched:
+                raise TransformError(
+                    f"{label}: قطعهٔ {part_a['id']} در همین درخواست کشیده شده است؛ bbox آن "
+                    "دیگر یک جابه‌جایی صلب نیست و set_gap روی موقعیت جدید آن قابل ترکیب نیست — "
+                    "فاصله را در یک درخواست جداگانه تنظیم کنید")
+            a_shift = part_shift.get(part_a["id"], (0.0, 0.0))
+            a_fin = shifted_bbox(part_a["bbox_finished"], a_shift)
+            b_fin = part_b["bbox_finished"]
             center_a = (a_fin[f"{axis}_min"] + a_fin[f"{axis}_max"]) / 2
             center_b = (b_fin[f"{axis}_min"] + b_fin[f"{axis}_max"]) / 2
             if center_b >= center_a:
@@ -401,6 +430,7 @@ def preview_part_edits(program: Program, request: dict[str, Any], source_text: s
             dx = translation if axis == "x" else 0.0
             dy = translation if axis == "y" else 0.0
             assign_shift(_member_blocks(part_b), dx, dy, label)
+            record_shift(part_b["id"], dx, dy)
             touched_parts.add(part_b["id"])
             normalized_summary.append({"op": op, "part_a": part_a["id"], "part_b": part_b["id"],
                                        "axis": axis, "gap": gap, "translation": translation,
@@ -435,6 +465,8 @@ def preview_part_edits(program: Program, request: dict[str, Any], source_text: s
                     assign_shift(_member_blocks(part),
                                  translation if axis == "x" else 0.0,
                                  translation if axis == "y" else 0.0, label)
+                    record_shift(part["id"], translation if axis == "x" else 0.0,
+                                 translation if axis == "y" else 0.0)
                 previous = part
             for part in chain:
                 touched_parts.add(part["id"])
@@ -535,15 +567,40 @@ def preview_part_edits(program: Program, request: dict[str, Any], source_text: s
                 f"Part structure changed at runtime ({len(runtime_parts)} parts vs "
                 f"{len(detection['parts'])} in the source); the edit is rejected")
         else:
-            source_parts = detection["parts"]
+            # bugfix: pair source/runtime parts by their contour BLOCK
+            # membership, never by sort index. part_index orders parts by
+            # (y_min, x_min); a legitimate edit can flip that order (a part
+            # moved past another, near-equal y_min swapping), which silently
+            # mismatched the gate's pairs — false collisions or missed ones.
+            # Block ids are stable across the patch (same block count, 1:1
+            # line patch), so membership is the durable identity.
+            source_by_blocks: dict[tuple, list[dict[str, Any]]] = {}
+            for part in detection["parts"]:
+                source_by_blocks.setdefault(tuple(part["contour_block_ids"]), []).append(part)
+            matched: list[tuple[dict[str, Any], dict[str, Any]]] = []
+            unmatched_runtime: list[dict[str, Any]] = []
+            for runtime_part in runtime_parts:
+                bucket = source_by_blocks.get(tuple(runtime_part["contour_block_ids"]))
+                if bucket:
+                    matched.append((bucket.pop(0), runtime_part))
+                else:
+                    unmatched_runtime.append(runtime_part)
+            if unmatched_runtime:
+                errors.append(
+                    "Part identity changed at runtime for " +
+                    ", ".join(part["id"] for part in unmatched_runtime) +
+                    " (contour block membership no longer matches the source); "
+                    "the edit is rejected")
 
-            count = len(source_parts)
+            count = len(matched)
             for i in range(count):
                 for j in range(i + 1, count):
-                    src_a = source_parts[i]["bbox_finished"]
-                    src_b = source_parts[j]["bbox_finished"]
-                    rt_a = runtime_parts[i]["bbox_finished"]
-                    rt_b = runtime_parts[j]["bbox_finished"]
+                    src_a_part, rt_a_part = matched[i]
+                    src_b_part, rt_b_part = matched[j]
+                    src_a = src_a_part["bbox_finished"]
+                    src_b = src_b_part["bbox_finished"]
+                    rt_a = rt_a_part["bbox_finished"]
+                    rt_b = rt_b_part["bbox_finished"]
 
                     def axis_overlaps(a: dict[str, float], b: dict[str, float]) -> tuple[float, float]:
                         return (min(a["x_max"], b["x_max"]) - max(a["x_min"], b["x_min"]),
@@ -578,12 +635,12 @@ def preview_part_edits(program: Program, request: dict[str, Any], source_text: s
                     overlap_x = min(rt_a["x_max"], rt_b["x_max"]) - max(rt_a["x_min"], rt_b["x_min"])
                     overlap_y = min(rt_a["y_max"], rt_b["y_max"]) - max(rt_a["y_min"], rt_b["y_min"])
                     collision_flagged.append({
-                        "parts": [source_parts[i]["id"], source_parts[j]["id"]],
+                        "parts": [src_a_part["id"], src_b_part["id"]],
                         "overlap_x": round(overlap_x, 6), "overlap_y": round(overlap_y, 6),
                         "overlap_before": round(max(src_overlap, 0.0), 6),
                         "overlap_after": round(max(rt_overlap, 0.0), 6)})
                     errors.append(
-                        f"Parts {source_parts[i]['id']} and {source_parts[j]['id']} collide after "
+                        f"Parts {src_a_part['id']} and {src_b_part['id']} collide after "
                         f"the edits ({overlap_x:.3f} x {overlap_y:.3f} mm at finished-bbox level "
                         "incl. tool clearance); move them apart or reduce the stretch")
 

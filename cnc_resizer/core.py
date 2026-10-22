@@ -280,9 +280,9 @@ def _reject_unsupported_syntax(lines):
         s = s.split(';', 1)[0]
         if not s.strip():
             continue
-        if re.search(r'G91(?!\d)', s):
+        if re.search(r'G91(?![\d.])', s):
             raise CncError("برنامه با G91 (مختصات افزایشی) نوشته شده است؛ تغییر اندازه فقط با G90 (مطلق) پشتیبانی می‌شود")
-        if re.search(r'G20(?!\d)', s):
+        if re.search(r'G20(?![\d.])', s):
             raise CncError("واحد فایل اینچ است (G20)؛ تغییر اندازه فقط با G21 (میلی‌متر) پشتیبانی می‌شود")
 
 
@@ -891,7 +891,10 @@ def _finished_tool_dia(lines, tool_map, fallback):
 
 def view_only_result(text, lines, eol, tool_dia, reason, extra_warnings=(), tool_map=None):
     """Return geometry for viewing without permitting an automatic resize."""
-    vectors = extract_vectors(lines, tool_dia)
+    # bugfix: hole compensation must use the SAME tool table as the finished-
+    # size report below — passing no tool_map here made holes show the default
+    # fallback diameter while finished_length used the table (inconsistent).
+    vectors = extract_vectors(lines, tool_dia, tool_map)
     a, b = _span(vectors)
     fin_dia, _, _ = _finished_tool_dia(lines, tool_map or {}, tool_dia)
     shown = vectors_for_json(vectors)
