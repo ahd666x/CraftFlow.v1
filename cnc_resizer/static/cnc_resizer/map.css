@@ -319,3 +319,17 @@ svg text { font-family: "Segoe UI", Tahoma, system-ui, sans-serif; user-select: 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+/* ---------- جدول فاصله‌ها (پنل «طول») + هایلایت فاصله + زنجیرهٔ اندازه ---------- */
+/* بازخورد اپراتور: «تقسیم فاصله بین گروه‌های سواخ» و «نمایش اندازهٔ بین
+   سوراخ‌ها و مقدار اضافه‌شدنش» مثل رابط کاربری قبلی */
+table.gaptab { width: 100%; border-collapse: collapse; margin-top: 4px; font-size: 12px; }
+table.gaptab th { color: var(--muted); font-weight: 600; text-align: start; padding: 4px; border-bottom: 1px solid var(--line); }
+table.gaptab td { padding: 3px 4px; border-bottom: 1px solid var(--surface-2); vertical-align: middle; }
+table.gaptab tr:hover td { background: var(--accent-soft); }
+table.gaptab td.n, table.gaptab th.n { text-align: left; direction: ltr; }
+table.gaptab input[type=number] { padding: 2px 5px; width: 74px; min-height: 0; }
+table.gaptab input[type=checkbox] { min-height: 0; accent-color: var(--accent); }
+.gap-hl { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1; stroke-dasharray: 4 3; }
+.chain-ext { stroke: var(--line); stroke-dasharray: 3 4; stroke-width: 1; }
+.chain-dim { font-weight: 600; }

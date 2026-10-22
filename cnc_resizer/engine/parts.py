@@ -630,8 +630,10 @@ def part_index(program: Program, params: dict[str, Any] | None = None) -> dict[s
         loop_tool = canonical.tool
         dia = _tool_dia_for(loop_tool, tool_map, fallback_dia)
         shape = classify_shape(canonical)
-        band_y = _largest_band(canonical, "y", merge_tol)
-        band_x = _largest_band(canonical, "x", merge_tol)
+        bands_y = _band_intervals(canonical, "y", merge_tol)
+        bands_x = _band_intervals(canonical, "x", merge_tol)
+        band_y = max(bands_y, key=lambda item: item[1] - item[0]) if bands_y else None
+        band_x = max(bands_x, key=lambda item: item[1] - item[0]) if bands_x else None
         is_locked = index in locked
         capabilities = {
             "can_translate": not is_locked,
@@ -678,6 +680,10 @@ def part_index(program: Program, params: dict[str, Any] | None = None) -> dict[s
             "capabilities": capabilities,
             "stretch_band_y": [round(band_y[0], 4), round(band_y[1], 4)] if band_y else None,
             "stretch_band_x": [round(band_x[0], 4), round(band_x[1], 4)] if band_x else None,
+            # all contour-clean intervals — the client relocates a blocked
+            # stretch band into the nearest one exactly like the server does
+            "stretch_bands_y": [[round(lo, 4), round(hi, 4)] for lo, hi in bands_y],
+            "stretch_bands_x": [[round(lo, 4), round(hi, 4)] for lo, hi in bands_x],
             "children": [],
             "warnings": ["ویرایش این قطعه به‌دلیل هم‌پوشانی با قطعهٔ دیگر قفل است."] if is_locked else [],
             "locked": is_locked,

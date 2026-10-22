@@ -280,6 +280,9 @@
     for (const [a, b] of pairsX) {
       drawGapDim(a, b, 'x', off);
     }
+
+    // زنجیرهٔ اندازهٔ بین گروه‌های سوراخ (دادهٔ پنل «طول») — مثل رابط قدیمی
+    drawChainDims();
   }
 
   function adjacentPairs(parts, axis) {
@@ -354,6 +357,55 @@
   }
   CNC.drawDims = drawDims;
 
+  // =============================================_زنجیرهٔ اندازه بین گروه‌های سوراخ
+  // بازخورد اپراتور: «نمایش اندازه‌های بین سوراخ‌ها و مقدار اضافه‌شدن آن مثل
+  // رابط قبلی» — همان زنجیرهٔ per-gap محیط قدیمی: برای هر فاصلهٔ بین دو گروه
+  // (لبه↔سوراخ↔سوراخ↔لبه) طول جدید + دلتای رنگی، و طول کل قبل/بعد در سمت چپ.
+  // داده از آخرین محاسبهٔ پنل «طول» می‌آید (state.resizeGaps/resizeLengths).
+  function drawChainDims() {
+    const gDims = CNC.groups.gDims;
+    const gaps = state.resizeGaps, lens = state.resizeLengths;
+    if (!gDims || !state.layers.showDims || !gaps || !gaps.length || !CNC.model) return;
+    const scene = CNC.unionBBox([...CNC.model.blocks.values()]);
+    if (!scene) return;
+    const p = px();
+    const off = Math.max(26, Math.min(scene.x_max - scene.x_min, scene.y_max - scene.y_min) * 0.035);
+    const xChain = scene.x_max + off * 3.4;     // زنجیرهٔ per-gap (راست)
+    const xAfter = scene.x_min - off * 2.6;     // طول بعد (چپ)
+    const xBefore = scene.x_min - off * 3.9;    // طول قبل (چپ‌تر، محو)
+    const vdim = (xd, xref, ya, yb, label, delta, color) => {
+      if (xref != null) {
+        el('line', { x1: xref, y1: -ya, x2: xd, y2: -ya, class: 'chain-ext' }, gDims);
+        el('line', { x1: xref, y1: -yb, x2: xd, y2: -yb, class: 'chain-ext' }, gDims);
+      }
+      el('line', { x1: xd, y1: -ya, x2: xd, y2: -yb, stroke: color, 'stroke-width': 1.3 }, gDims);
+      arrow(gDims, xd, -yb, xd, -ya, color);
+      arrow(gDims, xd, -ya, xd, -yb, color);
+      const t = el('text', { x: xd + 7 / p, y: -(ya + yb) / 2, 'font-size': 11 / p,
+                             fill: 'var(--text)', 'dominant-baseline': 'middle',
+                             direction: 'ltr', 'pointer-events': 'none', class: 'chain-dim' }, gDims);
+      t.textContent = label;
+      if (delta != null && Math.abs(delta) > 5e-4) {
+        const t2 = el('tspan', { fill: delta < 0 ? 'var(--bad)' : 'var(--good)', dx: 5 / p }, t);
+        t2.textContent = `(${CNC.sgn(delta)})`;
+      }
+    };
+    let cum = 0;
+    for (const g of gaps) {
+      const inc = g.increment || 0;
+      const ya = g.y0 + cum, yb = g.y1 + cum + inc;
+      cum += inc;
+      vdim(xChain, scene.x_max + 4 / p, ya, yb,
+           CNC.f1((g.length != null ? g.length : g.y1 - g.y0) + inc), inc,
+           Math.abs(inc) > 5e-4 ? 'var(--feat-groove)' : 'var(--muted)');
+    }
+    if (lens && lens.before != null && lens.after != null) {
+      const y0 = gaps[0].y0, y1 = gaps[gaps.length - 1].y1 + cum;
+      vdim(xAfter, scene.x_min - 4 / p, y0, y1, CNC.f1(lens.after), null, 'var(--accent)');
+      vdim(xBefore, null, y0, y1, CNC.f1(lens.before), null, 'var(--ghost)');
+    }
+  }
+
   // ================================================================_ورودی عددی روی خط اندازه
   let dimEditor = null;
   function closeDimEditor() {
@@ -380,15 +432,26 @@
     }
     const bb = beforeBox(partId);
     const current = axis === 'y' ? bb.y_max - bb.y_min : bb.x_max - bb.x_min;
+    // بازخورد اپراتور: ورودی عددی نباید وقتی فرزند روی نوار پیش‌فرض است کلاً رد
+    // شود — نوار به نزدیک‌ترین فاصلهٔ خالی می‌رود (مثل درگ)؛ فقط وقتی هیچ فاصلهٔ
+    // خالی نیست قفل است و کاربر به پنل «طول» هدایت می‌شود.
+    const plan = bandPlan(part, axis);
+    if (plan && plan.hard) {
+      showTransient(client, `<b>${CNC.partName(part)}</b> — ${esc(plan.note)}`);
+      return;
+    }
     openEditor(client, {
       title: `${CNC.partName(part)} — ${axis === 'y' ? 'ارتفاع' : 'عرض'} جدید`,
       value: CNC.f1(current),
-      hint: 'اندازهٔ مطلق کانتور (mm) — نوار صاف کشیده می‌شود و بخش‌های بالای نوار جابه‌جا',
+      hint: (plan && plan.note) ? plan.note
+        : 'اندازهٔ مطلق کانتور (mm) — نوار صاف کشیده می‌شود و بخش‌های بالای نوار جابه‌جا می‌شوند',
       onApply: (value) => {
         const newSize = Number(value);
         if (!Number.isFinite(newSize) || newSize <= 0 || Math.abs(newSize - current) < 1e-9) return;
-        commitOp(partId, { op: 'stretch_part', part_id: partId, axis,
-                           new_size: Math.round(newSize * 1000) / 1000 },
+        const op = { op: 'stretch_part', part_id: partId, axis,
+                     new_size: Math.round(newSize * 1000) / 1000 };
+        if (plan) op.band = plan.band;
+        commitOp(partId, op,
                  `کشش ${CNC.partName(part)} ${axis.toUpperCase()}`);
       },
     });
@@ -682,21 +745,24 @@
     const bb = afterBox(part.id) || part.bbox;
     for (const axis of ['y', 'x']) {
       if (stretchReason(part, axis)) continue;     // فقط قطعه‌های واقعاً کشش‌پذیر
-      const band = part[`stretch_band_${axis}`];
-      if (!band) continue;
-      // بررسی قفل بودن نوار: فرزند/قطعهٔ دیگر روی نوار → قفل با دلیل
-      const blocker = bandBlocker(part, band, axis);
-      const color = blocker ? 'lockseg' : 'okseg';
+      // نوار «نهایی» کشش: اگر فرزند روی نوار پیش‌فرض باشد، همان‌جا قفل نمی‌کنیم —
+      // نوارِ جابه‌جاشده به نزدیک‌ترین فاصلهٔ خالی رسم می‌شود (هماهنگ با سرور)
+      const plan = bandPlan(part, axis);
+      if (!plan) continue;
+      const band = plan.band;
+      const color = plan.hard ? 'lockseg' : 'okseg';
+      const note = plan.hard ? plan.note
+        : (plan.relocated ? plan.relocated
+          : 'کشیدن این لبه قطعه را در این محور بلند می‌کند؛ لنگرِ پایین ثابت می‌ماند.');
       if (axis === 'y') {
-        const g1 = el('g', { class: 'stretchbar', 'data-bar': `band:${part.id}:y:free`
-                            + (blocker ? '' : ''), }, g);
+        const g1 = el('g', { class: 'stretchbar', 'data-bar': `band:${part.id}:y:free` }, g);
         el('line', { x1: bb.x_min, y1: -band[1], x2: bb.x_max, y2: -band[1],
                      class: color }, g1);
         const hit = el('line', { x1: bb.x_min, y1: -band[1], x2: bb.x_max, y2: -band[1],
                                  stroke: 'transparent', 'stroke-width': 16,
                                  'pointer-events': 'stroke' }, g1);
         hit.dataset.bar = `band:${part.id}:y:free`;
-        if (blocker) g1.dataset.reason = blocker;
+        g1.dataset.reason = note;
         // لنگر (پایین)
         const g2 = el('g', { class: 'stretchbar', 'data-bar': `band:${part.id}:y:anchor` }, g);
         el('line', { x1: bb.x_min, y1: -band[0], x2: bb.x_max, y2: -band[0], class: 'lockseg' }, g2);
@@ -712,7 +778,7 @@
                                  stroke: 'transparent', 'stroke-width': 16,
                                  'pointer-events': 'stroke' }, g1);
         hit.dataset.bar = `band:${part.id}:x:free`;
-        if (blocker) g1.dataset.reason = blocker;
+        g1.dataset.reason = note;
         const g2 = el('g', { class: 'stretchbar', 'data-bar': `band:${part.id}:x:anchor` }, g);
         el('line', { x1: band[0], y1: -bb.y_min, x2: band[0], y2: -bb.y_max, class: 'lockseg' }, g2);
         const hit2 = el('line', { x1: band[0], y1: -bb.y_min, x2: band[0], y2: -bb.y_max,
@@ -723,21 +789,50 @@
       }
     }
   }
-  function bandBlocker(part, band, axis) {
+  function bandPlan(part, axis) {
+    // بازخورد اپراتور: کشش روی پنل سوراخ‌دار نباید کلاً رد شود — برش کشش
+    // مثل روش قدیمی در نزدیک‌ترین فاصلهٔ خالی بین گروه‌های سوراخ می‌نشیند
+    // (همان منطقی که سرور در part_edits._relocate_band اجرا می‌کند).
     const lo = `${axis}_min`, hi = `${axis}_max`;
-    const straddles = (b) => !(b[hi] <= band[0] + 1e-6 || b[lo] >= band[1] - 1e-6);
-    for (const child of part.children || []) {
-      if (child.bbox && straddles(child.bbox)) {
-        return `ویژگی فرزند (${CNC.esc(CNC.KIND_FA[child.kind] || child.kind)}) روی نوار کشش می‌گذرد؛ کشش آن را خراب می‌کند — سرور هم رد می‌کند.`;
+    const band = part[`stretch_band_${axis}`];
+    if (!band) return null;
+    const straddles = (b, bnd) => !(b[hi] <= bnd[0] + 1e-6 || b[lo] >= bnd[1] - 1e-6);
+    const childBoxes = (part.children || []).filter((c) => c.bbox).map((c) => c.bbox);
+    let final = band, relocated = null;
+    if (childBoxes.some((b) => straddles(b, band))) {
+      const intervals = (part[`stretch_bands_${axis}`] || [band]).map((b) => [b[0], b[1]]);
+      const margin = 0.25, minClear = 0.5;
+      const blocked = childBoxes.map((b) => [b[lo] - margin, b[hi] + margin]).sort((p, q) => p[0] - q[0]);
+      const center0 = (band[0] + band[1]) / 2;
+      const cands = [];
+      for (const interval of intervals) {
+        let cursor = interval[0];
+        for (const [a, b] of blocked) {
+          if (b <= cursor) continue;
+          if (a > cursor) cands.push([cursor, Math.min(a, interval[1])]);
+          cursor = Math.max(cursor, b);
+          if (cursor >= interval[1]) break;
+        }
+        if (interval[1] - cursor > 0) cands.push([cursor, interval[1]]);
       }
+      const clear = cands.filter(([a, b]) => b - a >= minClear);
+      if (!clear.length) {
+        return { band, relocated: null, hard: true,
+                 note: `هیچ فاصلهٔ خالی بین فرزندها برای برش کشش نیست (مثل راستر/شیار تمام‌صفحه) — تغییر طول این قطعه را از پنل «طول» (توزیع بین فاصله‌ها یا kerf) انجام دهید.` };
+      }
+      clear.sort((p, q) => Math.abs((p[0] + p[1]) / 2 - center0) - Math.abs((q[0] + q[1]) / 2 - center0));
+      const nb = clear[0];
+      final = [Math.round(nb[0] * 1000) / 1000, Math.round(nb[1] * 1000) / 1000];
+      relocated = `برش کشش به نزدیک‌ترین فاصلهٔ خالی بین گروه‌ها منتقل می‌شود (${CNC.f1(final[0])}–${CNC.f1(final[1])} mm).`;
     }
     for (const other of state.detection.parts || []) {
       if (other.id === part.id) continue;
-      if (straddles(other.bbox)) {
-        return `قطعهٔ ${CNC.partName(other)} روی نوار کشش قرار دارد و کشیدن آن را پاره می‌کند.`;
+      if (straddles(other.bbox, final)) {
+        return { band: final, relocated, hard: true,
+                 note: `قطعهٔ ${CNC.partName(other)} روی نوار کشش قرار دارد و کشیدن آن را پاره می‌کند.` };
       }
     }
-    return null;
+    return { band: final, relocated, hard: false, note: relocated };
   }
 
   function startBarDrag(info) {
@@ -745,19 +840,19 @@
     const part = findPart(partId);
     if (!part) return;
     if (partEditBlocked(info.client)) return;
-    const band = part[`stretch_band_${axis}`];
-    if (!band) return;
     if (edge === 'anchor') {
       CNC.showTransient(info.client, 'این لبه لنگر است؛ بخش زیر/سمتِ دیگر نوار ثابت می‌ماند و کشش با لبهٔ آزاد انجام می‌شود.');
       return;
     }
-    const blocker = bandBlocker(part, band, axis);
-    if (blocker) {
-      CNC.showTransient(info.client, `<b>${CNC.partName(part)}</b> — ${esc(blocker)}`);
+    const plan = bandPlan(part, axis);
+    if (!plan) return;
+    if (plan.hard) {
+      CNC.showTransient(info.client, `<b>${CNC.partName(part)}</b> — ${esc(plan.note)}`);
       return;
     }
+    if (plan.note) CNC.showTransient(info.client, esc(plan.note));
     state._gestureClaimed = true;
-    barDrag = { partId, axis, band, edge, start: axis === 'y' ? info.world.y : info.world.x, delta: 0 };
+    barDrag = { partId, axis, band: plan.band, edge, start: axis === 'y' ? info.world.y : info.world.x, delta: 0 };
     CNC.selection.set([{ type: 'part', id: partId }]);
   }
   function moveBarDrag(info) {
@@ -780,8 +875,10 @@
     const delta = Math.round((applied + drag.delta) * 1000) / 1000;
     if (Math.abs(delta) < 1e-9) return;
     state.partOp.delete(drag.partId);
+    // band صریح: نوارِ نهایی (شامل جابه‌جایی به فاصلهٔ خالی) همان چیزی است که
+    // سرور باید اجرا کند تا پیش‌نمایش کلاینت و نتیجهٔ سرور یکی بمانند.
     commitOp(drag.partId, { op: 'stretch_part', part_id: drag.partId, axis: drag.axis,
-                            delta: Math.round(delta * 1000) / 1000 },
+                            band: drag.band, delta: Math.round(delta * 1000) / 1000 },
              `کشش ${CNC.partName(findPart(drag.partId) || {})} ${drag.axis.toUpperCase()} ${CNC.sgn(delta)}`);
   }
 
@@ -895,16 +992,16 @@
       CNC.showTransient(info.client, `<b>${CNC.partName(part)}</b> — ${esc(reason)}`);
       return;
     }
-    const band = part[`stretch_band_${axis}`];
-    if (!band) {
+    const plan = bandPlan(part, axis);
+    if (!plan) {
       CNC.showTransient(info.client, 'نوار صافی برای کشش این لبه نیست (قوس/لبهٔ مایل).');
       return;
     }
-    const blocker = bandBlocker(part, band, axis);
-    if (blocker) { CNC.showTransient(info.client, esc(blocker)); return; }
+    if (plan.hard) { CNC.showTransient(info.client, esc(plan.note)); return; }
+    if (plan.note) CNC.showTransient(info.client, esc(plan.note));
     state._gestureClaimed = true;
     handleDrag = {
-      partId, axis, edge, band,
+      partId, axis, edge, band: plan.band,
       start: axis === 'y' ? info.world.y : info.world.x,
       size0: axis === 'y'
         ? (beforeBox(partId).y_max - beforeBox(partId).y_min)
@@ -932,7 +1029,7 @@
         || Math.abs(drag.newSize - drag.size0) < 1e-9) return;
     state.partOp.delete(drag.partId);
     commitOp(drag.partId, { op: 'stretch_part', part_id: drag.partId, axis: drag.axis,
-                            new_size: Math.round(drag.newSize * 1000) / 1000 },
+                            band: drag.band, new_size: Math.round(drag.newSize * 1000) / 1000 },
              `تغییر اندازهٔ ${CNC.partName(findPart(drag.partId) || {})} ${drag.axis.toUpperCase()}`);
   }
 

@@ -89,6 +89,9 @@
     previewSeq: 0,           // race-guard: پاسخ‌های کهنهٔ پیش‌نمایش دور ریخته می‌شوند
     gateSeq: 0,              // race-guard: پاسخ‌های کهنهٔ پیش‌فلایت دور ریخته می‌شوند
     detectSeq: 0,            // race-guard: تشخیصِ دوباره بعد از ذخیرهٔ میز ابزار
+    resizeSeq: 0,            // race-guard: پاسخ‌های کهنهٔ جدول فاصله‌ها دور ریخته می‌شوند
+    resizeGaps: null,        // فاصله‌های بین گروه‌های سوراخ (پنل «طول») + زنجیرهٔ اندازه روی نقشه
+    resizeLengths: null,     // {before, after} از آخرین محاسبهٔ تغییر طول
     layers: { depth: new Map(), tool: new Map(), kind: new Map(),
               showGhost: true, showDims: true, showOps: true, showGrid: true },
     measures: [],
@@ -175,6 +178,7 @@
     st.partOp = new Map(); st.gapOps = []; st.featureOps = [];
     st.outputsExcluded = new Set(); st.fixedParts = new Set();
     st.selection = []; st.measures = [];
+    st.resizeGaps = null; st.resizeLengths = null;
     st.gate = { allowed: null, blockers: [], warnings: [], edits: false };
     st.layers.depth = new Map(); st.layers.tool = new Map(); st.layers.kind = new Map();
     CNC.emit('file', { name, text });

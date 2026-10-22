@@ -243,14 +243,15 @@
     if (btn) btn.classList.toggle('on', show);
     if (show && id === 'toolsPanel') renderToolsPanel();
     if (show && id === 'layersPanel') renderLayersPanel();
-    if (show && id === 'resizePanel') syncResizeTarget();
+    if (show && id === 'resizePanel') { syncResizeTarget(); if (CNC.fetchResizeGaps) CNC.fetchResizeGaps(); }
     CNC.emit('panel-opened', { id, open: show });
   }
   CNC.togglePanel = togglePanel;
 
   // -------------------------------------------_تغییر طول فایل (روش‌های محیط قدیمی)
-  // بازخورد اپراتور: جریان «دلتا/طول نهایی + توزیع مساوی/متناسب + خم‌کاری kerf»
-  // که با بازنویسی نقشه‌محور حذف شده بود، روی همان موتور core برمی‌گردد.
+  // بازخورد اپراتور: علاوه بر دلتا/روش، «انتخاب فاصله‌ها» هم برگشت — جدول
+  // فاصله‌های بین گروه‌های سوراخ با تیکِ ثابت‌ماندن و مقدار دستی + زنجیرهٔ
+  // اندازهٔ بین سوراخ‌ها روی خود نقشه، مثل رابط کاربری قبلی.
   function currentFileLength() {
     // محور طول فایل CNC همان Y است (قرارداد پروفایل قطعه) — ارتفاع کادر ورق.
     const bbox = (state.fileMeta && state.fileMeta.sheet_bbox) || {};
@@ -270,12 +271,94 @@
     box.hidden = false;
     box.innerHTML = `<div class="banner ${kind}">${html}</div>`;
   }
+
+  // فاصله‌های بین گروه‌های سوراخ (features/gaps موتور قدیمی) — هم جدول پنل و
+  // هم زنجیرهٔ اندازهٔ روی نقشه از همین پاسخ تغذیه می‌شود (delta=0 = فقط خواندن).
+  async function fetchResizeGaps() {
+    const st = CNC.state;
+    if (!st.text) return;
+    const seq = ++st.resizeSeq;
+    try {
+      const res = await CNC.api.resize(st.text, st.filename,
+                                       { mode: 'equal', delta: 0, symmetric: true });
+      if (seq !== st.resizeSeq) return;
+      if (!res.resizable || !(res.gaps || []).length) {
+        st.resizeGaps = null; st.resizeLengths = null;
+        renderGapTable();
+        return;
+      }
+      st.resizeGaps = res.gaps.map((g) => ({ ...g, _enabled: true }));
+      st.resizeLengths = { before: res.length_before, after: res.length_after };
+      renderGapTable();
+      CNC.emit('rerender', {});   // زنجیرهٔ اندازه روی نقشه دوباره رسم شود
+    } catch (err) {
+      if (seq !== st.resizeSeq) return;
+      st.resizeGaps = null; st.resizeLengths = null;
+      renderGapTable(err.message);
+    }
+  }
+  CNC.fetchResizeGaps = fetchResizeGaps;
+
+  function renderGapTable(errMsg) {
+    const table = $('gapTable'), tbody = $('gapTableBody'), hint = $('gapHint');
+    if (!table || !tbody) return;
+    const gaps = state.resizeGaps;
+    const mode = (document.querySelector('input[name="resizeMode"]:checked') || {}).value || 'equal';
+    if (errMsg) {
+      table.hidden = true; hint.hidden = false;
+      hint.textContent = `فاصله‌های بین گروه‌ها خوانده نشد: ${errMsg}`;
+      return;
+    }
+    if (!gaps || !gaps.length) {
+      table.hidden = true; hint.hidden = false;
+      hint.textContent = 'این فایل فاصلهٔ قابل‌توزیعی ندارد (تغییر طول خودکار در دسترس نیست) — ویرایش قطعه‌ای روی خود نقشه همچنان کار می‌کند.';
+      return;
+    }
+    if (mode === 'kerf') {
+      table.hidden = true; hint.hidden = false;
+      hint.textContent = 'در حالت kerf توزیع کاملاً خودکار است (گام شیار ثابت می‌ماند)؛ جدول فاصله‌ها فقط برای «مساوی/متناسب/دستی» معنا دارد.';
+      return;
+    }
+    table.hidden = false; hint.hidden = false;
+    hint.textContent = 'تیک فاصله را بردارید تا اندازه‌اش ثابت بماند؛ با بردن ماوس روی هر ردیف، همان ناحیه روی نقشه هایلایت می‌شود.';
+    const manual = mode === 'manual';
+    tbody.replaceChildren();
+    gaps.forEach((g, k) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td><input type="checkbox" class="gap-en" ${g._enabled === false ? '' : 'checked'}
+                        aria-label="فاصلهٔ ${k + 1} تغییر کند"></td>`
+        + `<td class="n">${CNC.f1(g.y0)}…${CNC.f1(g.y1)}</td>`
+        + `<td class="n">${CNC.f1(g.length)}</td>`
+        + (manual
+          ? `<td class="n"><input type="number" class="gap-man" step="0.1"
+               value="${CNC.f1(g.increment || 0)}" aria-label="تغییر دستی فاصلهٔ ${k + 1}"> </td>`
+          : `<td class="n">${g.increment ? CNC.sgn(g.increment) : '—'}</td>`)
+        + `<td class="n">${CNC.f1((g.length || 0) + (g.increment || 0))}</td>`;
+      tbody.appendChild(tr);
+      tr.addEventListener('mouseenter', () => CNC.viewport.gapHighlight(g.y0, g.y1));
+      tr.addEventListener('mouseleave', () => CNC.viewport.gapHighlight(null, null));
+      tr.querySelector('.gap-en').addEventListener('change', (e) => { g._enabled = e.target.checked; });
+      const man = tr.querySelector('.gap-man');
+      if (man) man.addEventListener('input', (e) => { g._manual = Number(e.target.value); });
+    });
+  }
+
   function renderResizeResult(res, mode) {
     if (res.ok === false) { resizeStatus('err', esc(res.error || 'تغییر طول ناموفق بود.')); return; }
     const warnings = (res.warnings || []).map(esc).join('<br>• ');
     if (res.resizable === false) {
       resizeStatus('warn', 'این فایل قابل تغییر طول خودکار نیست.<br>• ' + (warnings || 'دلیل در پیام‌ها آمده است.'));
       return;
+    }
+    // جدول/زنجیره با نتیجهٔ واقعی به‌روز شود (در حالت kerf فاصله‌ای برنمی‌گردد)
+    if (res.gaps && res.gaps.length) {
+      state.resizeGaps = res.gaps.map((g, k) => ({
+        ...g, _enabled: !!(state.resizeGaps && state.resizeGaps[k]
+          ? state.resizeGaps[k]._enabled : g.enabled),
+      }));
+      state.resizeLengths = { before: res.length_before, after: res.length_after };
+      renderGapTable();
+      CNC.emit('rerender', {});
     }
     const before = res.length_before != null ? CNC.f1(res.length_before) : '—';
     const after = res.length_after != null ? CNC.f1(res.length_after) : '—';
@@ -309,20 +392,30 @@
     $('resizeChips').querySelectorAll('button[data-d]').forEach((btn) => {
       btn.onclick = () => { deltaIn.value = btn.dataset.d; syncResizeTarget(); };
     });
+    // تغییر روش: ستون «تغییر» بین نمایشی/دستی عوض می‌شود؛ kerf جدول را جمع می‌کند
+    const modes = $('resizeModes');
+    if (modes) modes.addEventListener('change', () => renderGapTable());
     $('resizeApply').onclick = async () => {
       const mode = (document.querySelector('input[name="resizeMode"]:checked') || {}).value || 'equal';
       const delta = Number(deltaIn.value);
-      if (!Number.isFinite(delta) || delta === 0) {
+      if (mode !== 'manual' && (!Number.isFinite(delta) || delta === 0)) {
         resizeStatus('err', 'ابتدا میزان تغییر (Δ) را وارد کنید — مثلاً ۱۰+ یا ۱۰−.');
         return;
       }
       if (!state.text) { resizeStatus('err', 'اول یک فایل CNC باز کنید.'); return; }
+      const params = { mode, delta, symmetric: $('resizeSym').checked };
+      // بازخورد اپراتور: انتخاب فاصله‌ها مثل روش قدیمی — تیک هر فاصله و
+      // در حالت دستی مقدار هر کدام به همان پارامترهای engine قدیمی می‌رود.
+      if (state.resizeGaps && state.resizeGaps.length && mode !== 'kerf') {
+        params.enabled = state.resizeGaps.map((g) => g._enabled !== false);
+        if (mode === 'manual') {
+          params.manual = state.resizeGaps.map((g) => (Number.isFinite(g._manual) ? g._manual : 0));
+        }
+      }
       const btn = $('resizeApply');
       btn.disabled = true;
       try {
-        const res = await CNC.api.resize(state.text, state.filename, {
-          mode, delta, symmetric: $('resizeSym').checked,
-        });
+        const res = await CNC.api.resize(state.text, state.filename, params);
         renderResizeResult(res, mode);
       } catch (err) {
         resizeStatus('err', esc(err.message));
@@ -591,6 +684,9 @@
     renderInspector();
     CNC.emit('rerender', {});
     CNC.renderGate();
+    // جدول فاصله‌ها + زنجیرهٔ اندازهٔ بین سوراخ‌ها مثل محیط قدیمی بعد از هر
+    // شناسایی به‌روز می‌شود (delta=0 فقط خواندنی است؛ خرابی‌ها بی‌سروصدا جمع می‌شوند)
+    if (CNC.fetchResizeGaps) CNC.fetchResizeGaps();
   });
   CNC.on('selection', () => { renderInspector(); });
   CNC.on('gate', () => { renderGate(); });

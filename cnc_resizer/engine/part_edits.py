@@ -43,6 +43,11 @@ from .serializer import SerializerBlocked, serialize_candidate
 PART_OP_LIST = ("move_part", "stretch_part", "set_gap", "distribute")
 _RUNTIME_TOL = 1.5e-3     # serializer writes 3 decimals: half a micron of slack
 _FINITE_TOL = 1e-6
+# a relocated stretch band must keep this clearance from every child path
+# (far above the 3-decimal serializer rounding, far below operator scale)
+_BAND_CLEAR_MARGIN = 0.25
+# a clear sub-band shorter than this cannot host the cut meaningfully
+_BAND_MIN_CLEAR = 0.5
 
 
 def _finite(value: Any, label: str) -> float:
@@ -202,6 +207,50 @@ def _interval_state(bbox: dict[str, float], band: tuple[float, float], axis: str
     return "straddle"
 
 
+def _clear_sub_bands(interval: tuple[float, float],
+                     blocked: list[tuple[float, float]],
+                     margin: float) -> list[tuple[float, float]]:
+    """Sub-intervals of ``interval`` that keep ``margin`` clearance from every
+    blocked (lo, hi) span — the zones a stretch cut can live in without
+    tearing a child path."""
+    spans = sorted((lo - margin, hi + margin) for lo, hi in blocked)
+    out: list[tuple[float, float]] = []
+    cursor = interval[0]
+    for lo, hi in spans:
+        if hi <= cursor:
+            continue
+        if lo > cursor:
+            out.append((cursor, min(lo, interval[1])))
+        cursor = max(cursor, hi)
+        if cursor >= interval[1]:
+            break
+    if interval[1] - cursor > 0:
+        out.append((cursor, interval[1]))
+    return [(lo, hi) for lo, hi in out if hi - lo >= _BAND_MIN_CLEAR]
+
+
+def _relocate_band(intervals: list[tuple[float, float]],
+                   requested: tuple[float, float],
+                   child_boxes: list[dict[str, float]],
+                   axis: str) -> tuple[float, float] | None:
+    """Nearest clear band for the stretch cut — the same semantic the legacy
+    gap-resize engine had: the extra length is inserted in a gap BETWEEN the
+    child features (hole rows), never through them.  Nearest centre to the
+    requested band wins; overlap only breaks ties."""
+    blocked = [(box[f"{axis}_min"], box[f"{axis}_max"]) for box in child_boxes]
+    requested_center = (requested[0] + requested[1]) / 2
+    best: tuple[float, float] | None = None
+    best_key: tuple[float, float] | None = None
+    for interval in intervals:
+        for lo, hi in _clear_sub_bands(interval, blocked, _BAND_CLEAR_MARGIN):
+            overlap = min(requested[1], hi) - max(requested[0], lo)
+            center = (lo + hi) / 2
+            key = (abs(center - requested_center), -overlap)
+            if best_key is None or key < best_key:
+                best, best_key = (lo, hi), key
+    return best
+
+
 def preview_part_edits(program: Program, request: dict[str, Any], source_text: str,
                        params: dict[str, Any] | None = None) -> dict[str, Any]:
     """Preview part-level edits; never returns G-code text (same contract as
@@ -259,6 +308,7 @@ def preview_part_edits(program: Program, request: dict[str, Any], source_text: s
             raise TransformError(f"{label}: قطعهٔ {part['id']} در این درخواست دوبار ویرایش شده است")
 
     normalized_summary: list[dict[str, Any]] = []
+    band_relocation_notes: list[str] = []
     # bugfix: pure-translation bookkeeping so a later set_gap/distribute in the
     # SAME request composes against the moved position instead of the source
     # one ("move part_a, then set_gap to part_b" must measure from where
@@ -341,9 +391,44 @@ def preview_part_edits(program: Program, request: dict[str, Any], source_text: s
                         "(قوس/لبهٔ مایل خراب می‌شود)؛ فقط جابه‌جایی/چرخش/آینه در دسترس است")
                 band = (band_value[0], band_value[1])
             contour_ids = list(part["contour_block_ids"])
+            # children + assigned operations: rigid beyond the band.  If a
+            # child straddles the band, the band is RELOCATED into the nearest
+            # gap between child features (legacy gap-resize semantics) instead
+            # of rejecting the whole edit; only when no clear gap exists
+            # anywhere on the part does the edit stay fail-closed.
+            intervals = parts_mod._band_intervals(part["_canonical"], axis,
+                                                  params.get("merge_tol", 0.6))
+            child_boxes: list[dict[str, float]] = []
+            for child in part["children"]:
+                boxes = []
+                for block_id in child["block_ids"]:
+                    geometry = source_geometry.get(block_id)
+                    bbox = geometry["bounds"] if geometry else None
+                    if bbox is None:
+                        raise TransformError(
+                            f"{label}: child block {block_id} has unresolved geometry")
+                    boxes.append(bbox)
+                child_boxes.append({
+                    f"{axis}_min": min(box[f"{axis}_min"] for box in boxes),
+                    f"{axis}_max": max(box[f"{axis}_max"] for box in boxes),
+                })
+            if any(not (box[f"{axis}_max"] <= band[0] + _FINITE_TOL
+                        or box[f"{axis}_min"] >= band[1] - _FINITE_TOL)
+                   for box in child_boxes):
+                relocated = _relocate_band(intervals, band, child_boxes, axis)
+                if relocated is None:
+                    raise TransformError(
+                        f"{label}: ویژگی فرزند قطعهٔ {part['id']} نوار کشش را پوشانده و "
+                        "هیچ فاصلهٔ خالی بین فرزندها برای گذاشتن برش کشش وجود ندارد "
+                        "(مثلاً راستر/شیار تمام‌صفحه) — تغییر طول این قطعه را از پنل "
+                        "«طول» (توزیع بین فاصله‌ها یا kerf) انجام دهید")
+                band_relocated = {"from": [round(band[0], 4), round(band[1], 4)],
+                                  "to": [round(relocated[0], 4), round(relocated[1], 4)]}
+                band = relocated
+            else:
+                band_relocated = None
             assign_stretch(contour_ids, axis, band, delta, label)
             part_stretched.add(part["id"])
-            # children + assigned operations: rigid beyond the band, rejected inside it
             for child in part["children"]:
                 for block_id in child["block_ids"]:
                     geometry = source_geometry.get(block_id)
@@ -394,9 +479,18 @@ def preview_part_edits(program: Program, request: dict[str, Any], source_text: s
                 raise TransformError(
                     f"{label}: عملیات {orphan['id']} روی نوار کشش می‌گذرد و کشیدن آن را خراب می‌کند")
             touched_parts.add(part["id"])
-            normalized_summary.append({"op": op, "part_id": part["id"], "axis": axis,
-                                       "band": [band[0], band[1]], "delta": delta,
-                                       "blocks": contour_ids})
+            summary_entry = {"op": op, "part_id": part["id"], "axis": axis,
+                             "band": [band[0], band[1]], "delta": delta,
+                             "blocks": contour_ids}
+            if band_relocated:
+                summary_entry["band_relocated"] = band_relocated
+                band_relocation_notes.append(
+                    f"{label}: نوار کشش قطعهٔ {part['id']} روی فرزند می‌افتاد؛ برش کشش به "
+                    f"نزدیک‌ترین فاصلهٔ خالی بین فرزندها منتقل شد "
+                    f"({band_relocated['from'][0]:.1f}–{band_relocated['from'][1]:.1f} ← "
+                    f"{band_relocated['to'][0]:.1f}–{band_relocated['to'][1]:.1f} mm روی "
+                    f"{axis.upper()}).")
+            normalized_summary.append(summary_entry)
         elif op == "set_gap":
             part_a = part_or_error(edit.get("part_a"), label)
             part_b = part_or_error(edit.get("part_b"), label)
@@ -648,7 +742,7 @@ def preview_part_edits(program: Program, request: dict[str, Any], source_text: s
         "برخورد در سطح قطعه با bbox نهایی (شامل قطر ابزار) بررسی شد؛ هم‌پوشانی جزئی تازه رد و "
         "تودرتویی مجاز است؛ دیوار نازک و لبهٔ ورق همچنان نیاز به چشم اپراتور دارد.",
         "خروجی نهایی فقط از مسیر serializer + پست‌پروسسور دیالکت تولید می‌شود؛ این پاسخ پیش‌نمایش است.",
-    ]
+    ] + band_relocation_notes
 
     result = {
         "preview_only": True,

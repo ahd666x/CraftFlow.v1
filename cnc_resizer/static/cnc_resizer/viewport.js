@@ -32,7 +32,7 @@
   };
 
   let svg = null, vb = null;
-  let gGrid, gSheet, gGhost, gCollide, gParts, gOps, gDims, gStretch, gHandles, gMeas, gSel, gHud, gFix;
+  let gGrid, gSheet, gGapHl, gGhost, gCollide, gParts, gOps, gDims, gStretch, gHandles, gMeas, gSel, gHud, gFix;
   const refs = {};          // part_id -> {g, selbox, label, hit}
   const opEls = {};         // op_id  -> {g, selbox, hit}
   CNC.viewEls = { refs, opEls };
@@ -276,7 +276,7 @@
 
   // ================================================================_رندر صحنه
   function clearGroups() {
-    [gSheet, gGhost, gCollide, gParts, gOps, gDims, gStretch, gHandles, gMeas, gSel, gHud, gFix]
+    [gSheet, gGapHl, gGhost, gCollide, gParts, gOps, gDims, gStretch, gHandles, gMeas, gSel, gHud, gFix]
       .forEach((g) => g && g.replaceChildren());
     for (const k in refs) delete refs[k];
     for (const k in opEls) delete opEls[k];
@@ -590,6 +590,7 @@
     el('line', { x1: 0, y1: 0, x2: 0, y2: 6, stroke: 'var(--bad)', 'stroke-width': 2, 'stroke-opacity': .5 }, pattern);
     gGrid = el('g', { id: 'gGrid' }, svg);
     gSheet = el('g', { id: 'gSheet' }, svg);
+    gGapHl = el('g', { id: 'gGapHl', 'pointer-events': 'none' }, svg);
     gGhost = el('g', { id: 'gGhost' }, svg);
     gCollide = el('g', { id: 'gCollide' }, svg);
     gParts = el('g', { id: 'gParts' }, svg);
@@ -601,9 +602,22 @@
     gSel = el('g', { id: 'gSel' }, svg);
     gHud = el('g', { id: 'gHud', 'pointer-events': 'none' }, svg);
     gFix = el('g', { id: 'gFix', 'pointer-events': 'none' }, svg);
-    CNC.groups = { gGrid, gSheet, gGhost, gCollide, gParts, gOps, gDims, gStretch, gHandles, gMeas, gSel, gHud, gFix };
+    CNC.groups = { gGrid, gSheet, gGapHl, gGhost, gCollide, gParts, gOps, gDims, gStretch, gHandles, gMeas, gSel, gHud, gFix };
     bindGestures();
     drawGrid();
+  };
+
+  // هایلایت یک فاصله (بین گروه‌های سوراخ) از جدول پنل «طول» — زیر هندسه
+  CNC.viewport.gapHighlight = function gapHighlight(y0, y1) {
+    if (!gGapHl) return;
+    gGapHl.replaceChildren();
+    if (y0 == null || y1 == null || y1 <= y0) return;
+    const sheet = (state.fileMeta && (state.fileMeta.sheet_bbox_finished || state.fileMeta.sheet_bbox)) || null;
+    if (!sheet) return;
+    el('rect', {
+      x: sheet.x_min, y: -y1, width: sheet.width || (sheet.x_max - sheet.x_min), height: y1 - y0,
+      class: 'gap-hl',
+    }, gGapHl);
   };
 
   // ================================================================_ژست‌ها
