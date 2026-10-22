@@ -382,25 +382,31 @@ class PreviewEditsTests(SimpleTestCase):
         runtime = parse_program(serialized["text"])
         self.assertEqual(len(runtime.moves), len(parse_program(text).moves))
 
-    def test_sample_outer_contour_x_shift_via_modal_carry(self):
+    def test_sample_outer_contour_x_shift_materializes_modal_x(self):
         with open(SAMPLE, "r", encoding="utf-8") as stream:
             text = stream.read()
         # The outer contour's vertical lines carry only Y words (X is modal);
-        # an X shift is still runtime-correct because the patched entry rapid
-        # moves the modal chain. The runtime reparse proves it.
+        # the serializer now materializes the missing X word on that same line
+        # instead of relying on a prior line's modal side effect. The runtime
+        # reparse proves the patched chain stays connected.
         result = shift_preview(text, lambda features: features[8], 2, 0)
         self.assertTrue(result["validation"]["passed"], result["validation"]["errors"])
         serialized = serialize_candidate(text, result)
         self.assertIn("N1990G0X1.500Y111.045M3 S16000", serialized["text"])
-        self.assertIn("N2010G1Y1628.955", serialized["text"])  # X-less line stays byte-identical (modal carry)
+        self.assertIn("N2010G1Y1628.955X1.500", serialized["text"])  # modal X materialized in place
         self.assertIn("N2020G2X3.306Y1632.300I+4.000J+0.000", serialized["text"])
 
-    def test_partial_word_entry_rapid_blocks_cross_axis_shift(self):
+    def test_partial_word_entry_rapid_materializes_missing_axis_word(self):
         program = parse_program(PARTIAL_ENTRY_LF)
-        with self.assertRaises(TransformError) as caught:
-            preview_edits(program, {"edits": [{"op": "shift", "feature_id": "feature-block-0002",
-                                               "dx": 0, "dy": 5}]}, source_text=PARTIAL_ENTRY_LF)
-        self.assertIn("safe coordinate patch", str(caught.exception))
+        # The entry rapid "G0 X30" carries no Y word; a pure Y shift is still
+        # expressible because the serializer writes the missing absolute Y on
+        # that same source line (runtime reparse proves the geometry).
+        result = preview_edits(program, {"edits": [{"op": "shift", "feature_id": "feature-block-0002",
+                                                    "dx": 0, "dy": 5}]}, source_text=PARTIAL_ENTRY_LF)
+        self.assertTrue(result["validation"]["passed"], result["validation"]["errors"])
+        serialized = serialize_candidate(PARTIAL_ENTRY_LF, result)
+        self.assertIn("G0 X30Y65.000", serialized["text"])  # Y materialized on the X-only entry line
+        self.assertEqual(len(parse_program(serialized["text"]).moves), len(program.moves))
         result = preview_edits(program, {"edits": [{"op": "shift", "feature_id": "feature-block-0002",
                                                     "dx": 4, "dy": 0}]}, source_text=PARTIAL_ENTRY_LF)
         self.assertTrue(result["validation"]["passed"], result["validation"]["errors"])
@@ -412,7 +418,7 @@ class PreviewEditsTests(SimpleTestCase):
         self.assertTrue(result["validation"]["passed"], result["validation"]["errors"])
         serialized = serialize_candidate(text, result)
         self.assertIn("N1990G0X-0.500Y109.045M3 S16000", serialized["text"])
-        self.assertIn("N2010G1Y1626.955", serialized["text"])
+        self.assertIn("N2010G1Y1626.955", serialized["text"])  # pure-Y shift: modal X untouched
         self.assertIn("N2140G1Y1626.955", serialized["text"])  # second depth pass moved with it
         self.assertIn("N2130G1Z-16.000", serialized["text"])  # mid-pass plunge untouched
 
