@@ -199,9 +199,16 @@
   // ------------------------------------------------_پیمایش Tab بین قطعات
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Tab') return;
+    // فقط وقتی فوکوس روی خودِ نقشه/بدنه است؛ روی دکمه‌ها/فیلدها/عناصر
+    // فوکوس‌پذیر، Tab باید ناوبری عادی کیبورد بماند (bugfix: preventDefault
+    // برای هر Tab ناوبری کیبورد کل صفحه را قفل می‌کرد).
+    const target = e.target;
+    if (['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON', 'A'].includes(target.tagName)) return;
+    if (target.isContentEditable) return;
+    if (typeof target.closest === 'function'
+        && target.closest('button, a, input, select, textarea, [contenteditable], [tabindex]')) return;
     const parts = (state.detection && state.detection.parts) || [];
     if (!parts.length) return;
-    if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
     e.preventDefault();
     const ordered = parts.slice().sort((a, b) => a.index - b.index);
     const cur = sel().find((s) => s.type === 'part');

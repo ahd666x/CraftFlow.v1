@@ -19,6 +19,7 @@
       label,
       ops: {
         partOp: [...state.partOp.entries()].map(([id, op]) => [id, { ...op }]),
+        gapOps: state.gapOps.map((op) => ({ ...op })),
         featureOps: state.featureOps.map((op) => ({ ...op })),
       },
     };
@@ -26,6 +27,7 @@
 
   function restore(snap) {
     state.partOp = new Map(snap.ops.partOp);
+    state.gapOps = (snap.ops.gapOps || []).slice();   // نسخه‌های قبلی اسنپ‌شات gapOps ندارند
     state.featureOps = snap.ops.featureOps.slice();
     CNC.emit('ops-restored', { label: snap.label });
     CNC.requestPreview();
@@ -161,15 +163,17 @@
     }
     // الگو پیش‌بارگذاری می‌شود؛ اعمال نهایی از همان پیش‌نمایش fail-closed می‌گذرد
     const edits = Array.isArray(tpl.payload) ? tpl.payload : [];
-    const partEdits = edits.filter((e) => ['move_part', 'stretch_part', 'set_gap', 'distribute'].includes(e.op));
+    const partEdits = edits.filter((e) => ['move_part', 'stretch_part'].includes(e.op));
+    const gapEdits = edits.filter((e) => ['set_gap', 'distribute'].includes(e.op));
     const featureEdits = edits.filter((e) => ['array', 'grid', 'mirror', 'rotate'].includes(e.op));
     state.partOp = new Map();
+    state.gapOps = [];      // بارگذاری الگو جایگزین کامل وضعیت است — باگ شناور نماند
     state.featureOps = [];
-    for (const op of partEdits) {
-      const key = op.part_b || op.part_id;
-      if (key) state.partOp.set(key, op);
-    }
-    if (partEdits.length) {
+    // bugfix: distribute به چند قطعه تعلق دارد و برای هر قطعه نباید تکرار شود؛
+    // قبلاً کلیدش (part_b || part_id) پیدا نمی‌شد و بی‌صدا دور ریخته می‌شد.
+    for (const op of partEdits) state.partOp.set(op.part_id, op);
+    if (gapEdits.length) state.gapOps = gapEdits;
+    if (partEdits.length || gapEdits.length) {
       state.featureOps = [];       // ترکیب در یک درخواست ممنوع است
       if (featureEdits.length) {
         CNC.alert('warn', 'این قالب هم ویرایش قطعه‌ای دارد هم ویژگی‌محور؛ سرور ترکیب‌شان را در یک درخواست '

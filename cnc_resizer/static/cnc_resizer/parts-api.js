@@ -86,6 +86,9 @@
     fixedParts: new Set(),       // part_id هایی که «ثابت» علامت خورده‌اند
     selection: [],           // [{type:'part'|'op'|'child', id}]
     gate: { allowed: null, blockers: [], warnings: [], edits: false },
+    previewSeq: 0,           // race-guard: پاسخ‌های کهنهٔ پیش‌نمایش دور ریخته می‌شوند
+    gateSeq: 0,              // race-guard: پاسخ‌های کهنهٔ پیش‌فلایت دور ریخته می‌شوند
+    detectSeq: 0,            // race-guard: تشخیصِ دوباره بعد از ذخیرهٔ میز ابزار
     layers: { depth: new Map(), tool: new Map(), kind: new Map(),
               showGhost: true, showDims: true, showOps: true, showGrid: true },
     measures: [],
@@ -99,11 +102,22 @@
 
   // فهرست ویرایش‌ها برای سرور — یا همهٔ part-level یا همهٔ feature-level.
   // هر قطعه حداکثر یک op «مطلق نسبت به فایل اصلی» (set_gap هم به‌عنوان op
-  // قطعهٔ جابه‌جاشونده در همین map ذخیره می‌شود).
+  // قطعهٔ جابه‌جاشونده در همین map ذخیره می‌شود؛ distribute در gapOps است چون
+  // به چند قطعه تعلق دارد و برای هر قطعه نباید تکرار شود).
   CNC.opsPayload = function opsPayload() {
     const st = CNC.state;
-    if (st.featureOps.length) return { edits: st.featureOps.slice(), kind: 'feature' };
-    const edits = [...st.partOp.values()].map((op) => ({ ...op }));
+    if (st.featureOps.length) {
+      // bugfix: بخش قطعه‌ای دیگر بی‌صدا دور ریخته نمی‌شود — ترکیب این دو حالت
+      // از همان لحظهٔ ثبت ویرایش (گاردهای edit-tools) و بارگذاری الگو مسدود
+      // است؛ اگر باز هم هر دو پر بودند، هشدار صریح می‌دهیم و حالت فعال را
+      // می‌فرستیم تا هیچ‌وقت «ویرایش ثبت‌شده‌ای که به سرور نمی‌رود» نداشته باشیم.
+      if (st.partOp.size || st.gapOps.length) {
+        CNC.alert('warn', 'ویرایش‌های قطعه‌ای و ویژگی‌محور هم‌زمان فعال‌اند؛ فقط بخش ویژگی‌محور به سرور می‌رود — ویرایش‌های قطعه‌ای را واگرد یا بازگردانی کنید.');
+      }
+      return { edits: st.featureOps.slice(), kind: 'feature' };
+    }
+    const edits = [...st.partOp.values()].map((op) => ({ ...op }))
+      .concat(st.gapOps.map((op) => ({ ...op })));
     return { edits, kind: edits.length ? 'part' : 'none' };
   };
 
@@ -140,7 +154,11 @@
     saveEditTemplate(name, edits, note) {
       return postJSON(CNC.urls.editTemplates, { name, edits, note });
     },
-    deleteEditTemplate(id) { return postJSON(CNC.urls.editTemplateDelete.replace('0', String(id)), {}); },
+    // bugfix: قبلاً .replace('0', id) اولین «0» کل URL را عوض می‌کرد؛ حالا فقط
+    // قطعهٔ پایانی «/0/delete/» (که urls.py تضمینش می‌کند) جایگزین می‌شود.
+    deleteEditTemplate(id) {
+      return postJSON(CNC.urls.editTemplateDelete.replace(/\/0\/delete\/$/, `/${Number(id)}/delete/`), {});
+    },
   };
 
   // ------------------------------------------------_بارگذاری فایل
@@ -156,6 +174,7 @@
     st.layers.depth = new Map(); st.layers.tool = new Map(); st.layers.kind = new Map();
     CNC.emit('file', { name, text });
     const seq = ++st.reqSeq;
+    st.previewSeq++; st.gateSeq++; st.detectSeq++;   // پاسخ‌های شناورِ فایل قبلی دور ریخته شوند
     const toolMap = {};
     Object.entries(st.toolMap || {}).forEach(([slot, dia]) => { toolMap[slot] = dia; });
     const [detect, analyze] = await Promise.allSettled([
@@ -186,10 +205,38 @@
     CNC.refreshGate();
   };
 
+  // تشخیص را دوباره بگیر بدون از بین بردن ویرایش‌ها/تاریخچه (bugfix: ذخیرهٔ
+  // میز ابزار قبلاً loadText را صدا می‌زد و همهٔ partOp/featureOps/تاریخچه پاک می‌شد).
+  CNC.redetect = async function redetect() {
+    const st = CNC.state;
+    if (!st.text) return;
+    const seq = ++st.detectSeq;
+    const previewSeq = ++st.previewSeq;
+    const gateSeq = ++st.gateSeq;
+    st.preview = null; st._copyMap = null; st._afterPairs = null;
+    try {
+      const detect = await CNC.api.detectParts(st.text, st.filename);
+      if (seq !== st.detectSeq) return;
+      st.detection = detect;
+      st.fileMeta = {
+        sheet_bbox: detect.sheet_bbox, sheet_bbox_finished: detect.sheet_bbox_finished,
+        sheet_thickness: detect.sheet_thickness, warnings: detect.warnings || [],
+      };
+      CNC.emit('detection', {});
+      // اگر ویرایشی فعال است، پیش‌نمایش هم با میز ابزار تازه دوباره گرفته شود
+      if (CNC.hasOps() && CNC.requestPreview) CNC.requestPreview();
+      else CNC.refreshGate();
+    } catch (err) {
+      if (seq !== st.detectSeq) return;
+      CNC.emit('api-error', { source: 'parts', error: err });
+    }
+  };
+
   // ------------------------------------------------_گیت خروجی
   CNC.refreshGate = debounce(async function refreshGate() {
     const st = CNC.state;
     if (!st.text) return;
+    const seq = ++st.gateSeq;   // race-guard: آخرین پاسخ می‌برد، کهنه‌ها دور ریخته می‌شوند
     const payload = CNC.opsPayload();
     if (payload.kind === 'none') {
       st.gate = { allowed: null, blockers: ['ویرایشی ثبت نشده است؛ خروجی همان فایل ورودی می‌شد.'],
@@ -205,10 +252,12 @@
     }
     try {
       const res = await CNC.api.preflight(st.text, st.filename, payload.edits);
+      if (seq !== st.gateSeq) return; // پاسخ کهنه — ویرایش/فایل عوض شده
       const report = res.preflight || {};
       st.gate = { allowed: !!report.allowed, blockers: report.blockers || [],
                   warnings: report.warnings || [], edits: true };
     } catch (err) {
+      if (seq !== st.gateSeq) return;
       st.gate = { allowed: false, blockers: [err.message], warnings: [], edits: true };
     }
     CNC.emit('gate', { ...st.gate });

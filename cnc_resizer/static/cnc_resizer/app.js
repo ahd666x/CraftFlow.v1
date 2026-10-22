@@ -562,7 +562,10 @@
         const d = await CNC.api.saveTools(collectToolRows());
         toolStatus(d.message);
         await loadTools();
-        if (state.text) CNC.loadText(state.filename, state.text); // تشخیص با میز ابزار تازه
+        // bugfix: قبلاً loadText کامل صدا زده می‌شد که همهٔ partOp/featureOps
+        // و تاریخچهٔ واگرد را پاک می‌کرد؛ حالا فقط تشخیص با میز ابزار تازه
+        // دوباره گرفته می‌شود و ویرایش‌ها دست‌نخورده می‌مانند.
+        await CNC.redetect();
       } catch (err) { toolStatus(err.message); }
     };
     $('saveToolSetBtn').onclick = async () => {

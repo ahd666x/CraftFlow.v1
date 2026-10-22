@@ -20,6 +20,7 @@
   // ================================================================_پیش‌نمایش سرور
   const requestPreview = CNC.debounce(async function requestPreview() {
     if (!state.text) return;
+    const seq = ++state.previewSeq;   // race-guard: آخرین پاسخ می‌برد، کهنه‌ها دور ریخته می‌شوند
     const payload = CNC.opsPayload();
     if (payload.kind === 'none') {
       state.preview = null; state.currentIR = state.sourceIR;
@@ -32,6 +33,7 @@
     }
     try {
       const res = await CNC.api.preview(state.text, state.filename, payload.edits);
+      if (seq !== state.previewSeq) return; // پاسخ کهنه — ویرایش/فایل عوض شده
       state.preview = res;
       state.currentIR = res.program_ir || state.sourceIR;
       state.lastPreviewError = null;
@@ -48,6 +50,7 @@
         CNC.clearAlert('preview-api');
       }
     } catch (err) {
+      if (seq !== state.previewSeq) return;
       state.lastPreviewError = err.message;
       CNC.alert('err', 'ویرایش اعمال نشد: ' + esc(err.message)
         + ' — با واگرد (Ctrl+Z) آخرین تغییر را برگردانید.', 'preview-api');
@@ -55,6 +58,20 @@
     }
   }, 260);
   CNC.requestPreview = requestPreview;
+
+  // bugfix: ویرایش قطعه‌ای بعد از آرایه/آینه/چرخش بی‌صدا نادیده گرفته می‌شد
+  // (opsPayload بخش feature را می‌فرستد و partOp به سرور نمی‌رسید، ولی درگ/
+  // کشش/دسته/Enter این محافظ را نداشتند و کاربر «ویرایش ثبت‌شده» می‌دید).
+  // حالا همهٔ مسیرهای ویرایش قطعه‌ای از همین گارد می‌گذرند.
+  function partEditBlocked(client) {
+    if (!state.featureOps.length) return false;
+    const msg = 'الان ویرایش‌های ویژگی‌محور (آرایه/آینه/چرخش) فعال است؛ ویرایش قطعه‌ای با آن در یک درخواست ترکیب نمی‌شود — '
+      + 'اول ویرایش ویژگی‌محور را واگرد کنید یا از تاریخچه به قبل برگردید.';
+    if (client) CNC.showTransient(client, esc(msg));
+    else CNC.alert('warn', esc(msg));
+    return true;
+  }
+  CNC.partEditBlocked = partEditBlocked;
 
   function commitOp(partId, op, label) {
     state.partOp.set(partId, op);
@@ -222,11 +239,31 @@
   }
 
   function adjacentPairs(parts, axis) {
-    // جفت‌های مجاور بر اساس مرتب‌سازی روی محور و هم‌پوشانی روی محور دیگر
+    // جفت‌های مجاور: در هر «ستون/ردیف» (هم‌پوشانی روی محور عرضی)، هر قطعه با
+    // نزدیک‌ترین قطعهٔ بعدی روی محور جفت می‌شود. جفت‌کردن صرفاً متوالیِ بعد از
+    // sort در چیدمان‌های چندستونی (مثل ۲ ستون × ۴ ردیف) فاصلهٔ بین ردیف‌ها
+    // را از دست می‌داد (r1c1↔r2c1 متوالی نیستند چون r1c2 بین‌شان است).
     const lo = axis === 'y' ? 'y_min' : 'x_min';
+    const hi = axis === 'y' ? 'y_max' : 'x_max';
+    const crossLo = axis === 'y' ? 'x_min' : 'y_min';
+    const crossHi = axis === 'y' ? 'x_max' : 'y_max';
     const sorted = parts.slice().sort((p, q) => p.bbox[lo] - q.bbox[lo]);
     const pairs = [];
-    for (let i = 0; i < sorted.length - 1; i++) pairs.push([sorted[i], sorted[i + 1]]);
+    const seen = new Set();
+    for (let i = 0; i < sorted.length; i++) {
+      const a = sorted[i];
+      let best = null;
+      for (let j = i + 1; j < sorted.length; j++) {
+        const b = sorted[j];
+        // هم‌پوشانی عرضی (یک ستون/ردیف مشترک) لازم است
+        if (Math.min(a.bbox[crossHi], b.bbox[crossHi]) - Math.max(a.bbox[crossLo], b.bbox[crossLo]) <= 0) continue;
+        if (!best || b.bbox[lo] < best.bbox[lo]) best = b;
+      }
+      if (best) {
+        const key = `${a.id}|${best.id}`;
+        if (!seen.has(key)) { seen.add(key); pairs.push([a, best]); }
+      }
+    }
     return pairs;
   }
 
@@ -235,9 +272,12 @@
     const fa = afterBox(a.id) || a.bbox, fb = afterBox(b.id) || b.bbox;
     const finA = { ...fa }, finB = { ...fb };
     const dia = (part) => (part.tool_dia_used || 0) / 2;
-    const gap = axis === 'y'
-      ? Math.max(0, fb.y_min - finA.y_max - dia(a) - dia(b))
-      : Math.max(0, fb.x_min - finA.x_max - dia(a) - dia(b));
+    // bugfix: Math.max(0,…) هم‌پوشانی واقعی را «۰» نشان می‌داد؛ حالا مقدار
+    // علامت‌دار محاسبه و در برچسب صادقانه گزارش می‌شود.
+    const rawGap = axis === 'y'
+      ? fb.y_min - finA.y_max - dia(a) - dia(b)
+      : fb.x_min - finA.x_max - dia(a) - dia(b);
+    const gapLabel = rawGap >= 0 ? `فاصله ${CNC.f1(rawGap)}` : `هم‌پوشانی ${CNC.f1(-rawGap)}`;
     const lo = axis === 'y' ? 'x_min' : 'y_min';
     const hi = axis === 'y' ? 'x_max' : 'y_max';
     const crossLo = Math.max(finA[lo], fb[lo]);
@@ -248,18 +288,22 @@
     const reason = lockedMsg(b) || lockedMsg(a) || null;
     if (axis === 'y') {
       const x = finA.x_max + off * 1.9;
+      const y1 = Math.min(finA.y_max + dia(a), fb.y_min - dia(b));
+      const y2 = Math.max(finA.y_max + dia(a), fb.y_min - dia(b));
       dimLine(gDims, {
-        x1: x, y1: finA.y_max + dia(a), x2: x, y2: fb.y_min - dia(b),
+        x1: x, y1, x2: x, y2,
         vertical: true, dimId: `gap:${a.id}:${b.id}:y`,
-        label: `فاصله ${CNC.f1(gap)}`, color: 'var(--feat-hole)',
+        label: gapLabel, color: 'var(--feat-hole)',
         locked: !!reason, reason,
       });
     } else {
       const y = finA.y_min - off * 1.9;
+      const x1 = Math.min(finA.x_max + dia(a), fb.x_min - dia(b));
+      const x2 = Math.max(finA.x_max + dia(a), fb.x_min - dia(b));
       dimLine(gDims, {
-        x1: finA.x_max + dia(a), y1: y, x2: fb.x_min - dia(b), y2: y,
+        x1, y1: y, x2, y2: y,
         dimId: `gap:${a.id}:${b.id}:x`,
-        label: `فاصله ${CNC.f1(gap)}`, color: 'var(--feat-hole)',
+        label: gapLabel, color: 'var(--feat-hole)',
         locked: !!reason, reason,
       });
     }
@@ -283,6 +327,7 @@
       openGapEditor(dimId, partId, axis, client);
       return;
     }
+    if (partEditBlocked(client)) return;
     const reason = stretchReason(part, axis);
     if (reason) {
       // چرا قابل‌ویرایش نیست — روی خودِ شیء
@@ -309,14 +354,17 @@
     const [, aId, bId] = dimId.split(':');
     const a = findPart(aId), b = findPart(bId);
     if (!a || !b) return;
+    if (partEditBlocked(client)) return;
     if (a.locked || b.locked) {
       showTransient(client, `فاصلهٔ این جفت قابل تغییر نیست — ${esc(a.locked ? CNC.partName(a) : CNC.partName(b))} قفل است (کانتورهای هم‌پوشان).`);
       return;
     }
     const dia = (p) => (p.tool_dia_used || 0) / 2;
     const fa = afterBox(aId) || a.bbox, fb = afterBox(bId) || b.bbox;
-    const gap = axis === 'y' ? Math.max(0, fb.y_min - fa.y_max - dia(a) - dia(b))
-                             : Math.max(0, fb.x_min - fa.x_max - dia(a) - dia(b));
+    // prefill علامت‌دار: هم‌پوشانی واقعی «۰» نمایش داده نمی‌شود؛ اعمال هنوز
+    // فقط gap نامنفی می‌پذیرد (سرور هم منفی را رد می‌کند).
+    const gap = axis === 'y' ? fb.y_min - fa.y_max - dia(a) - dia(b)
+                             : fb.x_min - fa.x_max - dia(a) - dia(b);
     openEditor(client, {
       title: `فاصلهٔ ${CNC.partName(a)} ↔ ${CNC.partName(b)} (${axis.toUpperCase()})`,
       value: CNC.f1(gap),
@@ -325,7 +373,7 @@
         const newGap = Number(value);
         if (!Number.isFinite(newGap) || newGap < 0 || Math.abs(newGap - gap) < 1e-9) return;
         // یک op برای هر قطعه: set_gap جایش op قطعهٔ jلوئی (b) را می‌گیرد
-        delete state.partOp[bId];
+        state.partOp.delete(bId);
         commitOp(bId, { op: 'set_gap', part_a: aId, part_b: bId, axis,
                         gap: Math.round(newGap * 1000) / 1000 },
                  `فاصلهٔ ${CNC.partName(a)}↔${CNC.partName(b)}`);
@@ -491,6 +539,7 @@
     if (info.handle) { startHandleDrag(info); return; }
     if (info.bar) { startBarDrag(info); return; }
     if (info.partId && !info.dimId) {
+      if (partEditBlocked(info.client)) return;
       const part = findPart(info.partId);
       if (!part || part.locked) {
         if (part && part.locked && info.pointerType === 'mouse') {
@@ -643,6 +692,7 @@
     const [, partId, axis, edge] = info.bar.split(':');
     const part = findPart(partId);
     if (!part) return;
+    if (partEditBlocked(info.client)) return;
     const band = part[`stretch_band_${axis}`];
     if (!band) return;
     if (edge === 'anchor') {
@@ -677,7 +727,7 @@
     const applied = appliedStretch(drag.partId, drag.axis);
     const delta = Math.round((applied + drag.delta) * 1000) / 1000;
     if (Math.abs(delta) < 1e-9) return;
-    delete state.partOp[drag.partId];
+    state.partOp.delete(drag.partId);
     commitOp(drag.partId, { op: 'stretch_part', part_id: drag.partId, axis: drag.axis,
                             delta: Math.round(delta * 1000) / 1000 },
              `کشش ${CNC.partName(findPart(drag.partId) || {})} ${drag.axis.toUpperCase()} ${CNC.sgn(delta)}`);
@@ -781,6 +831,7 @@
     const [partId, axis, edge] = key.split(':');
     const part = findPart(partId);
     if (!part) return;
+    if (partEditBlocked(info.client)) return;
     // ماشین کشش سرور لنگر را زیر/سمت دیگر نوار می‌گیرد؛ لبهٔ min (پایین/چپ)
     // در یک تبدیل قابل کشش نیست — صادقانه قفل می‌شود.
     if (edge === 'min') {
@@ -827,7 +878,7 @@
     clearLive();
     if (!drag || !drag.newSize
         || Math.abs(drag.newSize - drag.size0) < 1e-9) return;
-    delete state.partOp[drag.partId];
+    state.partOp.delete(drag.partId);
     commitOp(drag.partId, { op: 'stretch_part', part_id: drag.partId, axis: drag.axis,
                             new_size: Math.round(drag.newSize * 1000) / 1000 },
              `تغییر اندازهٔ ${CNC.partName(findPart(drag.partId) || {})} ${drag.axis.toUpperCase()}`);
@@ -948,6 +999,7 @@
     if (!sel) return;
     const part = findPart(sel.id);
     if (!part || part.locked || !part.capabilities?.can_translate) return;
+    if (partEditBlocked()) return;   // bugfix: مسیر کلیدترکیبی هم مثل درگ محافظت می‌شود
     e.preventDefault();
     const step = e.shiftKey ? 10 : 1;
     const [ax, ay] = arrows[e.key];

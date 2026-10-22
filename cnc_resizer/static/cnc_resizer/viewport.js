@@ -328,11 +328,19 @@
       }
     }
     const claimed = new Set(refMap.keys());
-    // نگاشت index-محور قطعهٔ قبل → قطعهٔ بعد (digest شناسه به bbox وابسته است
-    // و پس از جابه‌جایی عوض می‌شود؛ ترتیب index قرارداد سرور است)
+    // نگاشت قطعهٔ قبل → قطعهٔ بعد بر اساس عضویت بلوک کانتور (bugfix):
+    // digest شناسه به bbox وابسته است و پس از جابه‌جایی عوض می‌شود؛ ترتیب
+    // sort هم (y_min, x_min) است و یک جابه‌جایی می‌تواند آن را برعکس کند —
+    // جفت‌کردن index-محور بعد از ویرایش جفت‌های اشتباه می‌ساخت. بلوک‌ها بین
+    // قبل/بعد پایدارند (وصلهٔ 1:1)، پس عضویت‌شان هویت پایدار قطعه است.
     const afterPairs = new Map();
     const afterParts = (state.preview && state.preview.resized && state.preview.resized.parts) || [];
-    ((detection && detection.parts) || []).forEach((p, i) => afterPairs.set(p.id, afterParts[i] || p));
+    const afterByBlocks = new Map();
+    afterParts.forEach((rp) => afterByBlocks.set((rp.contour_block_ids || []).join('|'), rp));
+    ((detection && detection.parts) || []).forEach((p) => {
+      const hit = afterByBlocks.get((p.contour_block_ids || []).join('|'));
+      afterPairs.set(p.id, hit || p);
+    });
     state._afterPairs = afterPairs;
 
     // --- قطعات ---

@@ -263,6 +263,12 @@ svg text { font-family: "Segoe UI", Tahoma, system-ui, sans-serif; user-select: 
 .handle { fill: var(--surface); stroke: var(--accent); stroke-width: 1.6; cursor: pointer; }
 .handle.locked { stroke: var(--ghost); fill: var(--surface-2); cursor: not-allowed; }
 
+/* همگامی «کد → نقشه»: مسیر سطر انتخاب‌شده روی نقشه هایلایت می‌شود
+   (bugfix: کلاس .code-hl در JS اضافه می‌شد ولی هیچ استایلی نداشت و
+   هایلایت هیچ اثر بصری نمی‌گرفت) */
+#svg .code-hl { stroke: var(--accent) !important; stroke-width: 2.8 !important;
+  filter: drop-shadow(0 0 3px rgba(29, 108, 224, .85)); }
+
 /* اندازه‌گیری */
 .meas-g line, .meas-g path { vector-effect: non-scaling-stroke; }
 .meas-g text { font-size: 12px; paint-order: stroke; stroke: var(--canvas); stroke-width: 3px; }
