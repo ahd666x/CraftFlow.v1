@@ -77,6 +77,9 @@ def engine_workbench(request):
         "engine_output_url": reverse("cnc_resizer:engine_output"),
         "edit_templates_url": reverse("cnc_resizer:edit_templates"),
         "edit_template_delete_url": reverse("cnc_resizer:edit_template_delete", args=[0]),
+        "part_templates_url": reverse("cnc_resizer:part_templates"),
+        "part_template_apply_url": reverse("cnc_resizer:part_template_apply"),
+        "part_template_delete_url": reverse("cnc_resizer:part_template_delete", args=[0]),
     })
 
 
@@ -482,6 +485,158 @@ def edit_template_delete(request, template_id: int):
     name = template.name
     template.delete()
     return JsonResponse({'ok': True, 'message': f'قالب «{name}» حذف شد.'},
+                        json_dumps_params={'ensure_ascii': False})
+
+
+@login_required
+@cnc_operator_required
+@require_http_methods(['GET', 'POST'])
+def part_templates(request):
+    """Parametric part templates (قالب پارامتریک قطعه — بستهٔ ق).
+
+    GET lists saved part templates plus the part options (parts that carry a
+    CNC profile) for the save dialog. POST captures the current edit list as
+    geometry roles against the named part: the payload keeps the original
+    edit ops, the roles keep kind + normalized center + size of every
+    referenced feature so a NEW file of the same part can be matched later.
+    Saving never executes anything; applying re-matches roles and still runs
+    the full fail-closed preview chain."""
+    import hashlib
+    import json
+    import os
+    from .engine.parametric import TransformError
+    from .engine.parser import ParseError, parse_program
+    from .engine.recognition import recognize
+    from .models import CncPartProfile, CncPartTemplate
+    from .part_templates import capture_roles, usable_features
+    if request.method == 'GET':
+        templates = []
+        for template in CncPartTemplate.objects.select_related('part').all():
+            part = template.part
+            templates.append({
+                'id': template.pk, 'name': template.name, 'note': template.note,
+                'part_id': part.pk, 'part_label': str(part),
+                'payload': template.payload, 'roles': template.roles,
+                'source_feature_count': template.source_feature_count,
+                'updated_at': template.updated_at.isoformat(),
+            })
+        part_options = [{'id': profile.part_id,
+                         'label': str(profile.part)}
+                        for profile in CncPartProfile.objects.select_related('part').all()[:300]]
+        return JsonResponse({'ok': True, 'templates': templates, 'part_options': part_options},
+                            json_dumps_params={'ensure_ascii': False})
+    try:
+        payload = json.loads(request.body.decode('utf-8'))
+        if not isinstance(payload, dict):
+            raise ValueError('درخواست قالب قطعه نامعتبر است.')
+        name = str(payload.get('name') or '').strip()[:80]
+        if not name:
+            raise ValueError('نام قالب قطعه لازم است.')
+        part_id = payload.get('part_id')
+        if not isinstance(part_id, int):
+            raise ValueError('قطعهٔ مقصد قالب را انتخاب کنید.')
+        edits = _validate_template_payload(payload.get('edits'))
+        note = str(payload.get('note') or '').strip()[:200]
+        content = payload.get('content')
+        if not isinstance(content, str) or not content.strip():
+            raise ValueError('متن CNC منبع قالب لازم است.')
+        part = Part.objects.filter(pk=part_id).first()
+        if part is None:
+            raise ValueError(f'قطعهٔ شمارهٔ {part_id} پیدا نشد.')
+        parsed = parse_program(content, filename=os.path.basename(payload.get('filename') or 'uploaded.cnc'))
+        features = recognize(parsed)['features']
+        roles = capture_roles(features, edits)
+        digest = hashlib.sha256(content.encode('utf-8')).hexdigest()
+        template, created = CncPartTemplate.objects.update_or_create(
+            part=part, name=name,
+            defaults={'payload': edits, 'roles': roles,
+                      'source_bounds': capture_envelope_for_storage(features),
+                      'source_feature_count': len(usable_features(features)),
+                      'source_sha256': digest,
+                      'source_filename': parsed.filename[:255],
+                      'note': note, 'created_by': request.user})
+        return JsonResponse({'ok': True, 'created': created, 'template_id': template.pk,
+                             'role_count': len(roles),
+                             'message': f'قالب قطعهٔ «{name}» برای {part} ذخیره شد ({len(roles)} نقش).'},
+                            json_dumps_params={'ensure_ascii': False})
+    except (TypeError, ValueError, KeyError, json.JSONDecodeError, ParseError, TransformError) as exc:
+        message = str(exc) or 'درخواست قالب قطعه نامعتبر است.'
+        return JsonResponse({'ok': False, 'error': message}, status=400,
+                            json_dumps_params={'ensure_ascii': False})
+
+
+def capture_envelope_for_storage(features):
+    """Envelope dict (with size) of the source analysis, for role matching."""
+    from .part_templates import envelope_of_features, usable_features
+    envelope = envelope_of_features(usable_features(features))
+    envelope['width'] = envelope['x_max'] - envelope['x_min']
+    envelope['height'] = envelope['y_max'] - envelope['y_min']
+    return envelope
+
+
+@login_required
+@cnc_operator_required
+@require_POST
+def part_template_apply(request):
+    """Apply a part template to the posted file content (بستهٔ ق).
+
+    Roles are re-matched against this file's analysis; the materialized
+    concrete edits go through the ordinary fail-closed ``edits_program``
+    preview (runtime reparse + collision gate). The response carries the
+    same preview payload the preview endpoint returns, plus the concrete
+    edit list and the per-role mapping report."""
+    import json
+    import os
+    from .engine.parametric import TransformError
+    from .engine.parser import ParseError, parse_program
+    from .engine.recognition import recognize
+    from .engine.service import edits_program
+    from .models import CncPartTemplate
+    from .part_templates import match_roles, materialize_edits
+    try:
+        payload = json.loads(request.body.decode('utf-8'))
+        if not isinstance(payload, dict) or not isinstance(payload.get('content'), str):
+            raise ValueError('content must be a string')
+        template_id = payload.get('template_id')
+        if not isinstance(template_id, int):
+            raise ValueError('قالب قطعه انتخاب نشده است.')
+        template = CncPartTemplate.objects.select_related('part').filter(pk=template_id).first()
+        if template is None:
+            raise ValueError(f'قالب قطعهٔ شمارهٔ {template_id} پیدا نشد.')
+        content = payload['content']
+        filename = os.path.basename(payload.get('filename') or 'uploaded.cnc')
+        parsed = parse_program(content, filename=filename)
+        features = recognize(parsed)['features']
+        mapping, report = match_roles(template.roles, template.source_bounds, features,
+                                      source_feature_count=template.source_feature_count)
+        concrete = materialize_edits(template.payload, mapping)
+        preview = edits_program(content, {'edits': concrete}, filename=filename)
+        return JsonResponse({'ok': True, 'edits': concrete, 'mapping': report,
+                             'preview': preview,
+                             'template': {'id': template.pk, 'name': template.name,
+                                          'part_label': str(template.part)}},
+                            json_dumps_params={'ensure_ascii': False})
+    except (TypeError, ValueError, KeyError, json.JSONDecodeError, ParseError, TransformError) as exc:
+        message = str(exc) or 'بارگذاری قالب قطعه ناموفق بود.'
+        return JsonResponse({'ok': False, 'error': message}, status=400,
+                            json_dumps_params={'ensure_ascii': False})
+
+
+@login_required
+@cnc_operator_required
+@require_POST
+def part_template_delete(request, template_id: int):
+    import json
+    from django.core.exceptions import ObjectDoesNotExist
+    from .models import CncPartTemplate
+    try:
+        template = CncPartTemplate.objects.get(pk=template_id)
+    except ObjectDoesNotExist:
+        return JsonResponse({'ok': False, 'error': f'قالب قطعهٔ شمارهٔ {template_id} پیدا نشد.'}, status=404,
+                            json_dumps_params={'ensure_ascii': False})
+    name = template.name
+    template.delete()
+    return JsonResponse({'ok': True, 'message': f'قالب قطعهٔ «{name}» حذف شد.'},
                         json_dumps_params={'ensure_ascii': False})
 
 

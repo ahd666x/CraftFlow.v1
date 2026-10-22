@@ -265,6 +265,43 @@ class EditTemplate(models.Model):
         return f"قالب ویرایش: {self.name}"
 
 
+class CncPartTemplate(models.Model):
+    """Parametric edit template bound to a workshop part (قطعه).
+
+    Unlike :class:`EditTemplate` — whose ``feature_id`` values only fit the
+    exact file they were recorded on — this template stores *geometry roles*:
+    for every feature an edit references, its normalized position inside the
+    program envelope, its kind and its size. Loading re-matches those roles
+    against a NEW file's analysis (same kind + nearest scaled position within
+    tolerance, bijectively) and only then feeds the materialized concrete
+    edits through the ordinary fail-closed preview chain (runtime reparse +
+    collision gate). Matching solves the "different file, same part" id
+    problem; it never bypasses any validation."""
+    part = models.ForeignKey("product.Part", on_delete=models.PROTECT,
+                             related_name="cnc_edit_templates", verbose_name="قطعه")
+    name = models.CharField(max_length=80, verbose_name="نام قالب")
+    payload = models.JSONField(default=list, verbose_name="ویرایش‌ها")  # [{"op":…, "feature_id":…, …}]
+    roles = models.JSONField(default=list, verbose_name="نقش‌های هندسی")
+    source_bounds = models.JSONField(default=dict, verbose_name="مرز برنامهٔ منبع")
+    source_feature_count = models.PositiveIntegerField(default=0, verbose_name="تعداد ویژگی منبع")
+    source_sha256 = models.CharField(max_length=64, blank=True)
+    source_filename = models.CharField(max_length=255, blank=True)
+    note = models.CharField(max_length=200, blank=True, verbose_name="یادداشت")
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="created_cnc_part_templates")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ("name",)
+        constraints = [models.UniqueConstraint(fields=("part", "name"), name="cnc_part_template_part_name_uniq")]
+        verbose_name = "قالب پارامتریک قطعه"
+        verbose_name_plural = "قالب‌های پارامتریک قطعات"
+
+    def __str__(self):
+        return f"قالب قطعه: {self.name} — {self.part}"
+
+
 def ensure_tool_slots():
     """Create parking positions 1..10 once, so the operator edits rows instead
     of creating them."""
