@@ -365,6 +365,41 @@ class FlagshipAcceptanceTests(unittest.TestCase):
         self.assertAlmostEqual(ys[1][0], 634.9, places=1)            # middle bottom stays
         self.assertAlmostEqual(ys[2][0], 1336.0 + 100.0, places=1)   # B pushed up
 
+    def test_tapered_part_stretch_preserves_diagonal_vectors_and_path_continuity(self):
+        from ..engine.part_edits import edits_part_program
+        top = max(self.result["parts"], key=lambda part: part["bbox"]["y_min"])
+        result = edits_part_program(self.text, {"edits": [{
+            "op": "stretch_part", "part_id": top["id"], "axis": "y", "new_size": 1000.0,
+        }]}, filename="t.1.1970x395.2set.cnc")
+        self.assertTrue(result["validation"]["passed"], result["validation"]["errors"])
+        transformed = {move["id"]: move for move in result["program_ir"]["moves"]}
+        contour_ids = set(top["contour_block_ids"])
+        for block in self.program.blocks:
+            if block.id not in contour_ids:
+                continue
+            cuts = [move for move in block.motions
+                    if move.motion in ("linear", "arc_cw", "arc_ccw")]
+            previous_end = None
+            for move in cuts:
+                after = transformed[move.id]
+                start, end = after["start"], after["end"]
+                self.assertIsNotNone(start)
+                self.assertIsNotNone(end)
+                if previous_end is not None:
+                    self.assertAlmostEqual(start["x"], previous_end[0], places=4,
+                                           msg=f"disconnected start at source line {move.source_line + 1}")
+                    self.assertAlmostEqual(start["y"], previous_end[1], places=4,
+                                           msg=f"disconnected start at source line {move.source_line + 1}")
+                if (move.motion == "linear" and move.start and move.end
+                        and abs(move.end.x - move.start.x) > 1e-6
+                        and abs(move.end.y - move.start.y) > 1e-6
+                        and move.start.y >= top["stretch_band_y"][1]):
+                    self.assertAlmostEqual(end["x"] - start["x"],
+                                           move.end.x - move.start.x, places=5)
+                    self.assertAlmostEqual(end["y"] - start["y"],
+                                           move.end.y - move.start.y, places=5)
+                previous_end = (end["x"], end["y"])
+
     def test_stretched_output_passes_serializer_and_is_a_pure_patch(self):
         from ..engine.part_edits import edits_part_program
         from ..engine.serializer import serialize_candidate

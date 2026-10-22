@@ -153,17 +153,18 @@ def _stretch_feature_axis(block: Any, axis: str, feature_id: str,
         # (start=end), so block.start already moved with entry.end.
     for index, move in enumerate(moves):
         start_offset, end_offset = offsets[index], offsets[index + 1]
-        if move.motion == "rapid":
-            continue  # Z-only modal carry: the line has no X/Y words
-        if axis in (move.raw_words or {}) and abs(end_offset) > 1e-12:
+        # Motion start/end are independent Point3 instances in the IR, not
+        # aliases of the previous endpoint. Update both to keep the rendered
+        # path connected and preserve the vector of every rigidly translated
+        # diagonal. Only the endpoint is serialized on its source line; the
+        # start is the resolved modal position used by preview/geometry.
+        if abs(start_offset) > 1e-12:
+            setattr(move.start, axis, getattr(move.start, axis) + start_offset)
+        if abs(end_offset) > 1e-12:
             setattr(move.end, axis, getattr(move.end, axis) + end_offset)
         if move.arc is not None:
-            if getattr(move.start, axis) is None:
-                raise TransformError(f"Feature {feature_id}: حرکت {move.id} مختصات حل‌نشده دارد")
-            if abs(start_offset) > 1e-12:
-                setattr(move.start, axis, getattr(move.start, axis) + start_offset)
-                if move.arc.center and axis in move.arc.center:
-                    move.arc.center[axis] += start_offset
+            if abs(start_offset) > 1e-12 and move.arc.center and axis in move.arc.center:
+                move.arc.center[axis] += start_offset
 
 
 def _band_mapping(band_start: float, band_end: float, below: float, above: float):
