@@ -929,9 +929,19 @@
   });
 
   // ================================================================_میانبرها: جهت‌نما = جابه‌جایی ۱mm (Shift=۱۰mm)
+  // Enter روی قطعهٔ انتخاب‌شده = بازکردن ورودی اندازهٔ ارتفاع همان‌جا
   document.addEventListener('keydown', (e) => {
     if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
     if (dimEditor) return;
+    if (e.key === 'Enter') {
+      const sel = state.selection.find((s) => s.type === 'part');
+      if (!sel) return;
+      const dimEl = document.querySelector(`.dim-g[data-dim="stretch:${sel.id}:y"] .dimline`);
+      if (!dimEl) return;
+      const r = dimEl.getBoundingClientRect();
+      openDimEditor(`stretch:${sel.id}:y`, { x: r.x + r.width / 2, y: r.y + r.height / 2 });
+      return;
+    }
     const arrows = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] };
     if (!arrows[e.key]) return;
     const sel = state.selection.find((s) => s.type === 'part');

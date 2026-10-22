@@ -134,6 +134,9 @@
         el && el.classList.add('hov');
         text = hoverTextOp(op);
       }
+    } else if (info.geomLine) {
+      // شمارهٔ سطر در هاور روی خودِ مسیر (الزام نقشه↔کد)
+      text = `سطر <span class="num">${info.geomLine}</span> — کلیک: هایلایت متقابل در نمای کد`;
     }
     if (text) showHud(info.client, text);
     CNC.emit('hover', { partId: info.partId || null, opId: info.opId || null });

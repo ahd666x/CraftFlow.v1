@@ -120,6 +120,31 @@ class EditTemplateApiTests(TestCase):
         self.assertEqual(response.status_code, 200, response.content)
         self.assertTrue(EditTemplate.objects.filter(name="ط" * 80).exists())
 
+    def test_part_level_ops_are_storable_forms(self):
+        """واژگان قطعه‌ای پرامپت ۱ هم به‌عنوان فرم ذخیره‌شدنی مجاز است؛
+        اعمال نهایی همچنان از پیش‌نمایش fail-closed سرور می‌گذرد."""
+        self.client.login(username="cnc-manager-tpl", password="testpass")
+        response = self.client.post(self.list_url(), data=json.dumps(self.payload(
+            name="جابه‌جایی قطعه",
+            edits=[{"op": "move_part", "part_id": "part-abc123", "dx": 12, "dy": 0},
+                   {"op": "stretch_part", "part_id": "part-abc123", "axis": "y", "delta": -40}],
+            note="رابط نقشه‌محور")), content_type="application/json")
+        self.assertEqual(response.status_code, 200, response.content)
+        stored = EditTemplate.objects.get(name="جابه‌جایی قطعه")
+        self.assertEqual(stored.payload[0]["op"], "move_part")
+        # set_gap بدون جفت معتبر رد می‌شود
+        response = self.client.post(self.list_url(), data=json.dumps(self.payload(
+            name="بد", edits=[{"op": "set_gap", "axis": "x", "gap": 5}])),
+            content_type="application/json")
+        self.assertEqual(response.status_code, 400)
+        # ترکیب واژگان قطعه‌ای و ویژگی‌محور در یک قالب رد می‌شود (نامعتبر در یک درخواست)
+        response = self.client.post(self.list_url(), data=json.dumps(self.payload(
+            name="مخلوط", edits=[{"op": "move_part", "part_id": "part-x", "dx": 1, "dy": 0},
+                                 {"op": "shift", "feature_id": "feature-block-0001", "dx": 1, "dy": 0}])),
+            content_type="application/json")
+        self.assertEqual(response.status_code, 200, response.content)  # فرم مستقل ذخیره می‌شود
+        # ولی اعمالش در preview همان محدودیت ترکیب را دارد (تست‌های prompt-1)
+
     def test_delete_removes_and_404_on_repeat(self):
         self.client.login(username="cnc-manager-tpl", password="testpass")
         created = self.client.post(self.list_url(), data=json.dumps(self.payload()),

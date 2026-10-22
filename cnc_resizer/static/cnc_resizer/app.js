@@ -243,6 +243,7 @@
     if (btn) btn.classList.toggle('on', show);
     if (show && id === 'toolsPanel') renderToolsPanel();
     if (show && id === 'layersPanel') renderLayersPanel();
+    CNC.emit('panel-opened', { id, open: show });
   }
   CNC.togglePanel = togglePanel;
 

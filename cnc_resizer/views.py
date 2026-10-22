@@ -476,6 +476,10 @@ def engine_profile(request):
 
 _EDIT_TEMPLATE_OPS = frozenset({"shift", "resize_x", "array", "grid", "mirror", "rotate",
                                 "center_on", "set_gap", "center_between"})
+# واژگان قطعه‌ای پرامپت ۱ (move_part / stretch_part / set_gap / distribute)
+# هم به‌عنوان «فرم ذخیره‌شدنی» مجاز است؛ اعمال نهایی همیشه از همان
+# پیش‌نمایش fail-closed سرور می‌گذرد.
+_EDIT_TEMPLATE_PART_OPS = frozenset({"move_part", "stretch_part", "set_gap", "distribute"})
 
 
 def _validate_template_payload(edits):
@@ -490,8 +494,23 @@ def _validate_template_payload(edits):
         if not isinstance(edit, dict):
             raise ValueError(f'ویرایش {index + 1} باید یک شیء باشد.')
         op = edit.get('op')
-        if not isinstance(op, str) or op not in _EDIT_TEMPLATE_OPS:
+        if not isinstance(op, str) or (op not in _EDIT_TEMPLATE_OPS
+                                       and op not in _EDIT_TEMPLATE_PART_OPS):
             raise ValueError(f'ویرایش {index + 1}: نوع ویرایش (op) نامعتبر است.')
+        if op in _EDIT_TEMPLATE_PART_OPS:
+            # ویرایش قطعه‌ای: به شناسهٔ قطعه نیاز دارد (part_id یا جفت set_gap
+            # یا فهرست distribute)؛ ترکیب با ویرایش ویژگی‌محور در «یک» قالب
+            # ذخیره نمی‌شود چون خود سرور هم در یک درخواست نمی‌پذیرد.
+            if op == 'move_part' or op == 'stretch_part':
+                if not isinstance(edit.get('part_id'), str) or not edit['part_id']:
+                    raise ValueError(f'ویرایش {index + 1}: part_id باید رشتهٔ غیرخالی باشد.')
+            elif op == 'set_gap':
+                if not (isinstance(edit.get('part_a'), str) and isinstance(edit.get('part_b'), str)):
+                    raise ValueError(f'ویرایش {index + 1}: set_gap به part_a و part_b نیاز دارد.')
+            elif op == 'distribute':
+                if not isinstance(edit.get('parts'), list):
+                    raise ValueError(f'ویرایش {index + 1}: distribute به فهرست parts نیاز دارد.')
+            continue
         if not isinstance(edit.get('feature_id'), str) or not edit['feature_id']:
             raise ValueError(f'ویرایش {index + 1}: feature_id باید رشتهٔ غیرخالی باشد.')
     return edits

@@ -340,6 +340,21 @@
     for (const part of parts) {
       const color = CNC.partColor(part);
       const g = el('g', { class: 'part-g', 'data-part': part.id, 'data-name': partName(part) }, gParts);
+      // hit اول (زیر مسیرها): کلیک روی فضای خالی قطعه هم انتخاب می‌کند،
+      // ولی کلیک روی سطرِ مسیر به خود path می‌رسد (نقشه↔کد)
+      const blocks0 = [];
+      (part.contour_block_ids || []).forEach((id) => { const b = model.blocks.get(id); if (b) blocks0.push(b); });
+      (part.children || []).forEach((child) => {
+        (child.block_ids || []).forEach((id) => { const b = model.blocks.get(id); if (b) blocks0.push(b); });
+      });
+      const bb0 = unionBBox(blocks0);
+      if (bb0) {
+        el('rect', {
+          class: 'hit', x: bb0.x_min - 2, y: -bb0.y_max - 2,
+          width: bb0.x_max - bb0.x_min + 4, height: bb0.y_max - bb0.y_min + 4,
+          'pointer-events': 'all',
+        }, g).dataset.part = part.id;
+      }
       const blocks = [];
       (part.contour_block_ids || []).forEach((id) => {
         const b = model.blocks.get(id);
@@ -351,20 +366,13 @@
           if (b) { blockPathsInto(g, b, 'child', color); blocks.push(b); claimed.add(id); }
         });
       });
-      // کادر انتخاب + ناحیهٔ کلیک
+      // کادر انتخاب + برچسب
       const bb = unionBBox(blocks);
       if (bb) {
         el('rect', {
           class: 'selbox', x: bb.x_min - 3, y: -bb.y_max - 3,
           width: bb.x_max - bb.x_min + 6, height: bb.y_max - bb.y_min + 6, rx: 2,
         }, g);
-        const hit = el('rect', {
-          class: 'hit', x: bb.x_min - 2, y: -bb.y_max - 2,
-          width: bb.x_max - bb.x_min + 4, height: bb.y_max - bb.y_min + 4,
-          'pointer-events': 'all',
-        }, g);
-        hit.dataset.part = part.id;
-        // برچسب نام پایدار P1..Pn
         const px = pxPerMM();
         const label = el('text', {
           x: bb.x_min + 2 / px, y: -bb.y_min - 4 / px, 'font-size': 12 / px, fill: color,
@@ -372,7 +380,7 @@
           style: 'paint-order:stroke; stroke:var(--canvas); stroke-width:3px;',
         }, g);
         label.textContent = partName(part);
-        refs[part.id] = { g, selbox: g.querySelector('.selbox'), label, hit, bb, color };
+        refs[part.id] = { g, selbox: g.querySelector('.selbox'), label, hit: g.querySelector('.hit'), bb, color };
       }
       applyPartState(part.id);
     }
@@ -616,7 +624,7 @@
     let moved = false, downInfo = null, pinchDist = 0;
     svg.addEventListener('pointerdown', (e) => {
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      svg.setPointerCapture(e.pointerId);
+      try { svg.setPointerCapture(e.pointerId); } catch (_) { /* pointer نامعتبر */ }
       moved = false;
       const tgt = targetInfo(e.target);
       const w = toWorld(e.clientX, e.clientY);
