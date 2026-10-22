@@ -1,4 +1,4 @@
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponseRedirect
 from django.core.exceptions import PermissionDenied
 from django.shortcuts import render
 from django.urls import reverse
@@ -63,7 +63,6 @@ def index(request):
         "tool_sets_api_url": reverse("cnc_resizer:tool_sets"),
         "edit_templates_url": reverse("cnc_resizer:edit_templates"),
         "edit_template_delete_url": reverse("cnc_resizer:edit_template_delete", args=[0]),
-        "engine_url": reverse("cnc_resizer:engine_workbench"),
         "part_id": request.GET.get("part_id", ""),
         "cnc_setup": setup,
     })
@@ -73,19 +72,13 @@ def index(request):
 @cnc_operator_required
 @require_GET
 def engine_workbench(request):
-    return render(request, "cnc_resizer/engine_workbench.html", {
-        "resizer_url": reverse("cnc_resizer:index"),
-        "engine_analyze_url": reverse("cnc_resizer:engine_analyze"),
-        "engine_preview_url": reverse("cnc_resizer:engine_preview"),
-        "engine_profile_url": reverse("cnc_resizer:engine_profile"),
-        "engine_preflight_url": reverse("cnc_resizer:engine_preflight"),
-        "engine_output_url": reverse("cnc_resizer:engine_output"),
-        "edit_templates_url": reverse("cnc_resizer:edit_templates"),
-        "edit_template_delete_url": reverse("cnc_resizer:edit_template_delete", args=[0]),
-        "part_templates_url": reverse("cnc_resizer:part_templates"),
-        "part_template_apply_url": reverse("cnc_resizer:part_template_apply"),
-        "part_template_delete_url": reverse("cnc_resizer:part_template_delete", args=[0]),
-    })
+    """ادغام‌شده در صفحهٔ اصلی نقشه‌محور (پرامپت ۲، فاز «د»).
+
+    دو UI موازی نداریم: میزکار ویژگی‌محور به همان نقشهٔ اصلی هدایت
+    می‌شود؛ آداپتورهای API ویژگی‌محور (analyze/preview/profile/preflight/
+    output) همگی سرِ جای خودشان زنده‌اند و رابط نقشه‌محور و ماشین‌آلات
+    ویژگی‌محور (آرایه/آینه/چرخش) از همان‌ها استفاده می‌کنند."""
+    return HttpResponseRedirect(reverse("cnc_resizer:index"))
 
 
 @login_required

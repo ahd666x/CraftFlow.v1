@@ -317,11 +317,15 @@ class PartTemplateWorkbenchPageTests(TestCase):
         group = Group.objects.create(name="2")
         cls.operator.groups.add(group)
 
-    def test_workbench_page_carries_part_template_ui(self):
+    def test_part_template_apis_survive_the_workbench_merge(self):
+        """پرامپت ۲ فاز «د»: میزکار به نقشهٔ اصلی ادغام شد؛ selectهای قالب
+        قطعه طبق طرح حذف شده‌اند ولی APIهای قالب قطعه سرِ جای خودشان زنده‌اند
+        (تست‌های API همین فایل) و صفحهٔ نقشه‌محور سیم‌کشی الگوی ویرایش را دارد."""
         self.client.login(username="cnc-operator", password="testpass")
         response = self.client.get(reverse("cnc_resizer:engine_workbench"))
-        self.assertEqual(response.status_code, 200)
-        for fragment in ('id="partTemplateSelect"', 'id="applyPartTemplate"', 'id="savePartTemplate"',
-                         'id="deletePartTemplate"', 'id="partTemplateMapping"', 'قالب قطعه (پارامتریک)',
-                         'refreshPartTemplates', 'apiPartTemplateApply'):
-            self.assertContains(response, fragment)
+        self.assertEqual(response.status_code, 302)
+        self.assertRedirects(response, reverse("cnc_resizer:index"), fetch_redirect_response=False)
+        page = self.client.get(reverse("cnc_resizer:index"))
+        self.assertEqual(page.status_code, 200)
+        for fragment in ('/cnc/api/edit-templates/', 'btnHistory', 'historyPanel'):
+            self.assertContains(page, fragment)

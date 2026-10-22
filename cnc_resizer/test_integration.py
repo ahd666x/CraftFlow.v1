@@ -41,32 +41,26 @@ class CncIntegrationTests(TestCase):
         # سیم‌کشی جدید روی api/parts و زنجیرهٔ engine است.
         self.assertContains(response, "/cnc/api/parts/")
         self.assertContains(response, "/cnc/api/engine/analyze/")
-        self.assertContains(response, "/cnc/engine/")
+
+    def test_workbench_is_merged_into_the_map_page(self):
+        """پرامپت ۲ فاز «د»: دو UI موازی نداریم — /cnc/engine/ به نقشهٔ
+        اصلی هدایت می‌شود و آداپتورهای API ویژگی‌محور زنده می‌مانند."""
+        self.client.login(username="cnc-manager", password="testpass")
+        response = self.client.get(reverse("cnc_resizer:engine_workbench"))
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], reverse("cnc_resizer:index"))
 
     def test_new_engine_page_and_analysis_api_are_preview_only(self):
         self.client.login(username="cnc-manager", password="testpass")
-        page = self.client.get(reverse("cnc_resizer:engine_workbench"))
+        # صفحهٔ کارگاه ویژگی‌محور به نقشهٔ اصلی ادغام شد (پرامپت ۲ فاز «د»)؛
+        # نشانگر «فقط پیش‌نمایش» = چیپ گتهٔ پست‌پروسسور کنار دکمهٔ دانلود.
+        page = self.client.get(reverse("cnc_resizer:index"))
         self.assertEqual(page.status_code, 200)
-        self.assertContains(page, "حالت ایمن و فقط پیش‌نمایش")
-        self.assertContains(page, "شروع ثابت، پایان جابه‌جا")
-        self.assertContains(page, "min_to_min")
-        self.assertContains(page, "center_to_center")
-        self.assertContains(page, "$('source').addEventListener('input'")
-        self.assertContains(page, "if(other.id===f.id||!other.bounds)continue")
-        # Package H: side-by-side before/after comparison UI markers.
-        self.assertContains(page, 'id="compareMode"')
-        self.assertContains(page, 'id="svgAfter"')
-        self.assertContains(page, 'id="canvasAfter"')
-        self.assertContains(page, "کنار هم")
-        self.assertContains(page, "renderAfterPanel")
-        self.assertContains(page, "بعد — پیش‌نمایش ویرایش‌ها")
-        # Package Y: geometry point snap + feature pin guards.
-        self.assertContains(page, 'id="pointSnap"')
-        self.assertContains(page, 'id="pinFeature"')
-        self.assertContains(page, "جذب به نقاط هندسه")
-        self.assertContains(page, "سنجاق کردن ویژگی انتخاب‌شده")
-        self.assertContains(page, "pointSnapCandidate")
-        self.assertContains(page, "pinnedFeatures.has(selectedFeature)")
+        self.assertContains(page, 'id="gateChip"')
+        self.assertContains(page, "وضعیت پست‌پروسسور")
+        self.assertContains(page, "بدون فایل")
+        self.assertContains(page, "دانلود G-code")
+        self.assertContains(page, 'id="inspector"')
         content = "\n".join(["G21 G90 G17", "G0 X0 Y0 Z5", "G1 Z-2", "G1 X10 Y0",
                               "G1 X10 Y100", "G1 X20 Y100", "G1 X20 Y0", ""])
         response = self.client.post(
