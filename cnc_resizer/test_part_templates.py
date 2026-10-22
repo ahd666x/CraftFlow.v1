@@ -135,6 +135,41 @@ class PartTemplateMatchingTests(TestCase):
             match_roles(roles, source_bounds, straddling, source_feature_count=2)
         self.assertIn("مبهم", str(ctx.exception))
 
+    def test_identical_twins_with_identical_edits_assign_as_batch(self):
+        """Deep-repeat twins (same XY, edited as a broadcast group) are
+        interchangeable: identical roles + identical edit semantics assign
+        deterministically instead of rejecting as ambiguous."""
+        source_bounds = {"x_min": 30, "y_min": 30, "x_max": 50, "y_max": 50}
+        roles = [{"ref": "R1", "kind": "hole", "rel_cx": 0.5, "rel_cy": 0.5,
+                  "size": {"width": 20, "height": 20}},
+                 {"ref": "R2", "kind": "hole", "rel_cx": 0.5, "rel_cy": 0.5,
+                  "size": {"width": 20, "height": 20}}]
+        edits = [{"op": "shift", "feature_id": "R1", "dx": 5.0, "dy": 0.0},
+                 {"op": "shift", "feature_id": "R2", "dx": 5.0, "dy": 0.0}]
+        twins = [fake_feature("F1", "hole", 30, 30, 20, 20),
+                 fake_feature("F2", "hole", 30, 30, 20, 20)]
+        mapping, report = match_roles(roles, source_bounds, twins, source_feature_count=2,
+                                      edits=edits)
+        self.assertEqual(sorted(mapping.values()), ["F1", "F2"])
+        self.assertEqual(mapping["R1"], "F1")
+        self.assertEqual(mapping["R2"], "F2")
+
+    def test_identical_twins_with_different_edits_still_rejected(self):
+        """Same geometry but DIFFERENT edit semantics per twin: the tie is
+        genuinely ambiguous and stays fail-closed."""
+        source_bounds = {"x_min": 30, "y_min": 30, "x_max": 50, "y_max": 50}
+        roles = [{"ref": "R1", "kind": "hole", "rel_cx": 0.5, "rel_cy": 0.5,
+                  "size": {"width": 20, "height": 20}},
+                 {"ref": "R2", "kind": "hole", "rel_cx": 0.5, "rel_cy": 0.5,
+                  "size": {"width": 20, "height": 20}}]
+        edits = [{"op": "shift", "feature_id": "R1", "dx": 5.0, "dy": 0.0},
+                 {"op": "shift", "feature_id": "R2", "dx": 9.0, "dy": 0.0}]
+        twins = [fake_feature("F1", "hole", 30, 30, 20, 20),
+                 fake_feature("F2", "hole", 30, 30, 20, 20)]
+        with self.assertRaises(ValueError) as ctx:
+            match_roles(roles, source_bounds, twins, source_feature_count=2, edits=edits)
+        self.assertIn("مبهم", str(ctx.exception))
+
     def test_materialize_rewrites_all_id_fields(self):
         mapping = {"feature-block-0001": "feature-A", "feature-block-0002": "feature-B"}
         payload = [{"op": "shift", "feature_id": "feature-block-0001", "dx": 1, "dy": 2},

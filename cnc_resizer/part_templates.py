@@ -85,6 +85,23 @@ def referenced_feature_ids(edits: list[dict[str, Any]]) -> list[str]:
     return refs
 
 
+def _ref_edit_signatures(edits: list[dict[str, Any]]) -> dict[str, frozenset]:
+    """Per-ref fingerprints of the edits referencing it (op + non-id params).
+
+    Two roles whose fingerprints match are edited identically — that is what
+    makes them safely interchangeable when their geometry ties."""
+    signatures: dict[str, set] = {}
+    for edit in edits:
+        sig = (edit.get("op"),
+               tuple(sorted((key, repr(value)) for key, value in edit.items()
+                            if key not in ID_FIELDS)))
+        for field in ID_FIELDS:
+            ref = edit.get(field)
+            if isinstance(ref, str) and ref:
+                signatures.setdefault(ref, set()).add(sig)
+    return {ref: frozenset(items) for ref, items in signatures.items()}
+
+
 def capture_roles(features: list[dict[str, Any]], edits: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Build one role per referenced feature (بستهٔ ق: نقش‌های هندسی)."""
     by_id = {f["id"]: f for f in features if isinstance(f.get("id"), str) and _role_feature_ok(f)}
@@ -111,8 +128,16 @@ def capture_roles(features: list[dict[str, Any]], edits: list[dict[str, Any]]) -
 
 def match_roles(roles: list[dict[str, Any]], source_bounds: dict[str, Any],
                 features: list[dict[str, Any]],
-                source_feature_count: int | None = None) -> tuple[dict[str, str], list[dict[str, Any]]]:
+                source_feature_count: int | None = None,
+                edits: list[dict[str, Any]] | None = None) -> tuple[dict[str, str], list[dict[str, Any]]]:
     """Match template roles to target features; returns (mapping, report).
+
+    Roles whose geometry signature AND referenced edit semantics are
+    identical (deep-repeat twins edited as a broadcast group) are assigned
+    as a batch: the pool of unconsumed candidates is sorted by distance and
+    id and handed out deterministically — interchangeable roles on
+    interchangeable targets, so no arbitrary choice is hidden. A SINGLE role
+    facing an exact tie is still rejected as ambiguous (fail-closed).
 
     Raises ``ValueError`` with an operator-readable Persian message on any
     structural mismatch — fail-closed by design.
@@ -138,17 +163,35 @@ def match_roles(roles: list[dict[str, Any]], source_bounds: dict[str, Any],
     scale_y = target["height"] / source["height"]
     tol_center = max(_TOL_CENTER_FLOOR, _TOL_CENTER_RATIO * max(target["width"], target["height"]))
 
+    # Batch interchangeable roles: identical geometry signature AND identical
+    # referenced edit semantics (e.g. deep-repeat twins shifted as a group).
+    def _role_key(role: dict[str, Any]):
+        return (role["kind"], round(role["rel_cx"], 6), round(role["rel_cy"], 6),
+                round(role["size"]["width"], 6), round(role["size"]["height"], 6),
+                _ref_edit_signatures(edits or []).get(role["ref"], frozenset()))
+
+    batches: list[list[dict[str, Any]]] = []
+    batch_index: dict[tuple, int] = {}
+    for role in roles:
+        key = _role_key(role)
+        if key not in batch_index:
+            batch_index[key] = len(batches)
+            batches.append([])
+        batches[batch_index[key]].append(role)
+
     mapping: dict[str, str] = {}
     report: list[dict[str, Any]] = []
     consumed: set[str] = set()
-    for index, role in enumerate(roles, start=1):
+    for batch in batches:
+        role = batch[0]
+        index = roles.index(role) + 1
         expected_cx = target["x_min"] + role["rel_cx"] * target["width"]
         expected_cy = target["y_min"] + role["rel_cy"] * target["height"]
         expected_w = role["size"]["width"] * scale_x
         expected_h = role["size"]["height"] * scale_y
         tol_size_w = max(_TOL_SIZE_FLOOR, _TOL_SIZE_RATIO * max(expected_w, 1e-9))
         tol_size_h = max(_TOL_SIZE_FLOOR, _TOL_SIZE_RATIO * max(expected_h, 1e-9))
-        candidates = []
+        pool = []
         for feature in usable:
             if feature["id"] in consumed or (feature.get("kind") or "unknown") != role["kind"]:
                 continue
@@ -157,8 +200,8 @@ def match_roles(roles: list[dict[str, Any]], source_bounds: dict[str, Any],
             dw = abs((feature["bounds"]["x_max"] - feature["bounds"]["x_min"]) - expected_w)
             dh = abs((feature["bounds"]["y_max"] - feature["bounds"]["y_min"]) - expected_h)
             if dx <= tol_center and dy <= tol_center and dw <= tol_size_w and dh <= tol_size_h:
-                candidates.append((dx * dx + dy * dy, dx, dy, feature))
-        if not candidates:
+                pool.append((dx * dx + dy * dy, dx, dy, feature))
+        if len(pool) < len(batch):
             nearest_same_kind = min(
                 (abs(f["center"]["x"] - expected_cx) + abs(f["center"]["y"] - expected_cy)
                  for f in usable if (f.get("kind") or "unknown") == role["kind"]),
@@ -168,16 +211,24 @@ def match_roles(roles: list[dict[str, Any]], source_bounds: dict[str, Any],
             raise ValueError(
                 f"نقش {index} ({role['kind']} — {role['ref']}) در این فایل مطابق پیدا نکرد: {hint}؛ "
                 f"تحمل مرکز {tol_center:.1f}mm است.")
-        candidates.sort(key=lambda item: item[0])
-        best = candidates[0]
-        if len(candidates) > 1 and (candidates[1][0] - best[0]) <= _TIE_EPSILON:
-            raise ValueError(
-                f"نقش {index} ({role['kind']} — {role['ref']}) بین دو ویژگی مبهم است؛ "
-                "فایل مبهم است و قالب به‌صورت قطعی بارگذاری نمی‌شود.")
-        consumed.add(best[3]["id"])
-        mapping[role["ref"]] = best[3]["id"]
-        report.append({"ref": role["ref"], "kind": role["kind"], "matched": best[3]["id"],
-                       "dx": round(best[1], 3), "dy": round(best[2], 3)})
+        pool.sort(key=lambda item: (item[0], item[3]["id"]))
+        if len(batch) == 1:
+            if len(pool) > 1 and (pool[1][0] - pool[0][0]) <= _TIE_EPSILON:
+                raise ValueError(
+                    f"نقش {index} ({role['kind']} — {role['ref']}) بین دو ویژگی مبهم است؛ "
+                    "فایل مبهم است و قالب به‌صورت قطعی بارگذاری نمی‌شود.")
+            chosen = [(role, pool[0])]
+        else:
+            # Interchangeable roles: deterministic nearest-first assignment.
+            ordered = sorted(batch, key=lambda item: item["ref"])
+            chosen = list(zip(ordered, pool[:len(ordered)]))
+        for assigned_role, candidate in chosen:
+            consumed.add(candidate[3]["id"])
+            mapping[assigned_role["ref"]] = candidate[3]["id"]
+            report.append({"ref": assigned_role["ref"], "kind": assigned_role["kind"],
+                           "matched": candidate[3]["id"],
+                           "dx": round(candidate[1], 3), "dy": round(candidate[2], 3)})
+    report.sort(key=lambda row: [role["ref"] for role in roles].index(row["ref"]))
     return mapping, report
 
 

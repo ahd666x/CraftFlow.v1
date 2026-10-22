@@ -608,7 +608,8 @@ def part_template_apply(request):
         parsed = parse_program(content, filename=filename)
         features = recognize(parsed)['features']
         mapping, report = match_roles(template.roles, template.source_bounds, features,
-                                      source_feature_count=template.source_feature_count)
+                                      source_feature_count=template.source_feature_count,
+                                      edits=template.payload)
         concrete = materialize_edits(template.payload, mapping)
         preview = edits_program(content, {'edits': concrete}, filename=filename)
         return JsonResponse({'ok': True, 'edits': concrete, 'mapping': report,
