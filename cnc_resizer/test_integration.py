@@ -37,8 +37,10 @@ class CncIntegrationTests(TestCase):
         self.client.login(username="cnc-manager", password="testpass")
         response = self.client.get(reverse("cnc_resizer:index"))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "/cnc/api/process/")
-        self.assertContains(response, "/cnc/api/analyze/")
+        # رابط نقشه‌محور (پرامپت ۲): صفحه دیگر API قدیمی delta را صدا نمی‌زند؛
+        # سیم‌کشی جدید روی api/parts و زنجیرهٔ engine است.
+        self.assertContains(response, "/cnc/api/parts/")
+        self.assertContains(response, "/cnc/api/engine/analyze/")
         self.assertContains(response, "/cnc/engine/")
 
     def test_new_engine_page_and_analysis_api_are_preview_only(self):

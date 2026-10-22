@@ -51,14 +51,19 @@ def index(request):
 
     setup = serialize_setup(get_active_setup())
     return render(request, "cnc_resizer/index.html", {
-        "api_url": reverse("cnc_resizer:process"),
-        "analyze_api_url": reverse("cnc_resizer:analyze"),
-        "engine_url": reverse("cnc_resizer:engine_workbench"),
+        "parts_api_url": reverse("cnc_resizer:parts_api"),
+        "engine_analyze_url": reverse("cnc_resizer:engine_analyze"),
+        "engine_preview_url": reverse("cnc_resizer:engine_preview"),
+        "engine_preflight_url": reverse("cnc_resizer:engine_preflight"),
+        "engine_output_url": reverse("cnc_resizer:engine_output"),
         "archive_api_url": reverse("cnc_resizer:archive_files"),
         "profile_api_url": reverse("cnc_resizer:part_profile"),
         "sheet_plans_url": reverse("cnc_resizer:sheet_plans"),
         "tools_api_url": reverse("cnc_resizer:tools"),
         "tool_sets_api_url": reverse("cnc_resizer:tool_sets"),
+        "edit_templates_url": reverse("cnc_resizer:edit_templates"),
+        "edit_template_delete_url": reverse("cnc_resizer:edit_template_delete", args=[0]),
+        "engine_url": reverse("cnc_resizer:engine_workbench"),
         "part_id": request.GET.get("part_id", ""),
         "cnc_setup": setup,
     })
