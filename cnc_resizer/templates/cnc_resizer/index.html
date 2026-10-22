@@ -92,6 +92,14 @@
   </div>
   <b style="display:block;font-size:11.5px;color:var(--muted);margin:10px 0 4px">ست‌های آماده</b>
   <ul class="mlist" id="toolSetList"></ul>
+  <b style="display:block;font-size:11.5px;color:var(--muted);margin:12px 0 4px">قیدهای دستگاه (بررسی پاکت پیش از دانلود)</b>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+    <label style="font-size:11.5px;color:var(--muted)">X min <input type="number" id="machineXMin" step="1"></label>
+    <label style="font-size:11.5px;color:var(--muted)">X max <input type="number" id="machineXMax" step="1"></label>
+    <label style="font-size:11.5px;color:var(--muted)">Y min <input type="number" id="machineYMin" step="1"></label>
+    <label style="font-size:11.5px;color:var(--muted)">Y max <input type="number" id="machineYMax" step="1"></label>
+  </div>
+  <p class="statusline">قیدها محلی ذخیره می‌شوند و با هر تغییر به پیش‌فلایت خروجی می‌روند؛ بدون آن‌ها دانلود صادقانه مسدود است.</p>
   <p class="statusline" id="toolStatus"></p>
 </section>
 
@@ -99,6 +107,7 @@
 <section id="historyPanel" class="fpanel" hidden aria-label="تاریخچهٔ ویرایش"></section>
 
 <div id="alertBox" role="region" aria-label="هشدارها"></div>
+<div class="maphud" id="liveHud" hidden></div>
 <div id="ariaLive" class="visually-hidden" aria-live="polite" hidden></div>
 <div id="ariaLiveAssertive" aria-live="assertive" aria-atomic="true" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)"></div>
 

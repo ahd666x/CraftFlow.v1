@@ -108,6 +108,8 @@
         <span>${esc(CNC.KIND_FA[c.kind] || c.kind)}</span>
         <span class="dims num">${CNC.f1(c.bbox.x_max - c.bbox.x_min)}×${CNC.f1(c.bbox.y_max - c.bbox.y_min)}</span>
       </li>`).join('');
+    const op = state.partOp.get(part.id);
+    const opText = op ? describeOp(op) : null;
     return `
       <h2><span class="badge" style="background:${CNC.partColor(part)}"></span>
           ${esc(CNC.partName(part))} — ${esc(CNC.SHAPE_FA[part.shape_kind] || part.shape_kind)}</h2>
@@ -118,6 +120,8 @@
         <dt>ابزار</dt><dd class="num">${part.tool != null ? 'T' + part.tool : '—'}</dd>
         <dt>مساحت</dt><dd class="num">${CNC.f1(part.area_path)} mm²</dd>
       </dl>
+      ${opText ? `<div class="insp-warn" style="background:var(--accent-soft);color:var(--accent);border-color:var(--accent)">
+        ویرایش ثبت‌شده: ${opText}</div>` : ''}
       <ul class="caps">${capHtml}</ul>
       ${children ? `<b style="font-size:12px;color:var(--muted)">فرزندها / عملیات داخل قطعه</b>
         <ul class="children">${children}</ul>` : ''}
@@ -128,9 +132,27 @@
         <button type="button" data-act="zoom">🔍 زوم</button>
         <button type="button" data-act="toggle-fixed">${fixed ? '🔓 کشیدنی کن' : '🔒 ثابت کن'}</button>
         <button type="button" data-act="toggle-exclude" class="danger">${excluded ? '↩ برگرداندن به خروجی' : '🚫 حذف از خروجی'}</button>
+        ${op ? '<button type="button" data-act="reset-op">↩ بازگردانی ویرایش این قطعه</button>' : ''}
       </div>
     `;
   }
+
+  function describeOp(op) {
+    if (op.op === 'move_part') {
+      return `جابه‌جایی (<span class="num">${CNC.sgn(op.dx)}, ${CNC.sgn(op.dy)}</span>) mm`;
+    }
+    if (op.op === 'stretch_part') {
+      return op.new_size != null
+        ? `کشش ${op.axis === 'y' ? 'ارتفاع' : 'عرض'} به <span class="num">${CNC.f1(op.new_size)}</span> mm`
+        : `کشش ${op.axis === 'y' ? 'ارتفاع' : 'عرض'} <span class="num">${CNC.sgn(op.delta)}</span> mm`;
+    }
+    if (op.op === 'set_gap') {
+      const other = ((state.detection && state.detection.parts) || []).find((p) => p.id === op.part_a);
+      return `فاصله با ${esc(other ? CNC.partName(other) : op.part_a)} = <span class="num">${CNC.f1(op.gap)}</span> mm (${op.axis.toUpperCase()})`;
+    }
+    return esc(op.op);
+  }
+  CNC.describeOp = describeOp;
 
   function inspectorOp(op) {
     const owner = op.assigned_part
@@ -184,6 +206,10 @@
       renderInspector();
       CNC.applyPartStates();
       CNC.emit('gate', { ...state.gate });
+    };
+    const resetBtn = box.querySelector('[data-act="reset-op"]');
+    if (resetBtn && part) resetBtn.onclick = () => {
+      if (CNC.resetPartOp) CNC.resetPartOp(part.id);
     };
     box.querySelectorAll('[data-child]').forEach((li) => {
       const activate = () => {
@@ -484,6 +510,8 @@
   });
   CNC.on('selection', () => { renderInspector(); });
   CNC.on('gate', () => { renderGate(); });
+  CNC.on('ops-changed', () => { renderInspector(); });
+  CNC.on('preview', () => { renderInspector(); });
   CNC.on('rerender', () => {
     if (CNC.viewport && CNC.viewport.svg) CNC.viewport.render();
   });
@@ -542,6 +570,26 @@
       try { const d = await CNC.api.toolSet('save', name.trim()); await loadTools(); toolStatus(d.message); }
       catch (err) { toolStatus(err.message); }
     };
+
+    // قیدهای دستگاه (پاکت) — ذخیرهٔ محلی + بازبینی گته
+    const ML_FIELDS = [['machineXMin', 'x_min'], ['machineXMax', 'x_max'],
+                       ['machineYMin', 'y_min'], ['machineYMax', 'y_max']];
+    try {
+      const saved = JSON.parse(localStorage.getItem('cncMachineLimits') || '{}');
+      ML_FIELDS.forEach(([id, key]) => {
+        const inp = $(id);
+        if (inp && saved[key] != null) inp.value = saved[key];
+        inp.onchange = () => {
+          const limits = {};
+          ML_FIELDS.forEach(([fid, fkey]) => {
+            const v = Number($(fid).value);
+            if ($(fid).value !== '' && Number.isFinite(v)) limits[fkey] = v;
+          });
+          localStorage.setItem('cncMachineLimits', JSON.stringify(limits));
+          CNC.refreshGate();
+        };
+      });
+    } catch (_) { /* localStorage در دسترس نیست — قیدها دستی می‌مانند */ }
 
     // زوم
     $('zin').onclick = () => CNC.viewport.zoomAt(0.7);

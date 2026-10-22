@@ -524,6 +524,10 @@ def preview_part_edits(program: Program, request: dict[str, Any], source_text: s
     preexisting_skipped = 0
     checked_pairs = 0
     runtime_detection = parts_mod.part_index(runtime, params)
+    # preflight (stage-7) expects the candidate envelope under ``bounds``
+    # (the feature-level preview ships recognition bounds); for part-level
+    # candidates the same envelope is the detected sheet bbox.
+    runtime_detection["bounds"] = runtime_detection.get("sheet_bbox")
     runtime_parts = runtime_detection["parts"]
     if not errors:
         if len(runtime_parts) != len(detection["parts"]):

@@ -320,6 +320,13 @@
 
     // --- نقشهٔ مرجع بلوک‌ها (شناسه‌ها بین قبل/بعد پایدارند — وصلهٔ 1:1) ---
     const refMap = (state._refMap = blockRefMap(detection));
+    // کپی‌های آرایه/گرید (feature-level): بلوک‌های تازهٔ بعدی با هندسهٔ
+    // مشابه مبدأ → همان گروه/رنگ مبدأ
+    if (state._copyMap) {
+      for (const [newId, srcId] of state._copyMap) {
+        if (!refMap.has(newId) && refMap.has(srcId)) refMap.set(newId, refMap.get(srcId));
+      }
+    }
     const claimed = new Set(refMap.keys());
     // نگاشت index-محور قطعهٔ قبل → قطعهٔ بعد (digest شناسه به bbox وابسته است
     // و پس از جابه‌جایی عوض می‌شود؛ ترتیب index قرارداد سرور است)
@@ -699,9 +706,11 @@
     svg.addEventListener('pointercancel', (e) => finish(e, 'cancel'));
     svg.addEventListener('contextmenu', (e) => {
       e.preventDefault();
+      // مثل کلیک: کپچرِ pointerdown هدف را به svg می‌برد — هدف ذخیره‌شده
+      // در downInfo ملاک است.
       CNC.emit('map-context', {
         client: { x: e.clientX, y: e.clientY }, world: toWorld(e.clientX, e.clientY),
-        ...targetInfo(e.target),
+        ...((downInfo && downInfo.tgt) || targetInfo(e.target)),
       });
     });
     svg.addEventListener('dblclick', () => computeFit());

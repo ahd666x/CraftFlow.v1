@@ -47,10 +47,21 @@
   // ------------------------------------------------_کلیک
   CNC.on('map-click', (info) => {
     if (state.tool === 'measure') { CNC.emit('measure-click', info); return; }
+    if (info.dimId) return;   // خطوط اندازه خودش رفتار دارند (edit-tools)
     if (info.partId) {
-      CNC.selection.toggle({ type: 'part', id: info.partId }, info.shift);
+      if (info.shift) {
+        CNC.selection.toggle({ type: 'part', id: info.partId }, true);
+      } else {
+        // انتخاب تکْ idempotent است (کلیک دوباره، انتخاب را نمی‌زند —
+        // چون همان کلیک شروع‌کنندهٔ درگ/ویرایش هم هست)
+        CNC.selection.set([{ type: 'part', id: info.partId }]);
+      }
     } else if (info.opId) {
-      CNC.selection.toggle({ type: 'op', id: info.opId }, info.shift);
+      if (info.shift) {
+        CNC.selection.toggle({ type: 'op', id: info.opId }, true);
+      } else {
+        CNC.selection.set([{ type: 'op', id: info.opId }]);
+      }
     } else if (!info.shift) {
       CNC.selection.clear();
     }

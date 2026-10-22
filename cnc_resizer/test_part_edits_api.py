@@ -166,3 +166,23 @@ class PartApiTests(TestCase):
         # never a silent pass
         self.assertEqual(response.status_code, 400)
         self.assertIn("نوار", response.json().get("error", ""))
+
+    def test_preflight_part_edit_ships_candidate_bounds(self):
+        """Stage-7 preflight can evaluate the envelope of a part-level
+        candidate: the runtime detection must expose program ``bounds``
+        (same contract the feature-level preview fulfils)."""
+        self.client.login(username="parts-manager", password="testpass")
+        detect = self._post("parts_api", {"content": self.flagship_text}).json()
+        middle = sorted(detect["parts"], key=lambda part: part["bbox"]["y_min"])[1]
+        response = self._post("engine_preflight", {
+            "content": self.flagship_text, "filename": "t.1.1970x395.2set.cnc",
+            "edits": [{"op": "stretch_part", "part_id": middle["id"],
+                       "axis": "y", "delta": 100.0}],
+            "machine_limits": {"x_min": 0, "x_max": 500, "y_min": 0, "y_max": 2500},
+        })
+        self.assertEqual(response.status_code, 200)
+        report = response.json()["preflight"]
+        self.assertNotIn("Candidate geometry bounds are unresolved", report["blockers"],
+                         msg=str(report["blockers"]))
+        self.assertNotIn("Machine travel/envelope limits have not been configured",
+                         report["blockers"], msg=str(report["blockers"]))

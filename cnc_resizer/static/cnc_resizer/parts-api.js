@@ -97,16 +97,23 @@
   CNC.hasOps = () => CNC.state.partOp.size > 0 || CNC.state.gapOps.length > 0
     || CNC.state.featureOps.length > 0;
 
-  // فهرست ویرایش‌ها برای سرور — یا همهٔ part-level یا همهٔ feature-level
+  // فهرست ویرایش‌ها برای سرور — یا همهٔ part-level یا همهٔ feature-level.
+  // هر قطعه حداکثر یک op «مطلق نسبت به فایل اصلی» (set_gap هم به‌عنوان op
+  // قطعهٔ جابه‌جاشونده در همین map ذخیره می‌شود).
   CNC.opsPayload = function opsPayload() {
     const st = CNC.state;
     if (st.featureOps.length) return { edits: st.featureOps.slice(), kind: 'feature' };
     const edits = [...st.partOp.values()].map((op) => ({ ...op }));
-    for (const gap of st.gapOps) edits.push({ ...gap });
     return { edits, kind: edits.length ? 'part' : 'none' };
   };
 
   // ------------------------------------------------_APIها
+  CNC.machineLimits = function machineLimits() {
+    // قیدهای پاکت دستگاه از پنل ابزار (ذخیرهٔ محلی) — نقدنقص صادقانه:
+    // بدون پیکربندی، preflight خودش مسدود می‌کند.
+    try { return JSON.parse(localStorage.getItem('cncMachineLimits') || 'null') || {}; }
+    catch (_) { return {}; }
+  };
   CNC.api = {
     detectParts(content, filename) {
       return postJSON(CNC.urls.parts, { content, filename });
@@ -118,7 +125,8 @@
       return postJSON(CNC.urls.enginePreview, { content, filename, edits });
     },
     preflight(content, filename, edits) {
-      return postJSON(CNC.urls.enginePreflight, { content, filename, edits });
+      return postJSON(CNC.urls.enginePreflight,
+                      { content, filename, edits, machine_limits: CNC.machineLimits() });
     },
     output(content, filename, edits) {
       return postJSON(CNC.urls.engineOutput, { content, filename, edits });
