@@ -465,6 +465,10 @@ def planner(request):
         'materials': materials, 'orders': orders, 'setting': setting,
         'order_statuses': Order.ORDER_STATUS, 'status_filter': status_filter, 'query': query,
         'active_plans': active_plans, 'engine_choices': CutPlan.ALGORITHMS,
+        'stock_policy_choices': CutPlan.STOCK_POLICIES,
+        'default_stock_policy': {
+            'offcuts_first': 'offcuts_first', 'full_only': 'full_first', 'priority': 'priority',
+        }.get(setting.strategy, 'offcuts_first'),
         'workspace_urls': workspace_urls, 'workspace_materials': workspace_materials,
     })
 

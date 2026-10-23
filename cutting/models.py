@@ -77,6 +77,7 @@ class CutPlan(models.Model):
     STOCK_POLICIES = [
         ('full_first', 'ابتدا ورق کامل، سپس پرت قابل استفاده'),
         ('offcuts_first', 'ابتدا پرت قابل استفاده، سپس ورق کامل'),
+        ('priority', 'اولویت دستی موجودی (عدد کمتر = زودتر مصرف)'),
     ]
     ALGORITHMS = [
         ('shelf', 'قفسه‌ای FFDH (پایه)'),

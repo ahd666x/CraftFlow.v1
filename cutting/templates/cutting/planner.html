@@ -43,8 +43,7 @@
             <fieldset class="cut-setting">
               <legend class="form-label mb-0">اولویت مصرف ورق</legend>
               <div class="cut-setting-list">
-                <label class="form-check"><input class="form-check-input" type="radio" name="stock_policy" value="full_first"><span class="form-check-label">ابتدا ورق کامل، سپس پرت قابل استفاده</span></label>
-                <label class="form-check"><input class="form-check-input" type="radio" name="stock_policy" value="offcuts_first" checked><span class="form-check-label">ابتدا پرت قابل استفاده، سپس ورق کامل</span></label>
+                {% for value, label in stock_policy_choices %}<label class="form-check"><input class="form-check-input" type="radio" name="stock_policy" value="{{ value }}" {% if value == default_stock_policy %}checked{% endif %}><span class="form-check-label">{{ label }}</span></label>{% endfor %}
               </div>
             </fieldset>
             <fieldset class="cut-setting">
