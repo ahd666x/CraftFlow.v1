@@ -74,6 +74,9 @@ def index(request):
         "tool_sets_api_url": reverse("cnc_resizer:tool_sets"),
         "edit_templates_url": reverse("cnc_resizer:edit_templates"),
         "edit_template_delete_url": reverse("cnc_resizer:edit_template_delete", args=[0]),
+        "manual_resolution_url": reverse("cnc_resizer:api_manual_resolution"),
+        "task_file_url": reverse("cnc_resizer:task_file"),
+        "sheet_program_url": reverse("cnc_resizer:sheet_program", args=[0]),
         "part_id": request.GET.get("part_id", ""),
         "cnc_setup": setup,
     })
@@ -1009,6 +1012,133 @@ def part_profile(request):
     return JsonResponse({'success': True, 'profile_id': profile.id, 'message': 'الگوی CNC برای این قطعه ثبت و تأیید شد.'})
 
 
+@login_required
+@cnc_operator_required
+@require_GET
+def sheet_program(request, plan_id):
+    """Machine program of one CNC sheet plan for the CAD tool viewer.
+
+    Fail-closed: only the adapter-verified gcode stored on the plan is ever
+    served; an unverified/cancelled/empty plan is a 409, never a rebuilt or
+    best-effort program.
+    """
+    from django.shortcuts import get_object_or_404
+    plan = get_object_or_404(CncSheetPlan, pk=plan_id)
+    if not _may_access_sheet_plan(request.user, plan):
+        raise PermissionDenied
+    if plan.status == 'cancelled' or not plan.output_verified or not plan.gcode.strip():
+        return JsonResponse(
+            {'ok': False, 'error': 'فایل دستگاه تأییدشده‌ای برای این ورق وجود ندارد؛ خروجی از مسیر پست‌پروسسور تأییدشده ساخته می‌شود.'},
+            status=409, json_dumps_params={'ensure_ascii': False},
+        )
+    return JsonResponse({
+        'ok': True,
+        'plan_id': plan.pk,
+        'filename': f'craftflow_cnc_sheet_{plan.pk}.nc',
+        'content': plan.gcode,
+        'meta': {
+            'width': str(plan.width), 'height': str(plan.height),
+            'material': plan.material.name if plan.material_id else '',
+            'pieces': len((plan.layout or {}).get('parts', [])),
+        },
+    }, json_dumps_params={'ensure_ascii': False})
+
+
+@login_required
+@cnc_operator_required
+@require_GET
+def task_file(request):
+    """Current CNC file of one production task for the CAD tool deep link.
+
+    Resolution mirrors planning exactly (manual fix > derived from an approved
+    profile > unchanged base). When resolution is blocked — e.g. no approved
+    profile for the new length — the BASE file is opened instead so the
+    operator can repair it in the tool and register it through the manual
+    queue; nothing is ever invented or silently resized here.
+    """
+    from product.models import ProductionTask
+    from .services import CncResolutionError, resolve_cnc_file
+    from .sheet_nesting import is_cnc_first
+
+    raw_id = request.GET.get('task_id') or request.GET.get('part_id') or ''
+    try:
+        raw_id = int(raw_id)
+    except (TypeError, ValueError):
+        return JsonResponse({'ok': False, 'error': 'شناسهٔ تسک نامعتبر است.'}, status=400,
+                            json_dumps_params={'ensure_ascii': False})
+    param_name = 'task_id' if request.GET.get('task_id') else 'part_id'
+    if param_name == 'task_id':
+        task = ProductionTask.objects.select_related('part__material', 'order').filter(pk=raw_id).first()
+    else:
+        part_stub = Part.objects.filter(pk=raw_id).first()
+        task = None
+        if part_stub is not None:
+            task = ProductionTask.objects.select_related('part__material', 'order').filter(
+                part_id=part_stub.pk, station_name='cut').order_by('pk').last()
+    if task is None or task.part is None:
+        return JsonResponse({'ok': False, 'error': 'تسک یا قطعهٔ مربوط پیدا نشد.'}, status=404,
+                            json_dumps_params={'ensure_ascii': False})
+    part = task.part
+    if not is_cnc_first(part):
+        return JsonResponse(
+            {'ok': False, 'error': 'این قطعه در مسیر CNC نیست؛ فایل CNC فقط برای قطعاتی است که CNC ایستگاه اول آن‌هاست.'},
+            status=400, json_dumps_params={'ensure_ascii': False})
+    from cutting.specs import effective_specs
+    spec = effective_specs([task])[0]
+    if spec.excluded:
+        return JsonResponse(
+            {'ok': False, 'error': 'این قطعه «خارج از برنامه» است؛ ابتدا آن را در ایستگاه برش به برنامه برگردانید.'},
+            status=400, json_dumps_params={'ensure_ascii': False})
+
+    failure_reason = ''
+    try:
+        record = resolve_cnc_file(part, request.user, effective_length=spec.length)
+        resolvable = True
+    except CncResolutionError as exc:
+        # Blocked resolution (no approved profile / engine refused): open the
+        # base file so the operator can fix it here — the honest starting point.
+        failure_reason = str(exc)
+        resolvable = False
+        try:
+            record = _base_record_for_part(part.base_part or part, request.user)
+        except CncResolutionError as base_exc:
+            return JsonResponse({'ok': False, 'error': str(base_exc)}, status=409,
+                                json_dumps_params={'ensure_ascii': False})
+    try:
+        with open(record.path, 'rb') as stream:
+            data = stream.read(core.MAX_BYTES + 1)
+    except OSError as exc:
+        return JsonResponse({'ok': False, 'error': f'خواندن فایل CNC ممکن نشد: {exc}'}, status=409,
+                            json_dumps_params={'ensure_ascii': False})
+    if len(data) > core.MAX_BYTES:
+        return JsonResponse({'ok': False, 'error': 'فایل CNC بیش از ۲ مگابایت است.'}, status=409,
+                            json_dumps_params={'ensure_ascii': False})
+    try:
+        text = data.decode('utf-8-sig')
+    except UnicodeDecodeError:
+        return JsonResponse({'ok': False, 'error': 'فایل CNC متنی (UTF-8) نیست؛ در ابزار باز نمی‌شود.'},
+                            status=409, json_dumps_params={'ensure_ascii': False})
+    params = record.params or {}
+    return JsonResponse({
+        'ok': True,
+        'filename': f'{record.barcode_key}.cnc',
+        'content': text,
+        'meta': {
+            'task_id': task.pk, 'part_id': part.pk,
+            'part_name': part.name, 'barcode': part.f3 or '',
+            'order_id': task.order_id,
+            'file_id': record.pk, 'file_kind': record.kind,
+            'file_mode': params.get('mode', ''),
+            'file_length_after': str(record.length_after or ''),
+            'effective_length': format(spec.length, 'f'),
+            'effective_width': format(spec.width, 'f'),
+            'resolvable': resolvable,
+            'failure_reason': failure_reason,
+            'manual_required': spec.status_code == 'needs_cnc_manual' or not resolvable,
+        },
+    }, json_dumps_params={'ensure_ascii': False})
+
+
 def _layout_preview(plan):
     """Percent-based rectangles so the template can draw the sheet without JS."""
     sheet_w, sheet_h = float(plan.width), float(plan.height)
@@ -1021,11 +1151,23 @@ def _layout_preview(plan):
             continue
         if w <= 0 or h <= 0:
             continue
+        kind = piece.get('file_kind') or ''
+        mode = piece.get('file_mode') or ''
+        if kind == 'derived':
+            file_label = 'فایل دستی اپراتور' if mode == 'manual' else 'فایل مشتق (الگوی تأییدشده)'
+        elif kind == 'base':
+            file_label = 'فایل پایهٔ آرشیو'
+        else:
+            file_label = ''
         boxes.append({
             'left': round(x / sheet_w * 100, 3), 'width': round(w / sheet_w * 100, 3),
             'top': round((sheet_h - y - h) / sheet_h * 100, 3), 'height': round(h / sheet_h * 100, 3),
             'label': piece.get('f3') or piece.get('label') or '',
             'width_mm': w, 'height_mm': h, 'rotated': piece.get('rotated', False),
+            'task_id': piece.get('task_id'),
+            'file_kind': kind,
+            'file_manual': mode == 'manual',
+            'file_label': file_label,
         })
     return boxes
 

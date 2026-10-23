@@ -23,6 +23,9 @@
   toolSets: "{{ tool_sets_api_url }}",
   editTemplates: "{{ edit_templates_url }}",
   editTemplateDelete: "{{ edit_template_delete_url }}",
+  manualResolution: "{{ manual_resolution_url }}",
+  taskFile: "{{ task_file_url }}",
+  sheetProgram: "{{ sheet_program_url }}",
   sheetPlans: "{{ sheet_plans_url }}",
 };</script>
 
@@ -40,6 +43,20 @@
     <div class="hintline"><kbd>Tab</kbd> رفتن بین قطعه‌ها · <kbd>M</kbd> اندازه‌گیری · <kbd>F</kbd> جا کردن نمای کامل · <kbd>G</kbd> شبکه</div>
   </div>
 </div>
+
+<section id="taskContextBar" hidden aria-label="زمینهٔ تسک از ایستگاه CNC">
+  <div class="tc-main">
+    <b id="tcTitle">—</b>
+    <span class="tc-chip num" id="tcDims" hidden></span>
+    <span class="tc-chip" id="tcFile" hidden></span>
+    <span class="tc-chip warn" id="tcStatus" hidden>نیازمند اصلاح دستی</span>
+  </div>
+  <div class="tc-actions">
+    <span id="tcStatusLine" role="status" aria-live="polite"></span>
+    <button type="button" id="tcRegister" class="primary" hidden>ثبت این فایل به‌عنوان اصلاح دستی تسک</button>
+    <a id="tcBack" href="">بازگشت به ورق‌ها</a>
+  </div>
+</section>
 
 <nav id="toolbar" aria-label="نوار ابزار نقشه">
   <button type="button" id="btnSelect" class="on" title="انتخاب (کلیک، Shift+کلیک، کادر)"><span class="tb-ico">⬚</span><span class="tb-lbl">انتخاب</span></button>

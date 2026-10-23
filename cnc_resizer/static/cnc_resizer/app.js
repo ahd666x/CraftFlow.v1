@@ -835,6 +835,98 @@
     }
   });
 
+  // ------------------------------------------------_لینک عمیق از صف ورق‌ها
+  // ?task_id= / ?part_id=  → فایل فعلیِ همان قطعه (همان مسیر حل برنامه‌ریزی)
+  // ?sheet_id=             → برنامهٔ کل ورق چیدمان‌شده (فقط خروجی تأییدشده)
+  function setContextBar({ title, dims, file, warn, register }) {
+    const bar = $('taskContextBar');
+    if (!bar) return;
+    $('tcTitle').textContent = title || '—';
+    const dimsEl = $('tcDims');
+    if (dims) { dimsEl.textContent = dims; dimsEl.hidden = false; } else { dimsEl.hidden = true; }
+    const fileEl = $('tcFile');
+    if (file) { fileEl.textContent = file; fileEl.hidden = false; } else { fileEl.hidden = true; }
+    $('tcStatus').hidden = !warn;
+    $('tcRegister').hidden = !register;
+    const back = $('tcBack');
+    if (back) back.href = CNC.urls.sheetPlans || '/cnc/sheets/';
+    bar.hidden = false;
+  }
+
+  function bindTaskContext() {
+    const button = $('tcRegister');
+    if (!button) return;
+    button.addEventListener('click', async () => {
+      const taskId = button.dataset.taskId;
+      if (!taskId || !state.text) return;
+      button.disabled = true;
+      $('tcStatusLine').textContent = 'در حال اعتبارسنجی دیالکت و هندسه…';
+      try {
+        const res = await CNC.api.registerManualFix(taskId, state.text);
+        $('tcStatusLine').textContent = res.message || 'فایل دستی ثبت شد.';
+        $('tcStatus').hidden = true;
+        button.hidden = true;
+        alertBox('info', esc(res.message || 'فایل دستی ثبت و تأیید شد؛ به ایستگاه برش برگردید و برنامهٔ CNC را دوباره بسازید.'), 'manual-fix');
+      } catch (err) {
+        $('tcStatusLine').textContent = '';
+        alertBox('err', 'ثبت فایل دستی رد شد: ' + esc(err.message), 'manual-fix');
+      } finally {
+        button.disabled = false;
+      }
+    });
+  }
+
+  async function openTaskContext(params) {
+    try {
+      const data = await CNC.api.taskFile(params);
+      CNC.loadText(data.filename, data.content);
+      $('dropTitle').textContent = 'فایل از ایستگاه برش باز شد';
+      $('fname').textContent = data.filename;
+      const meta = data.meta || {};
+      const kindLabel = meta.file_kind === 'derived'
+        ? (meta.file_mode === 'manual' ? 'فایل دستی ثبت‌شدهٔ اپراتور' : 'فایل مشتق با الگوی تأییدشده')
+        : 'فایل پایهٔ آرشیو';
+      setContextBar({
+        title: `تسک #${meta.task_id} — ${meta.part_name || meta.barcode || 'قطعه'}`,
+        dims: (meta.effective_length && meta.effective_width)
+          ? `طول مؤثر ${CNC.f1(parseFloat(meta.effective_length))} × عرض ${CNC.f1(parseFloat(meta.effective_width))} mm`
+          : '',
+        file: kindLabel,
+        warn: !!meta.manual_required,
+        register: !!meta.manual_required,
+      });
+      const button = $('tcRegister');
+      if (button) button.dataset.taskId = meta.task_id || '';
+      if (!meta.resolvable && meta.failure_reason) {
+        alertBox('info',
+          'تولید خودکار فایل برای طول جدید این قطعه مسدود است: ' + esc(meta.failure_reason)
+          + '<br>فایل پایه باز شد؛ آن را در همین نقشه اصلاح کنید و با دکمهٔ «ثبت این فایل به‌عنوان اصلاح دستی» به صف دستی بدهید.',
+          'task-file');
+      }
+    } catch (err) {
+      alertBox('err', 'بازکردن فایل تسک ناموفق بود: ' + esc(err.message), 'task-file');
+    }
+  }
+
+  async function openSheetContext(planId) {
+    try {
+      const data = await CNC.api.sheetProgram(planId);
+      CNC.loadText(data.filename, data.content);
+      $('dropTitle').textContent = 'برنامهٔ کامل ورق باز شد';
+      $('fname').textContent = data.filename;
+      const meta = data.meta || {};
+      setContextBar({
+        title: `کل ورق CNC-${String(planId).padStart(4, '0')}`,
+        dims: (meta.width && meta.height)
+          ? `${CNC.f1(parseFloat(meta.width))} × ${CNC.f1(parseFloat(meta.height))} mm · ${meta.pieces} قطعه`
+          : '',
+        file: meta.material || '',
+      });
+    } catch (err) {
+      alertBox('err', 'بازکردن برنامهٔ ورق ناموفق بود: ' + esc(err.message), 'sheet-view');
+    }
+  }
+
   // ------------------------------------------------_boot
   async function boot() {
     CNC.viewport.init($('svg'));
@@ -848,6 +940,14 @@
       state.archiveFiles = data.files || [];
       renderFilePanel();
     } catch (_) { state.archiveFiles = []; renderFilePanel(); }
+    bindTaskContext();
+    const params = new URLSearchParams(location.search);
+    const sheetId = Number(params.get('sheet_id') || 0);
+    const taskId = Number(params.get('task_id') || 0);
+    const partId = Number(params.get('part_id') || 0);
+    if (sheetId) await openSheetContext(sheetId);
+    else if (taskId) await openTaskContext({ task_id: taskId });
+    else if (partId) await openTaskContext({ part_id: partId });
   }
   document.addEventListener('DOMContentLoaded', boot);
 })();

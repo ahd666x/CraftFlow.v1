@@ -157,6 +157,19 @@
     },
     archiveList() { return getJSON(CNC.urls.archive); },
     archiveFile(id) { return getJSON(`${CNC.urls.archive}?id=${encodeURIComponent(id)}`); },
+    // لینک عمیق از صف ورق‌های CNC: فایل فعلیِ یک تسک/قطعه یا برنامهٔ کل ورق
+    taskFile(params) {
+      const qs = new URLSearchParams(params || {});
+      return getJSON(`${CNC.urls.taskFile}?${qs.toString()}`);
+    },
+    sheetProgram(planId) {
+      const base = (CNC.urls.sheetProgram || '').replace(/\/0\/$/, `/${Number(planId)}/`);
+      return getJSON(base);
+    },
+    // ثبت فایل جاری به‌عنوان اصلاح دستیِ یک تسک (صف دستی — تأیید دیالکت و هندسه سمت سرور)
+    registerManualFix(taskId, content) {
+      return postJSON(CNC.urls.manualResolution, { task_id: Number(taskId), content });
+    },
     tools() { return getJSON(CNC.urls.tools); },
     saveTools(slots) { return postJSON(CNC.urls.tools, { slots }); },
     toolSet(action, name) { return postJSON(CNC.urls.toolSets, { action, name }); },

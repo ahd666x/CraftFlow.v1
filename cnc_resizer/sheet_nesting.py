@@ -233,6 +233,18 @@ def _plan_cnc(order_ids, user, kerf=Decimal('4.0')):
                 'فایل دستیِ ثبت‌شدهٔ اپراتور استفاده شد.' if manual_mode
                 else 'فایل مشتق با الگوی تأییدشده ساخته شد.'
             )
+        # Provenance of the exact file this piece will be cut with, so the
+        # operator can audit the sheet output (base = unchanged archive file,
+        # derived/auto = approved profile stretch, derived/manual = operator
+        # fix registered through the manual queue).
+        base_part = part.base_part or part
+        delta = (Decimal(str(spec.length)) - Decimal(str(base_part.length))).quantize(Decimal('0.001'))
+        provenance = {
+            'file_kind': record.kind,
+            'file_mode': (record.params or {}).get('mode', ''),
+            'file_delta': ('+' if delta > 0 else '') + format(delta, 'f'),
+        }
+        report_row.update(provenance)
         report.append(report_row)
         for _ in range(pending):
             grouped[part.material_id].append({
@@ -243,6 +255,7 @@ def _plan_cnc(order_ids, user, kerf=Decimal('4.0')):
                 'turn': bool(spec.turn), 'order_id': task.order_id,
                 'task_quantity': task.quantity, 'completed_before': task.completed_quantity,
                 'spec_hash': compute_spec_hash(spec),
+                **provenance,
             })
 
     result = []
@@ -307,7 +320,10 @@ def _plan_cnc(order_ids, user, kerf=Decimal('4.0')):
                                      'rotated': rotated, 'units_injected': p['units_injected'],
                                      'task_quantity': p['task_quantity'],
                                      'completed_before': p['completed_before'],
-                                     'spec_hash': p.get('spec_hash', '')})
+                                     'spec_hash': p.get('spec_hash', ''),
+                                     'file_kind': p.get('file_kind', ''),
+                                     'file_mode': p.get('file_mode', ''),
+                                     'file_delta': p.get('file_delta', '')})
             task_piece_counts = Counter(piece['task_id'] for piece in output_parts)
             adapter_key = str(getattr(settings, 'CNC_RESIZER_SHEET_ADAPTER', '') or '').strip()
             gcode, output_verified, adapter_used = '', False, ''

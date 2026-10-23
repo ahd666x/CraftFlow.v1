@@ -41,7 +41,11 @@
         <div class="cnc-stage-canvas" style="--sheet-ratio:{{ plan.aspect }}" role="img" aria-label="چیدمان قطعات روی ورق {{ plan.width }} در {{ plan.height }}">
           <div class="cnc-canvas-grid"></div>
           <div class="cnc-sheet-label num">{{ plan.width }} × {{ plan.height }}</div>
-          {% for box in plan.preview %}<div class="cnc-part-box {% if box.rotated %}rotated{% endif %}" style="left:{{ box.left }}%;top:{{ box.top }}%;width:{{ box.width }}%;height:{{ box.height }}%" title="{{ box.label }} · {{ box.width_mm }} × {{ box.height_mm }} mm{% if box.rotated %} · چرخش ۹۰°{% endif %}"><span>{{ box.label }}</span></div>{% endfor %}
+          {% for box in plan.preview %}{% if box.task_id %}
+          <a class="cnc-part-box {% if box.rotated %}rotated{% endif %} clickable" href="{% url 'cnc_resizer:index' %}?task_id={{ box.task_id }}" style="left:{{ box.left }}%;top:{{ box.top }}%;width:{{ box.width }}%;height:{{ box.height }}%" title="{{ box.label }} · {{ box.width_mm }} × {{ box.height_mm }} mm{% if box.rotated %} · چرخش ۹۰°{% endif %} · تسک #{{ box.task_id }}{% if box.file_label %} · {{ box.file_label }}{% endif %} — باز کردن در ابزار CNC"><span>{{ box.label }}</span></a>
+          {% else %}
+          <div class="cnc-part-box {% if box.rotated %}rotated{% endif %}" style="left:{{ box.left }}%;top:{{ box.top }}%;width:{{ box.width }}%;height:{{ box.height }}%" title="{{ box.label }} · {{ box.width_mm }} × {{ box.height_mm }} mm{% if box.rotated %} · چرخش ۹۰°{% endif %}"><span>{{ box.label }}</span></div>
+          {% endif %}{% endfor %}
         </div>
         <div class="cnc-stage-meta">
           <span>بهره‌وری <b class="num">{{ plan.utilization|floatformat:1 }}%</b></span>
@@ -54,6 +58,7 @@
         {% if plan.orders %}<div class="cnc-orders">سفارش‌ها: {% for o in plan.orders %}<b class="num">#{{ o }}</b>{% if not forloop.last %}، {% endif %}{% endfor %}</div>{% endif %}
         {% if plan.status != 'cancelled' %}
         <div class="cnc-stage-actions">
+          {% if plan.output_verified and plan.gcode %}<a class="btn btn-outline-secondary" href="{% url 'cnc_resizer:index' %}?sheet_id={{ plan.id }}" title="باز کردن کل چیدمان این ورق در ابزار CAD سی‌ان‌سی (اندازه‌گیری و بازبینی هندسه)"><i class="bi bi-easel"></i> نمای کل ورق در ابزار CAD</a>{% endif %}
           {% if plan.output_verified and plan.gcode %}<a class="btn btn-success flex-grow-1" href="{% url 'cnc_resizer:download_sheet_plan' plan.id %}"><i class="bi bi-download"></i> {% if plan.status == 'done' %}دانلود مجدد فایل{% else %}دریافت فایل دستگاه{% endif %}</a>
           {% else %}<span class="cnc-output-chip" title="کنترلر مقصد و پست‌پروسسور اختصاصی تأیید نشده‌اند."><i class="bi bi-exclamation-triangle"></i> فایل دستگاه تأیید نشده</span>{% endif %}
           {% if plan.status == 'planned' %}<form method="post" action="{% url 'cnc_resizer:cancel_sheet_plan' plan.id %}" onsubmit="return confirm('این برنامه لغو و ورق و قطعات آن آزاد شوند؟')">{% csrf_token %}<button class="btn btn-outline-danger" title="لغو و آزادسازی" aria-label="لغو برنامه {{ plan.id }}"><i class="bi bi-x-lg"></i></button></form>{% endif %}
