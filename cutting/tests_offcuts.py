@@ -152,3 +152,58 @@ class PlannerPostCncOffcutTests(TestCase):
         self.assertFalse(plan.source_stock.is_offcut)
         messages = [str(m) for m in response.context['messages']]
         self.assertFalse(any('روی پرت' in m for m in messages), messages)
+
+
+class InventoryOffcutLibraryTests(TestCase):
+    """The offcut library page: lineage column and the 30-day created/consumed KPI."""
+
+    def setUp(self):
+        self.user = User.objects.create_superuser('offcut-lib', 'ul@example.test', 'pw')
+        self.client.force_login(self.user)
+        self.material = Material.objects.create(name='MDF پرت LIB', thickness=Decimal('16.0'))
+
+    def add_offcut(self, **extra):
+        defaults = dict(
+            material=self.material, width=Decimal('400.0'), height=Decimal('300.0'), quantity=1,
+            is_offcut=True, created_by=self.user,
+        )
+        defaults.update(extra)
+        return SheetStock.objects.create(**defaults)
+
+    def test_lineage_column_links_source_plan(self):
+        plan = CutPlan.objects.create(status='cut', created_by=self.user)
+        self.add_offcut(created_from_plan=plan, note='پرت واقعی برنامه')
+        response = self.client.get(reverse('cutting:offcuts'))
+        self.assertContains(response, f'برنامه #{plan.pk}')
+        self.assertContains(response, reverse('cutting:plan_detail', args=[plan.pk]))
+
+    def test_manual_offcut_shows_manual_origin_and_originated_one_shows_parent_stock(self):
+        parent = SheetStock.objects.create(
+            material=self.material, width=Decimal('1830.0'), height=Decimal('3660.0'), quantity=5,
+            created_by=self.user,
+        )
+        self.add_offcut(origin=parent)
+        self.add_offcut(note='ثبت دستی اپراتور')
+        response = self.client.get(reverse('cutting:offcuts'))
+        self.assertContains(response, 'ثبت دستی')
+        self.assertContains(response, f'از ورق #{parent.pk}')
+
+    def test_kpi_counts_last_30_days(self):
+        offcut = self.add_offcut()
+        from .models import SheetStockEvent
+        SheetStockEvent.objects.create(
+            stock=offcut, material=self.material, event_type='offcut', quantity_delta=1,
+            width=offcut.width, height=offcut.height, created_by=self.user,
+        )
+        SheetStockEvent.objects.create(
+            stock=offcut, material=self.material, event_type='consume', quantity_delta=-1,
+            width=offcut.width, height=offcut.height, is_offcut=True, created_by=self.user,
+        )
+        response = self.client.get(reverse('cutting:offcuts'))
+        self.assertEqual(response.context['offcut_created_30d'], 1)
+        self.assertEqual(response.context['offcut_consumed_30d'], 1)
+        self.assertContains(response, 'پرت — ۳۰ روز اخیر')
+
+    def test_kpi_card_hidden_on_full_sheets_page(self):
+        response = self.client.get(reverse('cutting:full_sheets'))
+        self.assertNotContains(response, 'پرت — ۳۰ روز اخیر')

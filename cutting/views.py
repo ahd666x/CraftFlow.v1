@@ -950,7 +950,7 @@ def cancel_plan(request, plan_id):
 def _inventory_queryset(request, kind=None):
     inactive = request.GET.get('inactive') == '1'
     qs = SheetStock.objects.filter(active=False) if inactive else SheetStock.objects.filter(active=True, quantity__gt=0)
-    qs = qs.select_related('material').annotate(
+    qs = qs.select_related('material', 'origin', 'created_from_plan').annotate(
         reserved_quantity=Count(
             'plan_reservations',
             filter=Q(plan_reservations__outcome='reserved', plan_reservations__plan__status='planned'),
@@ -1016,6 +1016,12 @@ def inventory(request, kind=None):
         event_type__in=('consume', 'scrap'), quantity_delta__lt=0,
     ).values('event_type').annotate(total=Sum('quantity_delta'))
     event_totals = {row['event_type']: abs(row['total'] or 0) for row in event_totals}
+    from django.utils import timezone as _tz
+    from datetime import timedelta as _timedelta
+    month_ago = _tz.now() - _timedelta(days=30)
+    offcut_created_30d = SheetStockEvent.objects.filter(event_type='offcut', created_at__gte=month_ago).count()
+    offcut_consumed_30d = SheetStockEvent.objects.filter(
+        event_type='consume', is_offcut=True, created_at__gte=month_ago).count()
     rows = _inventory_queryset(request, kind)
     page = Paginator(rows, 40).get_page(request.GET.get('page'))
     reserved_by_stock = _reserved_counts([stock.pk for stock in page.object_list])
@@ -1052,6 +1058,7 @@ def inventory(request, kind=None):
         'consumed_count': event_totals.get('consume', 0), 'scrapped_count': event_totals.get('scrap', 0),
         'pagination_query': pagination_query, 'toggle_inactive_query': toggle_inactive_query,
         'setting': setting, 'query': request.GET.get('q', ''), 'sort_links': sort_links,
+        'offcut_created_30d': offcut_created_30d, 'offcut_consumed_30d': offcut_consumed_30d,
         'thicknesses': Material.objects.values_list('thickness', flat=True).distinct().order_by('thickness'),
     })
 
