@@ -16,6 +16,17 @@ from . import gcode_sheet
 from . import sheet_adapter
 
 
+# Persian messages for the operator-facing manual queue. Each reason code is
+# actionable: the operator either fixes the profile or produces + registers a
+# manual file through POST /cnc/api/manual-resolution/.
+MANUAL_REASON_MESSAGES = {
+    'width_changed': 'تغییر عرض قطعهٔ CNC با موتور خودکار پشتیبانی نمی‌شود؛ پس از اصلاح دستی در ابزار CNC، فایل را در صف دستی ثبت کنید.',
+    'thickness_changed': 'ضخامت متریال مؤثر با متریال الگوی CNC تفاوت دارد؛ اصلاح دستی لازم است.',
+    'no_profile': 'برای طول جدید این قطعه الگوی CNC تأییدشده‌ای ثبت نشده است؛ الگو را ثبت/تأیید کنید یا فایل را دستی اصلاح و ثبت کنید.',
+    'profile_failed': 'تولید خودکار فایل مشتق برای این قطعه مسدود شد؛ فایل را دستی اصلاح و در صف دستی ثبت کنید.',
+}
+
+
 def _ceil_tenth(value):
     """Round a measured size UP to 0.1 mm so nested parts can never overlap."""
     return Decimal(str(math.ceil(round(value * 10, 6)) / 10))
@@ -113,14 +124,23 @@ def _cut_reserved_counts(stock_ids):
     return counts
 
 
-@transaction.atomic
-def create_cnc_sheet_plans(order_ids, user, kerf=Decimal('4.0')):
-    """Nest CNC-first parts into saved sheet layouts without guessing a controller.
+def _manual_reason_code(exc):
+    """Map a CncResolutionError to the manual-queue reason code."""
+    text = str(exc)
+    if 'الگوی CNC' in text and ('ثبت نشده' in text or 'تأیید نشده' in text):
+        return 'no_profile'
+    return 'profile_failed'
 
-    Executable output remains blocked until a verified controller-specific sheet
-    adapter is implemented; this function records the layout and reservation only.
-    Effective specs come from cutting.specs: excluded tasks are skipped entirely
-    and each layout piece carries the spec hash of its planning-time spec.
+
+def _plan_cnc(order_ids, user, kerf=Decimal('4.0')):
+    """Shared engine: returns ``(plans, issues, report)``.
+
+    Report rows are the operator-facing per-task outcome:
+    - ``nested``         -> base file used unchanged (effective length == base length);
+    - ``auto_adjusted``  -> derived file built automatically from an approved profile;
+    - ``manual_required``-> routed to the manual queue with ``reason_code``
+                            (no_profile | profile_failed | width_changed | thickness_changed).
+    The base file is NEVER silently used when the effective length differs.
     """
     tasks = list(ProductionTask.objects.select_for_update().filter(
         order_id__in=order_ids, station_name='cut', status='pending', part__isnull=False,
@@ -131,12 +151,13 @@ def create_cnc_sheet_plans(order_ids, user, kerf=Decimal('4.0')):
     ).select_related('part__material', 'order', 'spec_override__material').order_by('pk'))
     tasks = [t for t in tasks if is_cnc_first(t.part)]
     if not tasks:
-        return [], []
+        return [], [], []
 
     from cutting.specs import effective_specs, spec_hash as compute_spec_hash
     specs_by_task = {spec.task_id: spec for spec in effective_specs(tasks)}
     grouped = defaultdict(list)
     issues = []
+    report = []
 
     def register_issue(task, reason, **details):
         reason_text = str(reason)[:10000]
@@ -162,21 +183,61 @@ def create_cnc_sheet_plans(order_ids, user, kerf=Decimal('4.0')):
 
     already_planned = _planned_piece_counts()
     for task in tasks:
+        part = task.part
         spec = specs_by_task[task.id]
         pending = spec.quantity_total - task.completed_quantity - already_planned.get(task.id, 0)
         pending = max(0, pending)
         if not pending:
             continue
-        try:
-            record = resolve_cnc_file(task.part, user)
-            text, units_injected, min_x, min_y, max_x, max_y = _source_geometry(record.path)
-        except (CncResolutionError, OSError, gcode_sheet.GcodeError, ValueError) as exc:
-            register_issue(task, exc, stage='source_or_geometry', quantity=pending)
+        report_row = {
+            'task_id': task.id, 'order_id': task.order_id, 'part_id': part.pk,
+            'part_name': part.name, 'barcode': part.f3, 'pieces': pending,
+            'status': 'nested', 'reason_code': None, 'message': '',
+        }
+        # Width and material-thickness overrides can never go through the
+        # auto-resize engine; route them to the manual queue instead of
+        # silently nesting the base file.
+        reason_code = None
+        if spec.width != Decimal(part.width):
+            reason_code = 'width_changed'
+        elif spec.material_thickness != part.material.thickness:
+            reason_code = 'thickness_changed'
+        if reason_code:
+            message = MANUAL_REASON_MESSAGES[reason_code]
+            register_issue(task, message, stage='manual_required',
+                           reason_code=reason_code, quantity=pending)
+            report_row.update(status='manual_required', reason_code=reason_code, message=message)
+            report.append(report_row)
             continue
+        try:
+            record = resolve_cnc_file(part, user, effective_length=spec.length)
+            text, units_injected, min_x, min_y, max_x, max_y = _source_geometry(record.path)
+        except CncResolutionError as exc:
+            code = _manual_reason_code(exc)
+            message = f'{MANUAL_REASON_MESSAGES[code]} ({exc})'
+            register_issue(task, message, stage='manual_required',
+                           reason_code=code, quantity=pending)
+            report_row.update(status='manual_required', reason_code=code, message=message)
+            report.append(report_row)
+            continue
+        except (OSError, gcode_sheet.GcodeError, ValueError) as exc:
+            register_issue(task, exc, stage='source_or_geometry', quantity=pending)
+            report_row.update(status='manual_required', reason_code='profile_failed',
+                              message=f'فایل منبع قابل استفاده نیست: {exc}')
+            report.append(report_row)
+            continue
+        if record.kind == 'derived':
+            manual_mode = (record.params or {}).get('mode') == 'manual'
+            report_row['status'] = 'manual_resolved' if manual_mode else 'auto_adjusted'
+            report_row['message'] = (
+                'فایل دستیِ ثبت‌شدهٔ اپراتور استفاده شد.' if manual_mode
+                else 'فایل مشتق با الگوی تأییدشده ساخته شد.'
+            )
+        report.append(report_row)
         for _ in range(pending):
-            grouped[task.part.material_id].append({
-                'task_id': task.id, 'part_id': task.part_id, 'label': task.part.f2 or task.part.name or task.part.f3,
-                'f3': task.part.f3, 'width': _ceil_tenth(max_x - min_x),
+            grouped[part.material_id].append({
+                'task_id': task.id, 'part_id': part.pk, 'label': part.f2 or part.name or part.f3,
+                'f3': part.f3, 'width': _ceil_tenth(max_x - min_x),
                 'height': _ceil_tenth(max_y - min_y), 'text': text, 'units_injected': units_injected,
                 'min_x': min_x, 'min_y': min_y, 'max_x': max_x, 'max_y': max_y,
                 'turn': bool(spec.turn), 'order_id': task.order_id,
@@ -298,4 +359,22 @@ def create_cnc_sheet_plans(order_ids, user, kerf=Decimal('4.0')):
                 note=f'رزرو در برنامه CNC #{plan.pk}', created_by=user,
             )
             result.append(plan)
-    return result, issues
+    return result, issues, report
+
+
+@transaction.atomic
+def create_cnc_sheet_plans(order_ids, user, kerf=Decimal('4.0')):
+    """Nest CNC-first parts into saved sheet layouts (legacy 2-tuple return)."""
+    plans, issues, _report = _plan_cnc(order_ids, user, kerf)
+    return plans, issues
+
+
+@transaction.atomic
+def plan_cnc_with_report(order_ids, user, kerf=Decimal('4.0')):
+    """Same engine with the operator-facing per-task report (3-tuple return).
+
+    ``report`` distinguishes auto-adjusted pieces from pieces that were routed
+    to the manual queue, so the planner screen can show «اصلاح خودکار» vs
+    «نیازمند اصلاح دستی CNC» without re-deriving anything.
+    """
+    return _plan_cnc(order_ids, user, kerf)

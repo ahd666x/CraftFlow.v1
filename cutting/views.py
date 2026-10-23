@@ -159,10 +159,28 @@ def planner(request):
                     )
                     suffix = f' و {len(cnc_unusual) - 5} مورد دیگر' if len(cnc_unusual) > 5 else ''
                     messages.warning(request, f'قطعات غیرمعمول نیازمند بررسی: {preview}{suffix}')
-                from cnc_resizer.sheet_nesting import create_cnc_sheet_plans
-                cnc_sheet_plans, cnc_issues = create_cnc_sheet_plans(
+                from cnc_resizer.sheet_nesting import create_cnc_sheet_plans, plan_cnc_with_report
+                cnc_sheet_plans, cnc_issues, cnc_report = plan_cnc_with_report(
                     order_ids, request.user, kerf=kerf,
                 )
+                auto_rows = [row for row in cnc_report if row['status'] == 'auto_adjusted']
+                manual_rows = [row for row in cnc_report if row['status'] == 'manual_required']
+                if auto_rows:
+                    preview = '، '.join(f"{row['part_name']} ({row['pieces']} عدد)" for row in auto_rows[:5])
+                    suffix = f' و {len(auto_rows) - 5} قطعه دیگر' if len(auto_rows) > 5 else ''
+                    messages.success(
+                        request,
+                        f'{len(auto_rows)} قطعه با الگوی تغییر اندازهٔ ثبت‌شده به‌صورت خودکار اصلاح شد: {preview}{suffix}؛ '
+                        'همان تغییر را دوباره دستی انجام ندهید.',
+                    )
+                if manual_rows:
+                    preview = '، '.join(row['part_name'] for row in manual_rows[:5])
+                    suffix = f' و {len(manual_rows) - 5} قطعه دیگر' if len(manual_rows) > 5 else ''
+                    messages.warning(
+                        request,
+                        f'{len(manual_rows)} قطعهٔ CNC نیازمند اصلاح دستی است ({preview}{suffix})؛ '
+                        'فهرست و علت‌ها در صفحهٔ برنامه‌های CNC ثبت شده است.',
+                    )
                 if cnc_sheet_plans:
                     messages.success(request, f'{len(cnc_sheet_plans)} چیدمان ورق CNC ذخیره شد؛ فایل اجرایی تا تأیید کنترلر مقصد تولید نمی‌شود.')
                 if cnc_issues:

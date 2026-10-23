@@ -1258,6 +1258,47 @@ def complete_sheet_plan(request, plan_id):
 
 
 @login_required
+@cnc_operator_required
+@require_POST
+def api_manual_resolution(request):
+    """Register an operator-produced CNC file for one task (manual queue).
+
+    Body: ``{"task_id": int, "content": "<g-code text>"}``. The text must pass
+    the workshop-dialect verifier and its measured Y length must equal the
+    task's effective length ±0.05mm, otherwise the registration is rejected
+    and the issue stays open (fail-closed).
+    """
+    import json
+    from product.models import ProductionTask
+    from .services import CncResolutionError, register_manual_cnc_file
+    from .sheet_nesting import is_cnc_first
+    try:
+        payload = json.loads(request.body.decode('utf-8') or '{}')
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({'ok': False, 'error': 'بدنهٔ درخواست JSON معتبر نیست.'}, status=400,
+                            json_dumps_params={'ensure_ascii': False})
+    task = ProductionTask.objects.select_related('part__material').filter(
+        pk=payload.get('task_id')).first()
+    if task is None or task.part is None:
+        return JsonResponse({'ok': False, 'error': 'تسک یا قطعهٔ مربوط پیدا نشد.'}, status=404,
+                            json_dumps_params={'ensure_ascii': False})
+    if not is_cnc_first(task.part):
+        return JsonResponse({'ok': False, 'error': 'این قطعه در مسیر CNC نیست؛ ثبت فایل دستی فقط برای قطعات CNC است.'},
+                            status=400, json_dumps_params={'ensure_ascii': False})
+    try:
+        record = register_manual_cnc_file(task, payload.get('content'), request.user)
+    except CncResolutionError as exc:
+        return JsonResponse({'ok': False, 'error': str(exc)}, status=400,
+                            json_dumps_params={'ensure_ascii': False})
+    return JsonResponse({
+        'ok': True,
+        'file_id': record.pk,
+        'barcode_key': record.barcode_key,
+        'message': 'فایل دستی ثبت و تأیید شد؛ قطعه می‌تواند به چیدمان بعدی برود.',
+    }, json_dumps_params={'ensure_ascii': False})
+
+
+@login_required
 @cnc_operator_required(html=True)
 @require_POST
 def update_planning_issue(request, issue_id):

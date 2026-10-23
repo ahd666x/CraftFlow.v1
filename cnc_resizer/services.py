@@ -107,22 +107,54 @@ def _base_record_for_part(base, created_by=None):
     return register_base_file(path, key, created_by)
 
 
-def resolve_cnc_file(part, created_by=None):
+def manual_derived_key(base_record, part_id, target_length):
+    """Content-addressed key for an operator-registered manual fix.
+
+    Deterministic in (base file revision, part, effective length), so both the
+    registration endpoint and ``resolve_cnc_file`` compute the same key and a
+    stale manual file can never be silently reused for a different length.
+    """
+    payload = f"manual|{base_record.sha256}|{int(part_id)}|{format(Decimal(str(target_length)), 'f')}"
+    item_number = int(hashlib.sha256(payload.encode('utf-8')).hexdigest()[:12], 16)
+    return f"{base_record.barcode_key}.item{item_number}"
+
+
+def _manual_record_for(part, base_record, target_length):
+    record = CncFile.objects.filter(
+        barcode_key=manual_derived_key(base_record, part.pk, target_length),
+        kind=CncFile.KIND_DERIVED,
+    ).first()
+    if record and os.path.isfile(record.path) and (record.params or {}).get('mode') == 'manual':
+        return record
+    return None
+
+
+def resolve_cnc_file(part, created_by=None, effective_length=None):
     """Resolve or generate the cached CNC file for a production part.
 
-    CNC Y is explicitly mapped to ``Part.length``. Derived files are written
+    CNC Y is explicitly mapped to ``Part.length``. ``effective_length`` lets
+    the planning surface pass the operator's overridden length; the default
+    keeps the legacy ``part.length`` behaviour. Derived files are written
     under a content-addressed filename and indexed, so a changed base file or
-    profile cannot silently reuse an old result.
+    profile cannot silently reuse an old result. An operator-registered
+    manual fix (``register_manual_cnc_file``) wins for its exact length.
     """
     base = part.base_part or part
     base_record = _base_record_for_part(base, created_by)
-    delta = Decimal(part.length) - Decimal(base.length)
+    length = Decimal(str(effective_length)) if effective_length is not None else Decimal(part.length)
+    delta = length - Decimal(base.length)
 
     # A base file can be valid for direct machining even if it is not
     # compatible with the automatic resize geometry detector. That detector
     # is needed only when the production part actually changes length.
     if abs(delta) <= Decimal('0.0005'):
         return base_record
+
+    # Manual fixes registered through the workspace manual queue come first:
+    # they are the operator's verified answer for exactly this length.
+    manual = _manual_record_for(part, base_record, length)
+    if manual is not None:
+        return manual
 
     if not base_record.resizable:
         raise CncResolutionError(
@@ -219,6 +251,115 @@ def resolve_cnc_file(part, created_by=None):
             'validation_error': '',
             'created_by': created_by,
         },
+    )
+    return record
+
+
+MANUAL_LENGTH_TOLERANCE_MM = 0.05
+
+
+def register_manual_cnc_file(task, content, created_by=None):
+    """Validate + register an operator-produced CNC file for one cut task.
+
+    Fail-closed contract (the manual queue must never store a file that does
+    not match the effective spec):
+    1. the text must pass the workshop-dialect verifier (controller.verify_program);
+    2. the measured Y geometry must equal the task's effective length ±0.05mm;
+    3. the file is indexed as a derived CncFile with params.mode='manual' for
+       exactly (part, effective length) — resolve_cnc_file picks it up from
+       then on;
+    4. open manual_required issues of the task are resolved with a note.
+    """
+    import tempfile
+
+    from django.utils import timezone as dj_timezone
+
+    from . import controller
+    from cutting.specs import SpecLockedError, effective_spec
+
+    if not isinstance(content, str) or not content.strip():
+        raise CncResolutionError('محتوای فایل دستی خالی است؛ ثبت شد نشد.')
+    part = task.part
+    if part is None:
+        raise CncResolutionError('این تسک قطعه ندارد؛ فایل دستی معنا ندارد.')
+    try:
+        spec = effective_spec(task, None)
+    except SpecLockedError as exc:
+        raise CncResolutionError(str(exc))
+    if spec.excluded:
+        raise CncResolutionError('قطعهٔ خارج از برنامه فایل دستی نمی‌پذیرد؛ ابتدا آن را به برنامه برگردانید.')
+    target_length = spec.length
+
+    verification = controller.verify_program(content)
+    if not verification.get('ok'):
+        raise CncResolutionError(
+            'فایل دستی با دیالکت Workshop تأیید نشد: '
+            + '؛ '.join(str(item) for item in verification.get('violations') or ['ساختار نامعتبر'])
+        )
+
+    from .sheet_nesting import _source_geometry
+    with tempfile.NamedTemporaryFile('w', suffix='.cnc', delete=False, encoding='utf-8') as stream:
+        stream.write(content)
+        temp_path = stream.name
+    try:
+        _pre, _units, min_x, min_y, max_x, max_y = _source_geometry(temp_path)
+    except Exception as exc:
+        raise CncResolutionError(f'هندسهٔ فایل دستی قابل اندازه‌گیری نیست: {exc}')
+    finally:
+        try:
+            os.unlink(temp_path)
+        except OSError:
+            pass
+    measured_length = max_y - min_y
+    if abs(measured_length - float(target_length)) > MANUAL_LENGTH_TOLERANCE_MM:
+        raise CncResolutionError(
+            f'طول اندازه‌گیری‌شدهٔ فایل دستی ({measured_length:.3f}mm) با طول مؤثر قطعه '
+            f'({float(target_length):.3f}mm) نمی‌خواند؛ ثبت شد نشد.'
+        )
+
+    base = part.base_part or part
+    base_record = _base_record_for_part(base, created_by)
+    key = manual_derived_key(base_record, part.pk, target_length)
+    derived_dir = str(getattr(
+        settings, 'CNC_DERIVED_DIR',
+        os.path.join(str(settings.MEDIA_ROOT), 'cnc_derived'),
+    ))
+    os.makedirs(derived_dir, exist_ok=True)
+    derived_path = os.path.join(derived_dir, f'{key}.cnc')
+    with open(derived_path, 'w', encoding='utf-8') as stream:
+        stream.write(content)
+
+    record, _ = CncFile.objects.update_or_create(
+        barcode_key=key,
+        kind=CncFile.KIND_DERIVED,
+        sha256=_sha256(content.encode('utf-8')),
+        defaults={
+            'path': derived_path,
+            'source_file': base_record,
+            'params': {
+                'mode': 'manual',
+                'manual_for_task': task.pk,
+                'manual_for_part': part.pk,
+                'target_length': format(target_length, 'f'),
+                'base_sha256': base_record.sha256,
+                'measured_length': str(Decimal(str(measured_length)).quantize(Decimal('0.001'))),
+                'dialect': controller.ADAPTER_KEY,
+            },
+            'length_before': Decimal(base.length),
+            'length_after': Decimal(str(measured_length)).quantize(Decimal('0.001')),
+            'resizable': False,
+            'validation_error': '',
+            'created_by': created_by,
+        },
+    )
+    from .models import CncPlanningIssue
+    CncPlanningIssue.objects.filter(
+        task=task, status='open', details__stage='manual_required',
+    ).update(
+        status='resolved',
+        resolution_note=f'فایل دستی برای طول {format(target_length, "f")} ثبت و تأیید شد (فایل #{record.pk}).',
+        resolved_by=created_by,
+        resolved_at=dj_timezone.now(),
     )
     return record
 

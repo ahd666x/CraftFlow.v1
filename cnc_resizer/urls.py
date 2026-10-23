@@ -30,4 +30,5 @@ urlpatterns = [
     path("sheets/<int:plan_id>/complete/", views.complete_sheet_plan, name="complete_sheet_plan"),
     path("sheets/<int:plan_id>/download/", views.download_sheet_plan, name="download_sheet_plan"),
     path("issues/<int:issue_id>/status/", views.update_planning_issue, name="update_planning_issue"),
+    path("api/manual-resolution/", views.api_manual_resolution, name="api_manual_resolution"),
 ]
