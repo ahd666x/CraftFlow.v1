@@ -142,9 +142,10 @@
       return `جابه‌جایی (<span class="num">${CNC.sgn(op.dx)}, ${CNC.sgn(op.dy)}</span>) mm`;
     }
     if (op.op === 'stretch_part') {
+      const dist = op.distribution === 'gaps' ? ' <span style="color:var(--muted)">(توزیع بین سوراخ‌ها)</span>' : '';
       return op.new_size != null
-        ? `کشش ${op.axis === 'y' ? 'ارتفاع' : 'عرض'} به <span class="num">${CNC.f1(op.new_size)}</span> mm`
-        : `کشش ${op.axis === 'y' ? 'ارتفاع' : 'عرض'} <span class="num">${CNC.sgn(op.delta)}</span> mm`;
+        ? `کشش ${op.axis === 'y' ? 'ارتفاع' : 'عرض'} به <span class="num">${CNC.f1(op.new_size)}</span> mm${dist}`
+        : `کشش ${op.axis === 'y' ? 'ارتفاع' : 'عرض'} <span class="num">${CNC.sgn(op.delta)}</span> mm${dist}`;
     }
     if (op.op === 'set_gap') {
       const other = ((state.detection && state.detection.parts) || []).find((p) => p.id === op.part_a);
@@ -373,6 +374,10 @@
       if (CNC.hasOps() && !confirm('ویرایش‌های فعلی نقشه و تاریخچهٔ واگرد با جایگزینی فایل پاک می‌شوند. ادامه می‌دهید؟')) return;
       const baseName = (state.filename || 'part.cnc').replace(/\.[^.]+$/, '');
       await CNC.loadText(`${baseName}_L${CNC.f1(res.length_after ?? 0)}.cnc`, res.cnc_text);
+      // بازخورد اپراتور: فایل جایگزین‌شدهٔ پنل طول بدون ویرایش نقشه هم از
+      // «دانلود G-code» (گتهٔ دیالکت) قابل دانلود است.
+      state.resizedFromPanel = true;
+      CNC.renderGate();
       resizeStatus('ok', 'فایل جایگزین شد و نقشه دوباره شناسایی شد. فایل دستگاه همچنان فقط از مسیر «دانلود G-code» (گتهٔ دیالکت کنترلر) صادر می‌شود.');
     };
   }
@@ -570,23 +575,33 @@
     const btn = $('btnDownload');
     const g = state.gate;
     const excluded = state.outputsExcluded.size > 0;
+    const passthrough = !g.edits && state.resizedFromPanel;   // فایل جایگزین‌شدهٔ پنل «طول»
     chip.classList.remove('ok', 'blocked');
     let text, title;
     if (!state.text) { text = 'بدون فایل'; title = 'اول فایل بارگذاری کنید.'; }
-    else if (!g.edits) { text = 'بدون ویرایش'; title = 'ویرایشی ثبت نشده؛ خروجی همان فایل ورودی می‌شد.'; }
+    else if (!g.edits && !passthrough) { text = 'بدون ویرایش'; title = 'ویرایشی ثبت نشده؛ خروجی همان فایل ورودی می‌شد.'; }
+    else if (passthrough) { text = 'فایل تغییر-طول‌یافته ✓'; title = 'این فایل حاصل «تغییر طول» پنل طول است؛ دانلود از همان گتهٔ دیالکت عبور می‌کند.'; chip.classList.add('ok'); }
     else if (excluded) { text = `دانلود قفل — ${state.outputsExcluded.size} قطعه از خروجی حذف شده`; title = 'حذف قطعه از خروجی با وصلهٔ مختصاتی امن قابل بیان نیست؛ برای دانلود، حذف را برگردانید.'; }
     else if (g.allowed === true) { text = 'safe_for_execution ✓'; title = 'گتهٔ دیالکت کنترلر پاس شد؛ G-code دستگاه آماده است.'; chip.classList.add('ok'); }
     else { text = 'safe_for_execution ✗'; title = (g.blockers || []).join('\n') || 'خروجی مسدود است.'; chip.classList.add('blocked'); }
     chip.querySelector('.txt').textContent = text;
     chip.title = title;
-    btn.disabled = !(state.text && g.edits && g.allowed === true && !excluded);
+    btn.disabled = !(state.text && (g.edits || passthrough)
+                     && (passthrough || g.allowed === true) && !excluded);
     btn.title = title;
   }
   CNC.renderGate = renderGate;
 
   async function downloadOutput() {
     const payload = CNC.opsPayload();
-    if (payload.kind === 'none') return;
+    // بازخورد اپراتور: بعد از «جایگزینی فایل روی نقشه» (پنل طول/روش قدیمی)
+    // ویرایشی روی نقشه نیست ولی فایل همان حاصل تغییر طول است — عبور مستقیم
+    // از گتهٔ دیالکت، نه ردِ «ویرایشی انجام ندادی».
+    if (payload.kind === 'none') {
+      if (!state.resizedFromPanel) return;
+      await downloadPassthrough();
+      return;
+    }
     try {
       const res = await CNC.api.output(state.text, state.filename, payload.edits);
       if (!res.allowed) {
@@ -596,6 +611,24 @@
       const a = document.createElement('a');
       a.href = URL.createObjectURL(new Blob([res.cnc_text], { type: 'text/plain' }));
       a.download = (state.filename || 'part').replace(/\.[^.]+$/, '') + '_edited.cnc';
+      document.body.appendChild(a); a.click();
+      setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+      CNC.emit('output', res);
+    } catch (err) {
+      alertBox('err', esc(err.message));
+    }
+  }
+
+  async function downloadPassthrough() {
+    try {
+      const res = await CNC.api.output(state.text, state.filename, []);
+      if (!res.allowed) {
+        alertBox('err', 'خروجی مسدود شد: ' + esc((res.blockers || []).join(' — ')));
+        return;
+      }
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([res.cnc_text], { type: 'text/plain' }));
+      a.download = (state.filename || 'part').replace(/\.[^.]+$/, '') + '_resized.cnc';
       document.body.appendChild(a); a.click();
       setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
       CNC.emit('output', res);

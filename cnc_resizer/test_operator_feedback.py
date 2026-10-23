@@ -186,9 +186,12 @@ PANEL_TEXT = "\n".join([
 ]) + "\n"
 
 
-class StretchLowerAnchorTests(SimpleTestCase):
-    """Default stretch keeps child features at their lower-edge offset; the
-    stretch band no longer has to be relocated into a child-free gap."""
+class StretchDistributionTests(SimpleTestCase):
+    """Operator round t.16.2180x385: hole-y pieces (panels/shelves with hole
+    rows + a longitudinal groove) stretch like the LEGACY method by default —
+    the delta is distributed across the gaps between hole-row levels and the
+    spanning groove grows with the piece. `distribution="band"` keeps the
+    Task-47 single-band anchor-lower contract explicitly."""
 
     @classmethod
     def setUpClass(cls):
@@ -205,35 +208,40 @@ class StretchLowerAnchorTests(SimpleTestCase):
              "axis": "y", "delta": 40.0, **extra},
         ]}, filename="panel.cnc")
 
-    def test_capability_band_can_cross_hole_groups_without_relocation(self):
-        self.assertTrue(self.part["stretch_bands_y"])
+    def test_distribution_is_default_for_hole_rows(self):
+        self.assertTrue(self.part["capabilities"]["can_distribute_y"])
+        self.assertEqual(self.part["row_levels_y"], [65.0, 135.0])
+        self.assertEqual(self.part["distribute_span_y"], [0.0, 200.0])
         result = self._edit(PANEL_TEXT)
         self.assertTrue(result["validation"]["passed"],
                         msg=str(result["validation"]["errors"]))
         entry = result["edits_applied"][0]
+        self.assertEqual(entry["distribution"], "gaps")
+        self.assertNotIn("band", entry)
         self.assertNotIn("band_relocated", entry)
-        self.assertEqual(entry["band"], self.part["stretch_band_y"])
+        # features [0, 65, 135, 200] -> three equal gaps of 40/3
+        self.assertEqual(len(entry["gaps"]), 3)
+        for gap in entry["gaps"]:
+            self.assertAlmostEqual(gap["increment"], 40.0 / 3, places=3)
 
-    def test_child_features_keep_their_distance_from_lower_edge(self):
-        from .engine.parser import parse_program
-        from .engine.parts import detect_parts
-        from .engine.part_edits import edits_part_program
-        result = edits_part_program(PANEL_TEXT, {"edits": [
-            {"op": "stretch_part", "part_id": self.part["id"], "axis": "y", "delta": 40.0},
-        ]}, filename="panel.cnc")
+    def test_distribution_spreads_rows_and_grows_piece(self):
+        result = self._edit(PANEL_TEXT)
+        self.assertTrue(result["validation"]["passed"],
+                        msg=str(result["validation"]["errors"]))
         key = "|".join(self.part["contour_block_ids"])
         after = next(p for p in result["resized"]["parts"]
                      if "|".join(p["contour_block_ids"]) == key)
         self.assertAlmostEqual(after["bbox"]["y_max"] - after["bbox"]["y_min"], 240.0, places=1)
         ys = sorted((c["bbox"]["y_min"], c["bbox"]["y_max"]) for c in after["children"])
-        self.assertAlmostEqual(ys[0][0], 60.0, places=1)    # bottom row: pinned
-        self.assertAlmostEqual(ys[0][1], 70.0, places=1)
-        self.assertAlmostEqual(ys[1][0], 130.0, places=1)   # top row stays lower-anchored
-        self.assertAlmostEqual(ys[1][1], 140.0, places=1)
+        self.assertAlmostEqual(ys[0][0], 60.0 + 40.0 / 3, places=1)      # bottom row rides +1 gap
+        self.assertAlmostEqual(ys[0][1], 70.0 + 40.0 / 3, places=1)
+        self.assertAlmostEqual(ys[1][0], 130.0 + 80.0 / 3, places=1)     # top row rides +2 gaps
+        self.assertAlmostEqual(ys[1][1], 140.0 + 80.0 / 3, places=1)
 
-    def test_no_clear_gap_is_no_longer_required_for_parametric_anchor(self):
-        # A child spanning nearly the whole height does not need a free cut
-        # gap because child geometry remains fixed relative to the lower edge.
+    def test_spanning_groove_grows_with_distribution(self):
+        # A child spanning nearly the whole height (the longitudinal groove of
+        # t.16.2180x385) stretches THROUGH the row-gap zones: its bottom rides
+        # the first gap, its top the last, so it grows by the inner gaps.
         text = PANEL_TEXT.replace(
             "N250G0Z5.000M3 S16000",
             "N245G0X40.000Y0.300Z5.000M3 S16000\n"
@@ -249,9 +257,16 @@ class StretchLowerAnchorTests(SimpleTestCase):
         after = next(p for p in result["resized"]["parts"]
                      if p["contour_block_ids"] == self.part["contour_block_ids"])
         self.assertAlmostEqual(after["bbox"]["y_max"] - after["bbox"]["y_min"], 240.0, places=1)
+        groove = next(c for c in after["children"]
+                      if c["bbox"]["x_min"] == 40.0 and c["bbox"]["x_max"] == 60.0)
+        # bottom 0.3 sits below the first cut (32.5) -> pinned to the lower
+        # edge; top 199.7 rides the full +40 — the groove grows with the piece
+        self.assertAlmostEqual(groove["bbox"]["y_min"], 0.3, places=1)
+        self.assertAlmostEqual(groove["bbox"]["y_max"], 199.7 + 40.0, places=1)
 
-    def test_face_raster_does_not_force_band_relocation(self):
-        # A face-raster child may cross the band; lower anchoring keeps it in place.
+    def test_face_raster_stretches_through_zones(self):
+        # A serpentine face-raster child (closed head + open tail share one
+        # block) stretches through the zones like the legacy Y-word rewrite.
         text = PANEL_TEXT.replace(
             "N250G0Z5.000M3 S16000",
             "N245G0X10.000Y50.000Z5.000M3 S16000\n"
@@ -276,12 +291,35 @@ class StretchLowerAnchorTests(SimpleTestCase):
         self.assertTrue(result["validation"]["passed"],
                         msg=str(result["validation"]["errors"]))
         entry = result["edits_applied"][0]
+        self.assertEqual(entry["distribution"], "gaps")
         self.assertNotIn("band_relocated", entry)
+
+    def test_band_mode_keeps_lower_anchor_contract(self):
+        # Explicit distribution="band" keeps the Task-47 semantics: children
+        # stay pinned to their lower-edge distance while the contour stretches.
+        result = self._edit(PANEL_TEXT, distribution="band")
+        self.assertTrue(result["validation"]["passed"],
+                        msg=str(result["validation"]["errors"]))
+        entry = result["edits_applied"][0]
+        self.assertEqual(entry["band"], list(self.part["stretch_band_y"]))
+        key = "|".join(self.part["contour_block_ids"])
+        after = next(p for p in result["resized"]["parts"]
+                     if "|".join(p["contour_block_ids"]) == key)
+        ys = sorted((c["bbox"]["y_min"], c["bbox"]["y_max"]) for c in after["children"])
+        self.assertAlmostEqual(ys[0][0], 60.0, places=1)    # bottom row: pinned
+        self.assertAlmostEqual(ys[1][0], 130.0, places=1)   # top row stays lower-anchored
 
     def test_explicit_clear_band_needs_no_relocation(self):
         result = self._edit(PANEL_TEXT, band=[70.25, 129.75])
         self.assertTrue(result["validation"]["passed"])
         self.assertNotIn("band_relocated", result["edits_applied"][0])
+
+    def test_distribution_rejects_band_collision_and_hole_gap_collapse(self):
+        with self.assertRaisesMessage(Exception, "با هم فرستاده نمی‌شوند"):
+            self._edit(PANEL_TEXT, distribution="gaps", band=[70.25, 129.75])
+        # 3 gaps of ~66mm each cannot absorb delta=-300
+        with self.assertRaisesMessage(Exception, "زیر ۰٫۵"):
+            self._edit(PANEL_TEXT, delta=-300.0)
 
 
 class LegacyGapDistributionTests(SimpleTestCase):
@@ -443,3 +481,178 @@ class LateralChainStretchTests(SimpleTestCase):
                 "parts": [part["id"] for part in parts], "delta": 50.0,
             }]})
         self.assertIn("هم‌پوشانی دوبعدی", str(caught.exception))
+
+
+def _capsule_with_rows_text(x0=0.0):
+    """A rounded-end capsule 100x200 with a longitudinal groove (47..48 x
+    30..170) and three 2mm hole rows (y=50/100/150, x=30/70) — the
+    t.16.2180x385 shape (page/کفه با سوراخ + شیار طولی) scaled down."""
+    def circle(cx, cy):
+        return "\n".join([
+            f"G0 X{cx:.3f} Y{cy - 1.0:.3f} Z5.000",
+            "G1 Z-12.000 F12000.0",
+            f"G2 X{cx:.3f} Y{cy + 1.0:.3f} I0.000 J1.000",
+            f"G2 X{cx:.3f} Y{cy - 1.0:.3f} I0.000 J-1.000",
+            "G0 Z5.000",
+        ])
+
+    lines = ["G21 G90 G17",
+             f"G0 X{x0 + 0.0:.3f} Y30.000 Z5.000",
+             "G1 Z-16.000 F10000.0",
+             "G1 Y170.000",
+             f"G2 X{x0 + 30.0:.3f} Y200.000 I30.000 J0.000",
+             f"G1 X{x0 + 70.0:.3f}",
+             f"G2 X{x0 + 100.0:.3f} Y170.000 I0.000 J-30.000",
+             "G1 Y30.000",
+             f"G2 X{x0 + 70.0:.3f} Y0.000 I-30.000 J0.000",
+             f"G1 X{x0 + 30.0:.3f}",
+             f"G2 X{x0 + 0.0:.3f} Y30.000 I0.000 J30.000",
+             "G0 Z5.000",
+             f"G0 X{x0 + 47.0:.3f} Y30.000 Z5.000",
+             "G1 Z-10.000 F10000.0",
+             f"G1 X{x0 + 48.0:.3f}",
+             "G1 Y170.000",
+             f"G1 X{x0 + 47.0:.3f}",
+             "G1 Y30.000",
+             "G0 Z5.000"]
+    for cy in (50.0, 100.0, 150.0):
+        for cx in (30.0, 70.0):
+            lines.append(circle(x0 + cx, cy))
+    return "\n".join(lines) + "\n"
+
+
+class CapsuleDistributionTests(SimpleTestCase):
+    """The t.16.2180x385 real-world shape: arcs at both ends, a longitudinal
+    groove, drilled hole rows. Distribution must spread the rows, grow the
+    groove and keep the arc caps rigid — the legacy core behaviour, per part."""
+
+    @classmethod
+    def setUpClass(cls):
+        from .engine.parser import parse_program
+        from .engine.parts import detect_parts
+        cls.text = _capsule_with_rows_text()
+        cls.part = detect_parts(parse_program(cls.text))["parts"][0]
+
+    def _edit(self, edits, text=None):
+        from .engine.part_edits import edits_part_program
+        return edits_part_program(text or self.text, {"edits": edits})
+
+    def test_capsule_detection_publishes_rows_and_span(self):
+        self.assertTrue(self.part["capabilities"]["can_distribute_y"])
+        self.assertEqual(self.part["row_levels_y"], [50.0, 100.0, 150.0])
+        self.assertEqual(self.part["distribute_span_y"], [30.0, 170.0])
+
+    def test_capsule_distribution_spreads_rows_grows_groove(self):
+        result = self._edit([{"op": "stretch_part", "part_id": self.part["id"],
+                              "axis": "y", "delta": 40.0}])
+        self.assertTrue(result["validation"]["passed"],
+                        msg=str(result["validation"]["errors"]))
+        entry = result["edits_applied"][0]
+        self.assertEqual(entry["distribution"], "gaps")
+        self.assertEqual(len(entry["gaps"]), 4)   # span edges + 3 rows
+        after = result["resized"]["parts"][0]
+        self.assertAlmostEqual(after["bbox"]["y_min"], 0.0, places=1)     # anchored
+        self.assertAlmostEqual(after["bbox"]["y_max"], 240.0, places=1)   # +40
+        children = sorted(after["children"], key=lambda c: (c["bbox"]["y_min"], c["bbox"]["x_min"]))
+        groove = next(c for c in after["children"] if c["bbox"]["x_max"] - c["bbox"]["x_min"] == 1.0)
+        self.assertAlmostEqual(groove["bbox"]["y_min"], 30.0, places=1)   # below first cut: pinned
+        self.assertAlmostEqual(groove["bbox"]["y_max"], 210.0, places=1)  # rides +40
+        row_ys = sorted((c["bbox"]["y_min"] + c["bbox"]["y_max"]) / 2 for c in after["children"]
+                        if max(c["bbox"]["x_max"] - c["bbox"]["x_min"],
+                               c["bbox"]["y_max"] - c["bbox"]["y_min"]) <= 2.5)
+        self.assertAlmostEqual(row_ys[0], 60.0, places=1)
+        self.assertAlmostEqual(row_ys[2], 120.0, places=1)   # cumulative: +2 gaps
+        self.assertAlmostEqual(row_ys[4], 180.0, places=1)   # cumulative: +3 gaps
+
+    def test_capsule_distribution_survives_serialize_and_reparse(self):
+        from .engine.serializer import serialize_candidate
+        from .engine.parser import parse_program
+        result = self._edit([{"op": "stretch_part", "part_id": self.part["id"],
+                              "axis": "y", "delta": 40.0}])
+        text = serialize_candidate(self.text, result)["text"]
+        runtime = parse_program(text)
+        self.assertEqual(len(runtime.moves), len(parse_program(self.text).moves))
+        redetected = __import__("cnc_resizer.engine.parts", fromlist=["detect_parts"]) \
+            .detect_parts(runtime)["parts"][0]
+        self.assertAlmostEqual(redetected["bbox"]["y_max"] - redetected["bbox"]["y_min"],
+                               240.0, places=1)
+        self.assertEqual(redetected["row_levels_y"], [60.0, 120.0, 180.0])
+
+    def test_arc_crossing_a_cut_is_rejected(self):
+        # a 20mm circular window centred exactly on a cut midpoint (y=75):
+        # its arcs would straddle the cut — fail-closed, never distorted
+        # (the legacy engine silently skewed such arcs with only a warning).
+        text = self.text + (
+            "G0 X30.000 Y65.000 Z5.000\n"
+            "G1 Z-8.000 F12000.0\n"
+            "G2 X30.000 Y85.000 I0.000 J10.000\n"
+            "G2 X30.000 Y65.000 I0.000 J-10.000\n"
+            "G0 Z5.000\n")
+        from .engine.parser import parse_program
+        from .engine.parts import detect_parts
+        from .engine.part_edits import TransformError
+        part = detect_parts(parse_program(text))["parts"][0]
+        with self.assertRaises(TransformError) as caught:
+            self._edit([{"op": "stretch_part", "part_id": part["id"],
+                         "axis": "y", "delta": 40.0}], text=text)
+        self.assertIn("قوس", str(caught.exception))
+
+    def test_chain_distribution_across_side_by_side_capsules(self):
+        text = _capsule_with_rows_text(0.0) + _capsule_with_rows_text(150.0)
+        from .engine.parser import parse_program
+        from .engine.parts import detect_parts
+        parts = sorted(detect_parts(parse_program(text))["parts"],
+                       key=lambda item: item["bbox"]["x_min"])
+        self.assertEqual(len(parts), 2)
+        result = self._edit([{"op": "stretch_chain", "axis": "y",
+                              "parts": [part["id"] for part in parts], "delta": 40.0}],
+                            text=text)
+        self.assertTrue(result["validation"]["passed"],
+                        msg=str(result["validation"]["errors"]))
+        resized = sorted(result["resized"]["parts"], key=lambda item: item["bbox"]["x_min"])
+        for part in resized:
+            self.assertAlmostEqual(part["bbox"]["y_max"] - part["bbox"]["y_min"], 240.0, places=1)
+        entries = result["edits_applied"]
+        self.assertEqual([e["distribution"] for e in entries], ["gaps", "gaps"])
+        self.assertEqual([e["lower_offset"] for e in entries], [0.0, 0.0])
+
+
+class OutputPassthroughTests(TestCase):
+    """Operator round t.16.2180x385: after the legacy «طول» panel replaces the
+    map file with the resized text, the map carries NO edits — yet the operator
+    must be able to download the machine file. edits=[] is a passthrough
+    candidate (0 changed lines) instead of an empty-edits error."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.operator = User.objects.create_user("cnc-op-passthrough", password="testpass")
+        group, _created = Group.objects.get_or_create(name="2")
+        cls.operator.groups.add(group)
+
+    def setUp(self):
+        self.client.login(username="cnc-op-passthrough", password="testpass")
+
+    def test_empty_edits_build_passthrough_candidate(self):
+        from cnc_resizer.views import _engine_candidate
+        from cnc_resizer.engine.serializer import serialize_candidate
+        text = _capsule_with_rows_text()
+        candidate = _engine_candidate({"content": text, "edits": []}, "p.cnc")
+        serialized = serialize_candidate(text, candidate)
+        self.assertIsNone(serialized.get("blocked"))
+        self.assertEqual(serialized["text"], text)
+
+    def test_output_endpoint_accepts_empty_edits_without_empty_error(self):
+        from django.urls import reverse
+        resp = self.client.post(reverse("cnc_resizer:engine_output"),
+                                data=json.dumps({"content": _capsule_with_rows_text(),
+                                                 "filename": "p.cnc", "edits": []}),
+                                content_type="application/json")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        # in this test environment the controller adapter is not configured,
+        # so the dialect gate may refuse — but the refusal must be the adapter
+        # notice, never the old empty-edits 400
+        if not data.get("allowed"):
+            self.assertNotIn("غیرخالی", " ".join(data.get("blockers", [])))
+        else:
+            self.assertEqual(data["cnc_text"], _capsule_with_rows_text())

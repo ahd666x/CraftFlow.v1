@@ -84,6 +84,7 @@
     featureOps: [],          // فقط وقتی partOp/gapOps خالی است (array/mirror/rotate)
     outputsExcluded: new Set(),  // part_id هایی که اپراتور از خروجی حذف کرده (advisory)
     fixedParts: new Set(),       // part_id هایی که «ثابت» علامت خورده‌اند
+    resizedFromPanel: false,     // فایل با نتیجهٔ پنل «طول» (روش قدیمی) جایگزین شده — بدون ویرایش نقشه هم دانلودپذیر است
     selection: [],           // [{type:'part'|'op'|'child', id}]
     gate: { allowed: null, blockers: [], warnings: [], edits: false },
     previewSeq: 0,           // race-guard: پاسخ‌های کهنهٔ پیش‌نمایش دور ریخته می‌شوند
@@ -175,6 +176,7 @@
   CNC.loadText = async function loadText(name, text) {
     const st = CNC.state;
     st.filename = name; st.text = text;
+    st.resizedFromPanel = false;
     st.sourceIR = null; st.detection = null; st.preview = null; st.currentIR = null;
     st.partOp = new Map(); st.gapOps = []; st.featureOps = [];
     st.outputsExcluded = new Set(); st.fixedParts = new Set();

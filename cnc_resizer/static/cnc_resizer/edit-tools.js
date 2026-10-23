@@ -450,7 +450,8 @@
         if (!Number.isFinite(newSize) || newSize <= 0 || Math.abs(newSize - current) < 1e-9) return;
         const op = { op: 'stretch_part', part_id: partId, axis,
                      new_size: Math.round(newSize * 1000) / 1000 };
-        if (plan) op.band = plan.band;
+        if (plan && plan.distribution) op.distribution = 'gaps';
+        else if (plan) op.band = plan.band;
         commitOp(partId, op,
                  `کشش ${CNC.partName(part)} ${axis.toUpperCase()}`);
       },
@@ -796,6 +797,16 @@
     const lo = `${axis}_min`, hi = `${axis}_max`;
     const band = part[`stretch_band_${axis}`];
     if (!band) return null;
+    // بازخورد اپراتور (t.16.2180x385): قطعهٔ سوراخ‌دار (ردیف سوراخ + شیار
+    // طولی) مثل روش قدیمی توزیع می‌شود — طول اضافه بین فاصلهٔ گروه‌های سوراخ
+    // می‌نشیند و شیار طولی همراه قطعه بلند می‌شود؛ برش تک‌نواری لازم ندارد.
+    // band فقط برای نمایش لبهٔ آزاد/لنگر می‌ماند.
+    const distLevels = part[`row_levels_${axis}`] || [];
+    if (part.capabilities && part.capabilities[`can_distribute_${axis}`]
+        && distLevels.length >= 1 && part[`distribute_span_${axis}`]) {
+      return { band, relocated: null, hard: false, distribution: true,
+               note: `طول اضافه بین ${distLevels.length + 1} فاصلهٔ گروه‌های سوراخ توزیع می‌شود (مثل روش قدیمی)؛ شیار طولی هم بلند می‌شود.` };
+    }
     const straddles = (b, bnd) => !(b[hi] <= bnd[0] + 1e-6 || b[lo] >= bnd[1] - 1e-6);
     const childBoxes = (part.children || []).filter((c) => c.bbox).map((c) => c.bbox);
     let final = band, relocated = null;
@@ -852,14 +863,15 @@
     }
     if (plan.note) CNC.showTransient(info.client, esc(plan.note));
     state._gestureClaimed = true;
-    barDrag = { partId, axis, band: plan.band, edge, start: axis === 'y' ? info.world.y : info.world.x, delta: 0 };
+    barDrag = { partId, axis, band: plan.band, distribution: !!plan.distribution,
+                start: axis === 'y' ? info.world.y : info.world.x, delta: 0 };
     CNC.selection.set([{ type: 'part', id: partId }]);
   }
   function moveBarDrag(info) {
     if (!barDrag) return;
     const cur = barDrag.axis === 'y' ? info.world.y : info.world.x;
     barDrag.delta = cur - barDrag.start;
-    liveStretchPreview(barDrag.partId, barDrag.axis, barDrag.band, barDrag.delta);
+    liveStretchPreview(barDrag.partId, barDrag.axis, barOffsetAt(barDrag, barDrag.delta));
     const hud = document.getElementById('liveHud');
     if (hud) {
       hud.hidden = false;
@@ -875,11 +887,41 @@
     const delta = Math.round((applied + drag.delta) * 1000) / 1000;
     if (Math.abs(delta) < 1e-9) return;
     state.partOp.delete(drag.partId);
-    // band صریح: نوارِ نهایی (شامل جابه‌جایی به فاصلهٔ خالی) همان چیزی است که
-    // سرور باید اجرا کند تا پیش‌نمایش کلاینت و نتیجهٔ سرور یکی بمانند.
-    commitOp(drag.partId, { op: 'stretch_part', part_id: drag.partId, axis: drag.axis,
-                            band: drag.band, delta: Math.round(delta * 1000) / 1000 },
+    // band صریح فقط برای کشش تک‌نواری؛ حالت توزیع (روش قدیمی) بدون band می‌رود
+    // تا سرور همان نگاشت چندمنطقه‌ای را اجرا کند که پیش‌نمایش زنده نشان داد.
+    const op = { op: 'stretch_part', part_id: drag.partId, axis: drag.axis,
+                 delta: Math.round(delta * 1000) / 1000 };
+    if (drag.distribution) op.distribution = 'gaps';
+    else op.band = drag.band;
+    commitOp(drag.partId, op,
              `کشش ${CNC.partName(findPart(drag.partId) || {})} ${drag.axis.toUpperCase()} ${CNC.sgn(delta)}`);
+  }
+
+  // تابع آفست اتصال‌ها: تک‌نواری (زیر نوار ۰، بالای آن دلتا) یا توزیع چندمنطقه‌ای
+  function barOffsetAt(drag, delta) {
+    const part = findPart(drag.partId);
+    if (drag.distribution && part) return zoneOffsetAt(part, drag.axis, delta);
+    return (v) => (v <= drag.band[0] + 1e-6 ? 0 : v >= drag.band[1] - 1e-6 ? delta : 0);
+  }
+
+  // نگاشت توزیع سمت کلاینت — همان features/cuts سرور (_distribution_plan)
+  function zoneOffsetAt(part, axis, delta) {
+    const span = part[`distribute_span_${axis}`];
+    const levels = (part[`row_levels_${axis}`] || [])
+      .filter((v) => v > span[0] + 1e-6 && v < span[1] - 1e-6);
+    const features = [span[0], ...levels, span[1]];
+    const n = features.length - 1;
+    if (n < 1 || !Number.isFinite(delta) || Math.abs(delta) < 1e-9) return () => 0;
+    const inc = delta / n;
+    const cuts = [];
+    for (let i = 0; i < n; i++) cuts.push((features[i] + features[i + 1]) / 2);
+    return (v) => {
+      let off = 0;
+      for (const c of cuts) {
+        if (v > c + 1e-6) off += inc; else break;
+      }
+      return off;
+    };
   }
 
   // جابه‌جایی اعمال‌شدهٔ فعلی روی «بالای نوار» = فرق مرکز بالای قطعه قبل/بعد
@@ -892,7 +934,7 @@
       : after.bbox.x_max - before.bbox.x_max;
   }
 
-  function liveStretchPreview(partId, axis, band, delta) {
+  function liveStretchPreview(partId, axis, offsetAt) {
     const ref = CNC.viewEls.refs[partId];
     if (!ref) return;
     const part = findPart(partId);
@@ -902,23 +944,22 @@
       const block = CNC.model.blocks.get(p.dataset.block);
       if (!block) return;
       if (!p.dataset.origD) p.dataset.origD = p.getAttribute('d');
-      p.setAttribute('d', stretchBlockD(block, axis, band, delta));
+      p.setAttribute('d', stretchBlockD(block, axis, offsetAt));
     });
   }
-  function stretchBlockD(block, axis, band, delta) {
-    const tol = 1e-6;
-    const junctionOffset = (v) => (v <= band[0] + tol ? 0 : v >= band[1] - tol ? delta : 0);
+  function stretchBlockD(block, axis, offsetAt) {
     let d = '';
     for (const s of block.segments) {
       const c1 = axis === 'y' ? s.y1 : s.x1;
       const c2 = axis === 'y' ? s.y2 : s.x2;
-      const o1 = junctionOffset(c1), o2 = junctionOffset(c2);
+      const o1 = offsetAt(c1), o2 = offsetAt(c2);
       let x1 = s.x1, y1 = s.y1, x2 = s.x2, y2 = s.y2;
       if (axis === 'y') { y1 += o1; y2 += o2; } else { x1 += o1; x2 += o2; }
       if (s.t === 'line') {
         d += `M${x1} ${-y1}L${x2} ${-y2}`;
       } else {
-        // در نوار معتبر قوس کاملاً یک سمت نوار است → انتقال صلب
+        // قوس فقط وقتی سالم می‌ماند که هر دو سر آفست برابر داشته باشند
+        // (انتقال صلب)؛ وگرنه سرور همین درخواست را رد می‌کند.
         d += `M${x1} ${-y1}A${s.r} ${s.r} 0 ${s.large ? 1 : 0} ${s.sweep} ${x2} ${-y2}`;
       }
     }
@@ -1001,7 +1042,7 @@
     if (plan.note) CNC.showTransient(info.client, esc(plan.note));
     state._gestureClaimed = true;
     handleDrag = {
-      partId, axis, edge, band: plan.band,
+      partId, axis, edge, band: plan.band, distribution: !!plan.distribution,
       start: axis === 'y' ? info.world.y : info.world.x,
       size0: axis === 'y'
         ? (beforeBox(partId).y_max - beforeBox(partId).y_min)
@@ -1028,8 +1069,11 @@
     if (!drag || !drag.newSize
         || Math.abs(drag.newSize - drag.size0) < 1e-9) return;
     state.partOp.delete(drag.partId);
-    commitOp(drag.partId, { op: 'stretch_part', part_id: drag.partId, axis: drag.axis,
-                            band: drag.band, new_size: Math.round(drag.newSize * 1000) / 1000 },
+    const op = { op: 'stretch_part', part_id: drag.partId, axis: drag.axis,
+                 new_size: Math.round(drag.newSize * 1000) / 1000 };
+    if (drag.distribution) op.distribution = 'gaps';
+    else op.band = drag.band;
+    commitOp(drag.partId, op,
              `تغییر اندازهٔ ${CNC.partName(findPart(drag.partId) || {})} ${drag.axis.toUpperCase()}`);
   }
 

@@ -70,14 +70,24 @@ def _finite(value: Any, label: str) -> float:
 
 def _stretch_feature_axis(block: Any, axis: str, feature_id: str,
                           band_start: float, band_end: float,
-                          below_offset: float, above_offset: float) -> None:
+                          below_offset: float, above_offset: float,
+                          junction_offset: Any = None,
+                          require_span: tuple[float, float] | None = None) -> None:
     """Segment-level stretch of one block along ``axis`` (X or Y).
 
     Axis-generalised twin of ``parametric._stretch_feature_x`` with the same
     fail-closed guards: only straight moves parallel to the stretch axis may
-    bridge the band, arcs never take different offsets at their two ends, and
+    bridge a cut, arcs never take different offsets at their two ends, and
     moved modal endpoints are materialized by the serializer as explicit
     absolute axis words on their original source lines.
+
+    Two mapping modes:
+    - default (``junction_offset=None``): single-band stretch — below the band
+      keeps ``below_offset``, above it ``above_offset``.
+    - distribution (``junction_offset`` given, from :func:`_zone_mapping`):
+      old-method multi-cut mapping — the delta is distributed across the gaps
+      between hole-row levels. ``require_span`` optionally enforces that the
+      block's junctions reach both outer cuts (contour passes only).
     """
     tol = _FINITE_TOL
     cross = "x" if axis == "y" else "y"
@@ -110,20 +120,26 @@ def _stretch_feature_axis(block: Any, axis: str, feature_id: str,
     junctions = [getattr(moves[0].start, axis)] + [getattr(move.end, axis) for move in moves]
     if any(value is None for value in junctions):
         raise TransformError(f"Feature {feature_id}: مختصات {axis.upper()} حل‌نشده در زنجیرهٔ حرکت")
-    if min(junctions) > band_start + tol or max(junctions) < band_end - tol:
-        raise TransformError(
-            f"Feature {feature_id}: نقاط extremes مسیر روی برآمدگی قوس است نه endpoint حرکت؛ "
-            "کشش پاره‌ای به endpoint در هر دو край نیاز دارد")
+    # Band mode always anchors its extremes; zone mode checks only the contour
+    # passes (require_span) — a spanning child like the longitudinal groove
+    # may legitimately cover a subset of the cuts.
+    if require_span is not None or junction_offset is None:
+        span_lo, span_hi = require_span if require_span is not None else (band_start, band_end)
+        if min(junctions) > span_lo + tol or max(junctions) < span_hi - tol:
+            raise TransformError(
+                f"Feature {feature_id}: نقاط extremes مسیر روی برآمدگی قوس است نه endpoint حرکت؛ "
+                "کشش پاره‌ای به endpoint در هر دو край نیاز دارد")
 
-    def junction_offset(value: float) -> float:
+    def junction_offset_band(value: float) -> float:
         if value <= band_start + tol:
             return below_offset
         if value >= band_end - tol:
             return above_offset
         return 0.0
 
+    if junction_offset is None:
+        junction_offset = junction_offset_band
     offsets = [junction_offset(value) for value in junctions]
-
     previous_end = None
     for index, move in enumerate(moves):
         if (move.start is None or move.end is None
@@ -177,6 +193,66 @@ def _band_mapping(band_start: float, band_end: float, below: float, above: float
             return above
         return 0.0
     return junction_offset
+
+
+def _zone_mapping(cuts: list[float], shifts: list[float]):
+    """Old-method distribution mapping: the delta is distributed across the
+    gaps between hole-row levels, so the offset of a junction is the sum of
+    the increments of every cut below it. ``shifts`` are cumulative sums —
+    ``shifts[j]`` is the total offset above ``cuts[j]``. A pure function of
+    the junction coordinate, exactly like :func:`_band_mapping`, so connected
+    chains and closed-loop wrap points stay consistent automatically."""
+    table = list(zip(cuts, shifts))
+
+    def junction_offset(value: float) -> float:
+        offset = 0.0
+        for cut, shift in table:
+            if value > cut + _FINITE_TOL:
+                offset = shift
+            else:
+                break
+        return offset
+    return junction_offset
+
+
+def _distribution_plan(part: dict[str, Any], axis: str, delta: float,
+                       label: str) -> dict[str, Any]:
+    """Old-method distribution plan for one part on one axis.
+
+    Features = [long-edge low] + hole-row levels + [long-edge high] — the
+    same feature list the legacy core engine builds file-wide (core.detect_
+    geometry + make_increments, equal mode). The delta is split equally over
+    the gaps; cut points sit at the midpoints; shifts are cumulative.
+    """
+    span = part.get(f"distribute_span_{axis}")
+    if not span or span[1] - span[0] <= _FINITE_TOL:
+        raise TransformError(
+            f"{label}: قطعهٔ {part['id']} لبهٔ صاف بلند برای توزیع {axis.upper()} ندارد")
+    levels = [level for level in (part.get(f"row_levels_{axis}") or [])
+              if span[0] + _FINITE_TOL < level < span[1] - _FINITE_TOL]
+    features = [span[0]] + levels + [span[1]]
+    n_gaps = len(features) - 1
+    if n_gaps < 1:
+        raise TransformError(
+            f"{label}: قطعهٔ {part['id']} ردیف سوراخ قابل‌توزیع در {axis.upper()} ندارد")
+    increment = delta / n_gaps
+    for index in range(n_gaps):
+        if (features[index + 1] - features[index]) + increment < 0.5:
+            raise TransformError(
+                f"{label}: توزیع دلتا فاصلهٔ {features[index]:.1f}–{features[index + 1]:.1f} "
+                f"را زیر ۰٫۵mm می‌برد؛ دلتای {axis.upper()} را کمتر کنید")
+    cuts = [(features[index] + features[index + 1]) / 2.0 for index in range(n_gaps)]
+    shifts = [increment * (index + 1) for index in range(n_gaps)]
+    return {
+        "features": features,
+        "levels": levels,
+        "cuts": cuts,
+        "shifts": shifts,
+        "increment": increment,
+        "gaps": [{"from": round(features[index], 4),
+                  "to": round(features[index + 1], 4),
+                  "increment": round(increment, 6)} for index in range(n_gaps)],
+    }
 
 
 def _member_blocks(part: dict[str, Any]) -> list[str]:
@@ -314,6 +390,63 @@ def preview_part_edits(program: Program, request: dict[str, Any], source_text: s
                                   "below_offset": below_offset,
                                   "above_offset": below_offset + delta}
 
+    def assign_distribution(part: dict[str, Any], axis: str, plan: dict[str, Any],
+                            contour_block_ids: list[str], below: float,
+                            label: str) -> list[str]:
+        """Old-method distribution lowering for one part (operator feedback
+        round t.16.2180x385): the contour passes and every spanning child or
+        assigned operation stretch through the row-gap zones — the
+        longitudinal groove grows with the piece — while hole-row children
+        ride their level's cumulative shift, exactly like the legacy core
+        engine's Y-word rewrite, except fail-closed on arcs and diagonals
+        that would be silently distorted there.
+
+        Returns the shifted row-children block ids for the summary.
+        """
+        cuts = plan["cuts"]
+        shifts = [below + value for value in plan["shifts"]]
+        mapping = _zone_mapping(cuts, shifts)
+        moved_rows: list[str] = []
+        zone_children: list[str] = []
+        for child in part["children"]:
+            box = child.get("bbox")
+            if (child.get("closed") and box
+                    and max(box["x_max"] - box["x_min"],
+                            box["y_max"] - box["y_min"]) <= parts_mod.ROW_CHILD_MAX):
+                centre = (box[f"{axis}_min"] + box[f"{axis}_max"]) / 2.0
+                shift = mapping(centre)
+                if abs(shift) > 1e-12:
+                    assign_shift(child["block_ids"],
+                                 shift if axis == "x" else 0.0,
+                                 shift if axis == "y" else 0.0, label)
+                    moved_rows.extend(child["block_ids"])
+            else:
+                zone_children.extend(child["block_ids"])
+        for block_id in contour_block_ids:
+            existing = lowering.get(block_id)
+            if existing is not None:
+                raise TransformError(
+                    f"{label}: بلوک {block_id} قبلاً توسط ویرایش دیگری تغییر کرده؛ "
+                    "هر بلوک در یک درخواست فقط یک تبدیل می‌گیرد")
+            lowering[block_id] = {"op": "stretch_zones", "axis": axis,
+                                  "cuts": list(cuts), "shifts": shifts,
+                                  "contour": True}
+        for block_id in zone_children:
+            zone_item = {"op": "stretch_zones", "axis": axis,
+                         "cuts": list(cuts), "shifts": shifts, "contour": False}
+            existing = lowering.get(block_id)
+            if existing is not None:
+                # یک بلوک می‌تواند هم‌زمان زیرحلقهٔ بستهٔ فرزند و عملیات بازِ
+                # همان قطعه باشد (سر بستهٔ سرپانتین + دنبالهٔ باز روی یک بلوک)؛
+                # نگاشت ناحیهٔ یکسان را دوباره ثبت نکن — فقط تناقض واقعی خطا است.
+                if existing != zone_item:
+                    raise TransformError(
+                        f"{label}: بلوک {block_id} قبلاً توسط ویرایش دیگری تغییر کرده؛ "
+                        "هر بلوک در یک درخواست فقط یک تبدیل می‌گیرد")
+                continue
+            lowering[block_id] = zone_item
+        return moved_rows
+
     def part_or_error(part_id: Any, label: str) -> dict[str, Any]:
         if not isinstance(part_id, str) or part_id not in part_by_id:
             raise TransformError(f"{label}: part_id ناشناخته است: {part_id!r}")
@@ -387,8 +520,30 @@ def preview_part_edits(program: Program, request: dict[str, Any], source_text: s
             if abs(delta) <= 1e-9:
                 raise TransformError(f"{label}: دلتای کشش صفر است")
             capability = part["capabilities"].get(f"can_stretch_{axis}")
+            can_distribute = part["capabilities"].get(f"can_distribute_{axis}")
             band_given = edit.get("band")
-            if band_given is not None:
+            distribution = edit.get("distribution")
+            if distribution not in (None, "band", "gaps"):
+                raise TransformError(f"{label}: distribution باید band یا gaps باشد")
+            if distribution is None:
+                # بازخورد اپراتور (t.16.2180x385): پیش‌فرضِ قطعهٔ سوراخ‌دار مثل روش
+                # قدیمی است — طول اضافه بین فاصلهٔ گروه‌های سوراخ توزیع می‌شود و
+                # شیار طولی همراه قطعه بلند می‌شود. نوار صریح یا قطعهٔ بدون ردیف
+                # سوراخ = همان کشش تک‌نواری قبلی.
+                distribution = "gaps" if (band_given is None and can_distribute) else "band"
+            plan = None
+            if distribution == "gaps":
+                if band_given is not None:
+                    raise TransformError(
+                        f"{label}: band و distribution=gaps با هم فرستاده نمی‌شوند")
+                if not can_distribute:
+                    raise TransformError(
+                        f"{label}: قطعهٔ {part['id']} ردیف سوراخ/لبهٔ صاف برای توزیع "
+                        f"{axis.upper()} ندارد؛ کشش تک‌نواری (distribution=band) را بفرستید")
+                plan = _distribution_plan(part, axis, delta, label)
+                # همسایه‌ها نسبت به رشد کل ستون قطعه دنبال می‌کنند
+                band = (part["bbox"][f"{axis}_min"], part["bbox"][f"{axis}_max"])
+            elif band_given is not None:
                 if (not isinstance(band_given, list) or len(band_given) != 2):
                     raise TransformError(f"{label}: band باید [start, end] باشد")
                 band = (_finite(band_given[0], f"{label} band[0]"),
@@ -411,6 +566,10 @@ def preview_part_edits(program: Program, request: dict[str, Any], source_text: s
                         f"{axis} همین قطعه)")
                 band = snapped_band
             else:
+                if distribution == "gaps":
+                    raise TransformError(
+                        f"{label}: قطعهٔ {part['id']} ردیف سوراخ/لبهٔ صاف برای توزیع "
+                        f"{axis.upper()} ندارد؛ کشش تک‌نواری (distribution=band) را بفرستید")
                 band_value = part.get(f"stretch_band_{axis}")
                 if not capability or not band_value:
                     raise TransformError(
@@ -423,8 +582,15 @@ def preview_part_edits(program: Program, request: dict[str, Any], source_text: s
             # upper side of the cut band; its distance from the reference edge
             # remains unchanged.  Since only the parent contour is stretched,
             # a child may safely lie across the band.
+            # Distribution default (operator round t.16.2180x385): children
+            # stretch/ride through the row-gap zones instead — old-method
+            # semantics with the longitudinal groove growing along.
             band_relocated = None
-            assign_stretch(contour_ids, axis, band, delta, label)
+            if distribution == "gaps":
+                moved_rows = assign_distribution(part, axis, plan, contour_ids, 0.0, label)
+            else:
+                moved_rows = []
+                assign_stretch(contour_ids, axis, band, delta, label)
             part_stretched.add(part["id"])
             # everything else on the sheet follows the band: rigid beyond it
             member_ids = set(_member_blocks(part))
@@ -466,9 +632,17 @@ def preview_part_edits(program: Program, request: dict[str, Any], source_text: s
                 raise TransformError(
                     f"{label}: عملیات {orphan['id']} روی نوار کشش می‌گذرد و کشیدن آن را خراب می‌کند")
             touched_parts.add(part["id"])
-            summary_entry = {"op": op, "part_id": part["id"], "axis": axis,
-                             "band": [band[0], band[1]], "delta": delta,
-                             "blocks": contour_ids}
+            if distribution == "gaps":
+                summary_entry = {"op": op, "part_id": part["id"], "axis": axis,
+                                 "distribution": "gaps", "delta": delta,
+                                 "gaps": plan["gaps"],
+                                 "levels": [round(level, 4) for level in plan["levels"]],
+                                 "cuts": [round(cut, 4) for cut in plan["cuts"]],
+                                 "blocks": contour_ids + sorted(moved_rows)}
+            else:
+                summary_entry = {"op": op, "part_id": part["id"], "axis": axis,
+                                 "band": [band[0], band[1]], "delta": delta,
+                                 "blocks": contour_ids}
             if band_relocated:
                 summary_entry["band_relocated"] = band_relocated
                 band_relocation_notes.append(
@@ -492,9 +666,23 @@ def preview_part_edits(program: Program, request: dict[str, Any], source_text: s
             if abs(delta) <= 1e-9:
                 raise TransformError(f"{label}: دلتای هر قطعه نباید صفر باشد")
             chain = [part_or_error(item, label) for item in raw_ids]
+            chain_distribution = edit.get("distribution")
+            if chain_distribution not in (None, "band", "gaps"):
+                raise TransformError(f"{label}: distribution باید band یا gaps باشد")
+            if chain_distribution is None:
+                # همان پیش‌فرض stretch_part: قطعه‌های سوراخ‌دار مثل روش قدیمی
+                # توزیع می‌شوند؛ بقیه تک‌نواری.
+                chain_distribution = ("gaps" if all(
+                    part["capabilities"].get(f"can_distribute_{axis}") for part in chain)
+                    else "band")
             for part in chain:
                 require_free(part, label)
-                if not part["capabilities"].get(f"can_stretch_{axis}"):
+                if chain_distribution == "gaps":
+                    if not part["capabilities"].get(f"can_distribute_{axis}"):
+                        raise TransformError(
+                            f"{label}: قطعهٔ {part['id']} ردیف سوراخ/لبهٔ صاف برای توزیع "
+                            f"{axis.upper()} ندارد؛ distribution=band را بفرستید")
+                elif not part["capabilities"].get(f"can_stretch_{axis}"):
                     raise TransformError(
                         f"{label}: قطعهٔ {part['id']} نوار صاف {axis.upper()} برای کشش ندارد")
             lo_key, hi_key = f"{axis}_min", f"{axis}_max"
@@ -533,13 +721,31 @@ def preview_part_edits(program: Program, request: dict[str, Any], source_text: s
                 below_offsets[part["id"]] = below
                 upper_offsets[part["id"]] = below + delta
             for rank, part in enumerate(chain):
+                contour_ids = list(part["contour_block_ids"])
+                below = below_offsets[part["id"]]
+                if chain_distribution == "gaps":
+                    plan = _distribution_plan(part, axis, delta, label)
+                    moved_rows = assign_distribution(part, axis, plan, contour_ids,
+                                                     below, label)
+                    touched_parts.add(part["id"])
+                    part_stretched.add(part["id"])
+                    normalized_summary.append({
+                        "op": op, "part_id": part["id"], "axis": axis,
+                        "rank": rank + 1, "delta": delta,
+                        "distribution": "gaps",
+                        "lower_offset": below,
+                        "upper_offset": below + delta,
+                        "gaps": plan["gaps"],
+                        "levels": [round(level, 4) for level in plan["levels"]],
+                        "cuts": [round(cut, 4) for cut in plan["cuts"]],
+                        "blocks": contour_ids + sorted(moved_rows),
+                    })
+                    continue
                 band_value = part.get(f"stretch_band_{axis}")
                 if not band_value:
                     raise TransformError(
                         f"{label}: قطعهٔ {part['id']} بازهٔ صاف {axis.upper()} ندارد")
                 band = (band_value[0], band_value[1])
-                contour_ids = list(part["contour_block_ids"])
-                below = below_offsets[part["id"]]
                 assign_stretch(contour_ids, axis, band, delta, label,
                                below_offset=below)
                 if abs(below) > 1e-9:
@@ -682,6 +888,12 @@ def preview_part_edits(program: Program, request: dict[str, Any], source_text: s
             raise TransformError(f"بلوک {block_id} از برنامه حذف شده است")
         if item["op"] == "shift":
             _shift_block_rigid(block, item["dx"], item["dy"], block_id)
+        elif item["op"] == "stretch_zones":
+            _stretch_feature_axis(block, item["axis"], block_id,
+                                  0.0, 0.0, 0.0, 0.0,
+                                  junction_offset=_zone_mapping(item["cuts"], item["shifts"]),
+                                  require_span=((item["cuts"][0], item["cuts"][-1])
+                                                if item.get("contour") else None))
         else:
             _stretch_feature_axis(block, item["axis"], block_id,
                                   item["band_start"], item["band_end"],
@@ -735,8 +947,11 @@ def preview_part_edits(program: Program, request: dict[str, Any], source_text: s
                                 "y_min": source_bounds["y_min"] + item["dy"],
                                 "y_max": source_bounds["y_max"] + item["dy"]}
                 else:
-                    mapping = _band_mapping(item["band_start"], item["band_end"],
-                                            item["below_offset"], item["above_offset"])
+                    if item["op"] == "stretch_zones":
+                        mapping = _zone_mapping(item["cuts"], item["shifts"])
+                    else:
+                        mapping = _band_mapping(item["band_start"], item["band_end"],
+                                                item["below_offset"], item["above_offset"])
                     if item["axis"] == "y":
                         expected = {"x_min": source_bounds["x_min"], "x_max": source_bounds["x_max"],
                                     "y_min": source_bounds["y_min"] + mapping(source_bounds["y_min"]),

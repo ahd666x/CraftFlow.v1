@@ -56,6 +56,15 @@ ARC_SAMPLE_STEP_DEG = 15.0
 CONNECT_TOL = 0.05               # same tolerance as geometry.py closed test
 _STRETCH_TOL = 1e-6
 
+# بازخورد اپراتور (راند t.16.2180x385): کشش طولِ صفحه/کفهٔ سوراخ‌دار باید مثل
+# روش قدیمی بین فاصلهٔ گروه‌های سوراخ توزیع شود و شیار طولی همراه قطعه بلند شود.
+# فرزندِ «سوراخ‌مانند» = حداکثر بعد bbox از این کوچک‌تر یا مساوی؛ سوراخ‌های
+# رایج workshop (۲/۵/۸ میلی‌متری) را می‌پوشاند و پاکت/پنجره/شیار را از ردیف
+# سوراخ خارج می‌کند. (هم‌خانوادهٔ آستانهٔ ۵ میلی‌متری موتور قدیمی core.py ولی
+# کمی بازتر، چون سوراخ‌های ۸ میلی‌متری مینیفیکس هم باید ردیف بشمارند.)
+ROW_CHILD_MAX = 12.0             # mm
+ROW_CLUSTER_TOL = 2.0            # mm — مرز ادغام سطوح ردیف (مثل core.py)
+
 
 class PartDetectionError(ValueError):
     """Raised only for malformed requests, never for odd geometry."""
@@ -408,6 +417,53 @@ def classify_shape(loop: Loop) -> str:
     if loop.closed and angles:
         return "tapered"
     return "freeform"
+
+
+def _row_levels_and_span(canonical: Loop, children: list[dict[str, Any]],
+                         axis: str) -> tuple[list[float], list[float] | None]:
+    """Hole-row levels + long straight-edge span for old-style distribution.
+
+    The span is the axis extent of the contour's cross-parallel straight
+    moves (the long edges a stretch can live on) — the capsule's [196, 1984]
+    rather than the arc-to-arc bbox. Row levels are centres of small closed
+    children clustered within ``ROW_CLUSTER_TOL`` along ``axis`` — the same
+    detection the legacy core engine applies file-wide, now per part.
+    """
+    cross = "x" if axis == "y" else "y"
+    coords: list[float] = []
+    for move in canonical.moves:
+        if move.motion != "linear" or move.start is None or move.end is None:
+            continue
+        start_cross, end_cross = getattr(move.start, cross), getattr(move.end, cross)
+        start_axis, end_axis = getattr(move.start, axis), getattr(move.end, axis)
+        if start_cross is None or end_cross is None or start_axis is None or end_axis is None:
+            continue
+        if abs(end_cross - start_cross) <= _STRETCH_TOL:
+            coords.extend((start_axis, end_axis))
+    span = None
+    if coords:
+        low, high = min(coords), max(coords)
+        if high - low > _STRETCH_TOL:
+            span = [round(low, 4), round(high, 4)]
+    centres: list[float] = []
+    for child in children:
+        box = child.get("bbox")
+        if not box or child.get("closed") is not True:
+            continue
+        width = box.get("x_max", 0.0) - box.get("x_min", 0.0)
+        height = box.get("y_max", 0.0) - box.get("y_min", 0.0)
+        if max(width, height) > ROW_CHILD_MAX:
+            continue
+        centres.append((box[f"{axis}_min"] + box[f"{axis}_max"]) / 2.0)
+    centres.sort()
+    groups: list[list[float]] = []
+    for value in centres:
+        if groups and abs(groups[-1][-1] - value) <= ROW_CLUSTER_TOL:
+            groups[-1].append(value)
+        else:
+            groups.append([value])
+    levels = [round(sum(group) / len(group), 4) for group in groups]
+    return levels, span
 
 
 def _band_intervals(loop: Loop, axis: str, merge_tol: float) -> list[tuple[float, float]]:
@@ -818,6 +874,16 @@ def part_index(program: Program, params: dict[str, Any] | None = None) -> dict[s
         ops = part.pop("_op_children", [])
         for entry in ops:
             part["children"].append(entry)
+        # بازخورد اپراتور: برای توزیع طول بین گروه‌های سوراخ (روش قدیمی) هر
+        # قطعه سطوح ردیف سوراخ و گسترهٔ لبهٔ صاف خود را منتشر می‌کند؛ موتور
+        # part_edits همین‌ها را برای برش‌های توزیع استفاده می‌کند و کلاینت هم
+        # برای پیش‌نمایش زندهٔ همان نگاشت.
+        for axis_key in ("y", "x"):
+            levels, span = _row_levels_and_span(part["_canonical"], part["children"], axis_key)
+            part[f"row_levels_{axis_key}"] = levels
+            part[f"distribute_span_{axis_key}"] = span
+            part["capabilities"][f"can_distribute_{axis_key}"] = (
+                not part["locked"] and bool(levels) and span is not None)
     geometries = [loop.bbox for loop in loops]
     sheet = None
     if geometries:

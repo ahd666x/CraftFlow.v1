@@ -399,6 +399,16 @@ def _engine_candidate(payload: dict, filename: str, tool_map: dict | None = None
         edits = payload.get('edits')
         if not isinstance(edits, list):
             raise ValueError('edits must be a list')
+        if not edits:
+            # بازخورد اپراتور: بعد از «جایگزینی فایل روی نقشه» (پنل طول/روش
+            # قدیمی) ویرایشی روی نقشه نیست ولی فایل همان حاصل تغییر طول است و
+            # باید از همان گتهٔ دیالکت دانلود شود — کاندیدِ عبور بی‌تغییر.
+            from .engine.ir import to_dict
+            from .engine.parser import parse_program
+            program = parse_program(payload['content'], filename=filename)
+            return {"validation": {"passed": True, "errors": [], "warnings": []},
+                    "source_sha256": program.source_sha256,
+                    "program_ir": to_dict(program)}
         if edits and all(_looks_like_part_edit(item) for item in edits):
             from .engine.part_edits import edits_part_program
             params = payload.get('params') if isinstance(payload.get('params'), dict) else {}
