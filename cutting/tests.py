@@ -777,6 +777,12 @@ class InventoryAndCutFlowTests(TestCase):
         self.assertContains(response, '>1</text>')
         self.assertContains(response, 'بهره‌وری')
         self.assertContains(response, 'همه مصرف شدند')
+        # نمای ایستگاهی جدید: نتیجه زیر لایهٔ پنهان، ناوبری بالا، بدون شبیه‌سازی
+        self.assertContains(response, 'data-dock-toggle="result"')
+        self.assertContains(response, 'data-result-dock')
+        self.assertContains(response, 'sheet-nav-btn')
+        self.assertContains(response, 'data-dock-toggle="verlist"')
+        self.assertNotContains(response, 'شبیه‌سازی')
         download = self.client.get(reverse('cutting:download_cut', args=[plan.pk]))
         self.assertEqual(download.status_code, 200)
         import xml.etree.ElementTree as ET
@@ -969,7 +975,7 @@ class PhaseBPlanFlowTests(TestCase):
         self.assertEqual(sheet.cut_sequence[0]['t'], 'rip')
         detail = self.client.get(reverse('cutting:plan_detail', args=[plan.pk]))
         self.assertContains(detail, 'مقایسهٔ بهره‌وری الگوریتم‌ها')
-        self.assertContains(detail, '"seq":[')
+        self.assertNotContains(detail, 'data-cut-sim')  # شبیه‌سازی حذف شده؛ ترتیب برش روی رکورد ورق می‌ماند
         self.assertContains(detail, 'الگوریتم:')
         cut_file = self.client.get(reverse('cutting:download_cut', args=[plan.pk]))
         self.assertEqual(cut_file.status_code, 200)
@@ -985,8 +991,8 @@ class PhaseBPlanFlowTests(TestCase):
         self.assertEqual(plan.algorithm, 'shelf')
         self.assertTrue(plan.planned_sheets.get().cut_sequence)
         detail = self.client.get(reverse('cutting:plan_detail', args=[plan.pk]))
-        self.assertContains(detail, '"seq":[')
-        self.assertNotContains(detail, '"seq":[]')
+        self.assertContains(detail, 'class="cut-map"')
+        self.assertNotContains(detail, 'data-cut-sim')
         self.assertContains(detail, 'قفسه‌ای FFDH')
 
     def test_planner_offers_engine_choices_and_defaults_are_safe(self):

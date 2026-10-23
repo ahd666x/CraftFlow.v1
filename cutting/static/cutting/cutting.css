@@ -106,12 +106,11 @@
 .cnc-kpis{display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:.85rem}
 .cnc-kpi{flex-direction:column}
 
-/* ---------- mode tabs (plan_detail) ---------- */
-.mode-tabs{display:flex;gap:.25rem;background:var(--st-panel);border:1px solid var(--st-line);border-radius:.6rem;padding:.22rem;width:max-content;max-width:100%;overflow-x:auto;margin-bottom:.75rem}
-.mode-tab{border:0;background:transparent;color:var(--st-muted);border-radius:.45rem;padding:.4rem .9rem;font-size:.82rem;font-weight:700;white-space:nowrap}
-.mode-tab:hover{color:var(--st-ink)}
-.mode-tab.active{background:var(--st-accent);color:#fff}
-.mode-tab i{margin-inline-end:.35rem}
+/* ============================================================
+   PLAN DETAIL (چیدمان / اجرا) — ایستگاه تمام‌قد: بدون اسکرول،
+   اطلاعات اضافه زیر لایه‌های پنهان (فهرست قطعات، ثبت نتیجه)
+   ============================================================ */
+.plan-bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.6rem 1.1rem;background:var(--st-panel);border:1px solid var(--st-line);border-radius:var(--st-radius);padding:.6rem .9rem;margin-bottom:.6rem}
 
 /* ---------- statusbar (bottom) ---------- */
 .station-statusbar{
@@ -174,9 +173,8 @@
 .cut-setting-list .form-check-label{font-size:.8rem;color:var(--st-ink)}
 
 /* ============================================================
-   PLAN DETAIL (چیدمان / اجرا / شبیه‌سازی)
+   PLAN DETAIL — سربرگ و آمار
    ============================================================ */
-.plan-bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.6rem 1.1rem;background:var(--st-panel);border:1px solid var(--st-line);border-radius:var(--st-radius);padding:.6rem .9rem;margin-bottom:.75rem}
 .plan-bar-main{min-width:0}
 .plan-title-row{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem}
 .plan-title-row h1{font-size:1.05rem;font-weight:800;margin:0}
@@ -208,23 +206,34 @@
 .material-tab.active b{color:var(--st-accent)}
 .material-tab.complete .mat-progress{color:#166534;background:#f0fdf4}
 
-.sheet-panel{display:grid;grid-template-columns:minmax(0,1fr);gap:.7rem;grid-template-areas:"head" "map" "info" "nav"}
-.sheet-panel.has-side{grid-template-columns:minmax(0,1fr) 22rem;grid-template-areas:"head head" "map side" "info side" "nav nav"}
-.sheet-panel > .sheet-head{grid-area:head}
-.sheet-panel > .sheet-map{grid-area:map;min-width:0}
-.sheet-panel > .sheet-info{grid-area:info}
-.sheet-panel > .result-entry{grid-area:side;align-self:start;position:sticky;top:.8rem;max-height:calc(100vh - 7rem);overflow:auto;border:1px solid var(--st-line);border-radius:.65rem;padding:.85rem;background:var(--st-panel)}
-.sheet-panel > .sheet-navigation{grid-area:nav}
-.station[data-mode="sim"] .sheet-panel{grid-template-columns:minmax(0,1fr);grid-template-areas:"head" "map" "info" "nav"}
-.station[data-mode="sim"] .sheet-panel .sheet-info{display:none}
-.station[data-mode="sim"] .sheet-panel .result-entry{display:none}
-.station[data-mode="layout"] .sim-dock{display:none}
+/* ---------- ایستگاه تمام‌قد: ستون‌بندی عمودی بدون اسکرول صفحه ---------- */
+.station-plan{display:flex;flex-direction:column}
+#cut-results-form{display:contents}
+.material-section{flex:1;display:flex;flex-direction:column;min-height:0;gap:.55rem}
+.station-stage{position:relative;flex:1;min-height:320px;display:flex;align-items:stretch}
+.draw-pane{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0}
+.sheet-panels{position:relative;flex:1;min-height:0}
+.sheet-panel{position:absolute;inset:0;display:flex;flex-direction:column;gap:.55rem;margin:0;min-height:0}
 .sheet-panel.d-none{display:none!important}
 
-.sheet-head{min-height:2rem}
+.sheet-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.35rem .8rem;min-height:2rem;flex:none}
+.sheet-head .sh-main{display:flex;flex-wrap:wrap;align-items:center;gap:.45rem;min-width:0}
+.sheet-head .sh-side{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem;margin-inline-start:auto}
 .sheet-head .h6,.sheet-head h2{color:var(--st-ink)}
 .sheet-kind{font-size:.7rem;font-weight:700;border-radius:999px;padding:.14rem .55rem;background:var(--st-accent-soft);color:#1d4ed8;border:1px solid #bfdbfe}
 .sheet-kind.offcut{background:#fffbeb;color:#b45309;border-color:#fde68a}
+
+/* لایه‌های پنهان: هر بخش حداکثر یک کشو باز (فهرست قطعات یا ثبت نتیجه) */
+.side-dock{position:absolute;top:0;bottom:0;z-index:6;width:min(21.5rem,92%);overflow:auto;
+  background:var(--st-panel);border:1px solid var(--st-line);border-radius:.65rem;
+  box-shadow:0 10px 32px rgba(15,23,42,.16);padding:.7rem .8rem}
+.dock-start{inset-inline-start:0}
+.dock-end{inset-inline-end:0}
+.side-dock .verlist{height:100%;display:flex;flex-direction:column;border:0;position:static}
+.side-dock .verlist-rows{flex:1;max-height:none;overflow:auto}
+.side-dock .result-entry{height:100%}
+.dock-toggle.active{background:var(--st-accent);border-color:var(--st-accent);color:#fff}
+.sheet-nav-group{display:flex;align-items:center;gap:.35rem;flex:none}
 .sheet-selector{gap:.35rem}
 .sheet-tab{min-width:2.4rem;min-height:2.4rem;border:1px solid var(--st-line);border-radius:.55rem;background:var(--st-panel);color:var(--st-muted);font-size:.95rem;font-weight:800;padding:.2rem .5rem;display:inline-flex;flex-direction:column;align-items:center;line-height:1.2}
 .sheet-tab:hover{border-color:#c3ceda;color:var(--st-ink)}
@@ -239,21 +248,16 @@
 .sheet-selector .btn{min-width:42px;min-height:42px}
 
 .cut-map-wrap{position:relative}
-/* Hug the frame to the sheet aspect ratio — no giant dead gutters */
-.sheet-map{--map-w:1;--map-h:1;--map-chrome:20rem;display:flex;justify-content:center}
-.sheet-map .canvas-frame{width:fit-content;max-width:100%}
-.station-plan .cut-map{display:block;height:auto;min-height:320px;
-  width:calc((100vh - var(--map-chrome, 20rem)) * var(--map-w) / var(--map-h));
-  max-width:100%;
-  max-height:calc(100vh - var(--map-chrome, 20rem));
-  aspect-ratio:var(--map-w) / var(--map-h)}
+/* نقشه در ارتفاع باقی‌ماندهٔ صفحه جا می‌شود — بدون اسکرول صفحه */
+.sheet-map{--map-w:1;--map-h:1;flex:1;min-height:200px;display:flex;overflow:hidden}
+.sheet-map .canvas-frame{flex:1;min-width:0;display:flex}
+.sheet-map .cut-map-wrap{flex:1;min-width:0;overflow:auto}
+.station-plan .cut-map{display:block;width:100%;height:100%;min-height:180px}
 .cut-map text{font-family:system-ui,sans-serif;font-weight:600;text-anchor:middle}
 .canvas-frame{position:relative;background:var(--st-canvas);border:1px solid var(--st-line);border-radius:.7rem;padding:.9rem;overflow:hidden}
 
-/* ---------- AutoSAW process view: Verlist sidebar + drawing pane ---------- */
-.saw-grid{display:grid;grid-template-columns:minmax(220px,260px) minmax(0,1fr);gap:.8rem;align-items:start}
-@media (max-width:991.98px){.saw-grid{grid-template-columns:1fr}}
-.verlist{background:var(--st-panel);border:1px solid var(--st-line);border-radius:.65rem;overflow:hidden;position:sticky;top:.8rem}
+/* ---------- AutoSAW process view: verlist به‌عنوان لایهٔ پنهان ---------- */
+.verlist{background:var(--st-panel);border:1px solid var(--st-line);border-radius:.65rem;overflow:hidden}
 .verlist-head{display:flex;align-items:center;gap:.4rem;padding:.5rem .75rem;background:var(--st-panel-2);border-bottom:1px solid var(--st-line-soft);font-weight:800;font-size:.78rem;color:var(--st-ink)}
 .verlist-head i{color:var(--st-accent)}
 .verlist-count{margin-inline-start:auto;font-size:.7rem;background:var(--st-accent-soft);color:var(--st-accent);border-radius:999px;padding:.05rem .5rem}
@@ -271,8 +275,7 @@
 .verlist-legend{display:flex;align-items:center;gap:.9rem;padding:.4rem .75rem;background:var(--st-panel-2);border-top:1px solid var(--st-line-soft);font-size:.68rem;color:var(--st-muted)}
 .vl-sw{width:10px;height:10px;border-radius:2px;display:inline-block;margin-inline-end:.28rem;vertical-align:-1px}
 .verlist-cols-hint{margin-inline-start:auto;color:var(--st-faint)}
-.draw-pane{min-width:0}
-.boards-bar{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem;padding:.4rem .6rem;background:var(--st-panel-2);border:1px solid var(--st-line);border-radius:.6rem;margin-bottom:.8rem}
+.boards-bar{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem;padding:.4rem .6rem;background:var(--st-panel-2);border:1px solid var(--st-line);border-radius:.6rem}
 .boards-label{font-weight:800;font-size:.8rem;color:var(--st-ink);white-space:nowrap}
 .boards-label i{color:var(--st-faint);margin-inline-end:.25rem}
 .boards-bar .sheet-selector{flex:1;min-width:0}
@@ -291,7 +294,6 @@
 .cut-piece .piece-no{font-weight:800}
 .cut-piece .piece-dims{opacity:.92;font-weight:600}
 .offcut-box{fill:#fbbf2414;stroke:#d97706;stroke-width:4;stroke-dasharray:16 10}
-.sim-cut-arrow{fill:#e11d1d;filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))}
 
 .legend-swatch{width:12px;height:12px;border-radius:3px;display:inline-block;flex:none;border:1px solid rgba(15,23,42,.2)}
 .sheet-info{background:var(--st-panel);border:1px solid var(--st-line);border-radius:.65rem;padding:.7rem .85rem}
@@ -312,50 +314,31 @@
 .remnant-row .form-control{min-height:42px}
 .remnant-area-total{font-size:.72rem;color:var(--st-muted)}
 .remnant-validation{font-size:.74rem;color:var(--st-red)}
-.sheet-navigation .btn,.outcome-group .btn{min-height:44px}
-.sheet-navigation{background:var(--st-panel);border:1px solid var(--st-line);border-radius:.65rem;padding:.45rem .7rem}
+.outcome-group .btn{min-height:44px}
 .sheet-position{color:var(--st-muted)}
 
-/* ---------- simulation dock ---------- */
-.sim-dock{grid-area:sim;display:none}
-.station[data-mode="sim"] .sim-dock{display:block}
-.station[data-mode="sim"] .sheet-panel{grid-template-areas:"head" "map" "sim" "nav"}
-.station[data-mode="sim"] .station-statusbar{display:none}
-.sim-panel{background:var(--st-panel);border:1px solid var(--st-line);border-radius:.65rem;padding:.7rem .85rem;display:grid;gap:.6rem}
-.sim-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem}
-.sim-btn{border:1px solid var(--st-line);background:var(--st-panel);color:var(--st-ink);border-radius:.5rem;padding:.38rem .75rem;font-size:.8rem;font-weight:700;min-height:36px}
-.sim-btn:hover{border-color:#c3ceda;background:var(--st-panel-2)}
-.sim-btn:disabled{opacity:.45;cursor:not-allowed}
-.sim-btn.primary{background:var(--st-accent);border-color:var(--st-accent);color:#fff}
-.sim-speed{display:flex;gap:.2rem}
-.sim-speed .sim-btn{padding:.38rem .5rem;font-size:.72rem}
-.sim-speed .sim-btn.on{background:var(--st-accent-soft);border-color:var(--st-accent);color:var(--st-accent)}
-.sim-readout{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem 1.1rem;background:var(--st-sunken);border:1px solid var(--st-line-soft);border-radius:.5rem;padding:.42rem .7rem;font-size:.78rem;color:var(--st-muted)}
-.sim-readout .num{font-size:.92rem;font-weight:800;color:var(--st-ink)}
-.sim-progress{color:var(--st-ink);font-weight:700}
-.sim-cut-type{padding:.08rem .45rem;border-radius:.35rem;font-size:.7rem;font-weight:700}
-.sim-cut-type.rip{background:#f0fdf4;color:#166534;border:1px solid #bbf7d0}
-.sim-cut-type.cross{background:#f0f9ff;color:#0369a1;border:1px solid #bae6fd}
-.sim-cut-type.trim{background:#fffbeb;color:#b45309;border:1px solid #fde68a}
-.sim-list{list-style:none;margin:0;padding:0;display:grid;gap:.1rem;max-height:11rem;overflow:auto;font-size:.75rem}
-.sim-list li{display:flex;align-items:center;gap:.55rem;padding:.2rem .45rem;border-radius:.35rem;color:var(--st-muted)}
-.sim-list li.current{background:var(--st-accent-soft);color:var(--st-ink)}
-.sim-list li.done{opacity:.55}
-.sim-list .sim-no{width:2.4rem;flex:none;color:var(--st-faint);font-weight:700}
-.sim-list .sim-piece{margin-inline-start:auto;color:var(--st-faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:16rem}
-.sim-line{stroke:#e11d48;stroke-width:6;stroke-dasharray:10 6;vector-effect:non-scaling-stroke;filter:drop-shadow(0 1px 3px rgba(225,29,72,.35))}
-.sim-line-ghost{stroke:#e11d4866;stroke-width:3;vector-effect:non-scaling-stroke}
-.sim-piece-hl{fill:rgba(225,29,72,.12)!important;stroke:#e11d48!important}
+/* ---------- responsive: روی صفحهٔ کوچک کشوها در جریان صفحه می‌آیند ---------- */
+@media (max-width:991.98px){
+  .side-dock{position:static;width:auto;order:5;margin-top:.4rem}
+  .sheet-map{min-height:280px}
+}
+
+/* ---------- print: همهٔ ورق‌ها و لایه‌ها روی کاغذ ---------- */
+@media print{
+  .sheet-panels,.sheet-panel{position:static}
+  .side-dock{position:static;width:auto;box-shadow:none}
+  .side-dock[hidden]{display:block!important}
+  .station-plan .cut-map{height:auto;min-height:0;max-height:26cm}
+}
 
 /* shared misc */
 .inventory-quick-links .btn{min-height:38px;border-radius:999px;padding-inline:.9rem}
 .sheet-tab.outcome-none,.sheet-tab.outcome-used,.sheet-tab.outcome-untouched,.sheet-tab.outcome-scrapped{border-color:currentColor}
 
-/* engine report — one slim strip, not a card */
-.engine-report{border:0;background:transparent;padding:0}
-.engine-report .card-body{padding:.15rem .2rem}
-.engine-report summary{cursor:pointer;color:var(--st-muted);letter-spacing:.01em;font-size:.78rem}
-.engine-report details[open] .card-body{background:var(--st-panel);border:1px solid var(--st-line);border-radius:.6rem;padding:.55rem .75rem;margin-top:.35rem}
+/* engine report — یک خطِ جمع‌شونده، نه کارت */
+.engine-report{border:1px solid var(--st-line);border-radius:.6rem;background:var(--st-panel-2);padding:.4rem .6rem}
+.engine-report summary{cursor:pointer;color:var(--st-muted);letter-spacing:.01em;font-size:.78rem;font-weight:600}
+.engine-report[open]{background:var(--st-panel)}
 .engine-report summary:hover{color:var(--st-ink)}
 .engine-rows{display:flex;flex-direction:column;gap:.4rem}
 .engine-row{display:grid;grid-template-columns:minmax(140px,220px) 1fr 70px 90px;align-items:center;gap:.8rem;
@@ -518,8 +501,6 @@
   .cnc-master > .cnc-side-panel{grid-column:1/-1}
 }
 @media(max-width:991.98px){
-  .sheet-panel.has-side{grid-template-columns:minmax(0,1fr);grid-template-areas:"head" "map" "side" "info" "nav"}
-  .sheet-panel > .result-entry{position:static;max-height:none}
   .station-plan .cut-map{max-height:none}
 }
 @media(max-width:767.98px){
@@ -529,7 +510,6 @@
   .station-kpis{width:100%}
   .station-kpi,.cnc-kpi{flex:1 1 40%}
   .planning-mode-options{grid-template-columns:1fr}
-  .mode-tabs{width:100%}
   .station-statusbar{bottom:0;border-radius:.7rem .7rem 0 0}
   .sb-actions{width:100%;justify-content:stretch}
   .sb-actions .btn{flex:1}
@@ -548,9 +528,9 @@
    ============================================================ */
 @media print{
   body.admin-panel{background:#fff}
-  .navbar,.station-nav,.cutting-nav,.cutting-stepper,.mode-tabs,.station-statusbar,.cutting-sticky-bar,.sheet-selector,.sheet-navigation,.plan-bar-actions,.material-tabs,.plan-progress-card,.sim-dock,.btn,details summary,.cnc-plan-list,.cnc-side-panel,.data-side{display:none!important}
+  .navbar,.station-nav,.cutting-nav,.cutting-stepper,.station-statusbar,.cutting-sticky-bar,.sheet-selector,.plan-bar-actions,.material-tabs,.plan-progress-card,.btn,details summary,.cnc-plan-list,.cnc-side-panel,.data-side{display:none!important}
   .station{background:#fff!important;color:#000!important;margin:0;padding:0;min-height:0}
-  .station .card,.station .plan-bar,.sheet-info,.result-entry,.sheet-navigation{background:#fff!important;border-color:#bbb!important;color:#000!important}
+  .station .card,.station .plan-bar,.sheet-info,.result-entry{background:#fff!important;border-color:#bbb!important;color:#000!important}
   .station .table{color:#000}
   .station .table thead th{background:#f1f5f9!important;color:#000}
   .sheet-panel.d-none{display:block!important}
@@ -613,3 +593,8 @@ tr.ws-order-focused td:first-child { border-inline-start: 3px solid #0d6efd; }
   display: flex; align-items: center; justify-content: center; z-index: 1080;
 }
 .ws-modal { width: min(28rem, 92vw); }
+
+/* ---------- قطعات قابل کلیک روی چیدمان CNC (لینک به ابزار CAD) ---------- */
+.cnc-part-box.clickable{cursor:pointer;text-decoration:none}
+.cnc-part-box.clickable::after{content:"↗";position:absolute;top:1px;inset-inline-end:3px;font-size:.55rem;opacity:.55}
+.cnc-part-box.clickable:hover,.cnc-part-box.clickable:focus-visible{outline:2px solid #1d4ed8;outline-offset:1px;z-index:3;filter:brightness(1.08)}

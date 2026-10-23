@@ -59,6 +59,26 @@
     updateMaterialProgress();
   }
 
+  function setDock(section, kind) {
+    // Exactly one dock (verlist | result) open per material section — or none.
+    if (!section) return;
+    section.querySelectorAll('.side-dock').forEach(dock => { dock.hidden = true; });
+    section.querySelectorAll('.dock-toggle').forEach(btn => {
+      btn.classList.remove('active');
+      btn.setAttribute('aria-expanded', 'false');
+    });
+    if (!kind) return;
+    const selector = kind === 'verlist' ? '.dock-start' : '.dock-end';
+    const dock = section.querySelector(selector);
+    if (dock) dock.hidden = false;
+    const toggle = [...section.querySelectorAll('.dock-toggle')]
+      .find(btn => btn.dataset.dockToggle === kind);
+    if (toggle) {
+      toggle.classList.add('active');
+      toggle.setAttribute('aria-expanded', 'true');
+    }
+  }
+
   function showPanel(panel) {
     if (!panel || !panels.length) return;
     const section = panel.closest('[data-material-section]');
@@ -74,16 +94,17 @@
       tab.classList.toggle('active', active);
       tab.setAttribute('aria-selected', String(active));
     });
+    // نمای اولیه هر ورق مینیمال بماند — هیچ لایه‌ای باز نمی‌ماند
+    setDock(section, null);
     const index = panels.indexOf(panel);
-    const previous = panel.querySelector('.previous-sheet');
-    const next = panel.querySelector('.next-sheet');
-    const position = panel.querySelector('.sheet-position');
-    if (previous) previous.disabled = index <= 0;
-    if (next) {
-      next.disabled = index >= panels.length - 1;
-      next.textContent = `ورق ${index + 1} از ${panels.length} — بعدی ←`;
-    }
-    if (position) position.textContent = `ورق ${index + 1} از ${panels.length}`;
+    document.querySelectorAll('.sheet-nav-btn').forEach(btn => {
+      const dir = Number(btn.dataset.sheetDir || 0);
+      btn.disabled = (dir < 0) ? index <= 0 : index >= panels.length - 1;
+    });
+    const position = `ورق ${index + 1} از ${panels.length}`;
+    document.querySelectorAll('[data-material-position]').forEach(node => {
+      node.textContent = position;
+    });
   }
 
   function validateRemnants(container) {
@@ -189,6 +210,9 @@
   function markInvalidPanel(field) {
     const panel = field.closest('[data-sheet-panel]');
     showPanel(panel);
+    // فیلد مشکل‌دار داخل کشوی نتیجه است — همان را باز می‌کنیم تا فوکوس دیده شود
+    const section = panel?.closest('[data-material-section]');
+    if (panel && panel.contains(field)) setDock(section, 'result');
     field.focus();
   }
 
@@ -254,10 +278,21 @@
     const own = panels.filter(panel => section && section.contains(panel));
     showPanel(own.find(panel => storedOutcome(panel) === 'none') || own[0]);
   }));
-  panels.forEach(panel => {
-    panel.querySelector('.previous-sheet')?.addEventListener('click', () => showPanel(panels[panels.indexOf(panel) - 1]));
-    panel.querySelector('.next-sheet')?.addEventListener('click', () => showPanel(panels[panels.indexOf(panel) + 1]));
-  });
+  // جابجایی بین ورق‌ها از نوار بالای صفحه — بدون اسکرول
+  document.querySelectorAll('.sheet-nav-btn').forEach(btn => btn.addEventListener('click', () => {
+    const current = panels.find(panel => !panel.classList.contains('d-none'));
+    if (!current) return;
+    const index = panels.indexOf(current) + Number(btn.dataset.sheetDir || 0);
+    showPanel(panels[Math.max(0, Math.min(panels.length - 1, index))]);
+  }));
+  // لایه‌های پنهان: فهرست قطعات (سطح متریال) و ثبت نتیجه (سطح ورق)
+  document.querySelectorAll('.dock-toggle').forEach(btn => btn.addEventListener('click', () => {
+    const section = btn.closest('[data-material-section]');
+    if (!section) return;
+    const kind = btn.dataset.dockToggle;
+    const isActive = btn.classList.contains('active');
+    setDock(section, isActive ? null : kind);
+  }));
 
   document.querySelectorAll('.add-remnant').forEach(button => button.addEventListener('click', () => {
     const container = document.getElementById(button.dataset.target);

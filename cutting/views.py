@@ -701,21 +701,6 @@ def plan_detail(request, plan_id):
                 part['used'] = sheet_state == 'used'
                 part['scrapped'] = sheet_state == 'scrapped'
                 part['color'] = '#16a34a' if part['used'] else ('#e11d48' if part['scrapped'] else '#6666c8')
-            no_by_uid = {part.get('uid'): part['no'] for part in layout['parts']}
-            raw_sequence = list(record.cut_sequence or []) if record else []
-            mapped_sequence = []
-            for cut in raw_sequence:
-                pieces = [no_by_uid.get(uid) for uid in cut.get('pieces', [])]
-                pieces = [piece for piece in pieces if piece]
-                if pieces or cut.get('t') == 'trim':
-                    at = cut.get('at')
-                    if plan_trim > 0 and cut.get('t') != 'trim' and cut.get('axis', 'y') == 'y' and at is not None:
-                        at = Decimal(str(at)) + plan_trim
-                    mapped_sequence.append({
-                        't': cut.get('t', 'rip'), 'axis': cut.get('axis', 'y'),
-                        'at': at, 'pieces': pieces,
-                    })
-            layout['cut_sim_seq'] = mark_safe(json.dumps(mapped_sequence, default=str)) if mapped_sequence else ''
             row_piece_area += piece_area
             total_sheet_area += sheet_area
             total_piece_area += piece_area
