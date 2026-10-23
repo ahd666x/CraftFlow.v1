@@ -4,7 +4,7 @@ from decimal import Decimal
 
 from django.conf import settings
 from django.db import transaction
-from django.db.models import F
+from django.db.models import F, Q
 
 from cutting.models import CutPlanSheet, CutPlanTask, SheetStock, SheetStockEvent
 from cutting.optimizer import optimize
@@ -119,17 +119,22 @@ def create_cnc_sheet_plans(order_ids, user, kerf=Decimal('4.0')):
 
     Executable output remains blocked until a verified controller-specific sheet
     adapter is implemented; this function records the layout and reservation only.
+    Effective specs come from cutting.specs: excluded tasks are skipped entirely
+    and each layout piece carries the spec hash of its planning-time spec.
     """
     tasks = list(ProductionTask.objects.select_for_update().filter(
         order_id__in=order_ids, station_name='cut', status='pending', part__isnull=False,
-        quantity__gt=F('completed_quantity'),
-    ).exclude(
+    ).filter(
+        Q(quantity__gt=F('completed_quantity')) | Q(spec_override__quantity__gt=F('completed_quantity')),
+    ).exclude(spec_override__excluded=True).exclude(
         pk__in=CutPlanTask.objects.filter(plan__status='planned').values('task_id')
-    ).select_related('part__material', 'order').order_by('pk'))
+    ).select_related('part__material', 'order', 'spec_override__material').order_by('pk'))
     tasks = [t for t in tasks if is_cnc_first(t.part)]
     if not tasks:
         return [], []
 
+    from cutting.specs import effective_specs, spec_hash as compute_spec_hash
+    specs_by_task = {spec.task_id: spec for spec in effective_specs(tasks)}
     grouped = defaultdict(list)
     issues = []
 
@@ -157,7 +162,8 @@ def create_cnc_sheet_plans(order_ids, user, kerf=Decimal('4.0')):
 
     already_planned = _planned_piece_counts()
     for task in tasks:
-        pending = task.quantity - task.completed_quantity - already_planned.get(task.id, 0)
+        spec = specs_by_task[task.id]
+        pending = spec.quantity_total - task.completed_quantity - already_planned.get(task.id, 0)
         pending = max(0, pending)
         if not pending:
             continue
@@ -173,8 +179,9 @@ def create_cnc_sheet_plans(order_ids, user, kerf=Decimal('4.0')):
                 'f3': task.part.f3, 'width': _ceil_tenth(max_x - min_x),
                 'height': _ceil_tenth(max_y - min_y), 'text': text, 'units_injected': units_injected,
                 'min_x': min_x, 'min_y': min_y, 'max_x': max_x, 'max_y': max_y,
-                'turn': bool(task.part.turn), 'order_id': task.order_id,
+                'turn': bool(spec.turn), 'order_id': task.order_id,
                 'task_quantity': task.quantity, 'completed_before': task.completed_quantity,
+                'spec_hash': compute_spec_hash(spec),
             })
 
     result = []
@@ -238,7 +245,8 @@ def create_cnc_sheet_plans(order_ids, user, kerf=Decimal('4.0')):
                                      'width': str(placed['width']), 'height': str(placed['height']),
                                      'rotated': rotated, 'units_injected': p['units_injected'],
                                      'task_quantity': p['task_quantity'],
-                                     'completed_before': p['completed_before']})
+                                     'completed_before': p['completed_before'],
+                                     'spec_hash': p.get('spec_hash', '')})
             task_piece_counts = Counter(piece['task_id'] for piece in output_parts)
             adapter_key = str(getattr(settings, 'CNC_RESIZER_SHEET_ADAPTER', '') or '').strip()
             gcode, output_verified, adapter_used = '', False, ''

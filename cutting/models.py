@@ -105,6 +105,10 @@ class CutPlanTask(models.Model):
     quantity = models.PositiveIntegerField()
     task_quantity = models.PositiveIntegerField(default=1, editable=False, verbose_name='کل تعداد تسک هنگام برنامه‌ریزی')
     completed_before = models.PositiveIntegerField(default=0, editable=False, verbose_name='تعداد تکمیل‌شده پیشین')
+    # Digest of the effective spec at planning time (cutting.specs.spec_hash).
+    # mark_cut/download re-check it so a silent spec drift can never validate
+    # an outdated program. Null = legacy plan created before this field.
+    spec_hash = models.CharField(max_length=32, null=True, blank=True, editable=False)
     class Meta:
         constraints = [models.UniqueConstraint(fields=('plan', 'task'), name='cutplan_task_once')]
 

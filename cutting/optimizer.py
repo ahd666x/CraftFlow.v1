@@ -108,6 +108,11 @@ def make_autocut(plan_id, material_rows, kerf=4):
                 'Turn': 'true' if part.get('turn', True) else 'false', 'Grain': part.get('grain', ''),
                 'Order': part.get('order', ''), 'Count': '1', 'F2': part.get('f2', ''), 'F3': part.get('f3', ''),
                 'F19': part.get('routing', ''), 'F20': part.get('customer', ''),
+                # Edge bands (user field labels: F4/F5 = طول، F26/F18 = عرض) are
+                # carried from the effective spec so the saw output stays in
+                # sync with operator edits. Empty string = no band on that edge.
+                'F4': part.get('f4', ''), 'F5': part.get('f5', ''),
+                'F26': part.get('f26', ''), 'F18': part.get('f18', ''),
             })
         condition_sizes = {}
         for layout_data in row['sheets']:

@@ -185,19 +185,27 @@ def planner(request):
             with transaction.atomic():
                 task_query = ProductionTask.objects.select_for_update().filter(
                     order_id__in=order_ids, station_name='cut', status='pending', part__isnull=False,
-                    quantity__gt=F('completed_quantity'),
-                )
-                tasks = list(task_query.select_related('part__material', 'order', 'order__customer').order_by('pk'))
+                ).filter(
+                    # Overrides may raise the effective quantity above the
+                    # completed count; without an overlay this is the legacy
+                    # quantity__gt filter exactly.
+                    Q(quantity__gt=F('completed_quantity')) | Q(spec_override__quantity__gt=F('completed_quantity')),
+                ).exclude(spec_override__excluded=True)
+                tasks = list(task_query.select_related('part__material', 'order', 'order__customer', 'spec_override__material').order_by('pk'))
                 from cnc_resizer.sheet_nesting import is_cnc_first
                 tasks = [task for task in tasks if not is_cnc_first(task.part)]
+                from .specs import effective_specs, spec_hash as compute_spec_hash
+                specs_by_task = {spec.task_id: spec for spec in effective_specs(tasks)}
                 planned_cnc_counts = {}
                 if not cnc_sheet_mode:
                     from cnc_resizer.sheet_nesting import _planned_piece_counts
                     planned_cnc_counts = _planned_piece_counts()
-                remaining_by_task = {
-                    task.pk: max(0, task.quantity - task.completed_quantity - planned_cnc_counts.get(task.pk, 0))
-                    for task in tasks
-                }
+                remaining_by_task = {}
+                for task in tasks:
+                    remaining = specs_by_task[task.pk].quantity_total - task.completed_quantity
+                    if not cnc_sheet_mode:
+                        remaining -= planned_cnc_counts.get(task.pk, 0)
+                    remaining_by_task[task.pk] = max(0, remaining)
                 tasks = [task for task in tasks if remaining_by_task[task.pk] > 0]
                 if not tasks:
                     if cnc_sheet_plans or cnc_issues:
@@ -207,7 +215,8 @@ def planner(request):
                 if CutPlanTask.objects.filter(task_id__in=task_ids, plan__status='planned').exists():
                     raise ValueError('برخی از تسک‌ها هم‌اکنون در برنامه برش دیگری رزرو هستند.')
                 stock_qs = SheetStock.objects.select_for_update().filter(
-                    active=True, quantity__gt=0, material_id__in={t.part.material_id for t in tasks})
+                    active=True, quantity__gt=0,
+                    material_id__in={specs_by_task[task.pk].material_id for task in tasks})
                 stock_rows = list(stock_qs.select_related('material').order_by('priority', 'is_offcut', 'width', 'height', 'pk'))
                 reserved = _reserved_counts([s.pk for s in stock_rows])
                 stock_by_id = {s.pk: s for s in stock_rows}
@@ -220,9 +229,11 @@ def planner(request):
                             'grain': stock.grain, 'label': f'{stock.material.name} {stock.width}×{stock.height}',
                         })
                 grouped = defaultdict(list)
+                material_by_id = {m.pk: m for m in Material.objects.filter(pk__in={specs_by_task[task.pk].material_id for task in tasks})}
                 for task in tasks:
                     part = task.part
-                    if part.length <= 0 or part.width <= 0:
+                    spec = specs_by_task[task.pk]
+                    if spec.length <= 0 or spec.width <= 0:
                         from cnc_resizer.models import CncPlanningIssue
                         CncPlanningIssue.objects.create(
                             task=task, order=task.order, part=part, mode='standard',
@@ -232,21 +243,23 @@ def planner(request):
                         continue
                     remaining_quantity = remaining_by_task[task.pk]
                     for _ in range(remaining_quantity):
-                        grouped[part.material_id].append({
+                        grouped[spec.material_id].append({
                             # CUT convention: X = Part.length, Y = Part.width.
                             # The CNC G-code generator uses a separate Y=length convention.
-                            'width': part.length, 'height': part.width,
-                            'orig_width': part.length, 'orig_height': part.width,
-                            'turn': part.turn and not (respect_grain and (part.grain or '').strip()),
+                            'width': spec.length, 'height': spec.width,
+                            'orig_width': spec.length, 'orig_height': spec.width,
+                            'turn': spec.turn and not (respect_grain and (part.grain or '').strip()),
                             'grain': part.grain, 'f2': part.f2 or part.name,
                             'f3': part.f3, 'routing': part.routing_code, 'order': str(task.order_id),
                             'customer': str(task.order.customer), 'label': f'{part.name} / سفارش {task.order_id}',
-                            'uid': len(grouped[part.material_id]), 'task_id': task.pk,
+                            'uid': len(grouped[spec.material_id]), 'task_id': task.pk,
+                            'f4': spec.edges.get('f4', ''), 'f5': spec.edges.get('f5', ''),
+                            'f18': spec.edges.get('f18', ''), 'f26': spec.edges.get('f26', ''),
                         })
                 rows = []
                 from cnc_resizer.models import CncPlanningIssue
                 for material_id, parts in grouped.items():
-                    material = next(task.part.material for task in tasks if task.part.material_id == material_id)
+                    material = material_by_id[material_id]
                     material_stock = [item for item in available if stock_by_id[item['stock_id']].material_id == material_id]
                     if not material_stock:
                         for task_id in {piece['task_id'] for piece in parts}:
@@ -336,6 +349,7 @@ def planner(request):
                     CutPlanTask.objects.create(
                         plan=plan, task=task, quantity=planned_quantities[task.pk],
                         task_quantity=task.quantity, completed_before=task.completed_quantity,
+                        spec_hash=compute_spec_hash(specs_by_task[task.pk]),
                     )
                 layout_index = defaultdict(int)
                 for row in rows:
@@ -435,33 +449,30 @@ def planner_preview(request):
     reserved_order_ids = CutPlanTask.objects.filter(plan__status='planned').values('task__order_id')
     tasks = list(ProductionTask.objects.filter(
         order_id__in=order_ids, station_name='cut', status='pending', part__isnull=False,
-        quantity__gt=F('completed_quantity'),
-    ).exclude(order_id__in=reserved_order_ids).select_related(
-        'part__material', 'order', 'order__customer',
+    ).filter(
+        Q(quantity__gt=F('completed_quantity')) | Q(spec_override__quantity__gt=F('completed_quantity')),
+    ).exclude(spec_override__excluded=True).exclude(order_id__in=reserved_order_ids).select_related(
+        'part__material', 'order', 'order__customer', 'spec_override__material',
     ).order_by('pk'))
+    from .specs import effective_specs
+    specs_by_task = {spec.task_id: spec for spec in effective_specs(tasks)}
     cnc_mode = request.GET.get('planning_mode') == 'cnc_sheets'
     from cnc_resizer.sheet_nesting import is_cnc_first
     if cnc_mode:
         tasks = [task for task in tasks if is_cnc_first(task.part)]
-        from cnc_resizer.sheet_nesting import _planned_piece_counts
-        already_planned = _planned_piece_counts()
-        piece_quantities = {
-            task.pk: max(0, task.quantity - task.completed_quantity - already_planned.get(task.pk, 0))
-            for task in tasks
-        }
-        tasks = [task for task in tasks if piece_quantities[task.pk] > 0]
     else:
         tasks = [task for task in tasks if not is_cnc_first(task.part)]
-        from cnc_resizer.sheet_nesting import _planned_piece_counts
-        already_planned = _planned_piece_counts()
-        piece_quantities = {
-            task.pk: max(0, task.quantity - task.completed_quantity - already_planned.get(task.pk, 0))
-            for task in tasks
-        }
-        tasks = [task for task in tasks if piece_quantities[task.pk] > 0]
+    from cnc_resizer.sheet_nesting import _planned_piece_counts
+    already_planned = _planned_piece_counts()
+    piece_quantities = {}
+    for task in tasks:
+        remaining = specs_by_task[task.pk].quantity_total - task.completed_quantity - already_planned.get(task.pk, 0)
+        piece_quantities[task.pk] = max(0, remaining)
+    tasks = [task for task in tasks if piece_quantities[task.pk] > 0]
     total_pieces = sum(piece_quantities[task.pk] for task in tasks)
-    invalid_part = next((task.part for task in tasks if task.part.length <= 0 or task.part.width <= 0), None)
-    if invalid_part:
+    invalid_spec = next((specs_by_task[task.pk] for task in tasks if specs_by_task[task.pk].length <= 0 or specs_by_task[task.pk].width <= 0), None)
+    if invalid_spec is not None:
+        invalid_part = next(task.part for task in tasks if specs_by_task[task.pk] is invalid_spec)
         return JsonResponse({'error': f'ابعاد قطعه «{invalid_part.name}» باید مثبت باشند.'}, status=400)
     if len(tasks) > 2000 or total_pieces > 3000:
         return JsonResponse({'error': 'این انتخاب برای پیش‌نمایش خیلی بزرگ است؛ سفارش‌ها را به چند برنامه تقسیم کنید.'}, status=400)
@@ -469,7 +480,8 @@ def planner_preview(request):
     policy = _stock_policy(request.GET.get('stock_policy'))
     setting = CuttingSettings.current()
     stocks = list(SheetStock.objects.filter(
-        active=True, quantity__gt=0, material_id__in={task.part.material_id for task in tasks},
+        active=True, quantity__gt=0,
+        material_id__in={specs_by_task[task.pk].material_id for task in tasks},
     ).select_related('material').order_by('priority', 'is_offcut', 'width', 'height', 'pk'))
     reserved = _reserved_counts([stock.pk for stock in stocks])
     stock_by_material = defaultdict(list)
@@ -486,13 +498,14 @@ def planner_preview(request):
     grouped = defaultdict(list)
     for task in tasks:
         part = task.part
+        spec = specs_by_task[task.pk]
         for _ in range(piece_quantities[task.pk]):
-            part_width, part_height = (part.width, part.length) if cnc_mode else (part.length, part.width)
-            grouped[part.material_id].append({
-                # CNC convention: X = Part.width, Y = Part.length; CUT uses the reverse.
+            # CNC convention: X = Part.width, Y = Part.length; CUT uses the reverse.
+            part_width, part_height = (spec.width, spec.length) if cnc_mode else (spec.length, spec.width)
+            grouped[spec.material_id].append({
                 'width': part_width, 'height': part_height, 'orig_width': part_width,
-                'orig_height': part_height, 'turn': part.turn, 'grain': part.grain,
-                'label': f'{part.name} / سفارش {task.order_id}', 'uid': len(grouped[part.material_id]),
+                'orig_height': part_height, 'turn': spec.turn, 'grain': part.grain,
+                'label': f'{part.name} / سفارش {task.order_id}', 'uid': len(grouped[spec.material_id]),
                 'task_id': task.pk,
             })
 
@@ -722,6 +735,17 @@ def plan_detail(request, plan_id):
 @cutting_operator
 def download_cut(request, plan_id):
     plan = get_object_or_404(CutPlan, pk=plan_id)
+    from .specs import effective_specs, spec_hash as compute_spec_hash
+    rows = list(CutPlanTask.objects.filter(plan=plan, spec_hash__isnull=False).select_related('task', 'task__part__material', 'task__spec_override__material'))
+    if rows:
+        current = {spec.task_id: spec for spec in effective_specs([row.task for row in rows])}
+        stale = [row for row in rows if row.spec_hash != compute_spec_hash(current[row.task_id])]
+        if stale:
+            return HttpResponse(
+                'مشخصات قطعه پس از برنامه‌ریزی تغییر کرده است؛ این خروجی معتبر نیست. '
+                'برنامه را لغو و دوباره بسازید.',
+                status=409, content_type='text/plain; charset=utf-8',
+            )
     payload = make_autocut(plan.pk, plan.plan_data.get('rows', []), Decimal(plan.plan_data.get('kerf', '4')))
     response = HttpResponse(payload, content_type='application/xml; charset=utf-16')
     response['Content-Disposition'] = f'attachment; filename="craftflow_cut_plan_{plan.pk}.CUT"'
@@ -788,6 +812,16 @@ def mark_cut(request, plan_id):
                 raise ValueError('این برنامه قدیمی یا ناقص است؛ برای ایمنی موجودی، برنامه را دوباره ایجاد کنید.')
             if any(row.task.status != 'pending' or row.task.quantity != row.task_quantity or row.task.completed_quantity != row.completed_before for row in task_rows):
                 raise ValueError('تسک‌های برنامه از زمان ایجاد تغییر کرده‌اند؛ برنامه را دوباره بسازید.')
+            # Effective-spec staleness: a stored spec_hash that no longer
+            # matches the current override/base spec means the operator edited
+            # the piece after planning — fail closed instead of cutting wrong
+            # dimensions. Legacy plans without a hash keep the old behaviour.
+            from .specs import effective_specs, spec_hash as compute_spec_hash
+            hash_rows = [row for row in task_rows if row.spec_hash]
+            if hash_rows:
+                current_specs = {spec.task_id: spec for spec in effective_specs([row.task for row in hash_rows])}
+                if any(row.spec_hash != compute_spec_hash(current_specs[row.task_id]) for row in hash_rows):
+                    raise ValueError('مشخصات قطعه پس از برنامه‌ریزی تغییر کرده است؛ برنامه را لغو و دوباره بسازید.')
             planned_piece_counts = Counter()
             for sheet in sheets:
                 for snapshot in sheet.task_counts.all():

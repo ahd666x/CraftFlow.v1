@@ -1194,6 +1194,20 @@ def complete_sheet_plan(request, plan_id):
                             or task.completed_quantity != snapshot['completed_before']
                             or task.completed_quantity + count > task.quantity):
                         raise ValueError('تسک‌های این برنامه از زمان برنامه‌ریزی تغییر کرده‌اند؛ نتیجه ثبت نشد.')
+                # Effective-spec staleness gate: pieces planned before an
+                # operator spec change must never be confirmed as produced.
+                hashed = {}
+                for piece in (plan.layout or {}).get('parts', []):
+                    if piece.get('task_id') is not None and piece.get('spec_hash'):
+                        hashed.setdefault(int(piece['task_id']), piece['spec_hash'])
+                if hashed:
+                    from cutting.specs import effective_specs, spec_hash as compute_spec_hash
+                    current_specs = {
+                        spec.task_id: spec
+                        for spec in effective_specs([tasks[task_id] for task_id in hashed])
+                    }
+                    if any(hashed[task_id] != compute_spec_hash(current_specs[task_id]) for task_id in hashed):
+                        raise ValueError('مشخصات قطعه پس از برنامه‌ریزی تغییر کرده است؛ برنامه را لغو و دوباره بسازید.')
 
             if outcome != 'untouched':
                 source.quantity -= 1
@@ -1276,6 +1290,30 @@ def download_sheet_plan(request, plan_id):
     plan = get_object_or_404(CncSheetPlan, pk=plan_id)
     if not _may_access_sheet_plan(request.user, plan):
         raise PermissionDenied
+    if plan.status == 'planned':
+        # A planned sheet whose pieces were re-specced after planning must not
+        # ship machine output; the operator has to rebuild the layout.
+        hashed = {}
+        for piece in (plan.layout or {}).get('parts', []):
+            if piece.get('task_id') is not None and piece.get('spec_hash'):
+                hashed.setdefault(int(piece['task_id']), piece['spec_hash'])
+        if hashed:
+            from cutting.specs import effective_specs, spec_hash as compute_spec_hash
+            from product.models import ProductionTask as _PT
+            current_specs = {
+                spec.task_id: spec
+                for spec in effective_specs(list(_PT.objects.filter(pk__in=hashed).select_related(
+                    'part__material', 'spec_override__material')))
+            }
+            if all(task_id in current_specs for task_id in hashed) and any(
+                hashed[task_id] != compute_spec_hash(current_specs[task_id]) for task_id in hashed
+            ):
+                from django.http import HttpResponse
+                return HttpResponse(
+                    'مشخصات قطعه پس از برنامه‌ریزی تغییر کرده است؛ این خروجی معتبر نیست. '
+                    'برنامه را لغو و دوباره بسازید.',
+                    status=409, content_type='text/plain; charset=utf-8',
+                )
     if plan.status == 'cancelled' or not plan.output_verified or not plan.gcode.strip():
         from django.http import HttpResponse
         return HttpResponse(

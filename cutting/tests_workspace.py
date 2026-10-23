@@ -3,7 +3,9 @@ from decimal import Decimal
 
 from django.contrib.auth.models import User
 from django.test import TestCase
+from django.urls import reverse
 
+from cnc_resizer.anomaly_report import find_unusual_parts
 from product.models import Customer, Material, Order, Part, ProductionTask
 
 from .models import CutPlan, CutPlanTask, SheetStock, TaskSpecOverride, TaskSpecOverrideEvent
@@ -28,6 +30,7 @@ class WorkspaceFixtureMixin:
             order=self.order, part=self.part, station_name='cut', step_order=1,
             quantity=4, status='pending', completed_quantity=1,
         )
+        self.client.force_login(self.user)
 
 
 class EffectiveSpecResolverTests(WorkspaceFixtureMixin, TestCase):
@@ -278,3 +281,228 @@ class EffectiveSpecsBatchTests(WorkspaceFixtureMixin, TestCase):
         # overrides + planned cut + planned cnc layouts + open manual issues
         with self.assertNumQueries(4):
             effective_specs(tasks)
+
+
+class Stage2PlanningIntegrationTests(WorkspaceFixtureMixin, TestCase):
+    """Stage-2 contract: the planning engines consume effective specs."""
+
+    def setUp(self):
+        super().setUp()
+        self.stock = SheetStock.objects.create(
+            material=self.material, width=Decimal('1830.0'), height=Decimal('3660.0'),
+            quantity=2, created_by=self.user,
+        )
+
+    def make_plan(self):
+        response = self.client.post(reverse('cutting:planner'), {
+            'action': 'plan', 'order_ids': [self.order.pk], 'kerf': '4.0',
+        })
+        self.assertEqual(response.status_code, 302)
+        return CutPlan.objects.latest('pk')
+
+    def test_plan_uses_overridden_length_and_stores_spec_hash(self):
+        from cutting.specs import effective_spec, spec_hash
+        apply_override(self.task, {'length': '450'}, self.user)
+        plan = self.make_plan()
+        shapes = plan.plan_data['rows'][0]['shapes']
+        self.assertEqual(len(shapes), 3)  # remaining = 6 - 1 completed
+        self.assertEqual(Decimal(str(shapes[0]['width'])), Decimal('450'))
+        self.assertEqual(Decimal(str(shapes[0]['height'])), Decimal('300'))
+        row = plan.planned_tasks.get()
+        self.assertEqual(row.spec_hash, spec_hash(effective_spec(self.task)))
+        self.assertEqual(row.task_quantity, 4)
+
+    def test_excluded_task_is_not_planned_but_base_data_intact(self):
+        other_part = Part.objects.create(
+            material=self.material, name='طبقه', length=Decimal('350.0'), width=Decimal('250.0'),
+            pname='کمد', routing_code='cut',
+        )
+        other_task = ProductionTask.objects.create(
+            order=self.order, part=other_part, station_name='cut', step_order=2,
+            quantity=2, status='pending',
+        )
+        set_excluded(self.task, excluded=True, reason='موجود در انبار', user=self.user)
+        plan = self.make_plan()
+        self.assertEqual(list(plan.planned_tasks.values_list('task_id', flat=True)), [other_task.pk])
+        self.task.refresh_from_db()
+        self.assertEqual(self.task.quantity, 4)  # exclusion never touches the order
+
+    def test_quantity_override_adds_pieces(self):
+        apply_override(self.task, {'quantity': 6}, self.user)
+        plan = self.make_plan()
+        self.assertEqual(len(plan.plan_data['rows'][0]['shapes']), 5)
+
+    def test_material_override_moves_group(self):
+        SheetStock.objects.create(
+            material=self.material2, width=Decimal('1220.0'), height=Decimal('2440.0'),
+            quantity=1, created_by=self.user,
+        )
+        apply_override(self.task, {'material': self.material2.pk}, self.user)
+        plan = self.make_plan()
+        rows = plan.plan_data['rows']
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]['type'], self.material2.name.replace(' ', '-'))
+        self.assertEqual(rows[0]['thickness'], str(self.material2.thickness))
+        self.assertEqual(plan.planned_sheets.first().material_id, self.material2.pk)
+
+    def test_mark_cut_blocked_after_override_change(self):
+        plan = self.make_plan()
+        # Simulate an override that reached the DB outside the (now locked)
+        # workspace path — e.g. through admin or a race — after planning.
+        TaskSpecOverride.objects.create(task=self.task, length=Decimal('500.0'), version=1)
+        sheet = plan.planned_sheets.get()
+        response = self.client.post(reverse('cutting:mark_cut', args=[plan.pk]), {
+            f'outcome_{sheet.pk}': 'used',
+        }, follow=True)
+        self.assertContains(response, 'مشخصات قطعه پس از برنامه\u200cریزی تغییر کرده')
+        plan.refresh_from_db()
+        self.assertEqual(plan.status, 'planned')  # nothing consumed
+        self.task.refresh_from_db()
+        self.assertEqual(self.task.completed_quantity, 1)
+
+    def test_mark_cut_blocked_after_external_part_edit(self):
+        plan = self.make_plan()
+        # An admin edits the base Part directly (outside the workspace).
+        self.part.length = Decimal('410.0')
+        self.part.save(update_fields=('length',))
+        sheet = plan.planned_sheets.get()
+        response = self.client.post(reverse('cutting:mark_cut', args=[plan.pk]), {
+            f'outcome_{sheet.pk}': 'used',
+        }, follow=True)
+        self.assertContains(response, 'مشخصات قطعه پس از برنامه\u200cریزی تغییر کرده')
+
+    def test_mark_cut_passes_when_spec_unchanged(self):
+        plan = self.make_plan()
+        sheet = plan.planned_sheets.get()
+        response = self.client.post(reverse('cutting:mark_cut', args=[plan.pk]), {
+            f'outcome_{sheet.pk}': 'used',
+        }, follow=True)
+        self.assertContains(response, 'نتیجه واقعی برش ذخیره شد')
+        self.task.refresh_from_db()
+        self.assertEqual(self.task.completed_quantity, 4)
+
+    def test_legacy_plan_without_hash_keeps_old_behaviour(self):
+        plan = self.make_plan()
+        plan.planned_tasks.update(spec_hash=None)  # simulate pre-workspace plan
+        sheet = plan.planned_sheets.get()
+        self.part.length = Decimal('410.0')
+        self.part.save(update_fields=('length',))
+        response = self.client.post(reverse('cutting:mark_cut', args=[plan.pk]), {
+            f'outcome_{sheet.pk}': 'used',
+        }, follow=True)
+        self.assertContains(response, 'نتیجه واقعی برش ذخیره شد')
+
+    def test_download_cut_blocked_after_spec_change(self):
+        plan = self.make_plan()
+        TaskSpecOverride.objects.create(task=self.task, length=Decimal('500.0'), version=1)
+        response = self.client.get(reverse('cutting:download_cut', args=[plan.pk]))
+        self.assertEqual(response.status_code, 409)
+        TaskSpecOverride.objects.filter(task=self.task).delete()  # back to planned spec
+        response = self.client.get(reverse('cutting:download_cut', args=[plan.pk]))
+        self.assertEqual(response.status_code, 200)
+
+    def test_preview_reflects_overridden_dimensions(self):
+        apply_override(self.task, {'length': '450', 'quantity': 6}, self.user)
+        response = self.client.get(reverse('cutting:planner_preview'), {'order_ids': [self.order.pk], 'kerf': '4.0'})
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['piece_count'], 5)
+        material_row = payload['materials'][0]
+        self.assertEqual(Decimal(material_row['required_area_m2']) * 1000000, Decimal('450') * Decimal('300') * 5)
+
+    def test_cnc_xml_carries_edge_bands_from_override(self):
+        apply_override(self.task, {'f4': 'ABS مشکی', 'f26': 'PVC آبی'}, self.user)
+        plan = self.make_plan()
+        import xml.etree.ElementTree as ET
+        root = ET.fromstring(self.client.get(reverse('cutting:download_cut', args=[plan.pk])).content)
+        ns = {'a': 'http://www.King-stone.com'}
+        shape = root.find('.//a:Objective/a:Shape', ns)
+        self.assertEqual(shape.attrib['F4'], 'ABS مشکی')
+        self.assertEqual(shape.attrib['F26'], 'PVC آبی')
+
+
+class Stage2AnomalyReportTests(WorkspaceFixtureMixin, TestCase):
+    def setUp(self):
+        super().setUp()
+        SheetStock.objects.create(
+            material=self.material, width=Decimal('1830.0'), height=Decimal('3660.0'),
+            quantity=1, created_by=self.user,
+        )
+    def test_overridden_length_is_reported_against_limit(self):
+        self.part.routing_code = 'cnc.cut'
+        self.part.save(update_fields=('routing_code',))
+        apply_override(self.task, {'length': '3500'}, self.user)
+        report = find_unusual_parts(order_ids=[self.order.pk])
+        self.assertEqual(len(report), 1)
+        self.assertIn('از حد مجاز', report[0]['reasons'][0])
+        self.assertEqual(Decimal(report[0]['length']), Decimal('3500.0'))
+
+    def test_excluded_task_is_not_reported(self):
+        self.part.routing_code = 'cnc.cut'
+        self.part.save(update_fields=('routing_code',))
+        apply_override(self.task, {'length': '3500'}, self.user)
+        set_excluded(self.task, excluded=True, reason='انبار', user=self.user)
+        self.assertEqual(find_unusual_parts(order_ids=[self.order.pk]), [])
+
+    def test_base_values_without_override(self):
+        report = find_unusual_parts(order_ids=[self.order.pk])
+        self.assertEqual(report, [])
+
+
+class Stage2CncStalenessTests(WorkspaceFixtureMixin, TestCase):
+    """The CNC completion/download gates re-check the planning-time spec hash."""
+
+    def setUp(self):
+        super().setUp()
+        self.stock = SheetStock.objects.create(
+            material=self.material, width=Decimal('1830.0'), height=Decimal('3660.0'),
+            quantity=2, created_by=self.user,
+        )
+
+    def plan_with_layout(self, spec_hash_value):
+        from cnc_resizer.models import CncSheetPlan
+        return CncSheetPlan.objects.create(
+            material=self.material, source_stock=self.stock, sheet_index=0,
+            width=Decimal('1830.0'), height=Decimal('3660.0'), kerf=Decimal('4.0'),
+            layout={'parts': [{
+                'task_id': self.task.pk, 'part_id': self.part.pk, 'order_id': self.order.pk,
+                'task_quantity': 4, 'completed_before': 1,
+                'spec_hash': spec_hash_value,
+            }]}, gcode='G21\nM2', output_verified=True,
+        )
+
+    def test_complete_blocked_after_spec_change(self):
+        from cutting.specs import effective_spec, spec_hash
+        plan = self.plan_with_layout(spec_hash(effective_spec(self.task)))
+        TaskSpecOverride.objects.create(task=self.task, length=Decimal('480.0'), version=1)
+        response = self.client.post(reverse('cnc_resizer:complete_sheet_plan', args=[plan.pk]), {
+            'outcome': 'used',
+        }, follow=True)
+        self.assertContains(response, 'مشخصات قطعه پس از برنامه\u200cریزی تغییر کرده')
+        plan.refresh_from_db()
+        self.assertEqual(plan.status, 'planned')
+        self.task.refresh_from_db()
+        self.assertEqual(self.task.completed_quantity, 1)
+
+    def test_complete_passes_when_hash_matches(self):
+        from cutting.specs import effective_spec, spec_hash
+        plan = self.plan_with_layout(spec_hash(effective_spec(self.task)))
+        response = self.client.post(reverse('cnc_resizer:complete_sheet_plan', args=[plan.pk]), {
+            'outcome': 'used',
+        }, follow=True)
+        self.assertContains(response, 'نتیجه برنامه CNC')
+        self.task.refresh_from_db()
+        self.assertEqual(self.task.completed_quantity, 2)
+
+    def test_download_blocked_for_stale_planned_sheet(self):
+        plan = self.plan_with_layout('0' * 32)  # planning-time hash no longer matches
+        response = self.client.get(reverse('cnc_resizer:download_sheet_plan', args=[plan.pk]))
+        self.assertEqual(response.status_code, 409)
+        self.assertIn('معتبر نیست', response.content.decode('utf-8'))
+
+    def test_legacy_layout_without_hash_downloads(self):
+        plan = self.plan_with_layout('')
+        plan.layout = {'parts': [{'task_id': self.task.pk}]}  # pre-hash layout
+        plan.save(update_fields=('layout',))
+        response = self.client.get(reverse('cnc_resizer:download_sheet_plan', args=[plan.pk]))
+        self.assertEqual(response.status_code, 200)
