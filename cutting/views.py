@@ -160,8 +160,9 @@ def planner(request):
                     suffix = f' و {len(cnc_unusual) - 5} مورد دیگر' if len(cnc_unusual) > 5 else ''
                     messages.warning(request, f'قطعات غیرمعمول نیازمند بررسی: {preview}{suffix}')
                 from cnc_resizer.sheet_nesting import create_cnc_sheet_plans, plan_cnc_with_report
+                cnc_use_offcuts = bool(request.POST.get('cnc_use_offcuts'))
                 cnc_sheet_plans, cnc_issues, cnc_report = plan_cnc_with_report(
-                    order_ids, request.user, kerf=kerf,
+                    order_ids, request.user, kerf=kerf, use_offcuts=cnc_use_offcuts,
                 )
                 auto_rows = [row for row in cnc_report if row['status'] == 'auto_adjusted']
                 manual_rows = [row for row in cnc_report if row['status'] == 'manual_required']
@@ -183,6 +184,10 @@ def planner(request):
                     )
                 if cnc_sheet_plans:
                     messages.success(request, f'{len(cnc_sheet_plans)} چیدمان ورق CNC ذخیره شد؛ فایل اجرایی تا تأیید کنترلر مقصد تولید نمی‌شود.')
+                    if cnc_use_offcuts:
+                        offcut_sheets = sum(1 for p in cnc_sheet_plans if p.source_stock.is_offcut)
+                        if offcut_sheets:
+                            messages.info(request, f'{offcut_sheets} چیدمان روی پرت اجرا شد؛ هنگام ثبت نتیجه همان پرت کسر می‌شود.')
                 if cnc_issues:
                     messages.warning(request, f'{len(cnc_issues)} مورد نیازمند بررسی یا تأیید خروجی است؛ جزئیات در صفحهٔ برنامه‌های CNC ثبت شده است.')
             except (ValueError, OSError) as exc:
@@ -513,6 +518,7 @@ def planner_preview(request):
         return JsonResponse({'error': 'این انتخاب برای پیش‌نمایش خیلی بزرگ است؛ سفارش‌ها را به چند برنامه تقسیم کنید.'}, status=400)
 
     policy = _stock_policy(request.GET.get('stock_policy'))
+    cnc_use_offcuts = cnc_mode and request.GET.get('cnc_use_offcuts') == '1'
     setting = CuttingSettings.current()
     stocks = list(SheetStock.objects.filter(
         active=True, quantity__gt=0,
@@ -521,7 +527,7 @@ def planner_preview(request):
     reserved = _reserved_counts([stock.pk for stock in stocks])
     stock_by_material = defaultdict(list)
     for stock in stocks:
-        if cnc_mode and stock.is_offcut:
+        if cnc_mode and stock.is_offcut and not cnc_use_offcuts:
             continue
         for _ in range(max(0, stock.quantity - reserved[stock.pk])):
             stock_by_material[stock.material_id].append({

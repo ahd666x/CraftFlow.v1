@@ -11,6 +11,7 @@
   const kerf = document.getElementById('kerf');
   const planningModes = [...document.querySelectorAll('input[name="planning_mode"]')];
   const stockPolicies = [...document.querySelectorAll('input[name="stock_policy"]')];
+  const cncUseOffcuts = document.querySelector('input[name="cnc_use_offcuts"]');
   const submit = document.getElementById('plan-submit');
   let timer = null;
   let controller = null;
@@ -98,6 +99,9 @@
       if (selectedMode) params.set('planning_mode', selectedMode.value);
       const policy = stockPolicies.find(input => input.checked);
       if (policy) params.set('stock_policy', policy.value);
+      if (selectedMode && selectedMode.value === 'cnc_sheets' && cncUseOffcuts && cncUseOffcuts.checked) {
+        params.set('cnc_use_offcuts', '1');
+      }
       try {
         const response = await fetch(`${form.dataset.previewUrl}?${params}`, {
           headers: { 'X-Requested-With': 'XMLHttpRequest' },

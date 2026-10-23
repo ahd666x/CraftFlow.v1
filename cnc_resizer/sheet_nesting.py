@@ -132,8 +132,12 @@ def _manual_reason_code(exc):
     return 'profile_failed'
 
 
-def _plan_cnc(order_ids, user, kerf=Decimal('4.0')):
+def _plan_cnc(order_ids, user, kerf=Decimal('4.0'), use_offcuts=False):
     """Shared engine: returns ``(plans, issues, report)``.
+
+    ``use_offcuts`` lets CNC nesting consume registered usable offcuts
+    (``SheetStock.is_offcut``). The default ``False`` keeps the historical
+    behaviour of full sheets only, byte for byte.
 
     Report rows are the operator-facing per-task outcome:
     - ``nested``         -> base file used unchanged (effective length == base length);
@@ -260,13 +264,18 @@ def _plan_cnc(order_ids, user, kerf=Decimal('4.0')):
 
     result = []
     for material_id, pieces in grouped.items():
-        stock_rows = list(SheetStock.objects.select_for_update().filter(
-            material_id=material_id, active=True, quantity__gt=0, is_offcut=False,
-        ).select_related('material').order_by('priority', 'width', 'height', 'pk'))
+        stock_qs = SheetStock.objects.select_for_update().filter(
+            material_id=material_id, active=True, quantity__gt=0,
+        )
+        if not use_offcuts:
+            stock_qs = stock_qs.filter(is_offcut=False)
+        order_by = ('priority', '-is_offcut', 'width', 'height', 'pk') if use_offcuts else ('priority', 'width', 'height', 'pk')
+        stock_rows = list(stock_qs.select_related('material').order_by(*order_by))
         if not stock_rows:
+            missing = 'برای متریال قطعه ورق یا پرت آزاد پیدا نشد.' if use_offcuts else 'برای متریال قطعه ورق کامل آزاد پیدا نشد.'
             for piece in pieces:
                 task = next(task for task in tasks if task.id == piece['task_id'])
-                register_issue(task, 'برای متریال قطعه ورق کامل آزاد پیدا نشد.', stage='stock')
+                register_issue(task, missing, stage='stock')
             continue
         available = []
         cut_reserved = _cut_reserved_counts([s.pk for s in stock_rows])
@@ -274,15 +283,20 @@ def _plan_cnc(order_ids, user, kerf=Decimal('4.0')):
             used = CncSheetPlan.objects.filter(source_stock=stock, status='planned').count() + cut_reserved[stock.pk]
             available.extend([stock] * max(0, stock.quantity - used))
         if not available:
+            reserved_message = (
+                'همهٔ ورق‌ها و پرت‌های این متریال در برنامه‌های دیگر رزرو شده‌اند.'
+                if use_offcuts else
+                'همهٔ ورق‌های کامل این متریال در برنامه‌های دیگر رزرو شده‌اند.'
+            )
             for piece in pieces:
                 task = next(task for task in tasks if task.id == piece['task_id'])
-                register_issue(task, 'همهٔ ورق‌های کامل این متریال در برنامه‌های دیگر رزرو شده‌اند.', stage='stock')
+                register_issue(task, reserved_message, stage='stock')
             continue
         bins = [{'stock': stock, 'parts': []} for stock in available]
         # Reuse the deterministic cutting shelf optimizer for rectangle placement.
         optimizer_parts = [{**p, 'orig_width': p['width'], 'orig_height': p['height'], 'turn': p['turn'], 'uid': i} for i, p in enumerate(pieces)]
         stock_data = [{'stock_id': b['stock'].id, 'width': b['stock'].width, 'height': b['stock'].height,
-                       'is_offcut': False, 'priority': b['stock'].priority, 'grain': b['stock'].grain,
+                       'is_offcut': b['stock'].is_offcut, 'priority': b['stock'].priority, 'grain': b['stock'].grain,
                        'label': str(b['stock'])} for b in bins]
         try:
             layouts = optimize(optimizer_parts, stock_data, kerf, policy='priority')
@@ -379,18 +393,18 @@ def _plan_cnc(order_ids, user, kerf=Decimal('4.0')):
 
 
 @transaction.atomic
-def create_cnc_sheet_plans(order_ids, user, kerf=Decimal('4.0')):
+def create_cnc_sheet_plans(order_ids, user, kerf=Decimal('4.0'), use_offcuts=False):
     """Nest CNC-first parts into saved sheet layouts (legacy 2-tuple return)."""
-    plans, issues, _report = _plan_cnc(order_ids, user, kerf)
+    plans, issues, _report = _plan_cnc(order_ids, user, kerf, use_offcuts=use_offcuts)
     return plans, issues
 
 
 @transaction.atomic
-def plan_cnc_with_report(order_ids, user, kerf=Decimal('4.0')):
+def plan_cnc_with_report(order_ids, user, kerf=Decimal('4.0'), use_offcuts=False):
     """Same engine with the operator-facing per-task report (3-tuple return).
 
     ``report`` distinguishes auto-adjusted pieces from pieces that were routed
     to the manual queue, so the planner screen can show «اصلاح خودکار» vs
     «نیازمند اصلاح دستی CNC» without re-deriving anything.
     """
-    return _plan_cnc(order_ids, user, kerf)
+    return _plan_cnc(order_ids, user, kerf, use_offcuts=use_offcuts)
