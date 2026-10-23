@@ -14,6 +14,78 @@
   --st-radius:10px;
 }
 
+/* ============================================================
+   shared minimal components — افشای تدریجی (کدام لایه، یک کلیک)
+   .kpi / .badge-status / .table-min / .row-expand
+   ============================================================ */
+.kpi{display:flex;flex-direction:column;align-items:center;gap:.05rem;padding:0 .85rem;border-inline-start:1px solid var(--st-line-soft)}
+.kpi:first-child{border-inline-start:0}
+.kpi b{font-size:1.05rem;font-weight:800;color:var(--st-ink);line-height:1.25}
+.kpi span{font-size:.64rem;color:var(--st-muted);white-space:nowrap}
+
+.badge-status{display:inline-flex;align-items:center;gap:.3rem;font-size:.7rem;font-weight:700;border-radius:999px;padding:.15rem .55rem;background:var(--st-sunken);border:1px solid var(--st-line);color:var(--st-muted);white-space:nowrap}
+.badge-status.is-ok,.badge-status.is-cut{color:#166534;background:#f0fdf4;border-color:#bbf7d0}
+.badge-status.is-info,.badge-status.is-planned{color:#1d4ed8;background:var(--st-accent-soft);border-color:#bfdbfe}
+.badge-status.is-warn,.badge-status.is-partial{color:#b45309;background:#fffbeb;border-color:#fde68a}
+.badge-status.is-bad{color:#b91c1c;background:#fef2f2;border-color:#fecaca}
+.badge-status.is-cancelled{color:var(--st-muted)}
+
+/* جدول مینیمال: بدون خط عمودی، هدر سبک، فقط خط افقی ظریف */
+.table-min thead th{background:transparent;border-bottom:1px solid var(--st-line);border-top:0;font-size:.72rem;font-weight:700;color:var(--st-muted);padding:.55rem .75rem;white-space:nowrap}
+.table-min td{border-top:0;border-bottom:1px solid var(--st-line-soft);padding:.65rem .75rem;background:transparent!important;color:var(--st-ink)}
+.table-min tbody tr:hover td{background:var(--st-panel-2)!important}
+
+/* الگوی ردیف بازشونده — یک بار تعریف، همه‌جا بازاستفاده */
+.row-expand-toggle{flex:none;width:30px;height:30px;border:0;background:transparent;color:var(--st-muted);border-radius:.4rem;display:inline-flex;align-items:center;justify-content:center;padding:0}
+.row-expand-toggle:hover{background:var(--st-sunken);color:var(--st-ink)}
+.row-expand-toggle i{transition:transform .15s ease}
+.row-expand-toggle[aria-expanded="true"] i{transform:rotate(180deg)}
+.row-expand-toggle[aria-expanded="true"]{color:var(--st-accent)}
+tr.row-expand-details>td{background:var(--st-sunken);border-bottom:1px solid var(--st-line);padding:.6rem .9rem}
+tr.row-expand-details[hidden]{display:none}
+@media (prefers-reduced-motion:reduce){.row-expand-toggle i{transition:none}}
+
+/* سگمنت زیرناوبری بخش‌ها — یک کامپوننت برای انبار/تنظیمات/برش */
+.segmented-nav{display:inline-flex;align-items:center;gap:.15rem;background:var(--st-sunken);border:1px solid var(--st-line);border-radius:999px;padding:.15rem;max-width:100%;overflow-x:auto;scrollbar-width:none}
+.segmented-nav a{display:inline-flex;align-items:center;gap:.3rem;border:0;background:transparent;color:var(--st-muted);font-size:.76rem;font-weight:600;padding:.32rem .7rem;border-radius:999px;text-decoration:none;white-space:nowrap;min-height:32px}
+.segmented-nav a:hover{color:var(--st-ink)}
+.segmented-nav a[aria-current="page"]{background:var(--st-panel);color:var(--st-accent);font-weight:800;box-shadow:0 1px 2px rgba(15,23,42,.1)}
+
+/* دکمهٔ آیکنی مربع (چاپ/لغو/اقدام) — هدف لمسی ≥40px */
+.icon-btn{--bs-btn-padding-x:.42rem;--bs-btn-padding-y:.42rem;line-height:1.1}
+.icon-btn .bi{font-size:1.02rem}
+
+/* لایهٔ «جزئیات» کنار عنوان — پاپ‌اور سبک روی details */
+.detail-pop{position:relative;display:inline-block}
+.detail-pop>summary{list-style:none;display:inline-flex;align-items:center;gap:.3rem;font-size:.75rem;font-weight:700;color:var(--st-muted);border:1px solid var(--st-line);border-radius:999px;padding:.28rem .7rem;background:var(--st-panel);cursor:pointer;white-space:nowrap}
+.detail-pop>summary::-webkit-details-marker{display:none}
+.detail-pop>summary:hover{color:var(--st-ink);border-color:#c3ceda}
+.detail-pop[open]>summary{color:var(--st-accent);border-color:#bfd3fa;background:var(--st-accent-soft)}
+.detail-pop-panel{position:absolute;z-index:30;top:calc(100% + .4rem);inset-inline-start:0;min-width:15rem;max-width:min(24rem,88vw);background:var(--st-panel);border:1px solid var(--st-line);border-radius:.6rem;box-shadow:0 10px 32px rgba(15,23,42,.16);padding:.7rem .9rem;font-size:.78rem;line-height:1.8}
+
+/* KPI یک‌خطی (حداکثر ۴ عدد — عدد + برچسب یک‌کلمه‌ای) */
+.kpi-strip{display:flex;flex-wrap:wrap;align-items:stretch}
+.kpi small{font-size:.6rem;color:var(--st-faint);white-space:nowrap}
+.inventory-kpis{background:var(--st-panel);border:1px solid var(--st-line);border-radius:var(--st-radius);padding:.55rem .8rem;width:fit-content;max-width:100%}
+@media(max-width:767.98px){.inventory-kpis{width:100%}.inventory-kpis .kpi{flex:1 1 40%;justify-content:center}}
+
+/* جدول‌ها در موبایل: لیست کارتی — نه اسکرول افقی */
+@media(max-width:767.98px){
+  .table-cards thead{display:none}
+  .table-cards tr{display:block;border:1px solid var(--st-line);border-radius:.6rem;margin-bottom:.55rem;background:var(--st-panel);padding:.3rem .45rem}
+  .table-cards tbody tr.row-expand-details{padding:0}
+  .table-cards td{display:flex;justify-content:space-between;align-items:center;gap:.75rem;border:0;padding:.32rem .35rem;text-align:end}
+  .table-cards td[data-label]::before{content:attr(data-label);color:var(--st-muted);font-size:.68rem;font-weight:700;flex:none}
+  .table-cards td.td-lead{padding-block:.45rem}
+  .table-cards td.td-lead::before{content:none}
+}
+
+/* کشوهای کناری (تنظیمات / برنامه‌ها) هم‌راستا با پوسته */
+.offcanvas.cut-drawer{background:var(--st-panel);color:var(--st-ink);border-inline-start:1px solid var(--st-line);width:min(21.5rem,92vw)}
+.cut-drawer .offcanvas-header{border-bottom:1px solid var(--st-line-soft)}
+.cut-drawer .offcanvas-title{font-size:.9rem;font-weight:800}
+.cut-drawer .form-label{font-size:.78rem}
+
 /* ---------- station shell ---------- */
 .station{
   color:var(--st-ink);
@@ -95,16 +167,7 @@
 .station-head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:.7rem;margin-bottom:.85rem}
 .station-head h1{font-size:1.2rem;font-weight:800;margin:0}
 .station-head .cf-sub{color:var(--st-muted);font-size:.8rem;margin:.2rem 0 0}
-.cf-page-head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:.75rem;margin-bottom:1rem}
-.cf-page-head h1{font-size:1.2rem;font-weight:800;color:var(--st-ink);margin:0}
-.cf-page-head .cf-sub{color:var(--st-muted);font-size:.82rem;margin:.2rem 0 0}
 .cf-page-actions{display:flex;gap:.5rem;flex-wrap:wrap}
-.station-kpis{display:flex;flex-wrap:wrap;gap:.5rem}
-.station-kpi,.cnc-kpi{background:var(--st-panel);border:1px solid var(--st-line);border-radius:.6rem;padding:.4rem .75rem;display:flex;flex-direction:column;gap:.05rem;min-width:6.25rem}
-.station-kpi span,.cnc-kpi span{font-size:.66rem;color:var(--st-muted);white-space:nowrap}
-.station-kpi strong,.cnc-kpi strong{font-size:1.1rem;font-weight:800;color:var(--st-ink);line-height:1.3}
-.cnc-kpis{display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:.85rem}
-.cnc-kpi{flex-direction:column}
 
 /* ============================================================
    PLAN DETAIL (چیدمان / اجرا) — ایستگاه تمام‌قد: بدون اسکرول،
@@ -128,36 +191,44 @@
 .sb-summary{font-size:.74rem;color:var(--st-muted);max-width:34rem;white-space:normal}
 
 /* ============================================================
-   PLANNER (حالت داده)
+   PLANNER — یک ستون تمام‌عرض: سگمنت حالت، نوار پیش‌نمایش، فضای کاری؛
+   تنظیمات و برنامه‌ها در کشوهای کناری
    ============================================================ */
 .planner-page{padding-bottom:6rem}
-.data-grid{display:grid;grid-template-columns:minmax(0,1fr) 21rem;gap:.9rem;align-items:start}
-.data-main,.data-side{min-width:0}
-.data-side{position:sticky;top:.8rem;display:grid;gap:.9rem}
+.mode-segment{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem 1rem;padding:.55rem .75rem}
+.segmented-radio{display:inline-flex;gap:.15rem;background:var(--st-sunken);border:1px solid var(--st-line);border-radius:999px;padding:.15rem;max-width:100%;overflow-x:auto}
+.seg-opt{display:inline-flex;align-items:center;gap:.45rem;border:0;background:transparent;color:var(--st-muted);font-size:.78rem;padding:.3rem .8rem;border-radius:999px;cursor:pointer;min-height:36px;white-space:nowrap}
+.seg-opt input{width:.95rem;height:.95rem;flex:none}
+.seg-opt:has(input:checked){background:var(--st-panel);color:var(--st-accent);box-shadow:0 1px 2px rgba(15,23,42,.1)}
+.seg-opt:has(input:checked) b{color:var(--st-accent)}
+.seg-opt:has(input:focus-visible){outline:2px solid #93c5fd;outline-offset:2px}
+.seg-copy{display:inline-flex;flex-direction:column;line-height:1.3}
+.seg-copy b{font-size:.8rem;color:var(--st-ink);font-weight:700}
+.seg-copy small{color:var(--st-muted);font-size:.64rem}
+.seg-opt:has(input:checked) .seg-copy b{color:var(--st-accent)}
+.cnc-offcut-toggle{display:none;align-items:center;gap:.4rem;margin:0}
+.cnc-offcut-toggle .form-check-input{margin-top:0}
+#planning-form:has(input[name="planning_mode"][value="cnc_sheets"]:checked) .cnc-offcut-toggle{display:inline-flex}
 .panel-toolbar{display:flex;flex-wrap:wrap;gap:.5rem;align-items:end;padding:.65rem .8rem;border-bottom:1px solid var(--st-line-soft);background:var(--st-panel-2);border-radius:var(--st-radius) var(--st-radius) 0 0}
 .panel-title{font-size:.88rem;font-weight:800;color:var(--st-ink);margin:0}
-.order-row{transition:background-color .15s ease,box-shadow .15s ease}
-.order-row:hover{background:#f8fafc}
-.order-row.order-selected{background:var(--st-accent-soft);box-shadow:inset -3px 0 var(--st-accent)}
-.material-preview-card{position:static}
-.preview-kpi{border:1px solid var(--st-line);border-radius:.5rem;padding:.45rem;background:var(--st-panel-2)}
-.preview-kpi b{font-size:1.15rem;color:var(--st-ink)}
-.preview-material{border:1px solid var(--st-line);border-radius:.55rem;padding:.65rem;background:var(--st-panel-2)}
-.preview-material.good{border-inline-start:4px solid var(--st-green)}
-.preview-material.bad{border-inline-start:4px solid var(--st-red)}
-.preview-material-heading{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.5rem}
-.preview-verdict{border-radius:.5rem;padding:.65rem .8rem;font-weight:700;font-size:.85rem}
+
+/* نوار پیش‌نمایش نیاز مواد — یک نگاه: verdict + دو عدد + کارت تک‌خطی متریال‌ها */
+.preview-strip-head{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem 1rem;padding:.55rem .8rem;border-bottom:1px solid var(--st-line-soft)}
+.preview-strip-head .preview-verdict{margin-inline-start:auto}
+.preview-strip-body{padding:.55rem .8rem;display:grid;gap:.45rem}
+.preview-mat-list{display:grid;gap:.4rem}
+.preview-verdict{border-radius:.5rem;padding:.45rem .75rem;font-weight:700;font-size:.84rem}
 .preview-verdict.neutral{background:var(--st-sunken);color:var(--st-muted)}
 .preview-verdict.good{background:#f0fdf4;color:#166534;border:1px solid #bbf7d0}
 .preview-verdict.bad{background:#fef2f2;color:#b91c1c;border:1px solid #fecaca}
-.planning-mode-options{display:flex;flex-wrap:wrap;gap:.55rem}
-.planning-mode-option{display:flex;align-items:center;gap:.55rem;min-width:0;flex:1 1 17rem;border:1px solid var(--st-line);border-radius:.6rem;padding:.5rem .7rem;background:var(--st-panel);cursor:pointer;transition:border-color .15s ease,background-color .15s ease}
-.planning-mode-option:hover{border-color:#c3ceda}
-.planning-mode-option:has(.form-check-input:checked){border-color:var(--st-accent);background:var(--st-accent-soft);box-shadow:inset 0 0 0 1px var(--st-accent)}
-.planning-mode-copy{display:grid;gap:.1rem;min-width:0}
-.planning-mode-copy b{line-height:1.35;font-size:.82rem}
-.planning-mode-copy small{color:var(--st-muted);line-height:1.45;font-weight:400;font-size:.7rem}
-#visible-order-count{min-height:1.1rem}
+.preview-material{border:1px solid var(--st-line);border-radius:.55rem;padding:.5rem .7rem;background:var(--st-panel-2)}
+.preview-material.good{border-inline-start:4px solid var(--st-green)}
+.preview-material.bad{border-inline-start:4px solid var(--st-red)}
+.preview-material-heading{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.5rem}
+.preview-material .pm-details summary{font-size:.72rem;cursor:pointer;color:var(--st-muted);margin-top:.25rem}
+.preview-material .pm-details[open] summary{color:var(--st-accent)}
+.plan-mini{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem;padding:.5rem .65rem;border:1px solid var(--st-line);border-radius:.55rem;text-decoration:none;color:var(--st-ink);font-size:.8rem;background:var(--st-panel)}
+.plan-mini:hover{border-color:#c3ceda;background:var(--st-panel-2)}
 .cut-map-wrap{background:var(--st-canvas);border:1px solid var(--st-line);border-radius:.6rem;padding:.6rem;overflow:auto}
 .result-entry{scroll-margin-top:1rem}
 
@@ -178,18 +249,12 @@
 .plan-bar-main{min-width:0}
 .plan-title-row{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem}
 .plan-title-row h1{font-size:1.05rem;font-weight:800;margin:0}
-.plan-algo{font-size:.72rem;color:var(--st-muted);background:var(--st-sunken);border:1px solid var(--st-line);border-radius:999px;padding:.14rem .55rem;white-space:nowrap}
-.plan-meta-row{display:flex;flex-wrap:wrap;gap:.25rem .9rem;margin-top:.3rem;font-size:.75rem;color:var(--st-muted)}
-.plan-meta-row b{color:var(--st-ink);font-weight:700}
 .plan-stats{display:flex;align-items:stretch}
-.plan-stat{display:flex;flex-direction:column;align-items:center;gap:.05rem;padding:0 .85rem;border-inline-start:1px solid var(--st-line-soft)}
-.plan-stat:first-child{border-inline-start:0}
-.plan-stat b{font-size:1.05rem;font-weight:800;color:var(--st-ink);line-height:1.25}
-.plan-stat span{font-size:.64rem;color:var(--st-muted)}
 .plan-bar-actions{display:flex;flex-wrap:wrap;gap:.45rem;align-items:center}
 .plan-bar-actions form{margin:0}
-.status-pill{border:1px solid var(--st-line);border-radius:999px;padding:.18rem .55rem;background:var(--st-panel);white-space:nowrap;font-size:.72rem;color:var(--st-muted)}
-.status-pill b{color:inherit}
+.status-pill{display:inline-flex;align-items:center;gap:.25rem;border:1px solid var(--st-line);border-radius:999px;padding:.18rem .5rem;background:var(--st-panel);white-space:nowrap;font-size:.74rem;color:var(--st-muted);min-height:26px}
+.status-pill b{color:inherit;font-weight:800}
+.status-pill .bi{font-size:.78rem}
 .status-pill.is-zero{opacity:.6;border-style:dashed}
 .status-pill-pending{color:#475569}
 .status-pill-used{color:#166534;border-color:#bbf7d0;background:#f0fdf4}
@@ -274,7 +339,6 @@
 .vl-cut{font-size:.68rem;font-weight:800;color:var(--st-green)}
 .verlist-legend{display:flex;align-items:center;gap:.9rem;padding:.4rem .75rem;background:var(--st-panel-2);border-top:1px solid var(--st-line-soft);font-size:.68rem;color:var(--st-muted)}
 .vl-sw{width:10px;height:10px;border-radius:2px;display:inline-block;margin-inline-end:.28rem;vertical-align:-1px}
-.verlist-cols-hint{margin-inline-start:auto;color:var(--st-faint)}
 .boards-bar{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem;padding:.4rem .6rem;background:var(--st-panel-2);border:1px solid var(--st-line);border-radius:.6rem}
 .boards-label{font-weight:800;font-size:.8rem;color:var(--st-ink);white-space:nowrap}
 .boards-label i{color:var(--st-faint);margin-inline-end:.25rem}
@@ -332,7 +396,6 @@
 }
 
 /* shared misc */
-.inventory-quick-links .btn{min-height:38px;border-radius:999px;padding-inline:.9rem}
 .sheet-tab.outcome-none,.sheet-tab.outcome-used,.sheet-tab.outcome-untouched,.sheet-tab.outcome-scrapped{border-color:currentColor}
 
 /* engine report — یک خطِ جمع‌شونده، نه کارت */
@@ -381,15 +444,12 @@
 .cnc-plan-row .cnc-program-id{font-size:.64rem;font-weight:700;letter-spacing:.05em;color:var(--st-faint);direction:ltr;unicode-bidi:isolate;display:inline-block}
 .cnc-plan-row b{display:block;color:var(--st-ink);font-size:.83rem}
 .cnc-plan-row .row-meta{display:flex;gap:.6rem;font-size:.69rem;margin-top:.15rem;align-items:center}
-
 .cf-status{display:inline-flex;align-items:center;gap:.35rem;font-size:.7rem;font-weight:700;border-radius:999px;padding:.13rem .5rem;background:var(--st-sunken);border:1px solid var(--st-line);color:var(--st-muted);white-space:nowrap}
-.cf-status .dot,.cnc-led{width:.5rem;height:.5rem;border-radius:50%;background:#94a3b8;display:inline-block}
+.cf-status .dot{width:.5rem;height:.5rem;border-radius:50%;background:#94a3b8;display:inline-block}
 .cf-status.ready{color:#166534;background:#f0fdf4;border-color:#bbf7d0}.cf-status.ready .dot{background:var(--st-green)}
 .cf-status.done{color:#1d4ed8;background:var(--st-accent-soft);border-color:#bfdbfe}.cf-status.done .dot{background:#3b82f6}
 .cf-status.warn{color:#b45309;background:#fffbeb;border-color:#fde68a}.cf-status.warn .dot{background:var(--st-amber)}
 .cf-status.cancelled{color:var(--st-muted)}.cf-status.cancelled .dot{background:#94a3b8}
-.led-green{background:var(--st-green)}.led-blue{background:#3b82f6}.led-gray{background:#94a3b8}
-.cnc-legend{font-size:.7rem;color:var(--st-muted);display:flex;align-items:center;gap:.85rem}
 
 .cnc-stage{padding:.75rem .85rem 1rem}
 .cnc-stage-panel.d-none{display:none!important}
@@ -432,42 +492,9 @@
 .cnc-empty p{font-size:.82rem}
 .cnc-side-panel{max-height:calc(100vh - 12rem);overflow:auto}
 
-/* legacy card grid kept for cnc_resizer index/engine pages */
-.cnc-workbench{--cnc-line:#dfe5ee;background:#eef2f7;color:#1e293b;min-height:calc(100vh - 72px);padding:1.25rem 1.35rem 2.75rem;margin:-1.8rem}
-.cnc-workbench .cutting-nav{background:#fff;border:1px solid var(--cnc-line);border-radius:.65rem;padding:.5rem .65rem;margin-bottom:1rem!important}
-.cnc-program-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:.75rem}
-.cnc-program-card{border:1px solid var(--cnc-line);border-radius:.6rem;background:#fff;overflow:hidden;display:flex;flex-direction:column}
-.cnc-program-card.is-cancelled{opacity:.6}
-.cnc-program-head{display:flex;justify-content:space-between;align-items:flex-start;gap:.5rem;padding:.6rem .75rem;border-bottom:1px solid #edf1f7}
-.cnc-program-head h3{font-size:.92rem;font-weight:700;color:#0f172a;margin:.05rem 0 0}
-.cnc-sheet-canvas{position:relative;width:calc(100% - 1.5rem);margin:.7rem;border:1px solid #c7d2e0;background:#f6f9fc;aspect-ratio:1/var(--sheet-ratio);min-height:150px;overflow:hidden}
-.cnc-canvas-grid{position:absolute;inset:0;background-image:linear-gradient(#dbe4ee66 1px,transparent 1px),linear-gradient(90deg,#dbe4ee66 1px,transparent 1px);background-size:20px 20px}
-.cnc-sheet-label{position:absolute;inset-inline-start:.35rem;bottom:.25rem;font-size:.62rem;color:#64748b;background:#ffffffd9;padding:.05rem .3rem;border-radius:.25rem}
-.cnc-program-meta{display:flex;flex-wrap:wrap;gap:.2rem .85rem;padding:0 .75rem .5rem;font-size:.72rem;color:#64748b}
-.cnc-program-meta b{color:#334155;font-weight:700}
-.cnc-program-actions{display:flex;gap:.4rem;padding:.6rem .75rem;border-top:1px solid #edf1f7;margin-top:auto}
-
 /* ============================================================
    INVENTORY / STOCK
    ============================================================ */
-.stock-summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:.5rem}
-.stock-summary-cell{border:1px solid var(--st-line);border-radius:.45rem;padding:.45rem .55rem;background:var(--st-panel-2)}
-.stock-summary-cell .label{display:block;font-size:.65rem;color:var(--st-muted);margin-bottom:.15rem}
-.stock-summary-cell .value{font-size:1.15rem;font-weight:700;color:var(--st-ink)}
-.stock-summary-cell .sub{display:block;font-size:.63rem;color:var(--st-faint);margin-top:.1rem}
-.stock-reserve-split{display:flex;flex-wrap:wrap;gap:.35rem;margin-top:.25rem}
-.stock-reserve-chip{font-size:.67rem;padding:.13rem .45rem;border-radius:999px;border:1px solid var(--st-line);background:var(--st-sunken);color:var(--st-muted)}
-.stock-reserve-chip.cut{color:#1d4ed8;border-color:#bfdbfe;background:var(--st-accent-soft)}
-.stock-reserve-chip.cnc{color:#b45309;border-color:#fde68a;background:#fffbeb}
-.stock-reserve-chip.cnc.locked{color:#9a3412;border-color:#fdba74;background:#fff7ed}
-.stock-locked-badge{display:inline-flex;align-items:center;gap:.3rem;font-size:.67rem;padding:.1rem .4rem;border-radius:999px;border:1px solid #fdba74;background:#fff7ed;color:#9a3412;white-space:nowrap}
-.stock-locked-badge .dot{width:7px;height:7px;border-radius:50%;background:var(--st-red)}
-.stock-kpi-card{border:1px solid var(--st-line);border-radius:.5rem;padding:.7rem .85rem;background:var(--st-panel-2)}
-.stock-kpi-card .kpi-label{font-size:.69rem;color:var(--st-muted);letter-spacing:.02em}
-.stock-kpi-card .kpi-value{font-size:1.4rem;font-weight:700;color:var(--st-ink);line-height:1.1}
-.stock-kpi-card .kpi-note{font-size:.67rem;color:var(--st-faint);margin-top:.2rem}
-.stock-kpi-card .kpi-note b{color:var(--st-muted)}
-.stock-history-note{font-size:.71rem;color:var(--st-faint)}
 .inventory-status-cards .card{border:1px solid var(--st-line)!important;border-top:3px solid #94a3b8!important;border-radius:var(--st-radius);box-shadow:none}
 .inventory-status-cards .card.border-primary{border-top-color:var(--st-accent)!important}
 .inventory-status-cards .card.border-warning{border-top-color:var(--st-amber)!important}
@@ -482,21 +509,13 @@
 .inventory-sheet-visual.offcut{background:repeating-linear-gradient(135deg,#fef3c7,#fef3c7 5px,#fde68a 5px,#fde68a 10px);border-color:var(--st-amber)}
 #inventory-filters .form-control,#inventory-filters .form-select{min-height:40px}
 #inventory-filters{row-gap:.75rem!important}
-.inventory-table-wrap{border-radius:0 0 var(--st-radius) var(--st-radius)}
 .cutting-stock-form-page{max-width:1100px;margin-inline:auto}
 .cutting-stock-form-page .card-body{padding:clamp(1rem,2.2vw,1.6rem)}
-
-/* strategy option (legacy) */
-.btn-check:checked+.strategy-option{border-color:var(--st-accent)!important;box-shadow:0 0 0 .2rem rgba(37,99,235,.12)!important}
-.strategy-option{border-color:var(--st-line)!important;background:var(--st-panel)!important;color:var(--st-ink)!important}
-.btn-check:focus-visible+.strategy-option{outline:3px solid #93c5fd;outline-offset:2px}
 
 /* ============================================================
    RESPONSIVE
    ============================================================ */
 @media(max-width:1200px){
-  .data-grid{grid-template-columns:1fr}
-  .data-side{position:static}
   .cnc-master{grid-template-columns:15rem minmax(0,1fr)}
   .cnc-master > .cnc-side-panel{grid-column:1/-1}
 }
@@ -507,20 +526,17 @@
   .cnc-master{grid-template-columns:1fr}
   .cnc-plan-list{max-height:16rem}
   .cnc-side-panel{max-height:none}
-  .station-kpis{width:100%}
-  .station-kpi,.cnc-kpi{flex:1 1 40%}
-  .planning-mode-options{grid-template-columns:1fr}
   .station-statusbar{bottom:0;border-radius:.7rem .7rem 0 0}
   .sb-actions{width:100%;justify-content:stretch}
   .sb-actions .btn{flex:1}
   .sb-summary{max-width:none}
   .cutting-sticky-bar > .container-fluid{align-items:stretch!important}
   .cutting-sticky-bar #plan-submit{min-height:44px}
-  .plan-stat{padding:0 .55rem}
+  .kpi{padding:0 .55rem}
   .cut-map{min-height:200px}
 }
 @media(prefers-reduced-motion:reduce){
-  .station *,.cnc-workbench *{transition-duration:.01ms!important;scroll-behavior:auto!important}
+  .station *{transition-duration:.01ms!important;scroll-behavior:auto!important}
 }
 
 /* ============================================================
@@ -528,7 +544,7 @@
    ============================================================ */
 @media print{
   body.admin-panel{background:#fff}
-  .navbar,.station-nav,.cutting-nav,.cutting-stepper,.station-statusbar,.cutting-sticky-bar,.sheet-selector,.plan-bar-actions,.material-tabs,.plan-progress-card,.btn,details summary,.cnc-plan-list,.cnc-side-panel,.data-side{display:none!important}
+  .navbar,.station-nav,.cutting-nav,.cutting-stepper,.station-statusbar,.cutting-sticky-bar,.sheet-selector,.plan-bar-actions,.material-tabs,.btn,details summary,.cnc-plan-list,.cnc-side-panel,.data-side{display:none!important}
   .station{background:#fff!important;color:#000!important;margin:0;padding:0;min-height:0}
   .station .card,.station .plan-bar,.sheet-info,.result-entry{background:#fff!important;border-color:#bbb!important;color:#000!important}
   .station .table{color:#000}
@@ -577,7 +593,7 @@ tr.ws-row-locked .cell-input { color: #adb5bd; }
 tr.ws-order-selected td { background: #eef5ff; }
 tr.ws-order-focused td { background: #e2edff; }
 tr.ws-order-focused td:first-child { border-inline-start: 3px solid #0d6efd; }
-.ws-status { font-size: .72rem; white-space: nowrap; }
+.ws-status { font-size: .72rem; white-space: nowrap; max-width: 9rem; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; display: inline-block; }
 .ws-status-ready { background: #d1e7dd; color: #0a3622; }
 .ws-status-excluded { background: #e9ecef; color: #495057; }
 .ws-status-needs_cnc { background: #cfe2ff; color: #084298; }

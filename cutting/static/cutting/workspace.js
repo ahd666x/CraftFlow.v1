@@ -72,11 +72,11 @@
         <b class="panel-title">تقاضای برش — صف سفارش‌ها</b>
         <span id="ws-order-count" class="small text-muted" aria-live="polite"></span>
       </div>
-      <div class="table-responsive"><table class="table table-hover align-middle ws-low-density">
+      <div class="table-responsive"><table class="table table-hover align-middle ws-low-density table-cards">
         <thead><tr>
-          <th></th><th>سفارش / مشتری</th><th class="d-none d-lg-table-cell">نماینده</th>
-          <th class="d-none d-md-table-cell">تاریخ</th><th class="d-none d-md-table-cell">آیتم</th>
-          <th>قطعه باقی‌مانده</th><th>وضعیت برنامه</th>
+          <th></th><th>سفارش / مشتری</th>
+          <th class="d-none d-md-table-cell">تاریخ</th>
+          <th>قطعه باقی‌مانده</th><th>برنامه</th>
         </tr></thead>
         <tbody id="ws-order-rows"></tbody>
       </table></div>
@@ -96,14 +96,13 @@
         <div id="ws-material-chips" class="ws-chips"></div>
         <input id="ws-parts-search" class="form-control form-control-sm" style="max-width:13rem" placeholder="نام قطعه یا بارکد…" autocomplete="off">
       </div>
-      <div class="table-responsive"><table class="table table-sm table-hover align-middle ws-low-density ws-edit-grid">
+      <div class="table-responsive"><table class="table table-sm table-hover align-middle ws-low-density ws-edit-grid table-cards">
         <thead><tr>
-          <th>قطعه</th><th class="d-none d-lg-table-cell">بارکد</th>
+          <th>قطعه</th>
           <th data-sort="length" class="ws-sortable">طول</th><th data-sort="width" class="ws-sortable">عرض</th>
           <th data-sort="quantity" class="ws-sortable">تعداد</th>
-          <th data-sort="material" class="ws-sortable">متریال</th><th>چرخش</th>
-          <th class="d-none d-xl-table-cell">نوار لبه (طول۱/طول۲/عرض۱/عرض۲)</th>
-          <th data-sort="status" class="ws-sortable">وضعیت</th><th></th>
+          <th data-sort="material" class="ws-sortable">متریال</th><th title="چرخش ۹۰ درجه">چرخش</th>
+          <th data-sort="status" class="ws-sortable">وضعیت</th><th><span class="visually-hidden">جزئیات بیشتر</span></th>
         </tr></thead>
         <tbody id="ws-part-rows"></tbody>
       </table></div>
@@ -127,16 +126,16 @@
     if (state.queueQuery) params.set('q', state.queueQuery);
     if (state.queueStatus) params.set('status', state.queueStatus);
     const tbody = document.getElementById('ws-order-rows');
-    tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">در حال خواندن…</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">در حال خواندن…</td></tr>';
     try {
       const data = await api(`${CONFIG.orders}?${params}`);
       document.getElementById('ws-order-count').textContent = `${fmt(data.count)} سفارش`;
       document.getElementById('ws-queue-page').textContent = `صفحهٔ ${fmt(data.page)} از ${fmt(data.pages)}`;
-      tbody.innerHTML = data.rows.length ? '' : '<tr><td colspan="7" class="text-center text-muted py-4">سفارشی برای برش پیدا نشد؛ ممکن است در برنامه‌های فعال رزرو باشند.</td></tr>';
+      tbody.innerHTML = data.rows.length ? '' : '<tr><td colspan="5" class="text-center text-muted py-4">سفارشی برای برش پیدا نشد؛ ممکن است در برنامه‌های فعال رزرو باشند.</td></tr>';
       data.rows.forEach(row => tbody.appendChild(queueRow(row)));
       state.queuePages = data.pages;
     } catch (error) {
-      tbody.innerHTML = `<tr><td colspan="7" class="text-center text-danger py-3">${esc(error.message)}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="5" class="text-center text-danger py-3">${esc(error.message)}</td></tr>`;
     }
   }
 
@@ -146,13 +145,11 @@
     tr.dataset.orderId = row.id;
     const inPlan = row.planning_state === 'in_plan';
     tr.innerHTML = `
-      <td><input class="form-check-input ws-order-select" type="checkbox" value="${row.id}" aria-label="انتخاب سفارش ${row.id}"></td>
-      <td><b class="num">#${row.id}</b>${row.number ? ` · ${esc(row.number)}` : ''}<div class="small text-muted">${esc(row.customer_name)}</div></td>
-      <td class="d-none d-lg-table-cell small">${esc(row.rep_name) || '—'}</td>
-      <td class="d-none d-md-table-cell text-nowrap small num">${esc(row.date_jalali)}</td>
-      <td class="d-none d-md-table-cell num">${fmt(row.item_count)}</td>
-      <td class="fw-bold num">${fmt(row.remaining_pieces)}</td>
-      <td>${inPlan ? '<span class="badge bg-secondary">در برنامهٔ فعال</span>' : '<span class="badge bg-light text-dark">آزاد</span>'}</td>`;
+      <td class="td-lead"><input class="form-check-input ws-order-select" type="checkbox" value="${row.id}" aria-label="انتخاب سفارش ${row.id}"></td>
+      <td data-label="سفارش"><b class="num">#${row.id}</b>${row.number ? ` · ${esc(row.number)}` : ''}<div class="small text-muted" title="نماینده: ${esc(row.rep_name) || '—'}">${esc(row.customer_name)}</div></td>
+      <td class="d-none d-md-table-cell text-nowrap small num" data-label="تاریخ">${esc(row.date_jalali)}</td>
+      <td class="fw-bold num" data-label="قطعه باقی‌مانده">${fmt(row.remaining_pieces)}<div class="small text-muted fw-normal num">${fmt(row.item_count)} آیتم</div></td>
+      <td data-label="برنامه">${inPlan ? '<span class="badge bg-secondary">در برنامهٔ فعال</span>' : '<span class="badge bg-light text-dark">آزاد</span>'}</td>`;
     tr.querySelector('.ws-order-select').checked = state.selection.has(String(row.id));
     tr.querySelector('.ws-order-select').addEventListener('change', event => {
       const id = String(row.id);
@@ -247,13 +244,13 @@
     if (state.search) params.set('q', state.search);
     if (state.sort) params.set('sort', state.sort);
     const tbody = document.getElementById('ws-part-rows');
-    tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-3">در حال خواندن قطعات…</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3">در حال خواندن قطعات…</td></tr>';
     try {
       const data = await api(`${pattern(CONFIG.parts_pattern, state.focusId)}?${params}`);
       state.rows = Object.fromEntries(data.rows.map(row => [row.task_id, row]));
       state.partsPages = data.pages;
       tbody.innerHTML = data.rows.length ? '' :
-        '<tr><td colspan="10" class="text-center text-muted py-4">قطعه‌ای با این فیلترها پیدا نشد.</td></tr>';
+        '<tr><td colspan="8" class="text-center text-muted py-4">قطعه‌ای با این فیلترها پیدا نشد.</td></tr>';
       data.rows.forEach(row => tbody.appendChild(partRow(row)));
       document.getElementById('ws-parts-page').textContent = `صفحهٔ ${fmt(data.page)} از ${fmt(data.pages)}`;
       const summary = document.getElementById('ws-summary');
@@ -263,46 +260,70 @@
       document.querySelectorAll('.ws-sortable').forEach(th =>
         th.classList.toggle('ws-sorted', th.dataset.sort === state.sort.replace('-', '')));
     } catch (error) {
-      tbody.innerHTML = `<tr><td colspan="10" class="text-center text-danger py-3">${esc(error.message)}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="8" class="text-center text-danger py-3">${esc(error.message)}</td></tr>`;
     }
   }
 
   /* ---------- parts table rows ---------- */
 
-  const DIM_FIELDS = { length: 'طول', width: 'عرض', quantity_total: 'تعداد' };
-
   function partRow(row) {
+    // دو ردیف: اصلی (حداقل: قطعه/طول/عرض/تعداد/متریال + چرخش و وضعیت) و ردیف جزئیات (بارکد، نوار لبه، وضعیت کامل، اقدامات)
+    const frag = document.createDocumentFragment();
     const tr = document.createElement('tr');
     tr.dataset.taskId = row.task_id;
     tr.dataset.version = row.version;
     tr.className = row.status_code === 'locked_in_plan' ? 'ws-row-locked'
       : row.excluded ? 'ws-row-excluded'
       : row.overridden_fields.length ? 'ws-row-changed' : '';
+    const editable = row.editable && !row.excluded;
+    const cncWidthHint = row.is_cnc_first ? ' title="قطعهٔ CNC: تغییر عرض به صف اصلاح دستی می‌رود."' : '';
+    const statusTitle = row.excluded ? `علت: ${row.excluded_reason}` : row.status_label;
+    const detailsId = `ws-part-details-${row.task_id}`;
+    tr.innerHTML = `
+      <td class="td-lead"><b>${esc(row.name)}</b><div class="small text-muted">${esc(row.pname)}</div></td>
+      <td data-label="طول"><input class="form-control form-control-sm cell-input cell-dim" data-field="length" type="number" min="0" step="0.1" value="${row.length}" ${editable ? '' : 'disabled'} aria-label="طول ${esc(row.name)}"></td>
+      <td data-label="عرض"><input class="form-control form-control-sm cell-input cell-dim" data-field="width" type="number" min="0" step="0.1" value="${row.width}" ${editable ? '' : 'disabled'}${cncWidthHint} aria-label="عرض ${esc(row.name)}"></td>
+      <td data-label="تعداد"><input class="form-control form-control-sm cell-input cell-dim" data-field="quantity_total" type="number" min="0" step="1" value="${row.quantity_total}" ${editable ? '' : 'disabled'} aria-label="تعداد ${esc(row.name)}"></td>
+      <td data-label="متریال"><select class="form-select form-select-sm cell-input cell-material" ${editable ? '' : 'disabled'} aria-label="متریال ${esc(row.name)}">
+        ${MATERIALS.map(m => `<option value="${m.id}" ${String(m.id) === String(row.material_id) ? 'selected' : ''}>${esc(m.name)} (${m.thickness})</option>`).join('')}
+      </select></td>
+      <td data-label="چرخش"><input class="form-check-input cell-turn" type="checkbox" ${row.turn ? 'checked' : ''} ${editable ? '' : 'disabled'} aria-label="چرخش ${esc(row.name)}" title="چرخش ۹۰ درجه"></td>
+      <td data-label="وضعیت"><span class="badge ws-status ws-status-${row.status_code}" title="${esc(statusTitle)}">${esc(row.status_label)}</span>${row.overridden_fields.length ? ' <span class="text-warning" title="مشخصات از پایه تغییر کرده">●</span>' : ''}</td>
+      <td class="text-nowrap"><button type="button" class="row-expand-toggle" data-row-expand aria-expanded="false" aria-controls="${detailsId}" title="بارکد، نوار لبه، وضعیت و اقدامات" aria-label="جزئیات بیشتر ${esc(row.name)}"><i class="bi bi-chevron-down"></i></button></td>`;
+    frag.appendChild(tr);
+
     const lock = row.reserved_plan
       ? `<div class="ws-lock-note">قفل: ${esc(row.status_label)}${row.reserved_plan.kind === 'cut'
           ? ` — <a href="${pattern(CONFIG.cut_plan_pattern, row.reserved_plan.id)}">برنامه #${row.reserved_plan.id}</a>`
           : ` — <a href="${CONFIG.cnc_plans}">برنامهٔ CNC #${row.reserved_plan.id}</a>`}</div>`
       : '';
-    const editable = row.editable && !row.excluded;
-    const cncHint = row.is_cnc_first ? ' title="قطعهٔ CNC: تغییر عرض یا متریالِ با ضخامت متفاوت به صف اصلاح دستی می‌رود."' : '';
     const edgeInput = (field) => `
       <input class="form-control form-control-sm cell-input cell-edge" data-field="${field}"
              value="${esc(row.edges[field] || '')}" maxlength="100" ${editable ? '' : 'disabled'}
              aria-label="${EDGE_LABELS[field]} ${esc(row.name)}" placeholder="—">`;
-    tr.innerHTML = `
-      <td><b>${esc(row.name)}</b><div class="small text-muted">${esc(row.pname)}</div>${lock}</td>
-      <td class="d-none d-lg-table-cell small num">${esc(row.barcode) || '—'}</td>
-      <td><input class="form-control form-control-sm cell-input cell-dim" data-field="length" type="number" min="0" step="0.1" value="${row.length}" ${editable ? '' : 'disabled'} aria-label="طول ${esc(row.name)}"></td>
-      <td><input class="form-control form-control-sm cell-input cell-dim" data-field="width" type="number" min="0" step="0.1" value="${row.width}" ${editable ? '' : 'disabled'}${row.is_cnc_first ? ' title="قطعهٔ CNC: تغییر عرض به صف اصلاح دستی می‌رود."' : ''} aria-label="عرض ${esc(row.name)}"></td>
-      <td style="min-width:5.5rem"><input class="form-control form-control-sm cell-input cell-dim" data-field="quantity_total" type="number" min="0" step="1" value="${row.quantity_total}" ${editable ? '' : 'disabled'} aria-label="تعداد ${esc(row.name)}"><div class="small text-muted num">باقی: ${fmt(row.quantity_remaining)} · انجام: ${fmt(row.quantity_completed)}</div></td>
-      <td><select class="form-select form-select-sm cell-input cell-material" ${editable ? '' : 'disabled'} aria-label="متریال ${esc(row.name)}">
-        ${MATERIALS.map(m => `<option value="${m.id}" ${String(m.id) === String(row.material_id) ? 'selected' : ''}>${esc(m.name)} (${m.thickness})</option>`).join('')}
-      </select></td>
-      <td><input class="form-check-input cell-turn" type="checkbox" ${row.turn ? 'checked' : ''} ${editable ? '' : 'disabled'} aria-label="چرخش ${esc(row.name)}"></td>
-      <td class="d-none d-xl-table-cell ws-edge-cell">${edgeInput('f4')}${edgeInput('f5')}${edgeInput('f18')}${edgeInput('f26')}</td>
-      <td><span class="badge ws-status ws-status-${row.status_code}" title="${esc(row.excluded ? `علت: ${row.excluded_reason}` : row.status_label)}">${esc(row.status_label)}</span>${row.overridden_fields.length ? '<div class="small text-warning">● تغییرکرده</div>' : ''}</td>
-      <td class="text-nowrap ws-actions">${actionsHtml(row, editable)}</td>`;
-    return tr;
+    const det = document.createElement('tr');
+    det.id = detailsId;
+    det.className = 'row-expand-details';
+    det.hidden = true;
+    det.dataset.detailsFor = row.task_id;
+    det.dataset.taskId = row.task_id;
+    det.dataset.version = row.version;
+    det.innerHTML = `
+      <td colspan="8">
+        <div class="row g-2 align-items-start">
+          <div class="col-6 col-md-3"><span class="d-block small text-muted">بارکد</span><span class="num">${esc(row.barcode) || '—'}</span></div>
+          <div class="col-6 col-md-4"><span class="d-block small text-muted">تعداد</span><span class="num small">باقی ${fmt(row.quantity_remaining)} · انجام ${fmt(row.quantity_completed)}</span></div>
+          <div class="col-12">${lock}</div>
+          <div class="col-12"><span class="d-block small text-muted">نوار لبه — طول۱/طول۲/عرض۱/عرض۲</span><div class="ws-edge-cell d-flex flex-wrap gap-1">${edgeInput('f4')}${edgeInput('f5')}${edgeInput('f18')}${edgeInput('f26')}</div></div>
+          <div class="col-12 d-flex flex-wrap align-items-center gap-2">
+            <span class="badge ws-status ws-status-${row.status_code}" title="${esc(statusTitle)}">${esc(row.status_label)}</span>
+            ${row.excluded ? `<span class="small text-danger">علت: ${esc(row.excluded_reason)}</span>` : ''}
+            <span class="ms-auto d-flex flex-wrap gap-1">${actionsHtml(row, editable)}</span>
+          </div>
+        </div>
+      </td>`;
+    frag.appendChild(det);
+    return frag;
   }
 
   function actionsHtml(row, editable) {
@@ -321,8 +342,11 @@
   function replaceRow(row) {
     state.rows[row.task_id] = row;
     const tbody = document.getElementById('ws-part-rows');
-    const old = tbody.querySelector(`tr[data-task-id="${row.task_id}"]`);
-    if (old) old.replaceWith(partRow(row));
+    const old = tbody.querySelector(`tr[data-task-id="${row.task_id}"]:not(.row-expand-details)`);
+    if (old) {
+      tbody.querySelector(`tr[data-details-for="${row.task_id}"]`)?.remove();
+      old.replaceWith(partRow(row));
+    }
   }
 
   /* ---------- inline editing ---------- */

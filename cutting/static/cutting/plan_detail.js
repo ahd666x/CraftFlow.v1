@@ -21,9 +21,11 @@
       tab.classList.remove('outcome-none', 'outcome-used', 'outcome-untouched', 'outcome-scrapped');
       tab.classList.add(`outcome-${value}`);
       const status = tab.querySelector('.sheet-tab-status');
-      if (status) status.textContent = ({
-        none: 'ثبت‌نشده', used: 'مصرف‌شده', untouched: 'دست‌نخورده', scrapped: 'اسقاط'
-      })[value] || 'ثبت‌نشده';
+      const labels = { none: 'ثبت‌نشده', used: 'مصرف‌شده', untouched: 'دست‌نخورده', scrapped: 'اسقاط' };
+      const marks = { none: '—', used: '✔', untouched: '↺', scrapped: '✘' };
+      if (status) status.textContent = marks[value] || '—';
+      const number = tab.querySelector('.sheet-tab-number')?.textContent || '';
+      tab.title = `ورق ${number} — ${labels[value] || 'ثبت‌نشده'}`;
     });
   }
 

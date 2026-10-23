@@ -5,11 +5,10 @@
   <h1 class="mb-3">ضخامت تیغه پیش‌فرض</h1>
   {% include 'cutting/_inventory_nav.html' %}
   {% include 'cutting/_messages.html' %}
-  <div class="alert alert-info py-2">اولویت مصرف ورق (ابتدا ورق کامل یا ابتدا پرت) حالا هنگام برنامه‌ریزی، در «تنظیمات پیشرفته» صف برش انتخاب می‌شود و همراه هر برنامه ذخیره می‌ماند.</div>
   <section class="card mb-4" aria-labelledby="default-kerf-title">
     <div class="card-header"><h2 class="h5 mb-0" id="default-kerf-title">ضخامت تیغه پیش‌فرض</h2></div>
     <div class="card-body">
-      <p class="text-muted">این مقدار در صف برش به‌عنوان پیش‌فرض قرار می‌گیرد؛ اپراتور می‌تواند آن را برای یک برنامه تغییر دهد.</p>
+      <p class="small text-muted">پیش‌فرض صف برش؛ اپراتور می‌تواند برای هر برنامه تغییر دهد. اولویت مصرف ورق هنگام برنامه‌ریزی انتخاب می‌شود.</p>
       <form method="post" class="row g-2 align-items-end">{% csrf_token %}<input type="hidden" name="action" value="save_kerf">
         <div class="col-sm-4 col-md-3"><label class="form-label" for="default-kerf">ضخامت تیغه (mm)</label><input class="form-control" id="default-kerf" name="default_kerf" type="number" min="0" max="999.9" step="0.1" value="{{ setting.default_kerf }}" required></div>
         <div class="col-sm-auto"><button class="btn btn-primary">ذخیره تیغه</button></div>

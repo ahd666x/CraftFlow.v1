@@ -25,7 +25,7 @@
 
   function setCounts(data) {
     document.getElementById('selected-count').textContent = fmt(data.selected_order_count);
-    document.getElementById('sticky-selection-count').textContent = `${fmt(data.selected_order_count)} سفارش انتخاب شده`;
+    document.getElementById('sticky-selection-count').textContent = `${fmt(data.selected_order_count)} سفارش`;
     document.getElementById('selected-pieces').textContent = fmt(data.piece_count);
   }
 
@@ -39,23 +39,23 @@
     error.hidden = true;
     empty.hidden = data.materials.length > 0;
     document.getElementById('preview-strategy').textContent = data.strategy
-      ? `سیاست مصرف: ${data.strategy} · تخمین چیدمان ردیفی`
+      ? `سیاست: ${data.strategy}`
       : '';
 
     data.materials.forEach(item => {
       const card = document.createElement('div');
       card.className = `preview-material ${item.fits ? 'good' : 'bad'}`;
       const badge = item.fits
-        ? '<span class="badge text-bg-success">چیدمان شدنی</span>'
-        : '<span class="badge text-bg-danger">کمبود/عدم تطبیق</span>';
+        ? '<span class="badge text-bg-success" title="چیدمان شدنی">آماده</span>'
+        : '<span class="badge text-bg-danger" title="کمبود موجودی یا عدم تطبیق">کمبود</span>';
       const estimate = item.estimated_sheets === null ? 'نامشخص' : fmt(item.estimated_sheets);
       const basis = item.estimate_is_exact ? 'بر پایه چیدمان الگوریتم' : 'تقریبی';
       const extra = item.estimated_additional_sheets === null ? '—' : fmt(item.estimated_additional_sheets);
-      card.innerHTML = `<div class="preview-material-heading"><b>${esc(item.name)} · ${esc(item.thickness)} mm</b><span>${fmt(item.piece_count)} قطعه</span>${badge}</div>
-        <details class="mt-2"><summary>جزئیات تخمینی</summary>
+      card.innerHTML = `<div class="preview-material-heading"><b>${esc(item.name)} · ${esc(item.thickness)}</b><span class="num">${fmt(item.piece_count)} قطعه</span>${badge}</div>
+        <details class="pm-details"><summary>جزئیات</summary>
           <div class="small mt-2">مساحت لازم: ${fmt(item.required_area_m2)} m²</div>
           <div class="small">ورق تخمینی: <b>${estimate}</b> <span class="text-muted">(${basis})</span></div>
-          <div class="small">آزاد: ${fmt(item.available_sheets)} (کامل ${fmt(item.available_full_sheets)} · پرت ${fmt(item.available_offcut_sheets)}) · مساحت آزاد ${fmt(item.available_area_m2)} m²</div>
+          <div class="small">آزاد: ${fmt(item.available_sheets)} (کامل ${fmt(item.available_full_sheets)} · پرت ${fmt(item.available_offcut_sheets)}) · ${fmt(item.available_area_m2)} m²</div>
           <div class="small">کسری تخمینی: ${extra} ورق</div>
         </details>`;
       holder.appendChild(card);
@@ -65,15 +65,15 @@
     const blocked = data.materials.length === 0 || shortages.length > 0;
     submit.disabled = blocked;
     if (!data.materials.length) {
-      verdict.className = 'preview-verdict neutral mb-3';
+      verdict.className = 'preview-verdict neutral';
       verdict.textContent = 'سفارشی انتخاب نشده';
     } else if (shortages.length) {
       const names = shortages.map(item => `${item.name} ${item.thickness}mm`).join('، ');
-      verdict.className = 'preview-verdict bad mb-3';
-      verdict.innerHTML = `✘ موجودی کافی نیست: ${esc(names)} <a href="${form.dataset.stockUrl}">ثبت موجودی</a>`;
+      verdict.className = 'preview-verdict bad';
+      verdict.innerHTML = `✘ کمبود: ${esc(names)} <a href="${form.dataset.stockUrl}">ثبت موجودی</a>`;
     } else {
-      verdict.className = 'preview-verdict good mb-3';
-      verdict.textContent = '✔ قابل برش با موجودی آزاد';
+      verdict.className = 'preview-verdict good';
+      verdict.textContent = '✔ قابل برش';
     }
   }
 
@@ -86,7 +86,7 @@
       submit.disabled = true;
       if (!ids.length) {
         paint({ selected_order_count: 0, piece_count: 0, materials: [] });
-        document.getElementById('preview-state').textContent = 'برای محاسبه سفارش انتخاب کنید';
+        document.getElementById('preview-state').textContent = 'سفارش انتخاب کنید';
         return;
       }
       if (controller) controller.abort();
@@ -121,10 +121,25 @@
     }, 600);
   }
 
+  /* خلاصهٔ یک‌خطی تنظیمات کنار دکمهٔ کشو + aria-expanded کشوها (نمایش‌محور) */
+  function paintSettingsBrief() {
+    const brief = document.getElementById('settings-brief');
+    if (!brief) return;
+    const policy = stockPolicies.find(input => input.checked);
+    const policyLabel = policy ? (policy.closest('label')?.querySelector('.form-check-label')?.textContent || '').trim() : '';
+    brief.textContent = ` — تیغه ${kerf.value || '—'}${policyLabel ? ` · ${policyLabel}` : ''}`;
+  }
+  document.querySelectorAll('[data-bs-toggle="offcanvas"]').forEach(button => {
+    const target = document.querySelector(button.dataset.bsTarget || '');
+    if (!target) return;
+    target.addEventListener('show.bs.offcanvas', () => button.setAttribute('aria-expanded', 'true'));
+    target.addEventListener('hidden.bs.offcanvas', () => button.setAttribute('aria-expanded', 'false'));
+  });
+
   document.addEventListener('ws:selection-changed', updatePreview);
   document.addEventListener('ws:specs-changed', updatePreview);
-  stockPolicies.forEach(input => input.addEventListener('change', updatePreview));
-  kerf.addEventListener('input', updatePreview);
+  stockPolicies.forEach(input => input.addEventListener('change', () => { updatePreview(); paintSettingsBrief(); }));
+  kerf.addEventListener('input', () => { updatePreview(); paintSettingsBrief(); });
   planningModes.forEach(input => input.addEventListener('change', updatePreview));
   form.addEventListener('submit', () => {
     submit.disabled = true;
@@ -132,4 +147,5 @@
     submit.querySelector('.submit-label').textContent = 'در حال محاسبه…';
   });
   updatePreview();
+  paintSettingsBrief();
 })();

@@ -3,24 +3,29 @@
 <nav class="cutting-nav station-nav" aria-label="بخش‌های برش">
   <div class="station-brand"><i class="bi bi-grid-1x2-fill"></i> ایستگاه برش <span class="station-brand-sub">CRAFTFLOW</span></div>
   <ul class="nav nav-tabs">
-    {% if can_operate %}<li class="nav-item"><a class="nav-link {% if cut_section == 'cut' %}active{% endif %}" {% if cut_section == 'cut' %}aria-current="page"{% endif %} href="{% url 'cutting:planner' %}">برش</a></li><li class="nav-item"><a class="nav-link {% if request.resolver_match.app_name == 'cnc_resizer' %}active{% endif %}" {% if request.resolver_match.app_name == 'cnc_resizer' %}aria-current="page"{% endif %} href="{% url 'cnc_resizer:sheet_plans' %}">خروجی ورق CNC</a></li>{% endif %}
+    {% if can_operate %}<li class="nav-item"><a class="nav-link {% if cut_section == 'cut' %}active{% endif %}" {% if cut_section == 'cut' %}aria-current="page"{% endif %} href="{% url 'cutting:planner' %}">برش</a></li>{% endif %}
     {% if can_inventory %}
-      <li class="nav-item"><a class="nav-link {% if cut_section == 'stock' %}active{% endif %}" {% if cut_section == 'stock' %}aria-current="page"{% endif %} href="{% url 'cutting:inventory' %}">انبار ورق</a></li>
-      <li class="nav-item"><a class="nav-link {% if cut_section == 'history' %}active{% endif %}" {% if cut_section == 'history' %}aria-current="page"{% endif %} href="{% url 'cutting:history' %}">تاریخچه</a></li>
+      <li class="nav-item"><a class="nav-link {% if cut_section == 'stock' or cut_section == 'history' %}active{% endif %}" {% if cut_section == 'stock' or cut_section == 'history' %}aria-current="page"{% endif %} href="{% url 'cutting:inventory' %}">انبار</a></li>
       <li class="nav-item"><a class="nav-link {% if cut_section == 'settings' %}active{% endif %}" {% if cut_section == 'settings' %}aria-current="page"{% endif %} href="{% url 'cutting:size_specs' %}">تنظیمات</a></li>
     {% endif %}
   </ul>
-  <div class="station-nav-actions">
   {% if cut_section == 'cut' %}
-    <a class="btn btn-sm {% if cut_url_name == 'planner' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{% url 'cutting:planner' %}">صف سفارش‌ها</a>
-    <a class="btn btn-sm {% if cut_url_name == 'plans' %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{% url 'cutting:plans' %}">همه برنامه‌ها</a>
-  {% elif cut_section == 'stock' %}
-    <a class="btn btn-sm {% if kind == 'all' %}btn-secondary{% else %}btn-outline-secondary{% endif %}" href="{% url 'cutting:inventory' %}">خلاصه</a>
-    <a class="btn btn-sm {% if kind == 'full' %}btn-secondary{% else %}btn-outline-secondary{% endif %}" href="{% url 'cutting:full_sheets' %}">ورق‌های کامل</a>
-    <a class="btn btn-sm {% if kind == 'offcuts' %}btn-secondary{% else %}btn-outline-secondary{% endif %}" href="{% url 'cutting:offcuts' %}">پرت‌ها</a>
-  {% elif cut_section == 'settings' %}
-    <a class="btn btn-sm {% if cut_url_name|slice:':10' == 'size_specs' %}btn-secondary{% else %}btn-outline-secondary{% endif %}" href="{% url 'cutting:size_specs' %}">اندازه‌های استاندارد</a>
-    {% if can_manage %}<a class="btn btn-sm {% if cut_url_name == 'policy' %}btn-secondary{% else %}btn-outline-secondary{% endif %}" href="{% url 'cutting:policy' %}">ضخامت تیغه پیش‌فرض</a>{% endif %}
-  {% endif %}
+  <div class="segmented-nav" aria-label="زیربخش‌های برش">
+    {% if cut_url_name == 'plans' %}<a href="{% url 'cutting:plans' %}" aria-current="page">برنامه‌ها</a>{% endif %}
+    <a {% if cut_url_name == 'planner' %}aria-current="page"{% endif %} href="{% url 'cutting:planner' %}">صف برش</a>
+    <a {% if request.resolver_match.app_name == 'cnc_resizer' %}aria-current="page"{% endif %} href="{% url 'cnc_resizer:sheet_plans' %}">خروجی ورق CNC</a>
   </div>
+  {% elif cut_section == 'stock' or cut_section == 'history' %}
+  <div class="segmented-nav" aria-label="زیربخش‌های انبار">
+    <a {% if cut_url_name == 'inventory' %}aria-current="page"{% endif %} href="{% url 'cutting:inventory' %}">خلاصه</a>
+    <a {% if cut_url_name == 'full_sheets' %}aria-current="page"{% endif %} href="{% url 'cutting:full_sheets' %}">ورق کامل</a>
+    <a {% if cut_url_name == 'offcuts' %}aria-current="page"{% endif %} href="{% url 'cutting:offcuts' %}">پرت</a>
+    <a {% if cut_url_name == 'history' %}aria-current="page"{% endif %} href="{% url 'cutting:history' %}">تاریخچه</a>
+  </div>
+  {% elif cut_section == 'settings' %}
+  <div class="segmented-nav" aria-label="زیربخش‌های تنظیمات">
+    <a {% if cut_url_name == 'size_specs' or cut_url_name == 'size_specs_edit' %}aria-current="page"{% endif %} href="{% url 'cutting:size_specs' %}">اندازه‌های استاندارد</a>
+    {% if can_manage %}<a {% if cut_url_name == 'policy' %}aria-current="page"{% endif %} href="{% url 'cutting:policy' %}">تیغه پیش‌فرض</a>{% endif %}
+  </div>
+  {% endif %}
 </nav>

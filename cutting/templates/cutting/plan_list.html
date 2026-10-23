@@ -1,19 +1,45 @@
 {% extends 'base.html' %}
-{% load cutting_extras %}
-{% block title %}گزارش برنامه‌های برش{% endblock %}
+{% load cutting_extras static %}
+{% block title %}برنامه‌های برش{% endblock %}
 {% block content %}
 <div class="station cutting-plans-page" dir="rtl">
   {% include 'cutting/_inventory_nav.html' %}
   <header class="station-head">
-    <div><h1>گزارش برنامه‌های برش</h1><p class="cf-sub">فعال، انجام‌شده و لغوشده در یک فهرست جست‌وجوپذیر</p></div>
+    <div><h1>برنامه‌های برش</h1></div>
     <div class="cf-page-actions"><a class="btn btn-primary" href="{% url 'cutting:planner' %}"><i class="bi bi-plus-lg"></i> برنامهٔ جدید</a></div>
   </header>
   {% include 'cutting/_messages.html' %}
-  <div class="d-flex flex-wrap gap-2 mb-3" aria-label="فیلتر سریع برنامه‌ها"><a class="btn btn-sm {% if not status_filter %}btn-secondary{% else %}btn-outline-secondary{% endif %}" href="{% url 'cutting:plans' %}">همه</a>{% for value,label in statuses %}<a class="btn btn-sm {% if status_filter == value %}btn-primary{% else %}btn-outline-primary{% endif %}" href="?status={{ value }}{% if query %}&amp;q={{ query|urlencode }}{% endif %}">{{ label }}</a>{% endfor %}</div>
-  <form method="get" class="card card-body mb-3 py-2"><div class="row g-2 align-items-end"><div class="col-12 col-md-7"><label class="form-label" for="plan-search">جست‌وجو</label><input class="form-control" id="plan-search" name="q" value="{{ query }}" placeholder="برنامه، سفارش یا مشتری"></div><div class="col-8 col-md-5 d-flex gap-2"><button class="btn btn-primary flex-fill">جست‌وجو</button><a class="btn btn-outline-secondary" href="{% url 'cutting:plans' %}">پاک‌کردن</a></div></div><div class="small text-muted mt-2">فیلتر وضعیت با چیپ‌های بالا انجام می‌شود.</div></form>
-  <div class="card"><div class="table-responsive"><table class="table table-hover align-middle mb-0"><thead><tr><th>برنامه</th><th>وضعیت</th><th>سفارش‌ها</th><th class="d-none d-md-table-cell">متریال‌ها</th><th>ورق</th><th>قطعه</th><th>تاریخ ایجاد</th><th></th></tr></thead><tbody>
-    {% for p in page %}<tr><td class="fw-bold num">#{{ p.pk }}</td><td><span class="badge {% if p.status == 'planned' %}bg-primary{% elif p.status == 'cut' %}bg-success{% elif p.status == 'partial' %}bg-warning{% else %}bg-secondary{% endif %}">{{ p.get_status_display }}</span></td><td>{% for order in p.orders.all %}<span class="badge bg-light num">#{{ order.pk }}{% if order.number %} · {{ order.number }}{% endif %}</span>{% empty %}—{% endfor %}<div class="small text-muted">{% for order in p.orders.all %}{{ order.customer.name }}{% if not forloop.last %}، {% endif %}{% endfor %}</div></td><td class="d-none d-md-table-cell">{{ p.material_names|default:'—' }}</td><td class="num">{{ p.sheet_count }}</td><td class="num">{{ p.part_count }}</td><td class="text-nowrap num">{{ p.created_at|jalali }}</td><td><a class="btn btn-sm btn-outline-primary" href="{% url 'cutting:plan_detail' p.pk %}">بازکردن ایستگاه</a></td></tr>
-    {% empty %}<tr><td colspan="8" class="text-center py-5"><h2 class="h5">برنامه‌ای پیدا نشد</h2><p class="text-muted mb-2">فیلترها را پاک کنید یا برنامهٔ جدید بسازید.</p><a class="btn btn-primary" href="{% url 'cutting:planner' %}">صف سفارش‌ها</a></td></tr>{% endfor %}
-  </tbody></table></div><div class="card-footer d-flex justify-content-between align-items-center"><span class="num">{{ page.paginator.count }} برنامه — صفحه {{ page.number }} از {{ page.paginator.num_pages }}</span><div class="d-flex gap-2">{% if page.has_previous %}<a class="btn btn-sm btn-outline-secondary" href="?{% if pagination_query %}{{ pagination_query }}&amp;{% endif %}page={{ page.previous_page_number }}">قبلی</a>{% endif %}{% if page.has_next %}<a class="btn btn-sm btn-outline-secondary" href="?{% if pagination_query %}{{ pagination_query }}&amp;{% endif %}page={{ page.next_page_number }}">بعدی</a>{% endif %}</div></div></div>
+  <div class="d-flex flex-wrap gap-2 align-items-center mb-3" aria-label="فیلتر برنامه‌ها">
+    <a class="badge-status {% if not status_filter %}is-info{% endif %}" href="{% url 'cutting:plans' %}{% if query %}?q={{ query|urlencode }}{% endif %}">همه</a>
+    {% for value,label in statuses %}<a class="badge-status {% if status_filter == value %}{% if value == 'planned' %}is-info{% elif value == 'cut' %}is-ok{% elif value == 'partial' %}is-warn{% else %}is-cancelled{% endif %}{% endif %}" href="?status={{ value }}{% if query %}&amp;q={{ query|urlencode }}{% endif %}">{{ label }}</a>{% endfor %}
+    <form method="get" class="d-flex gap-2 ms-auto"><input type="hidden" name="status" value="{{ status_filter }}"><input class="form-control form-control-sm" id="plan-search" name="q" value="{{ query }}" placeholder="جست‌وجو: برنامه، سفارش، مشتری" aria-label="جست‌وجوی برنامه‌ها"></form>
+  </div>
+  <div class="card">
+    <div class="table-responsive"><table class="table table-hover align-middle table-min table-cards mb-0"><thead><tr><th>برنامه</th><th>وضعیت</th><th>سفارش‌ها</th><th>ورق · قطعه</th><th>تاریخ</th><th><span class="visually-hidden">اقدام</span></th></tr></thead><tbody>
+    {% for p in page %}
+    <tr data-href="{% url 'cutting:plan_detail' p.pk %}">
+      <td class="td-lead fw-bold num" data-label="برنامه">#{{ p.pk }}</td>
+      <td data-label="وضعیت"><span class="badge-status {% if p.status == 'planned' %}is-info{% elif p.status == 'cut' %}is-ok{% elif p.status == 'partial' %}is-warn{% else %}is-cancelled{% endif %}">{{ p.get_status_display }}</span></td>
+      <td data-label="سفارش‌ها">{% for order in p.orders.all|slice:':2' %}<span class="badge bg-light num" title="{{ order.customer.name }}">#{{ order.pk }}</span> {% endfor %}{% if p.orders.all|length > 2 %}<span class="badge-status">+{{ p.orders.all|length|add:'-2' }}</span>{% endif %}{% if not p.orders.all %}—{% endif %}</td>
+      <td class="num" data-label="ورق · قطعه">{{ p.sheet_count }} · {{ p.part_count }}</td>
+      <td class="text-nowrap num" data-label="تاریخ">{{ p.created_at|jalali }}</td>
+      <td class="text-nowrap text-end">
+        <button type="button" class="row-expand-toggle" data-row-expand aria-expanded="false" aria-controls="plan-details-{{ p.pk }}" title="متریال‌ها، مشتری و سفارش‌ها" aria-label="جزئیات برنامه {{ p.pk }}"><i class="bi bi-chevron-down"></i></button>
+        <a class="btn btn-outline-primary icon-btn" href="{% url 'cutting:plan_detail' p.pk %}" title="بازکردن ایستگاه" aria-label="بازکردن ایستگاه برنامه {{ p.pk }}"><i class="bi bi-box-arrow-up-left"></i></a>
+      </td>
+    </tr>
+    <tr class="row-expand-details" id="plan-details-{{ p.pk }}" hidden><td colspan="6">
+      <div class="small">
+        {% if p.orders.all %}<div><b>مشتری / سفارش:</b> {% for order in p.orders.all %}<span class="num">#{{ order.pk }}</span> {{ order.customer.name }}{% if not forloop.last %}، {% endif %}{% endfor %}</div>{% endif %}
+        <div><b>متریال‌ها:</b> {{ p.material_names|default:'—' }}</div>
+        <div class="text-muted num">ایجاد: {{ p.created_at|jalali }}</div>
+      </div>
+    </td></tr>
+    {% empty %}
+    <tr><td colspan="6" class="text-center py-5"><div class="mb-2">برنامه‌ای پیدا نشد.</div><a class="btn btn-primary" href="{% url 'cutting:planner' %}">صف سفارش‌ها</a></td></tr>
+    {% endfor %}
+  </tbody></table></div>
+  <div class="card-footer d-flex justify-content-between align-items-center"><span class="num">{{ page.paginator.count }} برنامه · {{ page.number }}/{{ page.paginator.num_pages }}</span><div class="d-flex gap-2">{% if page.has_previous %}<a class="btn btn-sm btn-outline-secondary" href="?{% if pagination_query %}{{ pagination_query }}&amp;{% endif %}page={{ page.previous_page_number }}">قبلی</a>{% endif %}{% if page.has_next %}<a class="btn btn-sm btn-outline-secondary" href="?{% if pagination_query %}{{ pagination_query }}&amp;{% endif %}page={{ page.next_page_number }}">بعدی</a>{% endif %}</div></div></div>
 </div>
 {% endblock %}
+{% block extra_js %}<script src="{% static 'cutting/ui.js' %}"></script>{% endblock %}
