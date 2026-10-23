@@ -480,7 +480,7 @@ def set_excluded(task, *, excluded, reason='', user=None):
         raise ValueError('ثبت علت حذف از برنامه الزامی است (مثلاً «موجود در انبار» یا «قبلاً تولید شده»).')
     override = TaskSpecOverride.objects.select_for_update().filter(task=task).first()
     if override is None:
-        override = TaskSpecOverride(task=task)
+        override = TaskSpecOverride(task=task, version=0)
     effective = effective_spec(task, override)
     old_value = effective.excluded
     if old_value == excluded and (not excluded or override.excluded_reason == (reason or '').strip()):

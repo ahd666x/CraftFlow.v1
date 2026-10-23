@@ -506,3 +506,234 @@ class Stage2CncStalenessTests(WorkspaceFixtureMixin, TestCase):
         plan.save(update_fields=('layout',))
         response = self.client.get(reverse('cnc_resizer:download_sheet_plan', args=[plan.pk]))
         self.assertEqual(response.status_code, 200)
+
+
+class WorkspaceApiBase(WorkspaceFixtureMixin):
+    def setUp(self):
+        super().setUp()
+        self.ws_url = lambda name, **kw: reverse(f'cutting:{name}', kwargs=kw)
+
+    def patch_spec(self, task_id, payload, method='patch'):
+        import json as _json
+        url = self.ws_url('ws_task_spec', task_id=task_id)
+        body = _json.dumps(payload, ensure_ascii=False).encode('utf-8')
+        if method == 'patch':
+            return self.client.patch(url, body, content_type='application/json')
+        return self.client.post(url, body, content_type='application/json')
+
+    def post_json(self, name, task_id, payload):
+        import json as _json
+        url = self.ws_url(name, task_id=task_id)
+        return self.client.post(url, _json.dumps(payload, ensure_ascii=False).encode('utf-8'),
+                                content_type='application/json')
+
+
+class WorkspacePermissionTests(WorkspaceApiBase, TestCase):
+    def test_anonymous_gets_login_redirect(self):
+        self.client.logout()
+        response = self.client.get(self.ws_url('ws_orders'))
+        self.assertEqual(response.status_code, 302)
+
+    def test_non_operator_gets_403(self):
+        from django.contrib.auth.models import User
+        outsider = User.objects.create_user(username='plain', password='pw12345')
+        self.client.force_login(outsider)
+        for name in ('ws_orders',):
+            response = self.client.get(self.ws_url(name))
+            self.assertEqual(response.status_code, 403)
+        response = self.patch_spec(self.task.pk, {'version': 0, 'fields': {'length': '500'}})
+        self.assertEqual(response.status_code, 403)
+
+
+class WorkspaceOrdersApiTests(WorkspaceApiBase, TestCase):
+    def test_order_queue_lists_orders_with_plannable_tasks(self):
+        self.order.user = self.user  # the rep is Order.user
+        self.order.save(update_fields=('user',))
+        response = self.client.get(self.ws_url('ws_orders'))
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        rows = [row for row in payload['rows'] if row['id'] == self.order.pk]
+        self.assertEqual(len(rows), 1)
+        row = rows[0]
+        self.assertEqual(row['rep_name'], 'ws-admin')  # Order.user is the rep
+        self.assertEqual(row['status'], 'planned')
+        self.assertEqual(row['planning_state'], 'idle')
+
+    def test_rep_name_prefers_order_user(self):
+        from django.contrib.auth.models import User
+        rep = User.objects.create_user(username='rep1', first_name='رضا', last_name='محمدی', password='pw')
+        self.order.user = rep
+        self.order.save(update_fields=('user',))
+        payload = self.client.get(self.ws_url('ws_orders')).json()
+        row = next(row for row in payload['rows'] if row['id'] == self.order.pk)
+        self.assertEqual(row['rep_name'], 'رضا محمدی')
+
+    def test_search_and_status_filters(self):
+        self.order.number = '1042'
+        self.order.save(update_fields=('number',))
+        payload = self.client.get(self.ws_url('ws_orders'), {'q': '1042'}).json()
+        self.assertEqual([row['id'] for row in payload['rows']], [self.order.pk])
+        payload = self.client.get(self.ws_url('ws_orders'), {'q': str(self.order.pk)}).json()
+        self.assertTrue(any(row['id'] == self.order.pk for row in payload['rows']))
+        payload = self.client.get(self.ws_url('ws_orders'), {'status': 'cancelled'}).json()
+        self.assertEqual(payload['rows'], [])
+
+    def test_excluded_only_orders_still_listed(self):
+        # An order whose tasks are all excluded still belongs in the queue
+        # (the operator manages the exclusion from here).
+        set_excluded(self.task, excluded=True, reason='موجود در انبار', user=self.user)
+        payload = self.client.get(self.ws_url('ws_orders')).json()
+        self.assertTrue(any(row['id'] == self.order.pk for row in payload['rows']))
+
+    def test_planning_state_detects_lock(self):
+        plan = CutPlan.objects.create(status='planned', plan_data={})
+        CutPlanTask.objects.create(plan=plan, task=self.task, quantity=1, task_quantity=4, completed_before=1)
+        payload = self.client.get(self.ws_url('ws_orders')).json()
+        row = next(row for row in payload['rows'] if row['id'] == self.order.pk)
+        self.assertEqual(row['planning_state'], 'in_plan')
+
+
+class WorkspaceOrderItemsApiTests(WorkspaceApiBase, TestCase):
+    def make_product(self, name='کمد دو درب'):
+        from product.models import Product, ProductCategory
+        category = ProductCategory.objects.create(name='دسته آزمون')
+        return Product.objects.create(name=name, category=category)
+
+    def test_items_grouping_and_materials(self):
+        from product.models import OrderItem
+        product = self.make_product()
+        item = OrderItem.objects.create(order=self.order, product=product, quantity=2, size='200x80')
+        self.task.order_item = item
+        self.task.save(update_fields=('order_item',))
+        payload = self.client.get(self.ws_url('ws_order', order_id=self.order.pk)).json()
+        self.assertEqual(len(payload['items']), 1)
+        row = payload['items'][0]
+        self.assertEqual(row['product_name'], 'کمد دو درب')
+        self.assertEqual(row['quantity'], 2)
+        self.assertEqual(row['piece_count'], 3)  # remaining of the single task
+        self.assertEqual(payload['materials'][0]['name'], self.material.name)
+
+
+class WorkspacePartsApiTests(WorkspaceApiBase, TestCase):
+    def seed_rows(self):
+        parts = []
+        for index in range(1, 4):
+            part = Part.objects.create(
+                material=self.material if index % 2 else self.material2,
+                name=f'قطعه {index}', length=Decimal('100.0') + index,
+                width=Decimal('200.0'), pname='کمد', routing_code='cut', f3=f'BC-{index}',
+            )
+            parts.append(ProductionTask.objects.create(
+                order=self.order, part=part, station_name='cut', step_order=2,
+                quantity=2, status='pending',
+            ))
+        return parts
+
+    def test_rows_and_summary(self):
+        tasks = self.seed_rows()
+        payload = self.client.get(self.ws_url('ws_parts', order_id=self.order.pk)).json()
+        self.assertEqual(payload['count'], 4)
+        row = next(row for row in payload['rows'] if row['task_id'] == self.task.pk)
+        self.assertEqual(row['length'], '400.0')
+        self.assertEqual(row['status_code'], 'ready')
+        self.assertTrue(row['editable'])
+        self.assertEqual(row['version'], 0)
+        self.assertEqual(row['edges']['f4'], 'PVC سفید')
+        self.assertEqual(len(payload['summary']), 2)
+
+    def test_filters_combine(self):
+        tasks = self.seed_rows()
+        material_m1 = self.material.pk
+        payload = self.client.get(self.ws_url('ws_parts', order_id=self.order.pk),
+                                  {'material': material_m1, 'q': 'قطعه'}).json()
+        names = {row['name'] for row in payload['rows']}
+        self.assertEqual(names, {'قطعه 1', 'قطعه 3'})  # دیواره is m1 but doesn't match q
+        payload = self.client.get(self.ws_url('ws_parts', order_id=self.order.pk), {'item': 'all'}).json()
+        self.assertEqual(payload['count'], 4)
+
+    def test_status_labels_and_lock_flag(self):
+        plan = CutPlan.objects.create(status='planned', plan_data={})
+        CutPlanTask.objects.create(plan=plan, task=self.task, quantity=1, task_quantity=4, completed_before=1)
+        payload = self.client.get(self.ws_url('ws_parts', order_id=self.order.pk)).json()
+        row = next(row for row in payload['rows'] if row['task_id'] == self.task.pk)
+        self.assertEqual(row['status_code'], 'locked_in_plan')
+        self.assertEqual(row['status_label'], 'قفل (در برنامه)')
+        self.assertFalse(row['editable'])
+        self.assertEqual(row['reserved_plan']['kind'], 'cut')
+
+    def test_row_query_count_is_constant(self):
+        self.seed_rows()
+        url = self.ws_url('ws_parts', order_id=self.order.pk)
+        self.client.get(url)  # warm caches
+        # session + user + order-exists + tasks + overrides + cut + cnc + issues
+        with self.assertNumQueries(8):
+            self.client.get(url)
+
+
+class WorkspaceTaskEditApiTests(WorkspaceApiBase, TestCase):
+    def test_patch_spec_updates_row_and_bumps_version(self):
+        response = self.patch_spec(self.task.pk, {'version': 0, 'fields': {'length': '450.5', 'quantity': 6}, 'reason': 'اصلاح اندازه'})
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['row']['length'], '450.5')
+        self.assertEqual(payload['row']['quantity_total'], 6)
+        self.assertEqual(payload['row']['version'], 1)
+        self.assertIn('length', payload['row']['overridden_fields'])
+
+    def test_patch_accepts_patch_and_post(self):
+        response = self.patch_spec(self.task.pk, {'version': 0, 'fields': {'width': '280'}}, method='patch')
+        self.assertEqual(response.status_code, 200)
+        response = self.patch_spec(self.task.pk, {'version': 1, 'fields': {'width': '290'}}, method='post')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['row']['width'], '290.0')
+
+    def test_version_conflict_returns_409_with_fresh_row(self):
+        apply_override(self.task, {'length': '410'}, self.user)
+        response = self.patch_spec(self.task.pk, {'version': 0, 'fields': {'width': '280'}})
+        self.assertEqual(response.status_code, 409)
+        payload = response.json()
+        self.assertEqual(payload['current_version'], 1)
+        self.assertEqual(payload['row']['length'], '410.0')
+        self.assertEqual(TaskSpecOverride.objects.get(task=self.task).width, None)
+
+    def test_validation_error_is_400_persian(self):
+        response = self.patch_spec(self.task.pk, {'version': 0, 'fields': {'length': 'abc'}})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('باید عددی باشد', response.json()['error'])
+        response = self.patch_spec(self.task.pk, {'version': 0, 'fields': {'quantity': 0}})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('نمی\u200cتواند از مجموع', response.json()['error'])
+
+    def test_locked_task_is_409(self):
+        plan = CutPlan.objects.create(status='planned', plan_data={})
+        CutPlanTask.objects.create(plan=plan, task=self.task, quantity=1, task_quantity=4, completed_before=1)
+        response = self.patch_spec(self.task.pk, {'version': 0, 'fields': {'length': '450'}})
+        self.assertEqual(response.status_code, 409)
+        self.assertIn('لغو کنید', response.json()['error'])
+
+    def test_exclude_requires_reason_then_include(self):
+        response = self.post_json('ws_task_exclude', self.task.pk, {'version': 0, 'reason': '   '})
+        self.assertEqual(response.status_code, 400)
+        response = self.post_json('ws_task_exclude', self.task.pk, {'version': 0, 'reason': 'موجود در انبار'})
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['row']['excluded'])
+        self.assertEqual(response.json()['row']['status_code'], 'excluded')
+        response = self.post_json('ws_task_include', self.task.pk, {'version': 1})
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()['row']['excluded'])
+
+    def test_reset_clears_overrides(self):
+        apply_override(self.task, {'length': '450', 'width': '280'}, self.user)
+        self.assertEqual(TaskSpecOverride.objects.get(task=self.task).version, 1)
+        response = self.post_json('ws_task_reset', self.task.pk, {'version': 1})
+        self.assertEqual(response.status_code, 200)
+        row = response.json()['row']
+        self.assertEqual(row['length'], '400.0')
+        self.assertEqual(row['overridden_fields'], [])
+        self.assertEqual(row['version'], 0)
+        self.assertFalse(TaskSpecOverride.objects.filter(task=self.task).exists())
+
+    def test_reset_version_conflict(self):
+        apply_override(self.task, {'length': '450'}, self.user)
+        response = self.post_json('ws_task_reset', self.task.pk, {'version': 99})
+        self.assertEqual(response.status_code, 409)
