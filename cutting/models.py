@@ -146,6 +146,61 @@ class CutPlanSheetTask(models.Model):
         ordering = ('task_id',)
 
 
+class TaskSpecOverride(models.Model):
+    """Operator-tracked spec version for one cut task.
+
+    The base ``Part``/``ProductionTask`` records stay untouched; only the
+    cutting/CNC planning surface reads this overlay. ``None`` on an optional
+    field always means «inherit from the base record». ``version`` is bumped
+    on every accepted edit so the workspace API can reject lost updates.
+    """
+    task = models.OneToOneField(ProductionTask, on_delete=models.CASCADE, related_name='spec_override')
+    length = models.DecimalField(max_digits=7, decimal_places=1, null=True, blank=True)
+    width = models.DecimalField(max_digits=7, decimal_places=1, null=True, blank=True)
+    quantity = models.PositiveIntegerField(null=True, blank=True, verbose_name='تعداد کل مؤثر')
+    material = models.ForeignKey(Material, on_delete=models.PROTECT, null=True, blank=True, related_name='task_spec_overrides')
+    turn = models.BooleanField(null=True, blank=True)
+    # None = inherit from Part; empty string = explicitly cleared.
+    edge_f4 = models.CharField(max_length=100, null=True, blank=True)
+    edge_f5 = models.CharField(max_length=100, null=True, blank=True)
+    edge_f18 = models.CharField(max_length=100, null=True, blank=True)
+    edge_f26 = models.CharField(max_length=100, null=True, blank=True)
+    excluded = models.BooleanField(default=False, verbose_name='خارج از برنامه')
+    excluded_reason = models.CharField(max_length=255, blank=True)
+    version = models.PositiveIntegerField(default=1)
+    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='task_spec_overrides')
+    updated_at = models.DateTimeField(auto_now=True)
+    class Meta:
+        verbose_name = 'نسخهٔ مشخصات تسک برش'
+        verbose_name_plural = 'نسخه‌های مشخصات تسک برش'
+    def __str__(self):
+        return f'override تسک {self.task_id} (v{self.version})'
+    def is_empty(self):
+        """True when the overlay carries no operator decision at all."""
+        return not any((
+            self.length is not None, self.width is not None, self.quantity is not None,
+            self.material_id is not None, self.turn is not None,
+            self.edge_f4 is not None, self.edge_f5 is not None,
+            self.edge_f18 is not None, self.edge_f26 is not None,
+            self.excluded,
+        ))
+
+
+class TaskSpecOverrideEvent(models.Model):
+    """Audit trail: one row per changed field of a TaskSpecOverride."""
+    task = models.ForeignKey(ProductionTask, on_delete=models.CASCADE, related_name='spec_override_events')
+    field = models.CharField(max_length=40)
+    old_value = models.CharField(max_length=255, blank=True)
+    new_value = models.CharField(max_length=255, blank=True)
+    reason = models.CharField(max_length=255, blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='task_spec_override_events')
+    created_at = models.DateTimeField(auto_now_add=True)
+    class Meta:
+        ordering = ('-created_at', '-pk')
+        verbose_name = 'رویداد تغییر مشخصات تسک'
+        verbose_name_plural = 'تاریخچهٔ تغییر مشخصات تسک'
+
+
 class SheetStockEvent(models.Model):
     TYPES = [
         ('receive', 'ثبت ورود'), ('adjust', 'اصلاح موجودی'), ('deactivate', 'غیرفعال‌سازی'),
