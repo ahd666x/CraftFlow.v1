@@ -737,3 +737,21 @@ class WorkspaceTaskEditApiTests(WorkspaceApiBase, TestCase):
         apply_override(self.task, {'length': '450'}, self.user)
         response = self.post_json('ws_task_reset', self.task.pk, {'version': 99})
         self.assertEqual(response.status_code, 409)
+
+
+class WorkspaceUITests(WorkspaceApiBase, TestCase):
+    def test_planner_page_mounts_workspace(self):
+        response = self.client.get(reverse('cutting:planner'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="workspace-root"')
+        self.assertContains(response, 'id="ws-config"')
+        self.assertContains(response, 'id="ws-materials"')
+        self.assertContains(response, 'cutting/workspace.js')
+        self.assertContains(response, 'cutting/planner.js')
+        # the JSON config carries the workspace API endpoints
+        self.assertContains(response, '/cutting/workspace/orders/')
+        self.assertContains(response, '/cutting/workspace/tasks/')
+        # planning form (POST contract) stays intact
+        self.assertContains(response, 'id="planning-form"')
+        self.assertContains(response, 'name="planning_mode"')
+        self.assertContains(response, 'id="plan-submit"')

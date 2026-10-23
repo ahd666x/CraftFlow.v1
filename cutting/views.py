@@ -440,10 +440,27 @@ def planner(request):
         reserved_sheet_count=Count('planned_sheets', distinct=True),
     ).prefetch_related('orders').order_by('-created_at')[:10]
     setting = CuttingSettings.current()
+    workspace_urls = {
+        'orders': reverse('cutting:ws_orders'),
+        'order_pattern': reverse('cutting:ws_order', args=[0]),
+        'parts_pattern': reverse('cutting:ws_parts', args=[0]),
+        'spec_pattern': reverse('cutting:ws_task_spec', args=[0]),
+        'exclude_pattern': reverse('cutting:ws_task_exclude', args=[0]),
+        'include_pattern': reverse('cutting:ws_task_include', args=[0]),
+        'reset_pattern': reverse('cutting:ws_task_reset', args=[0]),
+        'cut_plan_pattern': reverse('cutting:plan_detail', args=[0]),
+        'cnc_plans': reverse('cnc_resizer:sheet_plans'),
+        'planner_preview': reverse('cutting:planner_preview'),
+    }
+    workspace_materials = [
+        {'id': material.pk, 'name': material.name, 'thickness': format(material.thickness, 'f')}
+        for material in materials
+    ]
     return render(request, 'cutting/planner.html', {
         'materials': materials, 'orders': orders, 'setting': setting,
         'order_statuses': Order.ORDER_STATUS, 'status_filter': status_filter, 'query': query,
         'active_plans': active_plans, 'engine_choices': CutPlan.ALGORITHMS,
+        'workspace_urls': workspace_urls, 'workspace_materials': workspace_materials,
     })
 
 

@@ -1,0 +1,10 @@
+{% comment %}
+فضای کاری برش: صف سفارش‌ها ← آیتم‌ها ← متریال‌ها ← جدول قطعات قابل‌ویرایش.
+کل داده با JS (workspace.js) از API فضای کاری خوانده می‌شود؛ هیچ رندر سمت
+سروری برای ردیف‌ها انجام نمی‌شود تا فیلترها بدون بارگذاری کامل صفحه کار کنند.
+{% endcomment %}
+<div id="workspace-root" class="ws-root">
+  <div class="text-center text-muted py-4"><span class="spinner-border spinner-border-sm ms-2" role="status" aria-hidden="true"></span>در حال بارگذاری صف سفارش‌ها…</div>
+</div>
+{{ workspace_urls|json_script:'ws-config' }}
+{{ workspace_materials|json_script:'ws-materials' }}

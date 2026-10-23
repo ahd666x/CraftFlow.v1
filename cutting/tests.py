@@ -370,12 +370,17 @@ class InventoryAndCutFlowTests(TestCase):
             self.assertIn(param, response.context['pagination_query'])
 
     def test_planner_checkbox_queue_shows_available_task_and_remaining_piece_count(self):
-        response = self.client.get(reverse('cutting:planner'), {'q':str(self.order.pk), 'status':'planned'})
+        response = self.client.get(reverse('cutting:planner'), {'q': str(self.order.pk), 'status': 'planned'})
         self.assertEqual(response.status_code, 200)
         order = response.context['orders'][0]
         self.assertEqual((order.cut_task_count, order.remaining_pieces), (1, 1))
-        self.assertContains(response, 'name="order_ids"')
-        self.assertContains(response, 'انتخاب نمایان‌ها')
+        # The queue is rendered client-side by workspace.js from the workspace
+        # API; the planner page mounts it and exposes the JSON config, while
+        # the planning POST form contract (order_ids) stays on the form.
+        self.assertContains(response, 'id="workspace-root"')
+        self.assertContains(response, 'id="ws-config"')
+        self.assertContains(response, '/cutting/workspace/orders/')
+        self.assertContains(response, 'id="planning-form"')
         self.assertContains(response, 'پیش‌نمایش نیاز مواد')
 
     def test_live_material_preview_uses_optimizer_without_reserving_or_consuming_stock(self):

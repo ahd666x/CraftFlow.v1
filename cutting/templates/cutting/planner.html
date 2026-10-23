@@ -26,26 +26,7 @@
 
     <div class="data-grid">
       <div class="data-main">
-        <section class="card">
-          <div class="panel-toolbar">
-            <div class="flex-fill" style="min-width:12rem"><label class="form-label" for="order-search">جست‌وجوی شماره سفارش یا مشتری</label><input id="order-search" class="form-control form-control-sm" name="q" value="{{ query }}" placeholder="مثلاً 142 یا نام مشتری" autocomplete="off"></div>
-            <div style="min-width:9rem"><label class="form-label" for="order-status">وضعیت سفارش</label><select id="order-status" class="form-select form-select-sm" name="status"><option value="">همه وضعیت‌ها</option>{% for value,label in order_statuses %}<option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
-            <div><button id="clear-order-filters" type="button" class="btn btn-sm btn-outline-secondary">پاک‌کردن</button></div>
-          </div>
-          <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2 border-0 py-2"><b class="panel-title">تقاضای برش — صف سفارش‌ها</b><div class="d-flex align-items-center gap-2"><span id="visible-order-count" class="small text-muted" aria-live="polite">{{ orders|length }} سفارش</span><label class="form-check mb-0"><input class="form-check-input" type="checkbox" id="select-all-orders"><span class="form-check-label small">انتخاب نمایان‌ها</span></label></div></div>
-          <div class="table-responsive"><table class="table table-hover align-middle"><thead><tr><th></th><th>سفارش / مشتری</th><th>وضعیت</th><th class="d-none d-lg-table-cell">موعد</th><th class="d-none d-md-table-cell">اولویت</th><th>مواد درگیر</th><th>قطعه باقی‌مانده</th></tr></thead><tbody id="order-rows">
-            {% for o in orders %}<tr class="order-row" data-search="{{ o.pk }} {{ o.number }} {{ o.customer.name }}" data-status="{{ o.status }}">
-              <td><input class="form-check-input order-select" type="checkbox" name="order_ids" value="{{ o.pk }}" aria-label="انتخاب سفارش {{ o.pk }}"></td>
-              <td><b class="num">#{{ o.pk }}</b>{% if o.number %} · {{ o.number }}{% endif %}<div class="small text-muted">{{ o.customer.name }}</div></td>
-              <td><span class="badge bg-light">{{ o.get_status_display }}</span></td>
-              <td class="d-none d-lg-table-cell text-nowrap num">{{ o.due_date|jalali:'%Y/%m/%d' }}{% if o.cut_is_overdue %} <span class="badge bg-danger">دیرکرد</span>{% endif %}</td>
-              <td class="d-none d-md-table-cell"><span class="badge {% if o.priority == 1 %}bg-danger{% elif o.priority == 2 %}bg-warning{% else %}bg-light{% endif %}">{{ o.get_priority_display }}</span></td>
-              <td>{% for material in o.cut_material_names %}<span class="badge bg-light">{{ material }}</span>{% empty %}—{% endfor %}</td>
-              <td class="fw-bold num">{{ o.remaining_pieces|default:0 }}</td>
-            </tr>{% empty %}<tr><td colspan="7" class="text-center text-muted py-4">سفارش آزادی برای برش پیدا نشد؛ ممکن است در برنامه‌های فعال رزرو باشند. <a href="{% url 'cutting:plans' %}">همه برنامه‌ها</a></td></tr>{% endfor %}
-            <tr id="client-empty" hidden><td colspan="7" class="text-center text-muted py-4">سفارشی با این فیلتر پیدا نشد.</td></tr>
-          </tbody></table></div>
-        </section>
+        {% include 'cutting/workspace.html' %}
 
         <section class="card mt-3"><div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2 py-2"><b class="panel-title">برنامه‌های در انتظار برش</b><a class="btn btn-sm btn-outline-primary" href="{% url 'cutting:plans' %}">دیدن همه برنامه‌ها</a></div>{% if active_plans %}<div class="table-responsive"><table class="table table-sm align-middle"><thead><tr><th>برنامه</th><th>سفارش‌ها</th><th>ورق رزروشده</th><th class="d-none d-md-table-cell">ساخته‌شده</th><th></th></tr></thead><tbody>{% for p in active_plans %}<tr><td class="num">#{{ p.pk }}</td><td>{% for order in p.orders.all %}<span class="badge bg-light num">#{{ order.pk }}</span>{% endfor %}</td><td class="num">{{ p.reserved_sheet_count }}</td><td class="d-none d-md-table-cell num">{{ p.created_at|jalali }}</td><td><a class="btn btn-sm btn-outline-primary" href="{% url 'cutting:plan_detail' p.pk %}">بازکردن ایستگاه</a></td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="card-body text-muted">برنامه‌ی در انتظار برش وجود ندارد.</div>{% endif %}</section>
       </div>
@@ -87,4 +68,4 @@
 
 <div class="cutting-sticky-bar"><div class="container-fluid d-flex flex-wrap justify-content-between align-items-center gap-2 py-2"><div><b id="sticky-selection-count">0 سفارش انتخاب شده</b><div class="small">موجودی پس از تأیید نتیجه واقعی کسر می‌شود.</div></div><button id="plan-submit" form="planning-form" class="btn btn-success" disabled><span class="submit-label">محاسبه و رزرو</span><span class="spinner-border spinner-border-sm ms-2" role="status" aria-hidden="true" hidden></span></button></div></div>
 {% endblock %}
-{% block extra_js %}<script src="{% static 'cutting/planner.js' %}"></script>{% endblock %}
+{% block extra_js %}<script src="{% static 'cutting/workspace.js' %}"></script><script src="{% static 'cutting/planner.js' %}"></script>{% endblock %}

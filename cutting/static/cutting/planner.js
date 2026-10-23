@@ -1,13 +1,13 @@
+/* تنظیمات برش + پیش‌نمایش نیاز مواد. صف سفارش‌ها و جدول قطعات به فضای کاری
+ * (workspace.js) منتقل شده‌اند؛ این اسکریپت انتخاب سفارش‌ها را از hidden
+ * inputs فرم می‌خواند و با رویدادهای ws:selection-changed / ws:specs-changed
+ * پیش‌نمایش را تازه می‌کند. رفتار پیش‌نمایش و قفل دکمهٔ «محاسبه و رزرو»
+ * دست‌نخورده مانده است.
+ */
 (() => {
   const form = document.getElementById('planning-form');
   if (!form) return;
 
-  const rows = [...document.querySelectorAll('.order-row')];
-  const boxes = [...document.querySelectorAll('.order-select')];
-  const all = document.getElementById('select-all-orders');
-  const search = document.getElementById('order-search');
-  const status = document.getElementById('order-status');
-  const clearFilters = document.getElementById('clear-order-filters');
   const kerf = document.getElementById('kerf');
   const planningModes = [...document.querySelectorAll('input[name="planning_mode"]')];
   const stockPolicies = [...document.querySelectorAll('input[name="stock_policy"]')];
@@ -19,28 +19,8 @@
   const esc = value => String(value).replace(/[&<>"']/g, char => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
   }[char]));
-  const visibleBoxes = () => boxes.filter(box => !box.closest('tr').hidden);
-  const selected = () => boxes.filter(box => box.checked).map(box => box.value);
-
-  function filterRows() {
-    const query = (search.value || '').trim().toLocaleLowerCase();
-    const selectedStatus = status.value;
-    let visibleCount = 0;
-    rows.forEach(row => {
-      const matches = (!query || (row.dataset.search || '').toLocaleLowerCase().includes(query))
-        && (!selectedStatus || row.dataset.status === selectedStatus);
-      row.hidden = !matches;
-      const box = row.querySelector('.order-select');
-      row.classList.toggle('order-selected', Boolean(box?.checked));
-      if (matches) visibleCount += 1;
-    });
-    document.getElementById('client-empty').hidden = visibleCount !== 0;
-    const visibleCountLabel = document.getElementById('visible-order-count');
-    if (visibleCountLabel) visibleCountLabel.textContent = `${fmt(visibleCount)} سفارش`;
-    const visible = visibleBoxes();
-    all.checked = visible.length > 0 && visible.every(box => box.checked);
-    all.indeterminate = visible.some(box => box.checked) && !all.checked;
-  }
+  const selected = () =>
+    [...form.querySelectorAll('input[name="order_ids"]')].map(input => input.value);
 
   function setCounts(data) {
     document.getElementById('selected-count').textContent = fmt(data.selected_order_count);
@@ -137,24 +117,9 @@
     }, 600);
   }
 
-  all.addEventListener('change', () => {
-    visibleBoxes().forEach(box => { box.checked = all.checked; });
-    filterRows();
-    updatePreview();
-  });
-  search.addEventListener('input', filterRows);
-  status.addEventListener('change', filterRows);
-  clearFilters.addEventListener('click', () => {
-    search.value = '';
-    status.value = '';
-    filterRows();
-  });
+  document.addEventListener('ws:selection-changed', updatePreview);
+  document.addEventListener('ws:specs-changed', updatePreview);
   stockPolicies.forEach(input => input.addEventListener('change', updatePreview));
-  boxes.forEach(box => box.addEventListener('change', () => {
-    box.closest('.order-row')?.classList.toggle('order-selected', box.checked);
-    filterRows();
-    updatePreview();
-  }));
   kerf.addEventListener('input', updatePreview);
   planningModes.forEach(input => input.addEventListener('change', updatePreview));
   form.addEventListener('submit', () => {
@@ -162,6 +127,5 @@
     submit.querySelector('.spinner-border').hidden = false;
     submit.querySelector('.submit-label').textContent = 'در حال محاسبه…';
   });
-  filterRows();
   updatePreview();
 })();

@@ -561,3 +561,55 @@
   .cut-map-wrap,.canvas-frame{background:#fff!important;border-color:#999!important}
   .sheet-tab-status{color:#000}
 }
+
+/* ---------- فضای کاری برش (workspace) ---------- */
+.ws-low-density td { padding: .28rem .5rem; font-size: .855rem; vertical-align: middle; }
+.ws-chips { display: flex; flex-wrap: wrap; gap: .25rem; align-items: center; }
+.ws-chip {
+  border: 1px solid var(--bs-border-color); border-radius: 2rem;
+  padding: .08rem .6rem; font-size: .78rem; background: #fff; cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.ws-chip:hover { border-color: #0d6efd; }
+.ws-chip.active { background: #0d6efd; color: #fff; border-color: #0d6efd; }
+.ws-edit-grid input.cell-input, .ws-edit-grid select.cell-input {
+  width: 100%; min-width: 4.2rem; border: 1px solid transparent;
+  background: transparent; padding: .12rem .3rem; border-radius: .25rem;
+}
+.ws-edit-grid input.cell-input:hover:not(:disabled),
+.ws-edit-grid select.cell-input:hover:not(:disabled) { border-color: var(--bs-border-color); }
+.ws-edit-grid input.cell-input:focus, .ws-edit-grid select.cell-input:focus {
+  border-color: #0d6efd; background: #fff; outline: 0; box-shadow: 0 0 0 .15rem rgba(13, 110, 253, .12);
+}
+.ws-edit-grid input.cell-input:disabled, .ws-edit-grid select.cell-input:disabled { color: #6c757d; }
+.ws-edit-grid input[type="number"].cell-input { direction: ltr; text-align: left; }
+.ws-edge-cell { min-width: 7rem; }
+.ws-edge-cell .cell-input { min-width: 6.5rem; margin-bottom: .15rem; }
+.ws-cell-state { font-size: .7rem; min-height: .9rem; }
+.ws-cell-state.text-success::before { content: '✓ '; }
+.ws-cell-state.text-danger::before { content: '✘ '; }
+tr.ws-row-changed { background: #fffbea; }
+tr.ws-row-changed td { background: transparent; }
+tr.ws-row-excluded { background: #f8f9fa; }
+tr.ws-row-excluded td:first-child { border-inline-start: 3px solid #adb5bd; }
+tr.ws-row-locked { background: #f1f3f5; }
+tr.ws-row-locked .cell-input { color: #adb5bd; }
+tr.ws-order-selected td { background: #eef5ff; }
+tr.ws-order-focused td { background: #e2edff; }
+tr.ws-order-focused td:first-child { border-inline-start: 3px solid #0d6efd; }
+.ws-status { font-size: .72rem; white-space: nowrap; }
+.ws-status-ready { background: #d1e7dd; color: #0a3622; }
+.ws-status-excluded { background: #e9ecef; color: #495057; }
+.ws-status-needs_cnc { background: #cfe2ff; color: #084298; }
+.ws-status-needs_cnc_manual { background: #fff3cd; color: #664d03; }
+.ws-status-auto_adjusted, .ws-status-manual_resolved { background: #d1e7dd; color: #0a3622; }
+.ws-status-locked_in_plan { background: #dee2e6; color: #343a40; }
+.ws-lock-note { font-size: .72rem; color: #6c757d; }
+.ws-sortable { cursor: pointer; user-select: none; }
+.ws-sortable::after { content: ' ⇅'; opacity: .35; font-size: .7rem; }
+.ws-sortable.ws-sorted::after { content: ' ↓'; opacity: 1; }
+.ws-modal-backdrop {
+  position: fixed; inset: 0; background: rgba(0, 0, 0, .45);
+  display: flex; align-items: center; justify-content: center; z-index: 1080;
+}
+.ws-modal { width: min(28rem, 92vw); }
