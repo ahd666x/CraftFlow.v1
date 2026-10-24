@@ -13,6 +13,7 @@
     <nav class="seg" aria-label="بخش برش">
       <a class="seg-opt" href="{% url 'cutting:planner' %}">صف برش</a>
       <a class="seg-opt" aria-current="page" href="{% url 'cnc_resizer:sheet_plans' %}">خروجی ورق CNC</a>
+      <a class="seg-opt" href="{% url 'cnc_resizer:manual_queue' %}" title="قطعات در انتظار اصلاح دستی CNC">صف دستی{% if manual_open_count %} <span class="num">({{ manual_open_count }})</span>{% endif %}</a>
     </nav>
     <div class="head-actions">
       <span class="kpi-inline help" aria-label="خلاصهٔ برنامه‌های CNC">

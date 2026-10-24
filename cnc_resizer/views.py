@@ -1226,12 +1226,16 @@ def sheet_plans(request):
     issue_query = CncPlanningIssue.objects.all() if can_view_all else CncPlanningIssue.objects.filter(created_by=request.user)
     issues = issue_query.select_related('task', 'order', 'part', 'resolved_by')[:100]
     issue_count = issue_query.count()
+    manual_open_count = issue_query.filter(
+        status='open', mode='cnc_sheets', details__stage='manual_required',
+    ).count()
     total_count = plan_query.count()
     active_count = plan_query.filter(status='planned').count()
     used_count = plan_query.filter(status='done', result_outcome='used').count()
     return render(request, 'cnc_resizer/sheet_plans.html', {
         'plans': plans, 'issues': issues, 'total_count': total_count, 'issue_count': issue_count,
         'active_count': active_count, 'used_count': used_count,
+        'manual_open_count': manual_open_count,
     })
 
 
@@ -1489,14 +1493,126 @@ def update_planning_issue(request, issue_id):
     note = request.POST.get('note', '').strip()[:255]
     if status == 'ignored' and not note:
         messages.error(request, 'برای نادیده‌گرفتن مورد، علت را وارد کنید.')
-        return redirect('cnc_resizer:sheet_plans')
+        return redirect(_safe_local_next(request, 'cnc_resizer:sheet_plans'))
     issue.status = status
     issue.resolution_note = note
     issue.resolved_by = request.user if status != 'open' else None
     issue.resolved_at = timezone.now() if status != 'open' else None
     issue.save(update_fields=('status', 'resolution_note', 'resolved_by', 'resolved_at'))
     messages.success(request, 'وضعیت مورد بررسی به‌روزرسانی شد.')
-    return redirect('cnc_resizer:sheet_plans')
+    return redirect(_safe_local_next(request, 'cnc_resizer:sheet_plans'))
+
+
+def _safe_local_next(request, fallback_name):
+    """Return a LOCAL redirect path from an explicit ``next`` POST target.
+
+    Same-site form posts may send ``next=/cnc/manual/`` so the issue actions
+    return to the page they were pressed on; anything else (absolute URL,
+    protocol-relative, empty) falls back to the historical sheet-plans page.
+    """
+    candidate = (request.POST.get('next') or '').strip()
+    if candidate.startswith('/') and not candidate.startswith('//'):
+        return candidate
+    from django.urls import reverse as _reverse
+    return _reverse(fallback_name)
+
+
+@login_required
+@cnc_operator_required(html=True)
+@require_GET
+def manual_queue(request):
+    """صف دستی CNC — phase 2.1 queue page (read-only signals + actions).
+
+    Lists every task whose CNC file needs an operator fix (open
+    manual_required issues) plus recently resolved ones whose pieces are still
+    unplaced (the «ready for re-nest» state). Signals are advisory and
+    read-only; see :mod:`cnc_resizer.manual_queue` for the honesty contract.
+    """
+    from .manual_queue import queue_rows
+    rows = queue_rows(request.user)
+    return render(request, 'cnc_resizer/manual_queue.html', {
+        'rows': rows,
+        'waiting_count': sum(1 for row in rows if row['state'] == 'waiting'),
+        'ready_count': sum(1 for row in rows if row['state'] == 'ready'),
+        'manual_queue_url': reverse('cnc_resizer:manual_queue'),
+        'manual_renest_url': reverse('cnc_resizer:manual_renest'),
+    })
+
+
+@login_required
+@cnc_operator_required(html=True)
+@require_POST
+def manual_renest(request):
+    """Re-run the CNC planner for one manual-queue row's order (Re-nest).
+
+    This is the SAME engine the planner screen uses (``plan_cnc_with_report``)
+    with the workshop-default kerf and offcuts OFF — nothing new is invented
+    here. On success the task's open manual_required issues are resolved with
+    an audit note, mirroring ``register_manual_cnc_file``. When the task still
+    cannot nest, the planner's own reason is surfaced and the issue stays open
+    (fail-closed, exactly like pressing «محاسبه و رزرو» on the planner).
+    """
+    from django.contrib import messages
+    from django.shortcuts import get_object_or_404, redirect
+    issue = get_object_or_404(CncPlanningIssue, pk=request.POST.get('issue_id'))
+    if not _may_access_owner(request.user, issue.created_by_id):
+        raise PermissionDenied
+    back = _safe_local_next(request, 'cnc_resizer:manual_queue')
+    if (issue.details or {}).get('stage') != 'manual_required':
+        messages.error(request, 'این مورد جزو صف دستی نیست؛ بازچینش فقط برای موارد manual_required معنا دارد.')
+        return redirect(back)
+    task = issue.task
+    if task is None or not task.order_id:
+        messages.error(request, 'تسک یا سفارش این مورد حذف شده است؛ بازچینش ممکن نیست.')
+        return redirect(back)
+    if issue.status == 'ignored':
+        messages.error(request, 'این مورد نادیده گرفته شده است؛ ابتدا آن را بازگشایی کنید.')
+        return redirect(back)
+
+    from cutting.models import CuttingSettings
+    from .sheet_nesting import plan_cnc_with_report
+    kerf = CuttingSettings.current().default_kerf
+    try:
+        _plans, _issues, report = plan_cnc_with_report(
+            [task.order_id], request.user, kerf=kerf, use_offcuts=False,
+        )
+    except (ValueError, OSError) as exc:
+        messages.error(request, f'بازچینش انجام نشد: {exc}')
+        return redirect(back)
+
+    row = next((item for item in report if item.get('task_id') == task.pk), None)
+    if row is None:
+        messages.info(request, 'قطعه‌ای برای چیدن باقی نماند (احتمالاً قبلاً چیده یا کامل شده است).')
+        return redirect(back)
+    if row.get('status') == 'manual_required':
+        messages.warning(request, f'بازچینش هنوز ممکن نشد: {row.get("message", "")}')
+        return redirect(back)
+
+    # Success: resolve this task's open manual_required issues with an audit
+    # note (same contract as registering a manual file).
+    now = timezone.now()
+    CncPlanningIssue.objects.filter(
+        task=task, status='open', details__stage='manual_required',
+    ).update(
+        status='resolved', resolution_note='بازچینش موفق — قطعه در چیدمان ورق CNC قرار گرفت.',
+        resolved_by=request.user, resolved_at=now,
+    )
+    status_labels = {
+        'nested': 'با فایل پایه چیده شد',
+        'auto_adjusted': 'با الگوی تأییدشده اصلاح و چیده شد',
+        'manual_resolved': 'با فایل دستی ثبت‌شده چیده شد',
+    }
+    remaining = CncPlanningIssue.objects.filter(task=task, status='open').count()
+    detail = status_labels.get(row.get('status'), row.get('status', ''))
+    if remaining:
+        messages.warning(
+            request,
+            f'بازچینش انجام شد و چیدمان ساخته شد ({detail})، اما {remaining} مورد نیازمند بررسی باقی مانده است؛ '
+            'جزئیات در صفحهٔ برنامه‌های CNC.',
+        )
+    else:
+        messages.success(request, f'بازچینش انجام شد: چیدمان ساخته شد ({detail}).')
+    return redirect(back)
 
 
 @login_required

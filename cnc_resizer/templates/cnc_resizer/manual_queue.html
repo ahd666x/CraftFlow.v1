@@ -1,0 +1,126 @@
+{% extends 'base.html' %}
+{% load static cutting_extras %}
+{% block title %}ایستگاه CNC — صف دستی{% endblock %}
+{% block nav %}{% endblock %}
+{% block body_class %}admin-panel cutting-station{% endblock %}
+{% block content %}
+<div class="station station-cnc pb-0" dir="rtl">
+  {% include 'cutting/_station_bar.html' %}
+
+  {# ── سربرگ: سگمنت + KPI یک‌خطی ── #}
+  <header class="page-head">
+    <h1>صف دستی CNC</h1>
+    <nav class="seg" aria-label="بخش برش">
+      <a class="seg-opt" href="{% url 'cutting:planner' %}">صف برش</a>
+      <a class="seg-opt" href="{% url 'cnc_resizer:sheet_plans' %}">خروجی ورق CNC</a>
+      <a class="seg-opt" aria-current="page" href="{% url 'cnc_resizer:manual_queue' %}">صف دستی</a>
+    </nav>
+    <div class="head-actions">
+      <span class="kpi-inline help" aria-label="خلاصهٔ صف دستی">
+        <span title="قطعاتی که هنوز فایل CNC معتبری ندارند"><b class="num">{{ waiting_count }}</b> در انتظار اصلاح</span>
+        <span aria-hidden="true">·</span>
+        <span title="فایل تأیید شد و فقط باید دوباره چیده شوند"><b class="num">{{ ready_count }}</b> آمادهٔ بازچینش</span>
+      </span>
+    </div>
+  </header>
+  {% include 'cutting/_messages.html' %}
+
+  <main class="cnc-manual-wrap">
+    <p class="help mb-2">
+      قطعاتی که برنامه‌ریز خودکار نتوانست فایل CNC آن‌ها را بسازد. اصلاح در ابزار CNC انجام و فایل ثبت می‌شود؛
+      سیگنال‌ها فقط وضعیت را گزارش می‌کنند و هیچ فایلی از همین صفحه ساخته یا تأیید نمی‌شود.
+    </p>
+    {% if rows %}
+    <div class="table-responsive card">
+      <table class="table table-min align-middle mb-0">
+        <thead>
+          <tr>
+            <th scope="col">قطعه</th>
+            <th scope="col">تسک / سفارش</th>
+            <th scope="col">باقی‌مانده</th>
+            <th scope="col">وضعیت</th>
+            <th scope="col">علت</th>
+            <th scope="col">سیگنال‌ها</th>
+            <th scope="col">اقدامات</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+          <tr>
+            <td>
+              <b>{{ row.part.name }}</b>
+              {% if row.part.f3 %}<div class="help num mb-0">{{ row.part.f3 }}</div>{% endif %}
+              {% if row.part %}<div class="help num mb-0">{{ row.part.width }} × {{ row.part.length }} mm</div>{% endif %}
+            </td>
+            <td class="td-num">#{{ row.task_id }}{% if row.order_id %} / #{{ row.order_id }}{% endif %}</td>
+            <td class="td-num"><b class="num">{{ row.pending }}</b> قطعه</td>
+            <td>
+              {% if row.state == 'waiting' %}
+              <span class="badge-status is-warn"><i class="dot"></i>در انتظار اصلاح دستی</span>
+              {% else %}
+              <span class="badge-status is-ok"><i class="dot"></i>آمادهٔ بازچینش</span>
+              {% endif %}
+              <div class="help num mb-0">{{ row.issue.created_at|jalali }}</div>
+            </td>
+            <td style="max-width:26rem">
+              <span class="badge-status is-mute" title="{{ row.reason_text }}">{{ row.reason_label }}</span>
+              <div class="help mb-0 mt-1">{{ row.reason_text }}</div>
+              {% if row.resolution_note %}<div class="help mb-0 mt-1">یادداشت: {{ row.resolution_note }}</div>{% endif %}
+            </td>
+            <td>
+              <div class="d-grid gap-1">
+                {% if row.signals.manual_file_ready %}<span class="badge-status is-ok" title="فایل دستی برای همین طول مؤثر ثبت و تأیید شده است؛ بازچینش از آن استفاده می‌کند."><i class="dot"></i>فایل دستی آماده</span>{% endif %}
+                {% if row.signals.profile_ready %}<span class="badge-status is-info" title="الگوی تغییر اندازهٔ تأییدشده برای این قطعه ثبت شده است؛ برنامه‌ریز می‌تواند فایل مشتق بسازد."><i class="dot"></i>الگوی تأییدشده آماده</span>{% endif %}
+                {% if row.signals.part_template_ready %}<span class="badge-status is-mute" title="قالب پارامتریک این قطعه ثبت شده است؛ در ابزار CNC بارگذاری کنید تا ساخت فایل سریع‌تر شود."><i class="dot"></i>قالب پارامتریک ثبت شده</span>{% endif %}
+                {% if not row.signals.manual_file_ready and not row.signals.profile_ready and not row.signals.part_template_ready %}
+                <span class="help mb-0">—</span>
+                {% endif %}
+              </div>
+            </td>
+            <td>
+              <div class="d-flex flex-wrap gap-1 align-items-center">
+                <a class="btn btn-sm btn-outline-primary" href="/cnc/?task_id={{ row.task_id }}" title="باز کردن فایل این تسک در ابزار CAD سی‌ان‌سی برای اصلاح و ثبت فایل دستی">رفع در ابزار CNC</a>
+                {% if row.can_renest %}
+                <form method="post" action="{{ manual_renest_url }}" onsubmit="return confirm('بازچینش، برنامه‌ریز CNC را برای کل سفارش این مورد اجرا می‌کند و ممکن است ورق رزرو کند. ادامه می‌دهید؟')">
+                  {% csrf_token %}
+                  <input type="hidden" name="issue_id" value="{{ row.issue.id }}">
+                  <input type="hidden" name="next" value="{{ manual_queue_url }}">
+                  <button class="btn btn-sm {% if row.state == 'ready' %}btn-success{% else %}btn-outline-secondary{% endif %}" title="اجرای دوبارهٔ برنامه‌ریز با همان موتور صفحهٔ صف برش (کرف پیش‌فرض کارگاه، بدون پرت)">بازچینش</button>
+                </form>
+                {% endif %}
+                {% if row.state == 'waiting' %}
+                <div class="dropdown">
+                  <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="اقدامات بیشتر">⋯</button>
+                  <ul class="dropdown-menu">
+                    <li>
+                      <form method="post" action="{% url 'cnc_resizer:update_planning_issue' row.issue.id %}" class="dropdown-item p-2 d-grid gap-2">{% csrf_token %}
+                        <input type="hidden" name="status" value="resolved">
+                        <input type="hidden" name="next" value="{{ manual_queue_url }}">
+                        <input name="note" maxlength="255" class="form-control form-control-sm" placeholder="یادداشت رفع (اختیاری)" aria-label="یادداشت رفع">
+                        <button class="btn btn-sm btn-success">رفع شد</button>
+                      </form>
+                    </li>
+                    <li>
+                      <form method="post" action="{% url 'cnc_resizer:update_planning_issue' row.issue.id %}" class="dropdown-item p-2 d-grid gap-2">{% csrf_token %}
+                        <input type="hidden" name="status" value="ignored">
+                        <input type="hidden" name="next" value="{{ manual_queue_url }}">
+                        <input name="note" maxlength="255" class="form-control form-control-sm" placeholder="علت نادیده‌گرفتن" aria-label="علت نادیده‌گرفتن">
+                        <button class="btn btn-sm btn-outline-secondary">نادیده‌گرفتن</button>
+                      </form>
+                    </li>
+                  </ul>
+                </div>
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="cnc-empty card"><i class="bi bi-shield-check" aria-hidden="true"></i><h3 class="h6 mb-1">صف دستی خالی است</h3><p class="help">هیچ قطعهٔ CNC در انتظار اصلاح دستی یا بازچینش نیست.</p></div>
+    {% endif %}
+  </main>
+</div>
+{% endblock %}

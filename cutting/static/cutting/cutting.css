@@ -468,3 +468,7 @@ tr.row-expand-details>td{background:var(--st-sunken);border-bottom:1px solid var
 .paths-stats{display:flex;gap:6px 18px;flex-wrap:wrap;font-size:12.5px;color:var(--st-muted);padding-top:10px;margin:0}
 .paths-stats b{color:var(--st-ink);font-weight:700}
 .paths-risk-chip{display:inline-flex;align-items:center;gap:.35rem;color:#b91c1c;background:#fef2f2;border:1px solid #fecaca;border-radius:999px;padding:.1rem .6rem;font-weight:700}
+
+/* ── صف دستی CNC (فاز ۲.۱) ── */
+.cnc-manual-wrap{padding:var(--sp-3) var(--sp-3) var(--sp-4);background:var(--st-canvas)}
+.cnc-manual-wrap .table-min td{height:auto;vertical-align:top}
