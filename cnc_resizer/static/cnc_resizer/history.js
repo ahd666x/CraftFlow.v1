@@ -134,7 +134,8 @@
       </div>
       <p class="statusline">الگوی ویرایش فهرست ویرایش‌ها را پیش‌بارگذاری می‌کند؛ قالب قطعه نقش‌های هندسی
       ویرایش‌های ویژگی‌محور (آرایه/گرید/آینه/چرخش) را به قطعهٔ مقصد می‌بندد و روی فایل جدید همان قطعه
-      با تطبیق هندسی سرور بارگذاری می‌شود. اعمال نهایی هر دو همیشه از پیش‌نمایش + گتهٔ برخورد + گتهٔ
+      با تطبیق هندسی سرور بارگذاری می‌شود. تغییر طول پنل «طول» هم در الگو ثبت می‌شود و بارگذاری الگو
+      آن را خودکار روی فایل فعلی اعمال و فایل را جایگزین می‌کند. اعمال نهایی هر دو همیشه از پیش‌نمایش + گتهٔ برخورد + گتهٔ
       دیالکت همان سرور می‌گذرد. برای جابه‌جایی/کشش قطعه، «الگوی ویرایش» را ذخیره کنید.</p>
     `;
     panel.querySelectorAll('ol li[data-idx]').forEach((li) => {
@@ -213,16 +214,26 @@
     const payload = CNC.opsPayload();
     // گارد روی دادهٔ واقعی، نه برچسب kind — «چیزی برای ذخیره هست؟» یعنی
     // edits غیرخالی؛ اگر معناشناسی kind روزی تغییر کند گارد نمی‌شکند.
-    if (!Array.isArray(payload.edits) || !payload.edits.length) {
-      CNC.alert('warn', 'ویرایشی برای ذخیره نیست؛ اول روی نقشه چیزی را ویرایش کنید.');
+    let edits = Array.isArray(payload.edits) ? payload.edits.map((e) => ({ ...e })) : [];
+    // تغییر طول پنل «طول» (بعد از «جایگزینی فایل») هم بخشی از الگوست و اول
+    // اعمال می‌شود — وگرنه تغییر طول هرگز در الگو ثبت نمی‌شد (بازخورد اپراتور:
+    // «تغییر اندازهٔ ۱۰۰ میلی‌متری باید دفعهٔ بعد با الگو خودکار انجام شود»).
+    if (state.resizeOp) edits = [{ ...state.resizeOp }, ...edits];
+    if (!edits.length) {
+      CNC.alert('warn', 'ویرایشی برای ذخیره نیست؛ اول روی نقشه چیزی را ویرایش کنید یا از پنل «طول» تغییر طول بدهید و جایگزین کنید.');
       return;
     }
     const name = prompt('نام الگو (مثلاً «کشش قطعهٔ t.16»):');
     if (!name || !name.trim()) return;
+    const RESIZE_MODE_FA = { equal: 'مساوی', proportional: 'متناسب', kerf: 'kerf', manual: 'دستی' };
+    const noteExtra = state.resizeOp
+      ? ` + تغییر طول ${CNC.sgn(state.resizeOp.delta)} (${RESIZE_MODE_FA[state.resizeOp.mode] || state.resizeOp.mode})`
+      : '';
     try {
-      const res = await CNC.api.saveEditTemplate(name.trim(), payload.edits,
-          `ذخیره از رابط نقشه‌محور — ${state.filename} (${payload.kind})`);
-      CNC.alert('info', CNC.esc(res.message || 'الگو ذخیره شد.'), null, 5000);
+      const res = await CNC.api.saveEditTemplate(name.trim(), edits,
+          `ذخیره از رابط نقشه‌محور — ${state.filename} (${payload.kind})${noteExtra}`);
+      CNC.alert('info', CNC.esc(res.message || 'الگو ذخیره شد.')
+        + (state.resizeOp ? ' — بارگذاری این الگو روی فایل بعدی، همان تغییر طول را خودکار اعمال می‌کند.' : ''), null, 5000);
       await loadTemplates();
     } catch (err) { CNC.alert('err', CNC.esc(err.message)); }
   }
@@ -236,9 +247,39 @@
     }
     // الگو پیش‌بارگذاری می‌شود؛ اعمال نهایی از همان پیش‌نمایش fail-closed می‌گذرد
     const edits = Array.isArray(tpl.payload) ? tpl.payload : [];
-    const partEdits = edits.filter((e) => ['move_part', 'stretch_part'].includes(e.op));
-    const gapEdits = edits.filter((e) => ['set_gap', 'distribute', 'stretch_chain'].includes(e.op));
-    const featureEdits = edits.filter((e) => ['array', 'grid', 'mirror', 'rotate'].includes(e.op));
+    // op «resize_length» (تغییر طول پنل «طول») اینجا خودکار اجرا می‌شود:
+    // همان endpoint تغییر طول سرور → جایگزینی فایل → بعد بقیهٔ ویرایش‌ها روی
+    // فایل تازه پیش‌بارگذاری می‌شوند. قالب هرگز مستقیم چیزی را اجرا نمی‌کند.
+    const resizeEdit = edits.find((e) => e && e.op === 'resize_length') || null;
+    const rest = resizeEdit ? edits.filter((e) => e !== resizeEdit) : edits;
+    if (resizeEdit) {
+      if (CNC.hasOps() && !confirm('این الگو شامل تغییر طول است؛ فایل با نتیجهٔ تغییر طول جایگزین می‌شود و ویرایش‌های فعلی پاک می‌شوند. ادامه می‌دهید؟')) return;
+      const params = { mode: resizeEdit.mode || 'equal',
+                       delta: Number(resizeEdit.delta) || 0,
+                       symmetric: resizeEdit.symmetric !== false };
+      if (Array.isArray(resizeEdit.enabled)) params.enabled = resizeEdit.enabled.map(Boolean);
+      if (Array.isArray(resizeEdit.manual)) params.manual = resizeEdit.manual.map((v) => (Number.isFinite(Number(v)) ? Number(v) : 0));
+      try {
+        const res = await CNC.api.resize(state.text, state.filename, params);
+        if (res.ok === false) { CNC.alert('err', CNC.esc(res.error || 'تغییر طول ناموفق بود.')); return; }
+        if (res.resizable === false) {
+          CNC.alert('warn', 'این فایل قابل تغییر طول خودکار نیست؛ الگو اعمال نشد.<br>• '
+            + CNC.esc((res.warnings || []).join('<br>• ') || 'دلیل در پیام‌ها آمده است.'));
+          return;
+        }
+        if (!res.cnc_text || !String(res.cnc_text).trim()) { CNC.alert('err', 'متن نتیجهٔ تغییر طول خالی است.'); return; }
+        const baseName = (state.filename || 'part.cnc').replace(/\.[^.]+$/, '');
+        await CNC.loadText(`${baseName}_L${CNC.f1(res.length_after ?? 0)}.cnc`, res.cnc_text);
+        state.resizedFromPanel = true;
+        state.resizeOp = { op: 'resize_length', mode: params.mode, delta: params.delta, symmetric: params.symmetric,
+                           ...(params.enabled ? { enabled: params.enabled } : {}),
+                           ...(params.manual ? { manual: params.manual } : {}) };
+        CNC.renderGate();
+      } catch (err) { CNC.alert('err', CNC.esc(err.message)); return; }
+    }
+    const partEdits = rest.filter((e) => ['move_part', 'stretch_part'].includes(e.op));
+    const gapEdits = rest.filter((e) => ['set_gap', 'distribute', 'stretch_chain'].includes(e.op));
+    const featureEdits = rest.filter((e) => ['array', 'grid', 'mirror', 'rotate'].includes(e.op));
     state.partOp = new Map();
     state.gapOps = [];      // بارگذاری الگو جایگزین کامل وضعیت است — باگ شناور نماند
     state.featureOps = [];
@@ -251,13 +292,21 @@
       if (featureEdits.length) {
         CNC.alert('warn', 'این قالب هم ویرایش قطعه‌ای دارد هم ویژگی‌محور؛ سرور ترکیب‌شان را در یک درخواست '
           + 'نمی‌پذیرد — فقط بخش قطعه‌ای بارگذاری شد.');
+      } else if (resizeEdit) {
+        // صداقت: شناسهٔ قطعه از هش bbox ساخته می‌شود و بعد از تغییر طول عوض می‌شود؛
+        // ویرایش‌های قطعه‌ایِ قالب ممکن است روی فایل تازه هم‌خوان نباشند — پیش‌نمایش
+        // fail-closed دقیقاً می‌گوید چه چیزی منطبق نشد.
+        CNC.alert('warn', 'تغییر طول اعمال شد؛ ولی ویرایش‌های قطعه‌ایِ قالب بعد از تغییر طول ممکن است '
+          + 'با شناسهٔ قطعهٔ جدید هم‌خوان نباشند — نتیجه از پیش‌نمایش fail-closed سرور می‌آید.');
       }
     } else {
       state.featureOps = featureEdits;
     }
-    push(`الگوی «${tpl.name}»`);
+    push(resizeEdit ? `الگوی «${tpl.name}» + تغییر طول خودکار` : `الگوی «${tpl.name}»`);
     CNC.requestPreview();
-    CNC.alert('info', `الگوی «${CNC.esc(tpl.name)}» بارگذاری شد؛ نتیجه از پیش‌نمایش سرور می‌آید.`, null, 5000);
+    CNC.alert('info', resizeEdit
+      ? `الگوی «${CNC.esc(tpl.name)}» بارگذاری شد؛ تغییر طولش خودکار اعمال شد و بقیهٔ ویرایش‌ها پیش‌بارگذاری شدند.`
+      : `الگوی «${CNC.esc(tpl.name)}» بارگذاری شد؛ نتیجه از پیش‌نمایش سرور می‌آید.`, null, 5000);
   }
 
   // ------------------------------------------------_قالب‌های قطعه (پارامتریک — فاز ۲.۲)

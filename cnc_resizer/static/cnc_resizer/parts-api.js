@@ -85,6 +85,10 @@
     outputsExcluded: new Set(),  // part_id هایی که اپراتور از خروجی حذف کرده (advisory)
     fixedParts: new Set(),       // part_id هایی که «ثابت» علامت خورده‌اند
     resizedFromPanel: false,     // فایل با نتیجهٔ پنل «طول» (روش قدیمی) جایگزین شده — بدون ویرایش نقشه هم دانلودپذیر است
+    resizeOp: null,          // آخرین تغییر طول پنل «طول» به‌صورت op قابل‌بازپخش ({op:'resize_length',...}) —
+                             // در «ذخیره به‌عنوان الگو» ثبت و هنگام بارگذاری الگو خودکار دوباره اعمال می‌شود.
+                             // عمداً بیرون از opsPayload است: پیش‌نمایش سرور این op را نمی‌فهمد؛
+                             // اعمالش فقط از همان endpoint تغییر طول (گتهٔ خودش) می‌گذرد.
     selection: [],           // [{type:'part'|'op'|'child', id}]
     gate: { allowed: null, blockers: [], warnings: [], edits: false },
     previewSeq: 0,           // race-guard: پاسخ‌های کهنهٔ پیش‌نمایش دور ریخته می‌شوند
@@ -213,7 +217,7 @@
     st.partOp = new Map(); st.gapOps = []; st.featureOps = [];
     st.outputsExcluded = new Set(); st.fixedParts = new Set();
     st.selection = []; st.measures = [];
-    st.resizeGaps = null; st.resizeLengths = null;
+    st.resizeGaps = null; st.resizeLengths = null; st.resizeOp = null;
     st.gate = { allowed: null, blockers: [], warnings: [], edits: false };
     st.layers.depth = new Map(); st.layers.tool = new Map(); st.layers.kind = new Map();
     CNC.emit('file', { name, text });

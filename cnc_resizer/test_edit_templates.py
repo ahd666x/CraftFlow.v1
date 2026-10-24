@@ -145,6 +145,61 @@ class EditTemplateApiTests(TestCase):
         self.assertEqual(response.status_code, 200, response.content)  # فرم مستقل ذخیره می‌شود
         # ولی اعمالش در preview همان محدودیت ترکیب را دارد (تست‌های prompt-1)
 
+    def test_resize_length_op_is_storable_form(self):
+        """تغییر طول پنل «طول» (resize_length) به‌عنوان فرم الگو ذخیره می‌شود؛
+        هنگام بارگذاری، دوباره از همان engine_resize (با گتهٔ خودش) می‌گذرد و
+        بعدش پیش‌نمایش fail-closed بقیهٔ ویرایش‌ها را می‌سنجد. قالب هرگز خودش
+        اجرا نمی‌شود."""
+        self.client.login(username="cnc-manager-tpl", password="testpass")
+        # فقط تغییر طول (جریان واقعی اپراتور بعد از «جایگزینی فایل»)
+        resize_only = [{"op": "resize_length", "mode": "equal", "delta": 100, "symmetric": True}]
+        response = self.client.post(self.list_url(), data=json.dumps(self.payload(
+            name="طول +۱۰۰", edits=resize_only, note="بدون ویرایش دیگر")), content_type="application/json")
+        self.assertEqual(response.status_code, 200, response.content)
+        stored = EditTemplate.objects.get(name="طول +۱۰۰")
+        self.assertEqual(stored.payload[0]["op"], "resize_length")
+        self.assertEqual(stored.payload[0]["delta"], 100)
+        # تغییر طول + ویرایش ویژگی‌محور (ترتیب ذخیره: اول تغییر طول)
+        response = self.client.post(self.list_url(), data=json.dumps(self.payload(
+            name="طول + آرایه",
+            edits=[{"op": "resize_length", "mode": "equal", "delta": -50},
+                   {"op": "grid", "feature_id": "feature-block-0001",
+                    "count_x": 2, "pitch_x": 30, "count_y": 1}])), content_type="application/json")
+        self.assertEqual(response.status_code, 200, response.content)
+        stored = EditTemplate.objects.get(name="طول + آرایه")
+        self.assertEqual([item["op"] for item in stored.payload], ["resize_length", "grid"])
+        # مقادیر انتخاب فاصله‌ها (enabled/manual) هم حفظ می‌شوند
+        response = self.client.post(self.list_url(), data=json.dumps(self.payload(
+            name="دستی",
+            edits=[{"op": "resize_length", "mode": "manual", "delta": 0,
+                    "enabled": [True, False], "manual": [12.5, 0]}])), content_type="application/json")
+        self.assertEqual(response.status_code, 200, response.content)
+        stored = EditTemplate.objects.get(name="دستی")
+        self.assertEqual(stored.payload[0]["enabled"], [True, False])
+        self.assertEqual(stored.payload[0]["manual"], [12.5, 0])
+
+    def test_resize_length_validation_errors(self):
+        self.client.login(username="cnc-manager-tpl", password="testpass")
+        cases = [
+            {"edits": [{"op": "resize_length", "mode": "double", "delta": 10}]},      # mode نامعتبر
+            {"edits": [{"op": "resize_length", "mode": "equal"}]},                    # delta غایب
+            {"edits": [{"op": "resize_length", "mode": "equal", "delta": "10"}]},     # delta رشته
+            {"edits": [{"op": "resize_length", "mode": "equal", "delta": True}]},     # delta بولی
+            {"edits": [{"op": "resize_length", "mode": "equal", "delta": 0}]},        # delta صفر
+            {"edits": [{"op": "resize_length", "mode": "equal", "delta": 10, "symmetric": "yes"}]},
+            {"edits": [{"op": "resize_length", "mode": "equal", "delta": 10, "enabled": [1, 0]}]},
+            {"edits": [{"op": "resize_length", "mode": "manual", "delta": 0}]},       # manual بدون فهرست manual
+            {"edits": [{"op": "resize_length", "mode": "manual", "delta": 0, "manual": ["x"]}]},
+            {"edits": [{"op": "resize_length", "delta": 10}]},                        # mode غایب
+        ]
+        for extra in cases:
+            with self.subTest(extra=extra):
+                response = self.client.post(self.list_url(), data=json.dumps(self.payload(**extra)),
+                                            content_type="application/json")
+                self.assertEqual(response.status_code, 400, response.content)
+                self.assertFalse(response.json()["ok"])
+        self.assertEqual(EditTemplate.objects.count(), 0)
+
     def test_delete_removes_and_404_on_repeat(self):
         self.client.login(username="cnc-manager-tpl", password="testpass")
         created = self.client.post(self.list_url(), data=json.dumps(self.payload()),

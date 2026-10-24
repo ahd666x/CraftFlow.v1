@@ -545,6 +545,12 @@ _EDIT_TEMPLATE_OPS = frozenset({"shift", "resize_x", "array", "grid", "mirror", 
 # هم به‌عنوان «فرم ذخیره‌شدنی» مجاز است؛ اعمال نهایی همیشه از همان
 # پیش‌نمایش fail-closed سرور می‌گذرد.
 _EDIT_TEMPLATE_PART_OPS = frozenset({"move_part", "stretch_part", "stretch_chain", "set_gap", "distribute"})
+# تغییر طول کل-فایلِ پنل «طول» (resize_length → engine_resize) هم فرم ذخیره‌شدنی
+# است؛ هنگام بارگذاری الگو دوباره از همان endpoint تغییر طول (با گتهٔ خودش)
+# می‌گذرد و بعدش پیش‌نمایش fail-closed بقیهٔ ویرایش‌ها را می‌سنجد. قالب هرگز
+# خودش اجرا نمی‌شود.
+_EDIT_TEMPLATE_FILE_OPS = frozenset({"resize_length"})
+_RESIZE_LENGTH_MODES = frozenset({"equal", "proportional", "kerf", "manual"})
 
 
 def _validate_template_payload(edits):
@@ -560,7 +566,8 @@ def _validate_template_payload(edits):
             raise ValueError(f'ویرایش {index + 1} باید یک شیء باشد.')
         op = edit.get('op')
         if not isinstance(op, str) or (op not in _EDIT_TEMPLATE_OPS
-                                       and op not in _EDIT_TEMPLATE_PART_OPS):
+                                       and op not in _EDIT_TEMPLATE_PART_OPS
+                                       and op not in _EDIT_TEMPLATE_FILE_OPS):
             raise ValueError(f'ویرایش {index + 1}: نوع ویرایش (op) نامعتبر است.')
         if op in _EDIT_TEMPLATE_PART_OPS:
             # ویرایش قطعه‌ای: به شناسهٔ قطعه نیاز دارد (part_id یا جفت set_gap
@@ -583,6 +590,34 @@ def _validate_template_payload(edits):
             elif op == 'distribute':
                 if not isinstance(edit.get('parts'), list):
                     raise ValueError(f'ویرایش {index + 1}: distribute به فهرست parts نیاز دارد.')
+            continue
+        if op in _EDIT_TEMPLATE_FILE_OPS:
+            import math
+            if op == 'resize_length':
+                if edit.get('mode') not in _RESIZE_LENGTH_MODES:
+                    raise ValueError(f'ویرایش {index + 1}: mode تغییر طول باید یکی از '
+                                     'equal/proportional/kerf/manual باشد.')
+                delta = edit.get('delta')
+                if (not isinstance(delta, (int, float)) or isinstance(delta, bool)
+                        or not math.isfinite(delta)):
+                    raise ValueError(f'ویرایش {index + 1}: delta تغییر طول باید عدد متناهی باشد.')
+                if edit['mode'] != 'manual' and abs(delta) <= 1e-9:
+                    raise ValueError(f'ویرایش {index + 1}: delta تغییر طول باید غیرصفر باشد.')
+                symmetric = edit.get('symmetric')
+                if symmetric is not None and not isinstance(symmetric, bool):
+                    raise ValueError(f'ویرایش {index + 1}: symmetric باید بولی باشد.')
+                enabled = edit.get('enabled')
+                if enabled is not None and (not isinstance(enabled, list) or len(enabled) > 64
+                                            or any(not isinstance(item, bool) for item in enabled)):
+                    raise ValueError(f'ویرایش {index + 1}: enabled باید فهرست بولی (حداکثر ۶۴) باشد.')
+                manual = edit.get('manual')
+                if manual is not None and (not isinstance(manual, list) or not manual
+                                           or len(manual) > 64
+                                           or any(not isinstance(item, (int, float)) or isinstance(item, bool)
+                                                  or not math.isfinite(item) for item in manual)):
+                    raise ValueError(f'ویرایش {index + 1}: manual باید فهرست عدد متناهی (حداکثر ۶۴) باشد.')
+                if edit['mode'] == 'manual' and not manual:
+                    raise ValueError(f'ویرایش {index + 1}: حالت manual به فهرست مقادیر manual نیاز دارد.')
             continue
         if not isinstance(edit.get('feature_id'), str) or not edit['feature_id']:
             raise ValueError(f'ویرایش {index + 1}: feature_id باید رشتهٔ غیرخالی باشد.')

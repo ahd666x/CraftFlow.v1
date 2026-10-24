@@ -371,7 +371,17 @@
     });
   }
 
-  function renderResizeResult(res, mode) {
+  // op قابل‌بازپخشِ تغییر طول برای الگو — فقط پارامترهایی که سرور می‌پذیرد؛
+  // tool_map سمت سرور تزریق می‌شود و هرگز در الگو ذخیره نمی‌شود.
+  function resizeOpFromParams(params) {
+    const op = { op: 'resize_length', mode: params.mode || 'equal',
+                 delta: Number(params.delta) || 0, symmetric: params.symmetric !== false };
+    if (Array.isArray(params.enabled)) op.enabled = params.enabled.map(Boolean);
+    if (Array.isArray(params.manual)) op.manual = params.manual.map((v) => (Number.isFinite(Number(v)) ? Number(v) : 0));
+    return op;
+  }
+
+  function renderResizeResult(res, mode, params) {
     if (res.ok === false) { resizeStatus('err', esc(res.error || 'تغییر طول ناموفق بود.')); return; }
     const warnings = (res.warnings || []).map(esc).join('<br>• ');
     if (res.resizable === false) {
@@ -404,8 +414,13 @@
       // بازخورد اپراتور: فایل جایگزین‌شدهٔ پنل طول بدون ویرایش نقشه هم از
       // «دانلود G-code» (گتهٔ دیالکت) قابل دانلود است.
       state.resizedFromPanel = true;
+      // ثبت تغییر طول به‌صورت op قابل‌بازپخش: «ذخیره به‌عنوان الگو» آن را در
+      // الگو نگه می‌دارد و بارگذاری الگو روی فایل بعدی همان Δ را خودکار اعمال می‌کند.
+      if (params) state.resizeOp = resizeOpFromParams(params);
       CNC.renderGate();
-      resizeStatus('ok', 'فایل جایگزین شد و نقشه دوباره شناسایی شد. فایل دستگاه همچنان فقط از مسیر «دانلود G-code» (گتهٔ دیالکت کنترلر) صادر می‌شود.');
+      resizeStatus('ok', 'فایل جایگزین شد و نقشه دوباره شناسایی شد؛ این تغییر طول برای الگو ثبت شد'
+        + ' (تاریخچه → «ذخیره به‌عنوان الگو» — بارگذاری الگو روی فایل بعدی همان Δ را خودکار اعمال می‌کند).'
+        + ' فایل دستگاه همچنان فقط از مسیر «دانلود G-code» (گتهٔ دیالکت کنترلر) صادر می‌شود.');
     };
   }
   function bindResizePanel() {
@@ -448,7 +463,7 @@
       btn.disabled = true;
       try {
         const res = await CNC.api.resize(state.text, state.filename, params);
-        renderResizeResult(res, mode);
+        renderResizeResult(res, mode, params);
       } catch (err) {
         resizeStatus('err', esc(err.message));
       } finally { btn.disabled = false; }
