@@ -71,6 +71,7 @@
   <span class="sep"></span>
   <button type="button" id="btnLayers" title="لایه‌های عمق/ابزار/نوع"><span class="tb-ico">◫</span><span class="tb-lbl">لایه‌ها</span></button>
   <button type="button" id="btnHistory" title="تاریخچهٔ ویرایش و الگوها"><span class="tb-ico">🕘</span><span class="tb-lbl">تاریخچه</span></button>
+  <button type="button" id="btnCompare" title="مقایسهٔ کنارهم فایل اصلی و نتیجهٔ ویرایش‌ها (وقتی پیش‌نمایش فعالی هست)" disabled><span class="tb-ico">⇔</span><span class="tb-lbl">مقایسه</span></button>
   <span class="sep"></span>
   <button type="button" id="btnFile" title="بازکردن فایل (بارگذاری یا آرشیو)"><span class="tb-ico">📂</span><span class="tb-lbl">فایل</span></button>
   <button type="button" id="btnTools" title="میز ابزار (قطر پارکینگ T)"><span class="tb-ico">🧰</span><span class="tb-lbl">ابزار</span></button>
@@ -128,6 +129,24 @@
 
 <section id="layersPanel" class="fpanel" hidden aria-label="لایه‌ها"></section>
 <section id="historyPanel" class="fpanel" hidden aria-label="تاریخچهٔ ویرایش"></section>
+
+<section id="comparePanel" class="fpanel" hidden aria-label="مقایسهٔ قبل/بعد">
+  <div class="cmp-head">
+    <h2>مقایسهٔ قبل/بعد</h2>
+    <button type="button" id="cmpClose" class="cmp-close" title="بستن" aria-label="بستن مقایسه">✕</button>
+  </div>
+  <div class="cmp-grid">
+    <figure class="cmp-pane">
+      <figcaption>قبل — فایل اصلی بارگذاری‌شده</figcaption>
+      <svg id="cmpBefore" role="img" aria-label="نقشهٔ فایل اصلی"></svg>
+    </figure>
+    <figure class="cmp-pane">
+      <figcaption>بعد — نتیجهٔ پیش‌نمایش ویرایش‌ها</figcaption>
+      <svg id="cmpAfter" role="img" aria-label="نقشهٔ پس از ویرایش‌ها"></svg>
+    </figure>
+  </div>
+  <p id="cmpStats" class="cmp-stats"></p>
+</section>
 
 <section id="resizePanel" class="fpanel" hidden aria-label="تغییر طول فایل">
   <h2>تغییر طول فایل (خودکار)</h2>
@@ -223,6 +242,7 @@
 <script src="{% static 'cnc_resizer/selection.js' %}" defer></script>
 <script src="{% static 'cnc_resizer/edit-tools.js' %}" defer></script>
 <script src="{% static 'cnc_resizer/history.js' %}" defer></script>
+<script src="{% static 'cnc_resizer/compare.js' %}" defer></script>
 <script src="{% static 'cnc_resizer/code-view.js' %}" defer></script>
 <script src="{% static 'cnc_resizer/app.js' %}" defer></script>
 </body>

@@ -109,7 +109,7 @@ button.on { background: var(--accent); border-color: var(--accent); color: #fff;
 
 /* فایل */
 #filePanel { top: 72px; inset-inline-start: 12px; width: 300px; }
-#filePanel h2, #toolsPanel h2, #layersPanel h2, #historyPanel h2 {
+#filePanel h2, #toolsPanel h2, #layersPanel h2, #historyPanel h2, #comparePanel h2 {
   margin: 0 0 8px; font-size: 13px; color: var(--muted); font-weight: 700;
 }
 .drop {
@@ -372,3 +372,29 @@ table.gaptab input[type=checkbox] { min-height: 0; accent-color: var(--accent); 
 #taskContextBar .tc-actions a { color: var(--accent); font-size: 12.5px; text-decoration: none; white-space: nowrap; }
 #taskContextBar .tc-actions button { min-height: 30px; padding: 3px 12px; font-size: 12.5px; }
 #taskContextBar #tcStatusLine { font-size: 12.5px; color: var(--good); max-width: 340px; }
+
+/* ===== فاز ۳.۲ — مقایسهٔ قبل/بعد ===== */
+/* پنل پهن وسط‌چین — در RTL/LTR هر دو با inset-inline + margin auto مرکز می‌شود */
+#comparePanel { top: 72px; inset-inline: 0; margin-inline: auto; width: min(760px, 94vw); }
+.cmp-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.cmp-head h2 { margin: 0; }
+.cmp-close {
+  width: 26px; height: 26px; line-height: 1; cursor: pointer; flex: none;
+  border: 1px solid var(--line); background: var(--surface); border-radius: 7px; color: var(--muted);
+}
+.cmp-close:hover { border-color: var(--accent); color: var(--accent); }
+/* ترتیب DOM: قبل → بعد؛ در RTL ستون اول سمت راست است، پس «قبل» راست می‌نشیند */
+.cmp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.cmp-pane {
+  margin: 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden;
+  background: var(--surface);
+}
+.cmp-pane figcaption {
+  font-size: 11.5px; color: var(--muted); padding: 5px 8px;
+  border-bottom: 1px solid var(--line); background: var(--surface-2);
+}
+.cmp-pane svg { display: block; width: 100%; height: 220px; }
+.cmp-sheet { fill: var(--surface); stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.cmp-blk { stroke-width: 1; vector-effect: non-scaling-stroke; }
+.cmp-stats { margin: 8px 0 0; font-size: 12px; color: var(--muted); }
+@media (max-width: 560px) { .cmp-grid { grid-template-columns: 1fr; } }

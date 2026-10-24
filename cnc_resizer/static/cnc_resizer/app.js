@@ -238,7 +238,7 @@
   function togglePanel(id, btn) {
     const panel = $(id);
     const show = panel.hidden;
-    ['filePanel', 'toolsPanel', 'layersPanel', 'historyPanel', 'resizePanel', 'helpPanel'].forEach((pid) => {
+    ['filePanel', 'toolsPanel', 'layersPanel', 'historyPanel', 'comparePanel', 'resizePanel', 'helpPanel'].forEach((pid) => {
       const p = $(pid);
       if (p && pid !== id) p.hidden = true;
     });
@@ -695,12 +695,23 @@
     }
   });
 
+  // -------------------------------------------_مقایسهٔ قبل/بعد (فاز ۳.۲)
+  // دکمهٔ «مقایسه» فقط وقتی معنا دارد که فایل اصلی + یک پیش‌نمایش ویرایشی
+  // فعال باشد؛ خود رندر در compare.js است و فقط وقتی پنل باز است کار می‌کند.
+  function syncCompare() {
+    const b = document.getElementById('btnCompare');
+    if (b) b.disabled = !(CNC.state.preview && CNC.state.sourceIR);
+    const panel = document.getElementById('comparePanel');
+    if (panel && !panel.hidden && CNC.renderCompare) CNC.renderCompare();
+  }
+
   // ------------------------------------------------_رویدادهای سراسری
   CNC.on('file', () => {
     clearAlert();
     CNC.model = null;          // هندسهٔ فایل قبلی نباید باقی بماند
     state.needFit = true;      // نمای تازه روی فایل تازه
     $('btnDownload').disabled = true;
+    syncCompare();
     CNC.emit('rerender', {});
   });
   CNC.on('api-error', ({ source, error }) => {
@@ -713,6 +724,7 @@
     state._ghostModel = null;
     CNC.model = CNC.buildBlockModel(state.currentIR || state.sourceIR);
     state._snapPts = snapPoints();
+    syncCompare();
     CNC.emit('rerender', {});
   });
   CNC.on('detection', () => {
@@ -726,7 +738,7 @@
   CNC.on('selection', () => { renderInspector(); });
   CNC.on('gate', () => { renderGate(); });
   CNC.on('ops-changed', () => { renderInspector(); });
-  CNC.on('preview', () => { renderInspector(); });
+  CNC.on('preview', () => { renderInspector(); syncCompare(); });
   CNC.on('rerender', () => {
     if (CNC.viewport && CNC.viewport.svg) CNC.viewport.render();
   });
@@ -742,6 +754,11 @@
     $('btnTools').onclick = (e) => togglePanel('toolsPanel', e.currentTarget);
     $('btnLayers').onclick = (e) => togglePanel('layersPanel', e.currentTarget);
     $('btnHistory').onclick = (e) => togglePanel('historyPanel', e.currentTarget);
+    $('btnCompare').onclick = (e) => {
+      togglePanel('comparePanel', e.currentTarget);
+      CNC.renderCompare();
+    };
+    $('cmpClose').onclick = () => togglePanel('comparePanel', $('btnCompare'));
     $('btnCode').onclick = () => CNC.emit('code-toggle', {});
     $('btnResize').onclick = (e) => {
       togglePanel('resizePanel', e.currentTarget);
