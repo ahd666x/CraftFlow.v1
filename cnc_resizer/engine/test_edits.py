@@ -1599,6 +1599,55 @@ def rotate_preview(text, feature_picker, direction):
         {"op": "rotate", "feature_id": feature["id"], "dir": direction}]}, source_text=text)
 
 
+# Regression (phase 3.3): a real workshop manual panel carries 4-decimal
+# coordinates. The patch serializes 3-decimal literals, so runtime values sit
+# up to 5e-4 (arc centres 1e-3) off the exact IR values. The proof tolerance
+# must accommodate the text format — with the old 1e-6 cutoff these edits
+# failed closed on such files (rotate rejected with 3e-4 deltas).
+ODD_RECT_LF = "\n".join([
+    "G21 G90 G17",
+    "G0 X-633.9547 Y0.0003 Z5",
+    "G1 Z-2",
+    "G1 X-533.9547 Y0.0003",
+    "G1 Y50.0009",
+    "G1 X-633.9547",
+    "G1 Y0.0003",
+    "G0 Z5",
+    "M30",
+    "",
+])
+
+
+class SubDecimalPrecisionTests(SimpleTestCase):
+    """Feature edits on files whose coordinates are not 3-decimal exact."""
+
+    def test_rotate_passes_runtime_proof_on_sub_decimal_file(self):
+        result = rotate_preview(ODD_RECT_LF, first_feature, "cw")
+        self.assertTrue(result["validation"]["passed"], result["validation"]["errors"])
+        bounds = result["resized"]["features"][0]["bounds"]
+        # width/height swap around the same centre (runtime bounds carry the
+        # 3-decimal text snap, so assert at 2 places; exactness is the proof's
+        # job — validation.passed above)
+        self.assertAlmostEqual(bounds["x_max"] - bounds["x_min"], 50.0006, places=2)
+        self.assertAlmostEqual(bounds["y_max"] - bounds["y_min"], 100.0, places=2)
+
+    def test_mirror_passes_runtime_proof_on_sub_decimal_file(self):
+        program = parse_program(ODD_RECT_LF)
+        feature = first_feature(recognize(program)["features"])
+        result = preview_edits(program, {"edits": [
+            {"op": "mirror", "feature_id": feature["id"], "axis": "x"}]},
+            source_text=ODD_RECT_LF)
+        self.assertTrue(result["validation"]["passed"], result["validation"]["errors"])
+
+    def test_array_passes_runtime_proof_on_sub_decimal_file(self):
+        program = parse_program(ODD_RECT_LF)
+        feature = first_feature(recognize(program)["features"])
+        result = preview_edits(program, {"edits": [
+            {"op": "array", "feature_id": feature["id"], "axis": "y",
+             "count": 1, "pitch": 60.0}]}, source_text=ODD_RECT_LF)
+        self.assertTrue(result["validation"]["passed"], result["validation"]["errors"])
+
+
 def first_feature(features):
     return features[0]
 

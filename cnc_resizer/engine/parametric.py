@@ -1299,7 +1299,17 @@ def preview_edits(program: Program, request: dict[str, Any], source_text: str) -
         raise TransformError(
             "Interactive edit cannot be expressed as a safe coordinate patch: " + "؛ ".join(blockers)) from exc
 
-    tolerance = 1e-6
+    # The proof compares runtime values (parsed back from the patched TEXT)
+    # against exact transformed-IR values. The patch writes 3-decimal literals
+    # (serializer._format_value), so every patched axis word sits up to 5e-4
+    # off its exact value, and an arc centre (snapped start + snapped I/J)
+    # up to 1e-3 — the proof must not demand more precision than the text
+    # format can carry. Real structural corruption (wrong word patched, lost
+    # move, modal break) fails at O(1) mm scale, orders above this cutoff.
+    # 1e-6 here made array/grid/mirror/rotate fail-closed on real workshop
+    # files whose coordinates are not 3-decimal-exact (discovered live with a
+    # manual panel file: rotate rejected with 3e-4 runtime deltas).
+    tolerance = 1.5e-3
     errors: list[str] = []
     runtime = parse_program(draft["text"])
     runtime_recognition = recognize(runtime)
