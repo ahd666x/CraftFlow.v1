@@ -46,7 +46,7 @@
     {# ── نقشهٔ ورق انتخاب‌شده ── #}
     <section class="cnc-stage" aria-label="جزئیات برنامهٔ انتخابی">
       {% for plan in plans %}
-      <article class="cnc-stage-panel {% if not forloop.first %}d-none{% endif %}" data-cnc-panel="{{ plan.id }}">
+      <article class="cnc-stage-panel {% if not forloop.first %}d-none{% endif %}" data-cnc-panel="{{ plan.id }}" id="plan-{{ plan.id }}">
         <div class="cnc-stage-head">
           <span class="cnc-program-id num">CNC-{{ plan.id|stringformat:'04d' }}</span>
           <h2>{{ plan.material.name }}</h2>

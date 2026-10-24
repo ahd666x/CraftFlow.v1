@@ -472,3 +472,11 @@ tr.row-expand-details>td{background:var(--st-sunken);border-bottom:1px solid var
 /* ── صف دستی CNC (فاز ۲.۱) ── */
 .cnc-manual-wrap{padding:var(--sp-3) var(--sp-3) var(--sp-4);background:var(--st-canvas)}
 .cnc-manual-wrap .table-min td{height:auto;vertical-align:top}
+
+/* ── اعتبارسنجی CNC در پیش‌نمایش برنامه‌ریز (فاز ۳.۱.۲) ── */
+.preview-cnc-issues{border:1px solid var(--st-line);border-inline-start:3px solid var(--st-amber);border-radius:var(--st-radius);padding:var(--sp-2);margin-bottom:var(--sp-2);font-size:12.5px;background:rgba(217,119,6,.05)}
+.preview-cnc-issues summary{cursor:pointer;font-weight:700;display:flex;align-items:center;gap:.4rem}
+.preview-cnc-issues ul{list-style:disc}
+
+/* ── داشبورد پرت یکپارچه (فاز ۳.۱.۱) — فقط summary حس‌وحال کافی دارد ── */
+#offcut-dashboard > summary{cursor:pointer}

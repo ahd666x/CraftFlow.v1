@@ -1,0 +1,34 @@
+{% comment %}
+داشبورد پرت یکپارچه (فاز ۳.۱.۱) — فقط-خواندنی؛ در تب «پرت» انبار رندر می‌شود.
+پرت واقعی به تفکیک منشأ (CNC / CUT / دستی) + پرت بالقوهٔ برنامه‌های CNC فعال
+که تا ثبت نتیجه، موجودی واقعی نمی‌شوند. هیچ POST و هیچ تغییر وضعیت.
+{% endcomment %}
+<details class="mx-3 mt-2" id="offcut-dashboard">
+  <summary class="help" title="پرت واقعی به تفکیک منشأ + فضای آزاد برنامه‌های CNC که هنوز نتیجه‌شان ثبت نشده">داشبورد پرت یکپارچه — منشأ و پرت بالقوهٔ CNC</summary>
+  <div class="d-flex flex-wrap gap-2 mt-2 align-items-center">
+    <span class="badge-status is-info" title="پرت ثبت‌شدهٔ حاصل از برنامه‌های CNC پس از ثبت نتیجه">منشأ CNC: <b class="num">{{ offcut_provenance.cnc }}</b></span>
+    <span class="badge-status is-ok" title="پرت ثبت‌شدهٔ حاصل از برنامه‌های برش CUT">منشأ CUT: <b class="num">{{ offcut_provenance.cut }}</b></span>
+    <span class="badge-status" title="پرت ثبت‌شدهٔ دستی بدون برنامه">ثبت دستی: <b class="num">{{ offcut_provenance.manual }}</b></span>
+    <span class="badge-status is-warn ms-auto" title="جمع فضای آزاد برنامه‌های CNC فعال؛ با ثبت نتیجه به پرت واقعی تبدیل می‌شود">پرت بالقوهٔ CNC: <b class="num">{{ pending_cnc_count }}</b> برنامه · <b class="num">{{ pending_cnc_area_m2 }}</b> m²</span>
+  </div>
+  {% if pending_cnc_remnants %}
+  <div class="table-responsive mt-2">
+    <table class="table table-sm table-min mb-0">
+      <thead><tr><th>برنامهٔ CNC</th><th>متریال</th><th class="td-num">ورق</th><th class="td-num">فضای آزاد</th></tr></thead>
+      <tbody>
+        {% for row in pending_cnc_remnants %}
+        <tr>
+          <td><a href="{% url 'cnc_resizer:sheet_plans' %}#plan-{{ row.plan.pk }}">برنامهٔ #{{ row.plan.pk }}</a> <span class="help">ورق {{ row.plan.sheet_index }}</span></td>
+          <td>{{ row.plan.material.name }} · <span class="num">{{ row.plan.material.thickness }}</span> mm</td>
+          <td class="td-num num">{{ row.plan.width }} × {{ row.plan.height }}</td>
+          <td class="td-num num">{{ row.unused_m2 }} m²</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="help mt-2 mb-0">با ثبت نتیجهٔ هر برنامه در «خروجی ورق CNC»، فضای آزاد واقعی به‌صورت پرت ثبت و به همین انبار اضافه می‌شود؛ اعداد بالا تخمین چیدمان هستند نه موجودی واقعی.</p>
+  {% else %}
+  <p class="help mt-2 mb-0">برنامهٔ CNC فعالی با فضای آزاد قابل پرت وجود ندارد.</p>
+  {% endif %}
+</details>

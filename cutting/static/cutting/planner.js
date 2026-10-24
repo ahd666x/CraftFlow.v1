@@ -64,6 +64,27 @@
     const shortages = data.materials.filter(material => !material.fits);
     const blocked = data.materials.length === 0 || shortages.length > 0;
     submit.disabled = blocked;
+    /* فاز ۳.۱.۲: اعتبارسنجی فایل‌های CNC — هشدار است نه بلوکر؛ سرور همان‌ها را
+       در POST واقعی به صف دستی می‌برد (fail-closed دست‌نخورده). */
+    const issues = Array.isArray(data.cnc_issues) ? data.cnc_issues : [];
+    const issueBox = document.getElementById('preview-cnc-issues');
+    const cncModeActive = planningModes.find(input => input.checked)?.value === 'cnc_sheets';
+    if (issueBox) {
+      if (issues.length && cncModeActive) {
+        const rows = issues.slice(0, 5).map(issue =>
+          `<li><b>${esc(issue.part_name)}</b> <span class="num">(${esc(issue.pieces)} عدد)</span> — ${esc(issue.message)}</li>`
+        ).join('');
+        const more = issues.length > 5
+          ? `<li class="text-muted">و ${issues.length - 5} قطعهٔ دیگر…</li>` : '';
+        issueBox.innerHTML = `<details open><summary><span class="badge-status is-warn">اعتبارسنجی CNC</span>
+          ${issues.length} قطعه نیازمند اصلاح/الگو است — در «محاسبه و رزرو» به صف دستی می‌رود</summary>
+          <ul class="small mt-1 mb-0 ps-3">${rows}${more}</ul></details>`;
+        issueBox.hidden = false;
+      } else {
+        issueBox.hidden = true;
+        issueBox.innerHTML = '';
+      }
+    }
     if (!data.materials.length) {
       verdict.className = 'preview-verdict neutral';
       verdict.textContent = 'سفارشی انتخاب نشده';
@@ -71,6 +92,9 @@
       const names = shortages.map(item => `${item.name} ${item.thickness}mm`).join('، ');
       verdict.className = 'preview-verdict bad';
       verdict.innerHTML = `✘ کمبود: ${esc(names)} <a href="${form.dataset.stockUrl}">ثبت موجودی</a>`;
+    } else if (issues.length) {
+      verdict.className = 'preview-verdict good';
+      verdict.innerHTML = `✔ قابل برش — <span class="text-muted">${issues.length} قطعه به صف دستی CNC می‌رود</span>`;
     } else {
       verdict.className = 'preview-verdict good';
       verdict.textContent = '✔ قابل برش';

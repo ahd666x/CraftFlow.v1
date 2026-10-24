@@ -31,6 +31,8 @@
     <div class="table-responsive mt-2"><table class="table table-sm table-min mb-0"><thead><tr><th>متریال</th><th class="td-num">ضخامت</th><th>نوع</th><th class="td-num">آزاد</th><th class="td-num">رزرو</th></tr></thead><tbody>{% for x in summaries %}<tr><td>{{ x.material__name }}</td><td class="td-num num">{{ x.material__thickness }} mm</td><td>{% if x.is_offcut %}<span class="badge-status is-warn">پرت</span>{% else %}<span class="badge-status is-info">ورق کامل</span>{% endif %}</td><td class="td-num num" >{{ x.available }}</td><td class="td-num num">{{ x.reserved }}</td></tr>{% empty %}<tr><td colspan="5" class="help">موجودی فعالی ثبت نشده است.</td></tr>{% endfor %}</tbody></table></div>
   </details>
 
+  {% if kind == 'offcuts' %}{% include 'cutting/_offcut_dashboard.html' %}{% endif %}
+
   <div class="px-3 py-3">
     <form method="get" id="inventory-filters" class="d-flex flex-wrap gap-2 align-items-center pb-2 mb-2 border-bottom">
       <span class="input-search"><i class="bi bi-search" aria-hidden="true"></i><input id="inventory-query" class="form-control form-control-sm" name="q" value="{{ query }}" placeholder="متریال یا عرض×طول" aria-label="جست‌وجو" data-inventory-search></span>
@@ -51,7 +53,7 @@
         {% endcapture %}
         {% capture row_details %}
           <div class="small d-flex flex-wrap gap-3 align-items-center">
-            <span><b>منشأ:</b> {% if s.created_from_plan_id %}<a href="{% url 'cutting:plan_detail' s.created_from_plan_id %}">برنامه #{{ s.created_from_plan_id }}</a>{% elif s.origin_id %}از ورق #{{ s.origin_id }}{% else %}ثبت دستی{% endif %}</span>
+            <span><b>منشأ:</b> {% if s.created_from_cnc_plan_id %}<a href="{% url 'cnc_resizer:sheet_plans' %}#plan-{{ s.created_from_cnc_plan_id }}">برنامهٔ CNC #{{ s.created_from_cnc_plan_id }}</a>{% elif s.created_from_plan_id %}<a href="{% url 'cutting:plan_detail' s.created_from_plan_id %}">برنامه #{{ s.created_from_plan_id }}</a>{% elif s.origin_id %}از ورق #{{ s.origin_id }}{% else %}ثبت دستی{% endif %}</span>
             <span><b>یادداشت:</b> {{ s.note|default:'—' }}{% if not s.active %} <span class="text-danger">{{ s.inactive_reason }}</span>{% endif %}</span>
             {% if s.active and not s.reserved_quantity %}<span class="ms-auto d-flex gap-2"><a class="btn btn-sm btn-outline-primary" href="{% url 'cutting:stock_edit' s.pk %}">ویرایش</a><button type="button" class="btn btn-sm btn-outline-danger" data-deactivate-url="{% url 'cutting:stock_deactivate' s.pk %}">غیرفعال‌سازی</button></span>
             {% elif not s.active and s.quantity > 0 %}<form class="ms-auto" method="post" action="{% url 'cutting:stock_reactivate' s.pk %}">{% csrf_token %}<input type="hidden" name="reason" value="فعال‌سازی مجدد از صفحه انبار"><button class="btn btn-sm btn-outline-success">فعال‌سازی مجدد</button></form>{% endif %}

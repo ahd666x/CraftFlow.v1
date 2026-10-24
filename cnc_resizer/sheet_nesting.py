@@ -1,10 +1,11 @@
 import math
+import os
 from collections import Counter, defaultdict
 from decimal import Decimal
 
 from django.conf import settings
 from django.db import transaction
-from django.db.models import F, Q
+from django.db.models import Count, F, Q
 
 from cutting.models import CutPlanSheet, CutPlanTask, SheetStock, SheetStockEvent
 from cutting.optimizer import optimize
@@ -115,12 +116,16 @@ def _planned_piece_counts():
 
 
 def _cut_reserved_counts(stock_ids):
-    """Sheets already reserved by the standard (.CUT) planner."""
+    """Sheets already reserved by the standard (.CUT) planner.
+
+    فاز ۳.۱.۳: شمارش به‌جای حلقهٔ پایتونی با تجمیع سمت DB انجام می‌شود؛
+    خروجی (Counter با همان کلیدها/مقادیر) بایت‌به‌بایت همان قرارداد قبلی است.
+    """
     counts = Counter()
-    for stock_id in CutPlanSheet.objects.filter(
+    for row in CutPlanSheet.objects.filter(
         outcome='reserved', plan__status='planned', source_stock_id__in=stock_ids,
-    ).values_list('source_stock_id', flat=True):
-        counts[stock_id] += 1
+    ).values('source_stock_id').annotate(n=Count('pk')):
+        counts[row['source_stock_id']] += row['n']
     return counts
 
 
@@ -130,6 +135,108 @@ def _manual_reason_code(exc):
     if 'الگوی CNC' in text and ('ثبت نشده' in text or 'تأیید نشده' in text):
         return 'no_profile'
     return 'profile_failed'
+
+
+def preflight_cnc_pieces(rows):
+    """Read-only preflight validation for the planner preview (CNC mode).
+
+    فاز ۳.۱.۲ نقشه راه: همان گتهای هر-تسکِ ``_plan_cnc`` را برای پیش‌نمایش
+    شبیه‌سازی می‌کند، بدون هیچ اثر جانبی — هیچ CncFile ثبت نمی‌شود، هیچ
+    فایل مشتق ساخته نمی‌شود و هیچ CncPlanningIssue نوشته نمی‌شود.
+
+    ``rows``: iterable of dicts ``{part, length, width, thickness, pieces}``
+    (spec‌های مؤثر هر تسک + تعداد قطعهٔ باقی‌مانده). نتیجه فقط برای هر
+    قطعهٔ متمایز یک‌بار محاسبه می‌شود و پارس فایل پایه هم per-file دی‌دوپ
+    می‌شود تا پیش‌نمایش سبک بماند.
+
+    خروجی: list of ``{part_name, barcode, pieces, reason_code, message}``
+    — خالی یعنی هیچ مانع قابل‌پیش‌بینی‌ای دیده نشد. قطعه‌های دارای issue
+    در همان POST واقعی به صف دستی می‌روند (fail-closed سرور دست‌نخورده)،
+    پس این هشدار است نه بلوکر.
+    """
+    from .models import CncFile
+    from .services import _manual_record_for, canonical_barcode_key, cnc_filename
+
+    def _issue(part, pieces, reason, message):
+        return {
+            'part_name': part.name or part.f2 or part.f3,
+            'barcode': part.f3 or '',
+            'pieces': int(pieces),
+            'reason_code': reason,
+            'message': str(message),
+        }
+
+    aggregated = {}
+    for row in rows:
+        agg = aggregated.setdefault(row['part'].pk, {
+            'part': row['part'], 'length': Decimal(str(row['length'])),
+            'width': Decimal(str(row['width'])), 'thickness': Decimal(str(row['thickness'])),
+            'pieces': 0,
+        })
+        agg['pieces'] += int(row['pieces'])
+
+    issues = []
+    parse_cache = {}   # barcode_key -> None (سالم) یا متن خطا (پارس فقط یک‌بار)
+    for agg in aggregated.values():
+        part = agg['part']
+        # گتهٔ ۱ و ۲: اوورراید عرض/ضخامت هرگز از موتور خودکار عبور نمی‌کنند.
+        if agg['width'] != Decimal(str(part.width)):
+            issues.append(_issue(part, agg['pieces'], 'width_changed',
+                                 MANUAL_REASON_MESSAGES['width_changed']))
+            continue
+        if agg['thickness'] != part.material.thickness:
+            issues.append(_issue(part, agg['pieces'], 'thickness_changed',
+                                 MANUAL_REASON_MESSAGES['thickness_changed']))
+            continue
+        base = part.base_part or part
+        key = canonical_barcode_key(base.f3)
+        record = CncFile.objects.filter(
+            barcode_key=key, kind=CncFile.KIND_BASE,
+        ).order_by('-created_at', '-id').first()
+        if record is None:
+            # بدون ثبتِ در DB: اگر فایل روی دیسک هست، nesting واقعی همان‌جا
+            # ثبتش می‌کند و ادامه می‌دهد؛ پس خطا فقط وقتی است که فایل هم نیست.
+            path = os.path.join(str(getattr(settings, 'CNC_SOURCE_DIR', '')),
+                                cnc_filename(key, getattr(settings, 'CNC_FILE_EXTENSION', '.cnc')))
+            if not os.path.isfile(path):
+                exc = CncResolutionError(f"فایل پایه CNC برای «{key}» در آرشیو پیدا نشد")
+                issues.append(_issue(part, agg['pieces'], _manual_reason_code(exc), exc))
+                continue
+        # گتهٔ پارس: فایل پایه فقط یک‌بار per-key تحلیل می‌شود (همان نرمال‌سازی
+        # واحد ضمنی که _source_geometry هنگام nesting واقعی اجرا می‌کند).
+        if key not in parse_cache:
+            try:
+                source_path = record.path if record is not None else path
+                with open(source_path, 'r', encoding='utf-8-sig') as stream:
+                    text = stream.read()
+                if str(getattr(settings, 'CNC_RESIZER_IMPLICIT_UNITS', '') or '').strip().lower() == 'mm':
+                    text, _units_injected = _with_explicit_mm(text)
+                sheet_adapter.analyze_piece(text)
+                parse_cache[key] = None
+            except (OSError, gcode_sheet.GcodeError, sheet_adapter.SheetAdapterError, ValueError) as exc:
+                parse_cache[key] = f'فایل منبع قابل استفاده نیست: {exc}'
+        if parse_cache[key] is not None:
+            issues.append(_issue(part, agg['pieces'], 'profile_failed', parse_cache[key]))
+            continue
+        # گتهٔ طول: تغییر طول بدون الگوی تأییدشده/فایل دستی همان‌جا مسدود می‌شود.
+        if abs(agg['length'] - Decimal(str(base.length))) > Decimal('0.0005'):
+            if record is None:
+                continue   # فایل روی دیسک هست ولی ثبت نشده؛ resizable هنگام ثبت مشخص می‌شود
+            if _manual_record_for(part, record, agg['length']) is not None:
+                continue
+            if not record.resizable:
+                exc = CncResolutionError(
+                    f"فایل پایه CNC «{record.barcode_key}» قابل تغییر اندازه نیست: "
+                    f"{record.validation_error}"
+                )
+                issues.append(_issue(part, agg['pieces'], _manual_reason_code(exc), exc))
+                continue
+            try:
+                from .services import _profile_for_part
+                _profile_for_part(part)
+            except CncResolutionError as exc:
+                issues.append(_issue(part, agg['pieces'], _manual_reason_code(exc), exc))
+    return issues
 
 
 def _plan_cnc(order_ids, user, kerf=Decimal('4.0'), use_offcuts=False):
@@ -263,7 +370,12 @@ def _plan_cnc(order_ids, user, kerf=Decimal('4.0'), use_offcuts=False):
             })
 
     result = []
-    for material_id, pieces in grouped.items():
+    # فاز ۳.۱.۳: قفل ورق‌ها همیشه به ترتیب صعودی material_id گرفته شود —
+    # برنامه‌ریز CUT در یک کوئری (به ترتیب ایندکس متریال) قفل می‌کند؛ ترتیب
+    # قطعی این‌جا ریسک بن‌بست (deadlock) بین دو برنامه‌ریز هم‌زمان را حذف
+    # می‌کند و هیچ تغییر دیگری در معنای چیدمان ندارد.
+    for material_id in sorted(grouped):
+        pieces = grouped[material_id]
         stock_qs = SheetStock.objects.select_for_update().filter(
             material_id=material_id, active=True, quantity__gt=0,
         )

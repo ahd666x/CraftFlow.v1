@@ -72,6 +72,15 @@ button.on { background: var(--accent); border-color: var(--accent); color: #fff;
   border-radius: 12px; box-shadow: 0 6px 24px rgba(23,34,46,.14); z-index: 45;
   padding: 12px 14px; max-height: min(78vh, 720px); overflow: auto;
 }
+/* فاز ۲.۲: بازشدن نرم پنل (150ms ease) — چون [hidden] با display تعویض
+   می‌شود، انیمیشن با هر بازشدن از نو اجرا می‌شود؛ بسته‌شدن فوری می‌ماند
+   (انیمیشن بسته‌شدن با قفل تک‌پنلِ togglePanel فلیکر می‌دهد). با
+   prefers-reduced-motion موجود، به‌طور خودکار غیرفعال می‌شود. */
+@keyframes fpanel-in { from { opacity: 0; transform: translateY(-4px); } }
+.fpanel:not([hidden]) { animation: fpanel-in .15s ease; }
+.fpanel details > summary, .fpanel button { transition: background-color .15s ease, color .15s ease; }
+.fpanel details > summary { border-radius: 7px; padding: 2px 6px; margin: 0 -6px; }
+.fpanel details > summary:hover { background: var(--surface-2); }
 #inspector { top: 72px; inset-inline-end: 12px; width: 320px; }
 #inspector h2 { margin: 0 0 8px; font-size: 13.5px; display: flex; align-items: center; gap: 8px; }
 #inspector .badge {

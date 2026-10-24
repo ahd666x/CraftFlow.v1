@@ -100,7 +100,7 @@
         + ' — با واگرد (Ctrl+Z) آخرین تغییر را برگردانید.', 'preview-api');
       CNC.emit('gate', { ...state.gate });
     }
-  }, 260);
+  }, 150);   // فاز ۲.۲: 260→150ms — DoD «پیش‌نمایش < 200ms» در درگ/کشش
   CNC.requestPreview = requestPreview;
 
   // bugfix: ویرایش قطعه‌ای بعد از آرایه/آینه/چرخش بی‌صدا نادیده گرفته می‌شد
@@ -734,15 +734,23 @@
 
   // ================================================================_نوارهای کشش
   let barDrag = null;    // {partId, axis, band, startWorld, delta}
+  // فاز ۲.۲: نوار کشش با از بین رفتن انتخاب محو نمی‌شود — به آخرین
+  // قطعهٔ انتخاب‌شده می‌چسبد تا اپراتور بعد از کلیک اشتباهی روی فضای خالی
+  // هنوز لنگر و لبهٔ آزاد همان قطعه را ببیند. با عوض شدن نقشه (پیدا نشدن
+  // قطعه) حافظه پاک می‌شود.
+  let stickyPartSel = null;
   function drawStretchBars() {
     const g = CNC.groups.gStretch;
     if (!g) return;
     g.replaceChildren();
     if (!state.layers.showDims) return;
     const sel = state.selection.find((s) => s.type === 'part');
-    if (!sel) return;
-    const part = findPart(sel.id);
-    if (!part || part.locked) return;
+    if (sel && findPart(sel.id)) stickyPartSel = sel.id;
+    const targetId = sel ? sel.id : stickyPartSel;
+    if (!targetId) return;
+    const part = findPart(targetId);
+    if (!part) { stickyPartSel = null; return; }
+    if (part.locked) return;
     const bb = afterBox(part.id) || part.bbox;
     for (const axis of ['y', 'x']) {
       if (stretchReason(part, axis)) continue;     // فقط قطعه‌های واقعاً کشش‌پذیر

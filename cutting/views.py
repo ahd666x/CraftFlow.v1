@@ -91,19 +91,21 @@ def _json_safe(value):
 
 
 def _reserved_counts(stock_ids=None):
-    qs = CutPlanSheet.objects.filter(outcome='reserved', plan__status='planned')
-    if stock_ids is not None:
-        qs = qs.filter(source_stock_id__in=stock_ids)
+    # فاز ۳.۱.۳: شمارش با تجمیع سمت DB (یک کوئری COUNT per منبع) — خروجی
+    # Counter با همان کلیدها/مقادیر قبلی؛ فقط هزینهٔ محاسبه پایین آمده است.
     result = Counter()
-    for stock_id in qs.values_list('source_stock_id', flat=True):
-        result[stock_id] += 1
+    cut_qs = CutPlanSheet.objects.filter(outcome='reserved', plan__status='planned')
+    if stock_ids is not None:
+        cut_qs = cut_qs.filter(source_stock_id__in=stock_ids)
+    for row in cut_qs.values('source_stock_id').annotate(n=Count('pk')):
+        result[row['source_stock_id']] += row['n']
     # Sheets already assigned to a planned CNC (G-code) program are not free either.
     from cnc_resizer.models import CncSheetPlan
     cnc = CncSheetPlan.objects.filter(status='planned')
     if stock_ids is not None:
         cnc = cnc.filter(source_stock_id__in=stock_ids)
-    for stock_id in cnc.values_list('source_stock_id', flat=True):
-        result[stock_id] += 1
+    for row in cnc.values('source_stock_id').annotate(n=Count('pk')):
+        result[row['source_stock_id']] += row['n']
     return result
 
 
@@ -522,6 +524,20 @@ def planner_preview(request):
     if len(tasks) > 2000 or total_pieces > 3000:
         return JsonResponse({'error': 'این انتخاب برای پیش‌نمایش خیلی بزرگ است؛ سفارش‌ها را به چند برنامه تقسیم کنید.'}, status=400)
 
+    # فاز ۳.۱.۲: اعتبارسنجی فقط-خواندنی فایل‌های CNC (همان گتهای _plan_cnc
+    # بدون هیچ اثر جانبی) تا اپراتور قبل از رزرو بفهمد کدام قطعه‌ها به صف
+    # دستی می‌روند. فقط در حالت CNC و روی قطعه‌های متمایز.
+    cnc_issues = []
+    if cnc_mode and tasks:
+        from cnc_resizer.sheet_nesting import preflight_cnc_pieces
+        cnc_issues = preflight_cnc_pieces([
+            {'part': task.part, 'length': specs_by_task[task.pk].length,
+             'width': specs_by_task[task.pk].width,
+             'thickness': specs_by_task[task.pk].material_thickness,
+             'pieces': piece_quantities[task.pk]}
+            for task in tasks
+        ])
+
     policy = _stock_policy(request.GET.get('stock_policy'))
     cnc_use_offcuts = cnc_mode and request.GET.get('cnc_use_offcuts') == '1'
     setting = CuttingSettings.current()
@@ -589,6 +605,10 @@ def planner_preview(request):
     return JsonResponse({
         'selected_order_count': len({task.order_id for task in tasks}),
         'piece_count': total_pieces, 'strategy': dict(CutPlan.STOCK_POLICIES)[policy], 'materials': material_results,
+        # فاز ۳.۱.۲: اعتبارسنجی فقط-خواندنی فایل‌های CNC پیش از رزرو — کلید
+        # additive؛ بدون این گیت‌ها، اپراتور تازه بعد از «محاسبه و رزرو»
+        # می‌فهمید قطعه‌ای به صف دستی می‌رود. اپراتور همچنان اجازهٔ ادامه دارد.
+        'cnc_issues': cnc_issues,
     })
 
 
@@ -1023,6 +1043,34 @@ def inventory(request, kind=None):
     offcut_created_30d = SheetStockEvent.objects.filter(event_type='offcut', created_at__gte=month_ago).count()
     offcut_consumed_30d = SheetStockEvent.objects.filter(
         event_type='consume', is_offcut=True, created_at__gte=month_ago).count()
+    # فاز ۳.۱.۱ — داشبورد پرت یکپارچه: پرت‌های واقعی به تفکیک منشأ (CNC/CUT/دستی)
+    # + پرت بالقوهٔ برنامه‌های CNC فعال که هنوز نتیجه‌شان ثبت نشده. فقط-خواندنی.
+    offcut_provenance = {'cnc': 0, 'cut': 0, 'manual': 0}
+    for row in (active.filter(is_offcut=True)
+                .values('created_from_cnc_plan', 'created_from_plan')
+                .annotate(units=Sum('quantity'))):
+        units = row['units'] or 0
+        if row['created_from_cnc_plan']:
+            offcut_provenance['cnc'] += units
+        elif row['created_from_plan']:
+            offcut_provenance['cut'] += units
+        else:
+            offcut_provenance['manual'] += units
+    pending_cnc_remnants = []
+    pending_cnc_area = Decimal('0')
+    from cnc_resizer.models import CncSheetPlan as _CncSheetPlan
+    for plan in (_CncSheetPlan.objects.filter(status='planned')
+                 .select_related('material', 'source_stock').order_by('pk')):
+        unused = max(Decimal('0'), plan.width * plan.height - plan.planned_area)
+        if unused > 0:
+            pending_cnc_area += unused
+            if len(pending_cnc_remnants) < 15:
+                pending_cnc_remnants.append({
+                    'plan': plan, 'unused': unused,
+                    'unused_m2': format(unused / Decimal('1000000'), '.3f'),
+                })
+    pending_cnc_count = _CncSheetPlan.objects.filter(status='planned').filter(
+        planned_area__lt=F('width') * F('height')).count()
     rows = _inventory_queryset(request, kind)
     page = Paginator(rows, 40).get_page(request.GET.get('page'))
     reserved_by_stock = _reserved_counts([stock.pk for stock in page.object_list])
@@ -1060,6 +1108,11 @@ def inventory(request, kind=None):
         'pagination_query': pagination_query, 'toggle_inactive_query': toggle_inactive_query,
         'setting': setting, 'query': request.GET.get('q', ''), 'sort_links': sort_links,
         'offcut_created_30d': offcut_created_30d, 'offcut_consumed_30d': offcut_consumed_30d,
+        # فاز ۳.۱.۱ — داشبورد پرت یکپارچه (کلیدهای additive)
+        'offcut_provenance': offcut_provenance,
+        'pending_cnc_remnants': pending_cnc_remnants,
+        'pending_cnc_area': pending_cnc_area, 'pending_cnc_count': pending_cnc_count,
+        'pending_cnc_area_m2': format(pending_cnc_area / Decimal('1000000'), '.3f'),
         'thicknesses': Material.objects.values_list('thickness', flat=True).distinct().order_by('thickness'),
     })
 

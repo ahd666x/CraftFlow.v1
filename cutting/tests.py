@@ -1013,3 +1013,83 @@ class PhaseBPlanFlowTests(TestCase):
         self.assertEqual(plan.algorithm, 'guillotine')
         self.assertEqual(plan.plan_data.get('trim'), '10.0')
         self.assertTrue(plan.plan_data.get('respect_grain'))
+
+
+class Phase31OffcutDashboardAndCncPreflightTests(TestCase):
+    """فاز ۳.۱ — داشبورد پرت یکپارچه در انبار + preflight فقط-خواندنی فایل‌های
+    CNC در پیش‌نمایش برنامه‌ریز. همهٔ کلیدهای جدید additive هستند و هیچ
+    رفتار سرور (POSTها، قراردادها) تغییر نکرده است."""
+
+    def setUp(self):
+        self.user = User.objects.create_superuser(username='phase31-admin', email='phase31@example.test', password='test-password')
+        self.client.force_login(self.user)
+        self.customer = Customer.objects.create(name='کارگاه فاز ۳۱')
+        self.material = Material.objects.create(name='MDF فاز ۳۱', thickness=Decimal('16.0'))
+        self.part = Part.objects.create(material=self.material, name='قطعه CNC فاز ۳۱', length=Decimal('400.0'), width=Decimal('300.0'), pname='کمد', routing_code='cnc.cut', turn=True)
+        self.order = Order.objects.create(customer=self.customer, status='planned')
+        self.task = ProductionTask.objects.create(order=self.order, part=self.part, station_name='cut', step_order=1, quantity=1, status='pending')
+
+    def add_stock(self, *, width='1830.0', height='3660.0', quantity=1, offcut=False, **extra):
+        return SheetStock.objects.create(material=self.material, width=Decimal(width), height=Decimal(height), quantity=quantity, is_offcut=offcut, priority=100, created_by=self.user, **extra)
+
+    def test_offcut_dashboard_shows_provenance_and_pending_cnc_remnants(self):
+        source = self.add_stock()
+        plan = CncSheetPlan.objects.create(
+            material=self.material, source_stock=source, width=Decimal('1800.0'), height=Decimal('900.0'),
+            planned_area=Decimal('560000'), gcode='', created_by=self.user)
+        self.add_stock(width='700', height='700', offcut=True, created_from_cnc_plan=plan)
+        self.add_stock(width='500', height='400', offcut=True)   # ثبت دستی بدون برنامه
+        response = self.client.get(reverse('cutting:offcuts'))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['offcut_provenance'], {'cnc': 1, 'cut': 0, 'manual': 1})
+        self.assertEqual(response.context['pending_cnc_count'], 1)
+        self.assertEqual(response.context['pending_cnc_area_m2'], '1.060')
+        self.assertContains(response, 'داشبورد پرت یکپارچه')
+        self.assertContains(response, 'پرت بالقوهٔ CNC')
+        self.assertContains(response, 'برنامهٔ CNC #')
+        # منشأ CNC در جزئیات ردیف پرت واقعی هم دیده می‌شود
+        self.assertContains(response, f'#plan-{plan.pk}')
+
+    def test_dashboard_only_renders_on_offcuts_tab(self):
+        self.add_stock(offcut=True)
+        response = self.client.get(reverse('cutting:inventory'))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'داشبورد پرت یکپارچه')
+
+    def test_cnc_mode_preview_reports_missing_base_file_as_issue(self):
+        self.add_stock()
+        response = self.client.get(reverse('cutting:planner_preview'), {
+            'order_ids': [self.order.pk], 'planning_mode': 'cnc_sheets', 'kerf': '4',
+        })
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['piece_count'], 1)
+        self.assertEqual(len(data['cnc_issues']), 1)
+        issue = data['cnc_issues'][0]
+        self.assertEqual(issue['reason_code'], 'profile_failed')
+        self.assertIn('پیدا نشد', issue['message'])
+        self.assertEqual(issue['pieces'], 1)
+        # کلیدهای قراردادی قبلی دست‌نخورده‌اند (additive)
+        for legacy_key in ('selected_order_count', 'piece_count', 'strategy', 'materials'):
+            self.assertIn(legacy_key, data)
+
+    def test_standard_mode_preview_keeps_cnc_issues_empty(self):
+        self.add_stock()
+        response = self.client.get(reverse('cutting:planner_preview'), {'order_ids': [self.order.pk], 'kerf': '4'})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['cnc_issues'], [])
+
+    def test_width_override_is_flagged_before_reservation(self):
+        self.add_stock()
+        from .models import TaskSpecOverride
+        TaskSpecOverride.objects.create(task=self.task, width=Decimal('310.0'))
+        response = self.client.get(reverse('cutting:planner_preview'), {
+            'order_ids': [self.order.pk], 'planning_mode': 'cnc_sheets', 'kerf': '4',
+        })
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['cnc_issues'][0]['reason_code'], 'width_changed')
+        # preflight فقط-خواندنی است: هیچ فایل/issue ثبت نشده
+        from cnc_resizer.models import CncFile
+        self.assertEqual(CncFile.objects.count(), 0)
+        self.assertEqual(CncPlanningIssue.objects.count(), 0)
