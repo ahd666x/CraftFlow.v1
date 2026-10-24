@@ -452,3 +452,19 @@ tr.row-expand-details>td{background:var(--st-sunken);border-bottom:1px solid var
   .canvas-frame{background:#fff!important;border-color:#999!important}
   .map-meta{border:0}
 }
+
+/* ---------- مودال پیش‌نمایش مسیرهای ابزار ورق CNC (فاز ۱.۲) ---------- */
+.paths-modal .modal-content{background:var(--st-panel);border:1px solid var(--st-line);border-radius:var(--st-radius)}
+.paths-legend{display:flex;gap:14px;align-items:center;font-size:12px;color:var(--st-muted);flex-wrap:wrap}
+.paths-legend .sw{display:inline-block;width:16px;height:3px;border-radius:2px;vertical-align:middle;background:var(--st-muted)}
+.paths-legend .sw-rapid{background:repeating-linear-gradient(90deg,#94a3b8 0 4px,transparent 4px 7px)}
+.paths-stage{position:relative;background:var(--st-canvas);border:1px solid var(--st-line);border-radius:var(--st-radius);overflow:hidden}
+.paths-stage svg{display:block;width:100%;height:min(58vh,560px)}
+.paths-stage .p-cut{fill:none;stroke-width:1.4;vector-effect:non-scaling-stroke;stroke-linejoin:round;stroke-linecap:round}
+.paths-stage .p-rapid{fill:none;stroke:#94a3b8;stroke-width:1;stroke-dasharray:4 3;vector-effect:non-scaling-stroke;opacity:.8}
+.paths-stage.hide-rapid .p-rapid{display:none}
+.paths-stage .p-risk{stroke:#dc2626;stroke-width:2}
+.paths-stage .box{fill:rgba(37,99,235,.05);stroke:#bfdbfe;stroke-width:1;vector-effect:non-scaling-stroke}
+.paths-stats{display:flex;gap:6px 18px;flex-wrap:wrap;font-size:12.5px;color:var(--st-muted);padding-top:10px;margin:0}
+.paths-stats b{color:var(--st-ink);font-weight:700}
+.paths-risk-chip{display:inline-flex;align-items:center;gap:.35rem;color:#b91c1c;background:#fef2f2;border:1px solid #fecaca;border-radius:999px;padding:.1rem .6rem;font-weight:700}

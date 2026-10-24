@@ -76,6 +76,7 @@
         <div class="cnc-stage-actions">
           {% if plan.output_verified and plan.gcode %}
           <a class="btn btn-outline-secondary btn-sm" href="{% url 'cnc_resizer:index' %}?sheet_id={{ plan.id }}" title="باز کردن کل چیدمان این ورق در ابزار CAD سی‌ان‌سی (اندازه‌گیری و بازبینی هندسه)"><i class="bi bi-easel" aria-hidden="true"></i> نمای CAD</a>
+          <button type="button" class="btn btn-outline-secondary btn-sm" data-paths-open="{{ plan.id }}" data-paths-url="{% url 'cnc_resizer:sheet_preview' plan.id %}" title="پیش‌نمایش مسیرهای ابزار از روی همان برنامهٔ ذخیره‌شدهٔ دستگاه (برش، سریع، تعویض ابزار)"><i class="bi bi-signpost-2" aria-hidden="true"></i> مسیرها</button>
           <a class="btn btn-success" href="{% url 'cnc_resizer:download_sheet_plan' plan.id %}"><i class="bi bi-download" aria-hidden="true"></i> {% if plan.status == 'done' %}دانلود مجدد فایل{% else %}دریافت فایل دستگاه{% endif %}</a>
           {% else %}<span class="cnc-output-chip" title="کنترلر مقصد و پست‌پروسسور اختصاصی تأیید نشده‌اند."><i class="bi bi-exclamation-triangle" aria-hidden="true"></i> فایل دستگاه تأیید نشده</span>{% endif %}
           {% if plan.status == 'planned' %}<form method="post" action="{% url 'cnc_resizer:cancel_sheet_plan' plan.id %}" onsubmit="return confirm('این برنامه لغو و ورق و قطعات آن آزاد شوند؟')" class="ms-auto">{% csrf_token %}<button class="btn btn-outline-danger icon-btn btn-sm" title="لغو و آزادسازی" aria-label="لغو برنامه {{ plan.id }}"><i class="bi bi-x-lg" aria-hidden="true"></i></button></form>{% endif %}
@@ -150,6 +151,34 @@
     </div>
   </div>
 </div>
+
+  {# ── مودال پیش‌نمایش مسیرهای ابزار (فاز ۱.۲) ── #}
+  <div class="modal fade" id="paths-modal" tabindex="-1" aria-labelledby="paths-title" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header py-2">
+          <div class="me-auto">
+            <h2 class="modal-title h6 mb-0" id="paths-title">پیش‌نمایش مسیرها</h2>
+            <div class="help" id="paths-subtitle"></div>
+          </div>
+          <div class="paths-legend" aria-hidden="true">
+            <span><i class="sw" style="background:#2563eb"></i> برش (رنگ = ابزار)</span>
+            <span><i class="sw sw-rapid"></i> حرکت سریع</span>
+            <span><i class="sw" style="background:#dc2626"></i> سریع داخل متریال</span>
+            <label class="form-check form-check-inline mb-0 help"><input class="form-check-input" type="checkbox" id="paths-toggle-rapid"> پنهان‌کردن سریع‌ها</label>
+          </div>
+          <button type="button" class="btn-close ms-0 me-2" data-bs-dismiss="modal" aria-label="بستن"></button>
+        </div>
+        <div class="modal-body">
+          <div class="paths-stage">
+            <svg id="paths-svg" role="img" aria-label="پیش‌نمایش مسیرهای ابزار روی ورق"></svg>
+          </div>
+          <div class="alert alert-warning py-2 mt-2 mb-0" id="paths-alert" hidden></div>
+          <div class="paths-stats" id="paths-stats"></div>
+        </div>
+      </div>
+    </div>
+  </div>
 <script>
 (() => {
   const rows = [...document.querySelectorAll('[data-cnc-select]')];
@@ -188,4 +217,5 @@
   });
 })();
 </script>
+<script src="{% static 'cnc_resizer/sheet_preview.js' %}" defer></script>
 {% endblock %}

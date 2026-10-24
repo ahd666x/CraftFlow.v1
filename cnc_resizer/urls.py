@@ -33,4 +33,5 @@ urlpatterns = [
     path("api/manual-resolution/", views.api_manual_resolution, name="api_manual_resolution"),
     path("api/task-file/", views.task_file, name="task_file"),
     path("api/sheet-program/<int:plan_id>/", views.sheet_program, name="sheet_program"),
+    path("api/sheet-preview/<int:plan_id>/", views.sheet_preview, name="sheet_preview"),
 ]

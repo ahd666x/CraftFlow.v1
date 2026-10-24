@@ -1,6 +1,6 @@
 from django.http import JsonResponse, HttpResponseRedirect
 from django.core.exceptions import PermissionDenied
-from django.shortcuts import render
+from django.shortcuts import render, get_object_or_404
 from django.urls import reverse
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
@@ -1043,6 +1043,39 @@ def sheet_program(request, plan_id):
             'pieces': len((plan.layout or {}).get('parts', [])),
         },
     }, json_dumps_params={'ensure_ascii': False})
+
+
+@login_required
+@cnc_operator_required
+@require_GET
+def sheet_preview(request, plan_id):
+    """Visual toolpath preview of one CNC sheet plan (roadmap phase 1.2).
+
+    Honest by construction: the toolpaths are parsed from the SAME stored,
+    adapter-verified program that ``download_sheet_plan`` serves — never
+    rebuilt from the layout. A plan without a verified program is a 409,
+    and a stored program that violates the verified dialect (corrupted row)
+    is a 409 as well instead of a partial picture.
+    """
+    from .sheet_preview import SheetPreviewError, sheet_toolpaths
+    plan = get_object_or_404(CncSheetPlan.objects.select_related('material'), pk=plan_id)
+    if not _may_access_sheet_plan(request.user, plan):
+        raise PermissionDenied
+    if plan.status == 'cancelled' or not plan.output_verified or not plan.gcode.strip():
+        return JsonResponse(
+            {'ok': False, 'error': 'برنامهٔ دستگاه تأییدشده‌ای برای پیش‌نمایش مسیرها وجود ندارد؛ '
+                                   'خروجی فقط از پست‌پروسسور تأییدشده ساخته می‌شود.'},
+            status=409, json_dumps_params={'ensure_ascii': False},
+        )
+    try:
+        data = sheet_toolpaths(plan)
+    except SheetPreviewError as exc:
+        return JsonResponse({'ok': False, 'error': str(exc)},
+                            status=409, json_dumps_params={'ensure_ascii': False})
+    data['ok'] = True
+    data['material'] = plan.material.name if plan.material_id else ''
+    data['filename'] = f'craftflow_cnc_sheet_{plan.pk}.nc'
+    return JsonResponse(data, json_dumps_params={'ensure_ascii': False})
 
 
 @login_required
