@@ -697,8 +697,9 @@ class InventoryAndCutFlowTests(TestCase):
                 self.assertEqual(response.status_code, 200)
                 self.assertContains(response, 'class="cutting-nav')
         plan = self.make_plan()
-        self.assertContains(self.client.get(reverse('cutting:planner')), 'class="cutting-stepper')
-        self.assertContains(self.client.get(reverse('cutting:plan_detail', args=[plan.pk])), 'class="cutting-stepper')
+        # بازطراحی: نوار ایستگاه تک‌لایه جایگزین stepper شد — stepper باید حذف باشد
+        self.assertNotContains(self.client.get(reverse('cutting:planner')), 'cutting-stepper')
+        self.assertNotContains(self.client.get(reverse('cutting:plan_detail', args=[plan.pk])), 'cutting-stepper')
 
     def test_nav_hides_links_user_cannot_open(self):
         user = User.objects.create_user(username='op1', password='x')
@@ -777,10 +778,10 @@ class InventoryAndCutFlowTests(TestCase):
         self.assertContains(response, '>1</text>')
         self.assertContains(response, 'بهره‌وری')
         self.assertContains(response, 'همه مصرف شدند')
-        # نمای ایستگاهی جدید: نتیجه زیر لایهٔ پنهان، ناوبری بالا، بدون شبیه‌سازی
+        # نمای ایستگاهی جدید: نتیجه زیر لایهٔ پنهان، ریل کناری ورق‌ها، بدون شبیه‌سازی
         self.assertContains(response, 'data-dock-toggle="result"')
         self.assertContains(response, 'data-result-dock')
-        self.assertContains(response, 'sheet-nav-btn')
+        self.assertContains(response, 'data-sheet-rail')  # ریل کناری جایگزین نوار قبلی/بعدی شد
         self.assertContains(response, 'data-dock-toggle="verlist"')
         self.assertNotContains(response, 'شبیه‌سازی')
         download = self.client.get(reverse('cutting:download_cut', args=[plan.pk]))

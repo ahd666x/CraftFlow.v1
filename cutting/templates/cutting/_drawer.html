@@ -1,0 +1,13 @@
+{% comment %}
+کشوی استاندارد ایستگاه برش — اسکلت offcanvas با بدنهٔ قابل‌درج:
+{% include 'cutting/_drawer.html' with drawer_id='settings-drawer' drawer_title='تنظیمات برش' drawer_body='cutting/_settings_drawer_body.html' %}
+{% endcomment %}
+<div class="offcanvas offcanvas-end cut-drawer" tabindex="-1" id="{{ drawer_id }}" aria-labelledby="{{ drawer_id }}-title">
+  <div class="offcanvas-header">
+    <h2 class="offcanvas-title" id="{{ drawer_id }}-title">{{ drawer_title }}</h2>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="بستن"></button>
+  </div>
+  <div class="offcanvas-body{% if drawer_body_class %} {{ drawer_body_class }}{% endif %}">
+    {% if drawer_body %}{% include drawer_body %}{% endif %}
+  </div>
+</div>

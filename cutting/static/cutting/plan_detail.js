@@ -1,10 +1,17 @@
+/* برنامهٔ برش v2 — ریل کناری ورق‌ها + نقشهٔ بزرگ + نوار نتیجهٔ ثابت.
+ * منطق اعتبارسنجی پرت، خلاصه، «همه مصرف شدند» و مودال تأیید دست‌نخورده مانده است.
+ * جابجایی ورق‌ها: کلیک روی دایره‌های ریل یا کلیدهای ← → (بدون نوار قبلی/بعدی).
+ */
 (() => {
   const MAX_ROWS = 50;
   const panels = [...document.querySelectorAll('[data-sheet-panel]')];
-  const tabs = [...document.querySelectorAll('.sheet-tab')];
-  const groups = [...document.querySelectorAll('.outcome-group')];
+  const dots = [...document.querySelectorAll('.rail-dot')];
+  const railMats = [...document.querySelectorAll('.rail-mat')];
   const sections = [...document.querySelectorAll('[data-material-section]')];
-  const materialTabs = [...document.querySelectorAll('.material-tab')];
+  const groups = [...document.querySelectorAll('.outcome-group')];
+  const remnantContainers = [...document.querySelectorAll('.remnant-fields')];
+  const remPop = document.getElementById('remnants-pop');
+  const remToggle = document.querySelector('[data-dock-toggle="result"]');
   const number = value => Number(String(value || '').replace(',', '.')) || 0;
   const fmt = value => Number(value || 0).toLocaleString('en-US');
   const outcomeOf = id => document.querySelector(`input[name="outcome_${id}"]:checked`)?.value || '';
@@ -14,34 +21,32 @@
     return ['used', 'untouched', 'scrapped'].includes(value) ? value : 'none';
   }
 
-  function updateTabStatus(sheetId) {
+  /* ---------- rail dots ---------- */
+
+  function updateDot(sheetId) {
     const panel = panels.find(item => item.dataset.sheetPk === String(sheetId));
     const value = panel ? storedOutcome(panel) : 'none';
-    tabs.filter(tab => tab.dataset.sheetPk === String(sheetId)).forEach(tab => {
-      tab.classList.remove('outcome-none', 'outcome-used', 'outcome-untouched', 'outcome-scrapped');
-      tab.classList.add(`outcome-${value}`);
-      const status = tab.querySelector('.sheet-tab-status');
+    dots.filter(dot => dot.dataset.sheetPk === String(sheetId)).forEach(dot => {
+      dot.classList.remove('outcome-none', 'outcome-reserved', 'outcome-used', 'outcome-untouched', 'outcome-scrapped');
+      dot.classList.add(`outcome-${value}`);
       const labels = { none: 'ثبت‌نشده', used: 'مصرف‌شده', untouched: 'دست‌نخورده', scrapped: 'اسقاط' };
-      const marks = { none: '—', used: '✔', untouched: '↺', scrapped: '✘' };
-      if (status) status.textContent = marks[value] || '—';
-      const number = tab.querySelector('.sheet-tab-number')?.textContent || '';
-      tab.title = `ورق ${number} — ${labels[value] || 'ثبت‌نشده'}`;
+      dot.title = `ورق ${dot.textContent.trim()} — ${labels[value] || 'ثبت‌نشده'}`;
     });
   }
 
-  function updateMaterialProgress() {
+  function updateRailGroups() {
     sections.forEach(section => {
       const own = panels.filter(panel => section.contains(panel));
       const done = own.filter(panel => storedOutcome(panel) !== 'none').length;
       const key = section.dataset.materialSection;
-      const label = document.querySelector(`[data-material-progress="${key}"]`);
-      if (label) label.textContent = `${done}/${own.length}`;
-      const bar = document.querySelector(`[data-material-bar="${key}"]`);
-      if (bar) bar.style.width = `${own.length ? Math.round(done * 100 / own.length) : 0}%`;
-      const tab = materialTabs.find(item => item.dataset.materialTab === key);
-      if (tab) tab.classList.toggle('complete', own.length > 0 && done === own.length);
+      const mat = railMats.find(item => item.dataset.materialTab === key);
+      if (mat) {
+        mat.classList.toggle('is-ok', own.length > 0 && done === own.length);
+        mat.title = `${mat.getAttribute('aria-label') || ''} — ${done} از ${own.length} ثبت شده`;
+      }
     });
   }
+
   function updateProgress() {
     const counts = { reserved: 0, used: 0, untouched: 0, scrapped: 0 };
     panels.forEach(panel => { counts[storedOutcome(panel)] = (counts[storedOutcome(panel)] || 0) + 1; });
@@ -50,64 +55,55 @@
     const percent = total ? Math.round(completed * 100 / total) : 0;
     const bar = document.getElementById('sheet-progress-bar');
     const label = document.getElementById('sheet-progress-label');
-    if (bar) { bar.style.width = `${percent}%`; bar.textContent = `${percent}%`; }
+    if (bar) bar.style.width = `${percent}%`;
     if (label) label.textContent = `${completed} از ${total} ورق ثبت شده`;
     document.querySelectorAll('[data-count]').forEach(node => {
       node.textContent = counts[node.dataset.count] || 0;
-      node.closest('.status-pill')?.classList.toggle('is-zero', !(counts[node.dataset.count] || 0));
     });
     const progress = bar?.closest('[role="progressbar"]');
     if (progress) progress.setAttribute('aria-valuenow', String(percent));
-    updateMaterialProgress();
+    updateRailGroups();
   }
 
-  function setDock(section, kind) {
-    // Exactly one dock (verlist | result) open per material section — or none.
-    if (!section) return;
-    section.querySelectorAll('.side-dock').forEach(dock => { dock.hidden = true; });
-    section.querySelectorAll('.dock-toggle').forEach(btn => {
-      btn.classList.remove('active');
-      btn.setAttribute('aria-expanded', 'false');
-    });
-    if (!kind) return;
-    const selector = kind === 'verlist' ? '.dock-start' : '.dock-end';
-    const dock = section.querySelector(selector);
-    if (dock) dock.hidden = false;
-    const toggle = [...section.querySelectorAll('.dock-toggle')]
-      .find(btn => btn.dataset.dockToggle === kind);
-    if (toggle) {
-      toggle.classList.add('active');
-      toggle.setAttribute('aria-expanded', 'true');
-    }
-  }
+  /* ---------- sheet switching ---------- */
+
+  let current = null;
 
   function showPanel(panel) {
     if (!panel || !panels.length) return;
+    current = panel;
     const section = panel.closest('[data-material-section]');
     sections.forEach(item => item.classList.toggle('d-none', item !== section));
-    materialTabs.forEach(tab => {
-      const active = Boolean(section) && tab.dataset.materialTab === section.dataset.materialSection;
-      tab.classList.toggle('active', active);
-      tab.setAttribute('aria-selected', String(active));
-    });
     panels.forEach(item => item.classList.toggle('d-none', item !== panel));
-    tabs.forEach(tab => {
-      const active = tab.dataset.sheetPk === panel.dataset.sheetPk;
-      tab.classList.toggle('active', active);
-      tab.setAttribute('aria-selected', String(active));
+    dots.forEach(dot => {
+      const active = dot.dataset.sheetPk === panel.dataset.sheetPk;
+      dot.classList.toggle('active', active);
+      dot.setAttribute('aria-current', active ? 'true' : 'false');
     });
-    // نمای اولیه هر ورق مینیمال بماند — هیچ لایه‌ای باز نمی‌ماند
-    setDock(section, null);
-    const index = panels.indexOf(panel);
-    document.querySelectorAll('.sheet-nav-btn').forEach(btn => {
-      const dir = Number(btn.dataset.sheetDir || 0);
-      btn.disabled = (dir < 0) ? index <= 0 : index >= panels.length - 1;
+    railMats.forEach(mat => {
+      const active = Boolean(section) && mat.dataset.materialTab === section.dataset.materialSection;
+      mat.setAttribute('aria-current', active ? 'true' : 'false');
     });
-    const position = `ورق ${index + 1} از ${panels.length}`;
-    document.querySelectorAll('[data-material-position]').forEach(node => {
-      node.textContent = position;
+    // نوار نتیجه و پنل پرت فقط گروه ورق جاری را نشان می‌دهند
+    const pk = panel.dataset.sheetPk;
+    groups.forEach(group => group.classList.toggle('d-none', group.dataset.barGroup !== pk));
+    remnantContainers.forEach(container => container.classList.toggle('d-none', container.dataset.barGroup !== pk));
+    // هیچ لایه‌ای باز نمی‌ماند
+    document.querySelectorAll('[data-verlist-dock]').forEach(dock => { dock.hidden = true; });
+    document.querySelectorAll('[data-dock-toggle="verlist"]').forEach(btn => {
+      btn.classList.remove('active');
+      btn.setAttribute('aria-expanded', 'false');
     });
   }
+
+  function stepPanel(dir) {
+    if (!current) return;
+    const index = panels.indexOf(current) + dir;
+    if (index < 0 || index >= panels.length) return;
+    showPanel(panels[index]);
+  }
+
+  /* ---------- remnants ---------- */
 
   function validateRemnants(container) {
     let area = 0;
@@ -117,7 +113,7 @@
     const maxHeight = number(container.dataset.height);
     if (outcome !== 'used') {
       container.querySelectorAll('[data-dimension]').forEach(input => input.classList.remove('is-invalid'));
-      container.querySelector('.remnant-area-total').textContent = 'مساحت ثبت‌شده: 0 m²';
+      container.querySelector('.remnant-area-total').textContent = '0 m²';
       container.querySelector('.remnant-validation').textContent = '';
       return true;
     }
@@ -144,7 +140,7 @@
         if (input.value) input.classList.add('is-invalid');
       });
     }
-    container.querySelector('.remnant-area-total').textContent = `مساحت ثبت‌شده: ${fmt(area / 1000000)} m²`;
+    container.querySelector('.remnant-area-total').textContent = `${fmt(area / 1000000)} m²`;
     container.querySelector('.remnant-validation').textContent = invalid
       ? 'ابعاد پرت یا مجموع مساحت با ورق مبدأ سازگار نیست؛ هر مقدار باید حداکثر یک رقم اعشار داشته باشد.'
       : '';
@@ -167,12 +163,14 @@
     validateRemnants(container);
   }
 
+  /* ---------- summary ---------- */
+
   function updateSummary() {
     const chosen = groups.filter(group => outcomeOf(group.dataset.sheet));
     const used = groups.filter(group => outcomeOf(group.dataset.sheet) === 'used').length;
     const scrapped = groups.filter(group => outcomeOf(group.dataset.sheet) === 'scrapped').length;
     const untouched = groups.filter(group => outcomeOf(group.dataset.sheet) === 'untouched').length;
-    const offcuts = [...document.querySelectorAll('.remnant-fields')].reduce((sum, container) => {
+    const offcuts = remnantContainers.reduce((sum, container) => {
       if (outcomeOf(container.dataset.sheet) !== 'used') return sum;
       return sum + [...container.querySelectorAll('[data-remnant-row]')]
         .filter(row => [...row.querySelectorAll('[data-dimension]')].some(input => input.value)).length;
@@ -204,17 +202,29 @@
       container.querySelectorAll('input[data-dimension]').forEach(input => { input.disabled = outcome !== 'used'; });
       renumber(container);
     }
-    updateTabStatus(sheet);
+    updateDot(sheet);
     updateProgress();
     updateSummary();
   }
 
+  /* ---------- validation focus ---------- */
+
+  function setRemPanel(open) {
+    if (!remPop || !remToggle) return;
+    remPop.hidden = !open;
+    remToggle.setAttribute('aria-expanded', String(open));
+    if (open) remPop.querySelector('.remnant-fields:not(.d-none) [data-dimension="width"]')?.focus();
+  }
+
   function markInvalidPanel(field) {
-    const panel = field.closest('[data-sheet-panel]');
-    showPanel(panel);
-    // فیلد مشکل‌دار داخل کشوی نتیجه است — همان را باز می‌کنیم تا فوکوس دیده شود
-    const section = panel?.closest('[data-material-section]');
-    if (panel && panel.contains(field)) setDock(section, 'result');
+    const container = field.closest('.remnant-fields');
+    if (container) {
+      const panel = panels.find(item => item.dataset.sheetPk === container.dataset.sheet);
+      showPanel(panel);
+      setRemPanel(true);
+    } else {
+      showPanel(field.closest('[data-sheet-panel]'));
+    }
     field.focus();
   }
 
@@ -226,7 +236,8 @@
       const outcome = outcomeOf(sheet);
       if (!outcome) {
         const panel = panels.find(item => item.dataset.sheetPk === sheet);
-        markInvalidPanel(panel.querySelector('input.cut-outcome'));
+        showPanel(panel);
+        panel?.querySelector('input.cut-outcome')?.closest('.out-opt')?.focus();
         return false;
       }
       const note = document.getElementById(`note-${sheet}`);
@@ -265,36 +276,55 @@
     return `<table class="table table-sm mb-0"><tbody>${rows.map(([label, value]) => `<tr><th scope="row">${label}</th><td class="text-end">${fmt(value)}</td></tr>`).join('')}</tbody></table>`;
   }
 
-  document.querySelectorAll('.remnant-fields').forEach(container => renumber(container));
-  panels.forEach(panel => updateTabStatus(panel.dataset.sheetPk));
+  /* ---------- events ---------- */
+
+  remnantContainers.forEach(container => renumber(container));
+  panels.forEach(panel => updateDot(panel.dataset.sheetPk));
+  panels.forEach(panel => {
+    const dot = dots.find(item => item.dataset.sheetPk === panel.dataset.sheetPk);
+    container_sync_no(panel, dot);
+  });
+  function container_sync_no(panel, dot) {
+    const container = document.getElementById(`remnants-${panel.dataset.sheetPk}`);
+    if (container && dot) container.querySelector('.remnant-sheet-no').textContent = dot.textContent.trim();
+  }
   updateProgress();
+
   document.querySelectorAll('input.cut-outcome').forEach(radio => {
     radio.addEventListener('change', () => syncOutcome(radio.dataset.sheet));
   });
-  document.querySelectorAll('.sheet-tab').forEach(tab => tab.addEventListener('click', () => {
-    const panel = panels.find(item => item.dataset.sheetPk === tab.dataset.sheetPk);
-    showPanel(panel);
+  dots.forEach(dot => dot.addEventListener('click', () => {
+    showPanel(panels.find(item => item.dataset.sheetPk === dot.dataset.sheetPk));
   }));
-  materialTabs.forEach(tab => tab.addEventListener('click', () => {
-    const section = sections.find(item => item.dataset.materialSection === tab.dataset.materialTab);
+  railMats.forEach(mat => mat.addEventListener('click', () => {
+    const section = sections.find(item => item.dataset.materialSection === mat.dataset.materialTab);
     const own = panels.filter(panel => section && section.contains(panel));
     showPanel(own.find(panel => storedOutcome(panel) === 'none') || own[0]);
   }));
-  // جابجایی بین ورق‌ها از نوار بالای صفحه — بدون اسکرول
-  document.querySelectorAll('.sheet-nav-btn').forEach(btn => btn.addEventListener('click', () => {
-    const current = panels.find(panel => !panel.classList.contains('d-none'));
-    if (!current) return;
-    const index = panels.indexOf(current) + Number(btn.dataset.sheetDir || 0);
-    showPanel(panels[Math.max(0, Math.min(panels.length - 1, index))]);
+  document.addEventListener('keydown', event => {
+    if (event.target.matches('input, select, textarea')) return;
+    if (event.key === 'ArrowLeft') stepPanel(1);
+    if (event.key === 'ArrowRight') stepPanel(-1);
+  });
+
+  document.querySelectorAll('[data-dock-toggle]').forEach(btn => btn.addEventListener('click', () => {
+    if (btn.dataset.dockToggle === 'result') { setRemPanel(remPop?.hidden ?? true); return; }
+    const dock = document.getElementById(btn.getAttribute('aria-controls') || '');
+    if (!dock) return;
+    const open = dock.hidden;
+    document.querySelectorAll('[data-verlist-dock]').forEach(node => { node.hidden = true; });
+    document.querySelectorAll('[data-dock-toggle="verlist"]').forEach(node => {
+      node.setAttribute('aria-expanded', 'false');
+      node.classList.remove('active');
+    });
+    dock.hidden = !open;
+    btn.setAttribute('aria-expanded', String(open));
+    btn.classList.toggle('active', open);
   }));
-  // لایه‌های پنهان: فهرست قطعات (سطح متریال) و ثبت نتیجه (سطح ورق)
-  document.querySelectorAll('.dock-toggle').forEach(btn => btn.addEventListener('click', () => {
-    const section = btn.closest('[data-material-section]');
-    if (!section) return;
-    const kind = btn.dataset.dockToggle;
-    const isActive = btn.classList.contains('active');
-    setDock(section, isActive ? null : kind);
-  }));
+  document.querySelector('[data-rem-close]')?.addEventListener('click', () => setRemPanel(false));
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && remPop && !remPop.hidden) setRemPanel(false);
+  });
 
   document.querySelectorAll('.add-remnant').forEach(button => button.addEventListener('click', () => {
     const container = document.getElementById(button.dataset.target);
@@ -416,7 +446,6 @@
     });
   }
 
-  panels.forEach(panel => updateTabStatus(panel.dataset.sheetPk));
   const firstUnresolved = panels.find(panel => !outcomeOf(panel.dataset.sheetPk));
   showPanel(firstUnresolved || panels[0]);
   updateSummary();

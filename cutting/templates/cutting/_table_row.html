@@ -1,0 +1,12 @@
+{% comment %}
+ردیف بازشوندهٔ استاندارد جدول‌های ایستگاه برش.
+در تمپلیت میزبان:
+  {% capture row_cells %}<td>…</td>…{% endcapture %}
+  {% capture row_details %}…{% endcapture %}
+  {% include 'cutting/_table_row.html' with row_pk=… row_colspan=6 row_href=… row_class=… %}
+row_colspan = تعداد ستون‌های اصلی + ۱ (ستون بازکننده)
+{% endcomment %}
+<tr{% if row_class %} class="{{ row_class }}"{% endif %}{% if row_href %} data-href="{{ row_href }}"{% endif %}>{{ row_cells }}<td class="td-expand td-actions" data-label="جزئیات"><button type="button" class="row-expand-toggle" data-row-expand aria-expanded="false" aria-controls="rd-{{ row_pk }}" title="{{ row_expand_title|default:'جزئیات بیشتر' }}" aria-label="{{ row_expand_label|default:'جزئیات بیشتر' }}"><i class="bi bi-chevron-down" aria-hidden="true"></i></button></td></tr>
+<tr class="row-expand-details" id="rd-{{ row_pk }}" hidden><td colspan="{{ row_colspan }}" data-label="جزئیات">
+  {% if row_details_template %}{% include row_details_template %}{% endif %}{{ row_details }}
+</td></tr>

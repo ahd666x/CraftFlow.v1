@@ -1,13 +1,22 @@
 {% extends 'base.html' %}
 {% load static %}
 {% block title %}{% if stock %}ویرایش موجودی{% else %}ثبت ورق MDF{% endif %}{% endblock %}
+{% block nav %}{% endblock %}
+{% block body_class %}admin-panel cutting-station{% endblock %}
 {% block content %}
-<div class="station cutting-page cutting-stock-form-page" dir="rtl">
-  {% include 'cutting/_inventory_nav.html' %}
-  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3"><h1 class="mb-0">{% if stock %}ویرایش بچ موجودی{% else %}ثبت گروهی موجودی ورق{% endif %}</h1></div>
-  <p class="small text-muted mb-3">ابعاد برحسب میلی‌متر؛ همیشه <strong>عرض × طول</strong> — حداکثر یک رقم اعشار. جهت رگه برای یادآوری محدودیت چرخش ثبت می‌شود.</p>
+<div class="station" dir="rtl">
+  {% include 'cutting/_station_bar.html' %}
+  <header class="page-head">
+    <h1>{% if stock %}ویرایش بچ موجودی{% else %}ثبت گروهی موجودی ورق{% endif %}</h1>
+    <nav class="seg" aria-label="بخش‌های انبار">
+      <a class="seg-opt" href="{% url 'cutting:inventory' %}">خلاصه</a>
+      <a class="seg-opt" href="{% url 'cutting:full_sheets' %}">ورق کامل</a>
+      <a class="seg-opt" href="{% url 'cutting:offcuts' %}">پرت</a>
+    </nav>
+  </header>
+  <p class="px-3 mt-2 mb-0 help">ابعاد برحسب میلی‌متر؛ همیشه <strong>عرض × طول</strong> — حداکثر یک رقم اعشار. جهت رگه برای یادآوری محدودیت چرخش ثبت می‌شود.</p>
   {% include 'cutting/_messages.html' %}
-  <div class="card"><div class="card-body">
+  <div class="px-3 py-3"><div class="card" style="max-width:44rem"><div class="card-body">
     <form method="post" id="stock-form" data-edit="{% if stock %}1{% else %}0{% endif %}">{% csrf_token %}
       {% if stock %}<div class="alert alert-secondary py-2">نوع این بچ ثابت است: {% if stock.is_offcut %}پرت قابل استفاده{% else %}ورق کامل{% endif %}.</div>{% endif %}
       <div class="mb-3"><label class="form-label" for="material">متریال و ضخامت</label><select class="form-select" name="material" id="material" {% if stock %}data-initial="{{ stock.material_id }}"{% endif %} required>{% for m in materials %}<option value="{{ m.id }}" {% if selected_material_id == m.id|stringformat:'s' %}selected{% endif %}>{{ m.name }} — {{ m.thickness }} mm</option>{% endfor %}</select></div>
@@ -26,7 +35,7 @@
       {% if not stock %}<div class="form-check border rounded p-3 mt-3" id="quick-repeat-wrap" {% if stock_type != 'offcut' %}hidden{% endif %}><input class="form-check-input" type="checkbox" name="quick_repeat" value="1" id="quick-repeat" {% if quick_repeat %}checked{% endif %}><label class="form-check-label fw-semibold" for="quick-repeat" title="بعد از ذخیرهٔ هر پرت، همین فرم با متریال انتخاب‌شده دوباره باز می‌شود">ثبت سریع چند پرت پشت‌سرهم</label></div>{% endif %}
       <div class="d-flex flex-wrap gap-2 mt-4"><button class="btn btn-primary btn-lg">{% if quick_repeat %}ثبت این پرت و ادامه{% else %}ذخیره موجودی{% endif %}</button><a class="btn btn-outline-secondary btn-lg" href="{% url 'cutting:inventory' %}">انصراف</a></div>
     </form>
-  </div></div>
+  </div></div></div>
 </div>
 {% endblock %}
 {% block extra_js %}<script src="{% static 'cutting/stock_form.js' %}"></script>{% endblock %}

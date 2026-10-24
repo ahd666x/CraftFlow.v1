@@ -1,21 +1,51 @@
 {% extends 'base.html' %}
+{% load cutting_extras static %}
 {% block title %}تاریخچه موجودی ورق{% endblock %}
+{% block nav %}{% endblock %}
+{% block body_class %}admin-panel cutting-station{% endblock %}
 {% block content %}
-<div class="station cutting-page cutting-history-page" dir="rtl">
-  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3"><h1 class="mb-0">تاریخچه موجودی ورق</h1></div>
-  {% include 'cutting/_inventory_nav.html' %}
+<div class="station" dir="rtl">
+  {% include 'cutting/_station_bar.html' %}
+  <header class="page-head">
+    <h1>تاریخچه موجودی ورق</h1>
+    <nav class="seg" aria-label="بخش‌های انبار">
+      <a class="seg-opt" {% if cut_url_name == 'inventory' %}aria-current="page"{% endif %} href="{% url 'cutting:inventory' %}">خلاصه</a>
+      <a class="seg-opt" {% if cut_url_name == 'full_sheets' %}aria-current="page"{% endif %} href="{% url 'cutting:full_sheets' %}">ورق کامل</a>
+      <a class="seg-opt" {% if cut_url_name == 'offcuts' %}aria-current="page"{% endif %} href="{% url 'cutting:offcuts' %}">پرت</a>
+      <a class="seg-opt" aria-current="page" href="{% url 'cutting:history' %}">تاریخچه</a>
+    </nav>
+  </header>
   {% include 'cutting/_messages.html' %}
-  <div class="d-flex flex-wrap gap-1 align-items-center mb-2" aria-label="فیلتر سریع رویدادها"><a class="badge-status" href="{% url 'cutting:history' %}">همه</a><a class="badge-status is-ok" href="?event_type=consume">مصرف</a><a class="badge-status is-warn" href="?event_type=offcut">پرت</a><a class="badge-status is-info" href="?event_type=receive">ورود</a><a class="badge-status is-bad" href="?event_type=scrap">اسقاط</a></div>
-  <form method="get" class="row g-2 align-items-end mb-3">
-    <div class="col-12 col-md-3"><label class="form-label" for="history-search">جست‌وجو</label><input id="history-search" class="form-control" name="q" value="{{ query }}" placeholder="رویداد، کاربر، برنامه، ابعاد"></div>
-    <div class="col-6 col-md-2"><label class="form-label" for="history-material">متریال</label><select class="form-select" id="history-material" name="material"><option value="">همه</option>{% for m in materials %}<option value="{{ m.id }}" {% if request.GET.material == m.id|stringformat:'s' %}selected{% endif %}>{{ m.name }} — {{ m.thickness }} mm</option>{% endfor %}</select></div>
-    <div class="col-6 col-md-2"><label class="form-label" for="history-event">نوع رویداد</label><select class="form-select" id="history-event" name="event_type"><option value="">همه</option>{% for value,label in event_types %}<option value="{{ value }}" {% if event_type_filter == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
-    <div class="col-6 col-md-2"><label class="form-label" for="date-from">از تاریخ</label><input class="form-control" type="text" inputmode="numeric" id="date-from" name="date_from" value="{{ request.GET.date_from }}" placeholder="1405/07/25" title="تاریخ شمسی 1405/07/25 یا میلادی YYYY-MM-DD"></div>
-    <div class="col-6 col-md-2"><label class="form-label" for="date-to">تا تاریخ</label><input class="form-control" type="text" inputmode="numeric" id="date-to" name="date_to" value="{{ request.GET.date_to }}" placeholder="1405/07/25" title="تاریخ شمسی 1405/07/25 یا میلادی YYYY-MM-DD"></div>
-    <div class="col-12 col-md-1 d-flex gap-2"><button class="btn btn-primary flex-fill">اعمال</button></div>
+  <form method="get" class="kpi-line" aria-label="فیلتر رویدادها">
+    <span class="input-search"><i class="bi bi-search" aria-hidden="true"></i><input id="history-search" class="form-control form-control-sm" name="q" value="{{ query }}" placeholder="رویداد، کاربر، برنامه، ابعاد" aria-label="جست‌وجو"></span>
+    <select class="form-select form-select-sm" id="history-material" name="material" aria-label="متریال" style="width:auto"><option value="">همهٔ متریال‌ها</option>{% for m in materials %}<option value="{{ m.id }}" {% if request.GET.material == m.id|stringformat:'s' %}selected{% endif %}>{{ m.name }} — {{ m.thickness }} mm</option>{% endfor %}</select>
+    <select class="form-select form-select-sm" id="history-event" name="event_type" aria-label="نوع رویداد" style="width:auto"><option value="">همهٔ رویدادها</option>{% for value,label in event_types %}<option value="{{ value }}" {% if event_type_filter == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+    <input class="form-control form-control-sm" type="text" inputmode="numeric" id="date-from" name="date_from" value="{{ request.GET.date_from }}" placeholder="از 1405/07/25" aria-label="از تاریخ" title="تاریخ شمسی 1405/07/25 یا میلادی YYYY-MM-DD" style="width:8.5rem">
+    <input class="form-control form-control-sm" type="text" inputmode="numeric" id="date-to" name="date_to" value="{{ request.GET.date_to }}" placeholder="تا 1405/07/25" aria-label="تا تاریخ" title="تاریخ شمسی 1405/07/25 یا میلادی YYYY-MM-DD" style="width:8.5rem">
+    <button class="btn btn-sm btn-primary ms-auto">اعمال</button>
   </form>
-  <div class="card"><div class="table-responsive"><table class="table table-sm align-middle table-min table-cards mb-0"><thead><tr><th>زمان شمسی</th><th>رویداد</th><th>متریال / ابعاد</th><th>تغییر</th><th>برنامه / علت</th></tr></thead><tbody>{% for e in page %}<tr><td class="text-nowrap num" data-label="زمان">{{ e.created_at_jalali }}</td><td data-label="رویداد">{{ e.get_event_type_display }}</td><td data-label="متریال">{{ e.material.name }} — <span class="num">{{ e.width }}×{{ e.height }}</span> mm {% if e.is_offcut %}<span class="badge-status is-warn">پرت</span>{% else %}<span class="badge-status is-info">کامل</span>{% endif %}</td><td class="num" data-label="تغییر">{{ e.quantity_delta }}</td><td data-label="برنامه / علت">{% if e.plan_id %}<a href="{% url 'cutting:plan_detail' e.plan_id %}">برنامه #{{ e.plan_id }}</a>{% endif %} {{ e.note }}{% if e.created_by %}<div class="small text-muted">{{ e.created_by }}</div>{% endif %}</td></tr>{% empty %}<tr><td colspan="5" class="text-center text-muted py-4">رویدادی پیدا نشد.</td></tr>{% endfor %}</tbody></table></div>
-    <div class="card-footer d-flex justify-content-between align-items-center"><span class="num">{{ page.number }}/{{ page.paginator.num_pages }} — {{ page.paginator.count }} رویداد</span><div class="d-flex gap-2">{% if page.has_previous %}<a class="btn btn-sm btn-outline-secondary icon-btn" aria-label="صفحهٔ قبلی" title="قبلی" href="?{% if pagination_query %}{{ pagination_query }}&amp;{% endif %}page={{ page.previous_page_number }}"><i class="bi bi-chevron-right"></i></a>{% endif %}{% if page.has_next %}<a class="btn btn-sm btn-outline-secondary icon-btn" aria-label="صفحهٔ بعدی" title="بعدی" href="?{% if pagination_query %}{{ pagination_query }}&amp;{% endif %}page={{ page.next_page_number }}"><i class="bi bi-chevron-left"></i></a>{% endif %}</div></div>
+  <div class="px-3 py-3">
+    <div class="card"><div class="table-responsive"><table class="table table-sm align-middle table-min table-cards mb-0"><thead><tr><th>زمان شمسی</th><th>رویداد</th><th>متریال / ابعاد</th><th class="td-num">تغییر</th><th><span class="visually-hidden">جزئیات</span></th></tr></thead><tbody>
+      {% for e in page %}
+        {% capture row_cells %}
+          <td class="num text-nowrap" data-label="زمان">{{ e.created_at_jalali }}</td>
+          <td data-label="رویداد">{% if e.event_type == 'consume' %}<span class="badge-status is-ok">مصرف</span>{% elif e.event_type == 'offcut' %}<span class="badge-status is-warn">پرت</span>{% elif e.event_type == 'receive' %}<span class="badge-status is-info">ورود</span>{% elif e.event_type == 'scrap' %}<span class="badge-status is-bad">اسقاط</span>{% else %}{{ e.get_event_type_display }}{% endif %}</td>
+          <td data-label="متریال">{{ e.material.name }} — <span class="num">{{ e.width }}×{{ e.height }}</span> mm</td>
+          <td class="td-num num" data-label="تغییر">{{ e.quantity_delta }}</td>
+        {% endcapture %}
+        {% capture row_details %}
+          <div class="small d-flex flex-wrap gap-3">
+            {% if e.plan_id %}<span><a href="{% url 'cutting:plan_detail' e.plan_id %}">برنامه #{{ e.plan_id }}</a></span>{% endif %}
+            <span>{{ e.note }}</span>
+            {% if e.created_by %}<span class="help">{{ e.created_by }}</span>{% endif %}
+          </div>
+        {% endcapture %}
+        {% include 'cutting/_table_row.html' with row_pk=e.pk row_colspan=5 row_expand_title='برنامه و علت' %}
+      {% empty %}<tr><td colspan="5" class="text-center help py-4">رویدادی پیدا نشد.</td></tr>{% endfor %}
+    </tbody></table></div>
+      <div class="card-footer d-flex justify-content-between align-items-center"><span class="num help">{{ page.number }}/{{ page.paginator.num_pages }} — {{ page.paginator.count }} رویداد</span><div class="d-flex gap-2">{% if page.has_previous %}<a class="btn btn-sm btn-outline-secondary icon-btn" aria-label="صفحهٔ قبلی" title="قبلی" href="?{% if pagination_query %}{{ pagination_query }}&amp;{% endif %}page={{ page.previous_page_number }}"><i class="bi bi-chevron-right" aria-hidden="true"></i></a>{% endif %}{% if page.has_next %}<a class="btn btn-sm btn-outline-secondary icon-btn" aria-label="صفحهٔ بعدی" title="بعدی" href="?{% if pagination_query %}{{ pagination_query }}&amp;{% endif %}page={{ page.next_page_number }}"><i class="bi bi-chevron-left" aria-hidden="true"></i></a>{% endif %}</div></div>
+    </div>
   </div>
 </div>
 {% endblock %}
+{% block extra_js %}<script src="{% static 'cutting/ui.js' %}"></script>{% endblock %}

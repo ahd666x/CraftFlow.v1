@@ -1,8 +1,7 @@
-/* تنظیمات برش + پیش‌نمایش نیاز مواد. صف سفارش‌ها و جدول قطعات به فضای کاری
- * (workspace.js) منتقل شده‌اند؛ این اسکریپت انتخاب سفارش‌ها را از hidden
- * inputs فرم می‌خواند و با رویدادهای ws:selection-changed / ws:specs-changed
- * پیش‌نمایش را تازه می‌کند. رفتار پیش‌نمایش و قفل دکمهٔ «محاسبه و رزرو»
- * دست‌نخورده مانده است.
+/* پیش‌نمایش نیاز مواد v2 — کارت جدا نیست؛ verdict در نوار پایین ثابت و
+ * جزئیات هر متریال در پنل بالاآمدهٔ «پیش‌نمایش نیاز مواد». انتخاب سفارش‌ها از
+ * hidden inputs فرم با رویدادهای ws:selection-changed / ws:specs-changed تازه
+ * می‌شود. رفتار پیش‌نمایش و قفل دکمهٔ «محاسبه و رزرو» دست‌نخورده مانده است.
  */
 (() => {
   const form = document.getElementById('planning-form');
@@ -13,6 +12,9 @@
   const stockPolicies = [...document.querySelectorAll('input[name="stock_policy"]')];
   const cncUseOffcuts = document.querySelector('input[name="cnc_use_offcuts"]');
   const submit = document.getElementById('plan-submit');
+  const verdict = document.getElementById('preview-verdict');
+  const toggle = document.getElementById('preview-toggle');
+  const pop = document.getElementById('preview-pop');
   let timer = null;
   let controller = null;
 
@@ -24,9 +26,8 @@
     [...form.querySelectorAll('input[name="order_ids"]')].map(input => input.value);
 
   function setCounts(data) {
-    document.getElementById('selected-count').textContent = fmt(data.selected_order_count);
-    document.getElementById('sticky-selection-count').textContent = `${fmt(data.selected_order_count)} سفارش`;
-    document.getElementById('selected-pieces').textContent = fmt(data.piece_count);
+    document.getElementById('sticky-selection-count').textContent =
+      `${fmt(data.selected_order_count)} سفارش · ${fmt(data.piece_count)} قطعه`;
   }
 
   function paint(data) {
@@ -34,7 +35,6 @@
     const holder = document.getElementById('preview-materials');
     const empty = document.getElementById('preview-empty');
     const error = document.getElementById('preview-error');
-    const verdict = document.getElementById('preview-verdict');
     holder.replaceChildren();
     error.hidden = true;
     empty.hidden = data.materials.length > 0;
@@ -46,8 +46,8 @@
       const card = document.createElement('div');
       card.className = `preview-material ${item.fits ? 'good' : 'bad'}`;
       const badge = item.fits
-        ? '<span class="badge text-bg-success" title="چیدمان شدنی">آماده</span>'
-        : '<span class="badge text-bg-danger" title="کمبود موجودی یا عدم تطبیق">کمبود</span>';
+        ? '<span class="badge-status is-ok" title="چیدمان شدنی">آماده</span>'
+        : '<span class="badge-status is-bad" title="کمبود موجودی یا عدم تطبیق">کمبود</span>';
       const estimate = item.estimated_sheets === null ? 'نامشخص' : fmt(item.estimated_sheets);
       const basis = item.estimate_is_exact ? 'بر پایه چیدمان الگوریتم' : 'تقریبی';
       const extra = item.estimated_additional_sheets === null ? '—' : fmt(item.estimated_additional_sheets);
@@ -86,7 +86,7 @@
       submit.disabled = true;
       if (!ids.length) {
         paint({ selected_order_count: 0, piece_count: 0, materials: [] });
-        document.getElementById('preview-state').textContent = 'سفارش انتخاب کنید';
+        document.getElementById('preview-state').textContent = '';
         return;
       }
       if (controller) controller.abort();
@@ -121,14 +121,23 @@
     }, 600);
   }
 
-  /* خلاصهٔ یک‌خطی تنظیمات کنار دکمهٔ کشو + aria-expanded کشوها (نمایش‌محور) */
-  function paintSettingsBrief() {
-    const brief = document.getElementById('settings-brief');
-    if (!brief) return;
-    const policy = stockPolicies.find(input => input.checked);
-    const policyLabel = policy ? (policy.closest('label')?.querySelector('.form-check-label')?.textContent || '').trim() : '';
-    brief.textContent = ` — تیغه ${kerf.value || '—'}${policyLabel ? ` · ${policyLabel}` : ''}`;
+  /* پنل بالاآمدهٔ پیش‌نمایش — فقط با کلیک، بیرون از آن بسته می‌شود */
+  function setPop(open) {
+    if (!pop || !toggle) return;
+    pop.hidden = !open;
+    toggle.setAttribute('aria-expanded', String(open));
   }
+  toggle?.addEventListener('click', () => setPop(pop.hidden));
+  document.addEventListener('click', event => {
+    if (!pop || pop.hidden) return;
+    if (event.target.closest('#preview-pop') || event.target.closest('#preview-toggle')) return;
+    setPop(false);
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && pop && !pop.hidden) setPop(false);
+  });
+
+  /* aria-expanded کشوهای کناری سینک می‌ماند */
   document.querySelectorAll('[data-bs-toggle="offcanvas"]').forEach(button => {
     const target = document.querySelector(button.dataset.bsTarget || '');
     if (!target) return;
@@ -138,14 +147,14 @@
 
   document.addEventListener('ws:selection-changed', updatePreview);
   document.addEventListener('ws:specs-changed', updatePreview);
-  stockPolicies.forEach(input => input.addEventListener('change', () => { updatePreview(); paintSettingsBrief(); }));
-  kerf.addEventListener('input', () => { updatePreview(); paintSettingsBrief(); });
+  stockPolicies.forEach(input => input.addEventListener('change', updatePreview));
+  kerf.addEventListener('input', updatePreview);
   planningModes.forEach(input => input.addEventListener('change', updatePreview));
+  cncUseOffcuts?.addEventListener('change', updatePreview);
   form.addEventListener('submit', () => {
     submit.disabled = true;
     submit.querySelector('.spinner-border').hidden = false;
     submit.querySelector('.submit-label').textContent = 'در حال محاسبه…';
   });
   updatePreview();
-  paintSettingsBrief();
 })();

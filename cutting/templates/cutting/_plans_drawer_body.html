@@ -1,0 +1,20 @@
+{# بدنهٔ کشوی برنامه‌ها — جست‌وجو + چیپ وضعیت + برنامه‌های در انتظار #}
+<form method="get" action="{% url 'cutting:plans' %}" class="d-grid gap-2 mb-3">
+  <input class="form-control form-control-sm" name="q" value="{{ query }}" placeholder="جست‌وجو: برنامه، سفارش، مشتری" aria-label="جست‌وجوی برنامه‌ها">
+  <div class="d-flex flex-wrap gap-1">
+    <a class="badge-status" href="{% url 'cutting:plans' %}">همه</a>
+    {% for value, label in plan_statuses %}<a class="badge-status {% if value == 'planned' %}is-info{% elif value == 'cut' %}is-ok{% elif value == 'partial' %}is-warn{% endif %}" href="?status={{ value }}">{{ label }}</a>{% endfor %}
+  </div>
+  <button class="btn btn-sm btn-outline-primary">اعمال</button>
+</form>
+<div class="d-grid gap-2">
+  {% for p in active_plans %}
+  <a class="plan-mini d-flex align-items-center gap-2 border rounded p-2 text-decoration-none" href="{% url 'cutting:plan_detail' p.pk %}">
+    <b class="num">#{{ p.pk }}</b>
+    <span class="badge-status is-planned">{{ p.get_status_display }}</span>
+    <span class="num ms-auto help">{{ p.reserved_sheet_count }} ورق</span>
+    <i class="bi bi-chevron-left text-muted" aria-hidden="true"></i>
+  </a>
+  {% empty %}<p class="help mb-0">برنامهٔ در انتظاری نیست.</p>{% endfor %}
+</div>
+<a class="btn btn-sm btn-outline-secondary w-100 mt-2" href="{% url 'cutting:plans' %}">همهٔ برنامه‌ها</a>

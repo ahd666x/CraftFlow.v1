@@ -1,616 +1,454 @@
 /* ============================================================
-   CraftFlow Cutting Station — light, clean, unified
-   هم‌راستا با پوستهٔ اصلی سایت (روشن). همهٔ کلاس‌های قراردادی
-   (هوک‌های JS و تست‌ها) حفظ شده‌اند.
+   CraftFlow Cutting Station — Design System v2 (بازطراحی کامل)
+   قواعد: فاصله ۴/۸/۱۶/۲۴ · یک radius · رنگ فقط برای معنا (توکن --st-*)
+   جدول بدون خط عمودی، ردیف ۴۸px، حداکثر ۴ ستون + ردیف بازشونده
    ============================================================ */
 
 :root{
-  --st-bg:#f4f6fa; --st-panel:#ffffff; --st-panel-2:#f8fafc; --st-sunken:#f1f5f9;
-  --st-line:#e2e8f0; --st-line-soft:#eef2f7;
-  --st-ink:#0f172a; --st-muted:#64748b; --st-faint:#94a3b8;
-  --st-accent:#2563eb; --st-accent-soft:#eff6ff;
-  --st-green:#16a34a; --st-amber:#d97706; --st-red:#dc2626; --st-cyan:#0284c7;
-  --st-canvas:#edf1f7; --st-sheet:#fffdf5;
-  --st-radius:10px;
+  --st-bg:#f5f6f8; --st-panel:#ffffff; --st-sunken:#f6f7f9;
+  --st-line:#e4e7ec; --st-line-soft:#eef0f4;
+  --st-ink:#101828; --st-muted:#667085; --st-faint:#98a2b3;
+  --st-accent:#2563eb; --st-accent-soft:#eff4ff;
+  --st-green:#16a34a; --st-green-soft:#e9f7ef;
+  --st-amber:#d97706; --st-amber-soft:#fdf3e3;
+  --st-red:#dc2626; --st-red-soft:#fdeeee;
+  --st-canvas:#eef1f6;
+  --st-radius:8px;
+  --sp-1:4px; --sp-2:8px; --sp-3:16px; --sp-4:24px;
+  --bar-h:48px; --head-h:52px; --dock-h:58px;
+  --st-shadow:0 8px 28px rgba(16,24,40,.14);
 }
 
-/* ============================================================
-   shared minimal components — افشای تدریجی (کدام لایه، یک کلیک)
-   .kpi / .badge-status / .table-min / .row-expand
-   ============================================================ */
-.kpi{display:flex;flex-direction:column;align-items:center;gap:.05rem;padding:0 .85rem;border-inline-start:1px solid var(--st-line-soft)}
-.kpi:first-child{border-inline-start:0}
-.kpi b{font-size:1.05rem;font-weight:800;color:var(--st-ink);line-height:1.25}
-.kpi span{font-size:.64rem;color:var(--st-muted);white-space:nowrap}
+/* ---------- base ---------- */
+body.cutting-station{background:var(--st-bg)}
+body.cutting-station .main-content{padding:0}
+.station{color:var(--st-ink);font-size:14px;min-height:calc(100vh - var(--bar-h));padding-bottom:calc(var(--dock-h) + var(--sp-4))}
+.station .num{direction:ltr;unicode-bidi:plaintext;font-variant-numeric:tabular-nums}
+.station :focus-visible{outline:2px solid var(--st-accent);outline-offset:2px;border-radius:4px}
+.station ::-webkit-scrollbar{height:8px;width:8px}
+.station ::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:4px}
+.station ::-webkit-scrollbar-track{background:transparent}
+.station h1{font-size:18px;font-weight:800;margin:0;letter-spacing:-.01em}
+.station .help{font-size:12px;color:var(--st-muted)}
+@media (prefers-reduced-motion:reduce){
+  .station *,.station *::before,.station *::after{transition:none!important;animation:none!important}
+}
 
-.badge-status{display:inline-flex;align-items:center;gap:.3rem;font-size:.7rem;font-weight:700;border-radius:999px;padding:.15rem .55rem;background:var(--st-sunken);border:1px solid var(--st-line);color:var(--st-muted);white-space:nowrap}
-.badge-status.is-ok,.badge-status.is-cut{color:#166534;background:#f0fdf4;border-color:#bbf7d0}
-.badge-status.is-info,.badge-status.is-planned{color:#1d4ed8;background:var(--st-accent-soft);border-color:#bfdbfe}
-.badge-status.is-warn,.badge-status.is-partial{color:#b45309;background:#fffbeb;border-color:#fde68a}
-.badge-status.is-bad{color:#b91c1c;background:#fef2f2;border-color:#fecaca}
-.badge-status.is-cancelled{color:var(--st-muted)}
+/* ---------- نوار ایستگاه — تنها لایهٔ ناوبری ---------- */
+.cutting-nav{
+  position:sticky;top:0;z-index:40;height:var(--bar-h);
+  display:flex;align-items:center;gap:var(--sp-2);
+  padding:0 var(--sp-3);background:var(--st-panel);
+  border-bottom:1px solid var(--st-line);
+}
+.cutting-nav .nav-item{
+  display:inline-flex;align-items:center;min-height:32px;
+  padding:.2rem .8rem;border-radius:999px;border:0;background:transparent;
+  color:var(--st-muted);font-size:13.5px;font-weight:700;text-decoration:none;white-space:nowrap;
+}
+.cutting-nav .nav-item:hover{color:var(--st-ink);background:var(--st-sunken)}
+.cutting-nav .nav-item[aria-current="page"]{color:var(--st-accent);background:var(--st-accent-soft)}
+.cutting-nav .nav-user{
+  margin-inline-start:auto;display:inline-flex;align-items:center;gap:.35rem;
+  color:var(--st-faint);font-size:12px;text-decoration:none;min-height:32px;padding:0 .4rem;border-radius:6px;
+}
+.cutting-nav .nav-user:hover{color:var(--st-muted)}
+.cutting-nav .nav-user .bi{font-size:1rem}
 
-/* جدول مینیمال: بدون خط عمودی، هدر سبک، فقط خط افقی ظریف */
-.table-min thead th{background:transparent;border-bottom:1px solid var(--st-line);border-top:0;font-size:.72rem;font-weight:700;color:var(--st-muted);padding:.55rem .75rem;white-space:nowrap}
-.table-min td{border-top:0;border-bottom:1px solid var(--st-line-soft);padding:.65rem .75rem;background:transparent!important;color:var(--st-ink)}
-.table-min tbody tr:hover td{background:var(--st-panel-2)!important}
+/* ---------- سربرگ صفحه — یک خط ---------- */
+.page-head{
+  display:flex;align-items:center;flex-wrap:wrap;gap:var(--sp-2);
+  min-height:var(--head-h);padding:var(--sp-2) var(--sp-3);
+  background:var(--st-panel);border-bottom:1px solid var(--st-line);
+}
+.page-head .head-actions{display:flex;align-items:center;gap:var(--sp-1);margin-inline-start:auto}
+.page-head .h1-sub{font-size:12px;color:var(--st-muted);font-weight:600}
 
-/* الگوی ردیف بازشونده — یک بار تعریف، همه‌جا بازاستفاده */
-.row-expand-toggle{flex:none;width:30px;height:30px;border:0;background:transparent;color:var(--st-muted);border-radius:.4rem;display:inline-flex;align-items:center;justify-content:center;padding:0}
+/* ---------- سگمنت (زیربخش درون صفحه) ---------- */
+.seg{display:inline-flex;align-items:center;gap:2px;background:var(--st-sunken);border:1px solid var(--st-line);border-radius:999px;padding:2px;max-width:100%;overflow-x:auto;scrollbar-width:none}
+.seg::-webkit-scrollbar{display:none}
+.seg .seg-opt{position:relative;display:inline-flex;align-items:center;gap:.3rem;border:0;background:transparent;color:var(--st-muted);font-size:12.5px;font-weight:700;padding:.32rem .75rem;border-radius:999px;text-decoration:none;white-space:nowrap;min-height:32px;cursor:pointer}
+.seg .seg-opt:hover{color:var(--st-ink)}
+.seg input[type="radio"],.seg input[type="checkbox"]{position:absolute;inset:0;opacity:0;margin:0;cursor:pointer}
+.seg .seg-opt:has(input:checked),.seg a[aria-current="page"]{background:var(--st-panel);color:var(--st-accent);box-shadow:0 1px 2px rgba(16,24,40,.12)}
+.seg .seg-opt:has(input:focus-visible){outline:2px solid var(--st-accent);outline-offset:1px}
+/* چک‌باکس «پرت» فقط در حالت CNC دیده می‌شود (رفتار فرم ثابت) */
+.cnc-offcut-toggle{display:none!important}
+.page-head:has(input[name="planning_mode"][value="cnc_sheets"]:checked) .cnc-offcut-toggle{display:inline-flex!important;align-items:center;gap:.35rem;margin:0}
+.cnc-offcut-toggle .form-check-input{width:2.75rem;height:1.4rem}
+
+/* ---------- badge وضعیت — رنگ فقط معنایی ---------- */
+.badge-status{display:inline-flex;align-items:center;gap:.3rem;font-size:11.5px;font-weight:700;border-radius:999px;padding:.14rem .55rem;background:var(--st-sunken);border:1px solid var(--st-line);color:var(--st-muted);white-space:nowrap;line-height:1.6}
+.badge-status .dot{width:7px;height:7px;border-radius:50%;background:currentColor;flex:none}
+.badge-status.is-ok{color:#166534;background:var(--st-green-soft);border-color:#b7e4c7}
+.badge-status.is-info{color:#1d4ed8;background:var(--st-accent-soft);border-color:#c6d9fb}
+.badge-status.is-warn{color:#b45309;background:var(--st-amber-soft);border-color:#f4dcbb}
+.badge-status.is-bad{color:#b91c1c;background:var(--st-red-soft);border-color:#f6c8c8}
+.badge-status.is-mute{color:var(--st-muted)}
+
+/* ---------- KPI یک‌خطی (≤۴ عدد) ---------- */
+.kpi-line{display:flex;align-items:center;flex-wrap:wrap;gap:0 var(--sp-3);padding:0 var(--sp-3);min-height:44px;background:var(--st-panel);border-bottom:1px solid var(--st-line)}
+.kpi-line .kpi{display:inline-flex;align-items:baseline;gap:.35rem;padding:var(--sp-1) 0}
+.kpi-line .kpi+.kpi{border-inline-start:1px solid var(--st-line-soft);padding-inline-start:var(--sp-3)}
+.kpi-line .kpi b{font-size:16px;font-weight:800;line-height:1.2}
+.kpi-line .kpi span{font-size:12px;color:var(--st-muted);white-space:nowrap}
+.kpi-line .kpi a{text-decoration:none;color:inherit}
+.kpi-line .kpi a:hover b{color:var(--st-accent)}
+
+/* ---------- دکمه‌ها ---------- */
+.station .btn{border-radius:var(--st-radius);font-weight:700}
+.station .btn,.station .icon-btn{min-height:38px}
+.station .btn-sm{min-height:32px}
+.station .btn-primary{--bs-btn-bg:var(--st-accent);--bs-btn-border-color:var(--st-accent);--bs-btn-hover-bg:#1d4ed8;--bs-btn-hover-border-color:#1d4ed8}
+.station .btn-success{--bs-btn-bg:var(--st-green);--bs-btn-border-color:var(--st-green);--bs-btn-hover-bg:#15803d;--bs-btn-hover-border-color:#15803d}
+.station .btn-danger{--bs-btn-bg:var(--st-red);--bs-btn-border-color:var(--st-red);--bs-btn-hover-bg:#b91c1c;--bs-btn-hover-border-color:#b91c1c}
+.station .btn-outline-primary{--bs-btn-color:var(--st-accent);--bs-btn-border-color:#bfd3fa;--bs-btn-hover-bg:var(--st-accent);--bs-btn-hover-border-color:var(--st-accent)}
+.station .btn-outline-secondary{--bs-btn-color:var(--st-muted);--bs-btn-border-color:#dbe3ec;--bs-btn-hover-bg:var(--st-sunken);--bs-btn-hover-color:var(--st-ink);--bs-btn-hover-border-color:#c3ceda}
+.station .btn-outline-danger{--bs-btn-color:var(--st-red);--bs-btn-border-color:#f6c8c8;--bs-btn-hover-bg:var(--st-red);--bs-btn-hover-border-color:var(--st-red)}
+.station .icon-btn{width:40px;height:40px;padding:0;display:inline-flex;align-items:center;justify-content:center;line-height:1}
+.station .icon-btn .bi{font-size:1.05rem}
+.station .btn.icon-btn{--bs-btn-padding-x:0;--bs-btn-padding-y:0}
+
+/* ---------- فرم‌ها ---------- */
+.station .form-label{color:var(--st-muted);font-size:12.5px;font-weight:700;margin-bottom:.25rem}
+.station .form-control,.station .form-select{border-color:#dbe3ec;border-radius:var(--st-radius);min-height:38px;font-size:13.5px;color:var(--st-ink);background:var(--st-panel)}
+.station .form-control::placeholder{color:#a8b3c1}
+.station .form-control:focus,.station .form-select:focus{border-color:var(--st-accent);box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+.station .form-check-input{border-color:#cbd5e1;width:2.75rem;height:1.4rem;flex:none}
+.station .form-check-input[type="checkbox"]:not(.cell-turn){border-radius:999px}
+.station .form-check-input:checked{background-color:var(--st-accent);border-color:var(--st-accent)}
+.station .form-check-input[type="radio"]{width:1.15rem;height:1.15rem;border-radius:50%}
+.station .input-search{position:relative;display:inline-flex;align-items:center}
+.station .input-search .bi-search{position:absolute;inset-inline-start:.6rem;color:var(--st-faint);pointer-events:none}
+.station .input-search .form-control{padding-inline-start:2rem;min-width:11rem}
+
+/* ---------- کارت و جداکننده ---------- */
+.station .card{border:1px solid var(--st-line);border-radius:var(--st-radius);box-shadow:none;color:var(--st-ink)}
+.station .card-header,.station .card-footer{background:var(--st-panel);border-color:var(--st-line-soft)}
+.divider{height:1px;background:var(--st-line-soft);border:0}
+
+/* ---------- جدول مینیمال: بدون خط عمودی، ردیف ۴۸px، عدد چپ‌چین ---------- */
+.table-min thead th{background:transparent;border:0;border-bottom:1px solid var(--st-line);font-size:11.5px;font-weight:700;color:var(--st-muted);padding:.5rem .75rem;white-space:nowrap}
+.table-min td{border:0;border-bottom:1px solid var(--st-line-soft);padding:.55rem .75rem;background:transparent!important;color:var(--st-ink);height:48px}
+.table-min tbody tr:hover td{background:var(--st-sunken)!important}
+.table-min .td-num{direction:ltr;text-align:left;font-variant-numeric:tabular-nums;unicode-bidi:plaintext}
+.table-min a{text-decoration:none}
+.table-min a:hover{text-decoration:underline}
+.td-lead{font-weight:700}
+.td-actions{text-align:left;white-space:nowrap}
+
+/* ردیف بازشونده — الگوی مشترک */
+.row-expand-toggle{flex:none;width:40px;height:40px;border:0;background:transparent;color:var(--st-muted);border-radius:var(--st-radius);display:inline-flex;align-items:center;justify-content:center;padding:0}
 .row-expand-toggle:hover{background:var(--st-sunken);color:var(--st-ink)}
 .row-expand-toggle i{transition:transform .15s ease}
 .row-expand-toggle[aria-expanded="true"] i{transform:rotate(180deg)}
 .row-expand-toggle[aria-expanded="true"]{color:var(--st-accent)}
-tr.row-expand-details>td{background:var(--st-sunken);border-bottom:1px solid var(--st-line);padding:.6rem .9rem}
-tr.row-expand-details[hidden]{display:none}
+tr.row-expand-details>td{background:var(--st-sunken);border-bottom:1px solid var(--st-line);padding:var(--sp-2) var(--sp-3);height:auto}
 @media (prefers-reduced-motion:reduce){.row-expand-toggle i{transition:none}}
-
-/* سگمنت زیرناوبری بخش‌ها — یک کامپوننت برای انبار/تنظیمات/برش */
-.segmented-nav{display:inline-flex;align-items:center;gap:.15rem;background:var(--st-sunken);border:1px solid var(--st-line);border-radius:999px;padding:.15rem;max-width:100%;overflow-x:auto;scrollbar-width:none}
-.segmented-nav a{display:inline-flex;align-items:center;gap:.3rem;border:0;background:transparent;color:var(--st-muted);font-size:.76rem;font-weight:600;padding:.32rem .7rem;border-radius:999px;text-decoration:none;white-space:nowrap;min-height:32px}
-.segmented-nav a:hover{color:var(--st-ink)}
-.segmented-nav a[aria-current="page"]{background:var(--st-panel);color:var(--st-accent);font-weight:800;box-shadow:0 1px 2px rgba(15,23,42,.1)}
-
-/* دکمهٔ آیکنی مربع (چاپ/لغو/اقدام) — هدف لمسی ≥40px */
-.icon-btn{--bs-btn-padding-x:.42rem;--bs-btn-padding-y:.42rem;line-height:1.1}
-.icon-btn .bi{font-size:1.02rem}
-
-/* لایهٔ «جزئیات» کنار عنوان — پاپ‌اور سبک روی details */
-.detail-pop{position:relative;display:inline-block}
-.detail-pop>summary{list-style:none;display:inline-flex;align-items:center;gap:.3rem;font-size:.75rem;font-weight:700;color:var(--st-muted);border:1px solid var(--st-line);border-radius:999px;padding:.28rem .7rem;background:var(--st-panel);cursor:pointer;white-space:nowrap}
-.detail-pop>summary::-webkit-details-marker{display:none}
-.detail-pop>summary:hover{color:var(--st-ink);border-color:#c3ceda}
-.detail-pop[open]>summary{color:var(--st-accent);border-color:#bfd3fa;background:var(--st-accent-soft)}
-.detail-pop-panel{position:absolute;z-index:30;top:calc(100% + .4rem);inset-inline-start:0;min-width:15rem;max-width:min(24rem,88vw);background:var(--st-panel);border:1px solid var(--st-line);border-radius:.6rem;box-shadow:0 10px 32px rgba(15,23,42,.16);padding:.7rem .9rem;font-size:.78rem;line-height:1.8}
-
-/* KPI یک‌خطی (حداکثر ۴ عدد — عدد + برچسب یک‌کلمه‌ای) */
-.kpi-strip{display:flex;flex-wrap:wrap;align-items:stretch}
-.kpi small{font-size:.6rem;color:var(--st-faint);white-space:nowrap}
-.inventory-kpis{background:var(--st-panel);border:1px solid var(--st-line);border-radius:var(--st-radius);padding:.55rem .8rem;width:fit-content;max-width:100%}
-@media(max-width:767.98px){.inventory-kpis{width:100%}.inventory-kpis .kpi{flex:1 1 40%;justify-content:center}}
 
 /* جدول‌ها در موبایل: لیست کارتی — نه اسکرول افقی */
 @media(max-width:767.98px){
   .table-cards thead{display:none}
-  .table-cards tr{display:block;border:1px solid var(--st-line);border-radius:.6rem;margin-bottom:.55rem;background:var(--st-panel);padding:.3rem .45rem}
+  .table-cards tr{display:block;border:1px solid var(--st-line);border-radius:var(--st-radius);margin-bottom:var(--sp-2);background:var(--st-panel);padding:.3rem .45rem}
   .table-cards tbody tr.row-expand-details{padding:0}
-  .table-cards td{display:flex;justify-content:space-between;align-items:center;gap:.75rem;border:0;padding:.32rem .35rem;text-align:end}
-  .table-cards td[data-label]::before{content:attr(data-label);color:var(--st-muted);font-size:.68rem;font-weight:700;flex:none}
-  .table-cards td.td-lead{padding-block:.45rem}
+  .table-cards td{display:flex;justify-content:space-between;align-items:center;gap:.75rem;border:0;padding:.32rem .35rem;text-align:end;height:auto}
+  .table-cards td[data-label]::before{content:attr(data-label);color:var(--st-muted);font-size:11.5px;font-weight:700;flex:none}
   .table-cards td.td-lead::before{content:none}
+  .table-cards td.td-expand{justify-content:flex-end}
 }
 
-/* کشوهای کناری (تنظیمات / برنامه‌ها) هم‌راستا با پوسته */
-.offcanvas.cut-drawer{background:var(--st-panel);color:var(--st-ink);border-inline-start:1px solid var(--st-line);width:min(21.5rem,92vw)}
-.cut-drawer .offcanvas-header{border-bottom:1px solid var(--st-line-soft)}
-.cut-drawer .offcanvas-title{font-size:.9rem;font-weight:800}
-.cut-drawer .form-label{font-size:.78rem}
+/* ---------- پاپ‌اور سبک (details) ---------- */
+.detail-pop{position:relative;display:inline-block}
+.detail-pop>summary{list-style:none;display:inline-flex;align-items:center;gap:.3rem;font-size:12.5px;font-weight:700;color:var(--st-muted);border:1px solid var(--st-line);border-radius:999px;padding:.3rem .7rem;background:var(--st-panel);cursor:pointer;white-space:nowrap;min-height:34px}
+.detail-pop>summary::-webkit-details-marker{display:none}
+.detail-pop>summary:hover{color:var(--st-ink)}
+.detail-pop[open]>summary{color:var(--st-accent);border-color:#bfd3fa;background:var(--st-accent-soft)}
+.detail-pop-panel{position:absolute;z-index:30;top:calc(100% + .4rem);inset-inline-start:0;min-width:15rem;max-width:min(26rem,92vw);background:var(--st-panel);border:1px solid var(--st-line);border-radius:var(--st-radius);box-shadow:var(--st-shadow);padding:var(--sp-2) var(--sp-3);font-size:12.5px;line-height:1.9}
 
-/* ---------- station shell ---------- */
-.station{
-  color:var(--st-ink);
-  min-height:calc(100vh - 72px);
+/* ---------- کشوی کناری (offcanvas) ---------- */
+.offcanvas.cut-drawer{background:var(--st-panel);color:var(--st-ink);border-inline-start:1px solid var(--st-line);width:min(22rem,94vw)}
+.cut-drawer .offcanvas-header{border-bottom:1px solid var(--st-line-soft);padding:var(--sp-2) var(--sp-3)}
+.cut-drawer .offcanvas-title{font-size:14px;font-weight:800}
+.cut-drawer .offcanvas-body{padding:var(--sp-3)}
+.cut-drawer .form-check-label{font-size:13.5px}
+
+/* ---------- planner: صف سفارش‌ها ---------- */
+.queue{display:flex;flex-direction:column}
+.queue-row{
+  display:grid;grid-template-columns:40px minmax(9rem,1.35fr) minmax(5.5rem,.9fr) 118px 40px;
+  align-items:center;gap:var(--sp-2);min-height:48px;padding:var(--sp-1) var(--sp-3);
+  background:var(--st-panel);border-bottom:1px solid var(--st-line-soft);cursor:pointer;
 }
-.station .num{direction:ltr;unicode-bidi:plaintext;font-variant-numeric:tabular-nums}
-.station :focus-visible{outline:2px solid #93c5fd;outline-offset:2px;border-radius:4px}
-.station ::-webkit-scrollbar{height:8px;width:8px}
-.station ::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:4px}
-.station ::-webkit-scrollbar-track{background:transparent}
+.queue-row:hover{background:var(--st-sunken)}
+.queue-row.is-selected{background:var(--st-accent-soft)}
+.queue-row .q-check{display:flex;align-items:center;justify-content:center}
+.queue-row .q-check input{width:1.15rem;height:1.15rem;border-radius:6px}
+.queue-row.is-selected .q-check input{background-color:var(--st-accent);border-color:var(--st-accent)}
+.queue-row .q-order b{font-weight:800}
+.queue-row .q-order .q-cust{display:block;font-size:12px;color:var(--st-muted);max-width:16rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.queue-row .q-count{text-align:left;font-variant-numeric:tabular-nums;font-weight:700}
+.queue-row .q-count small{display:block;font-size:11.5px;color:var(--st-faint);font-weight:400}
+.queue-row .q-status{text-align:left}
+.queue-row .q-expand{display:flex;justify-content:flex-end}
+.queue-head{display:grid;grid-template-columns:40px minmax(9rem,1.35fr) minmax(5.5rem,.9fr) 118px 40px;gap:var(--sp-2);padding:var(--sp-1) var(--sp-3);font-size:11.5px;font-weight:700;color:var(--st-muted);border-bottom:1px solid var(--st-line);background:var(--st-panel)}
+.queue-details{background:var(--st-sunken);border-bottom:1px solid var(--st-line);padding:var(--sp-2) var(--sp-3) var(--sp-3)}
+.queue-details .qd-meta{display:flex;flex-wrap:wrap;gap:var(--sp-2) var(--sp-4);font-size:12px;color:var(--st-muted);margin-bottom:var(--sp-2)}
+.queue-details .qd-meta b{color:var(--st-ink)}
 
-/* ---------- light scoping of bootstrap ---------- */
-.station .card{border:1px solid var(--st-line);border-radius:var(--st-radius);box-shadow:none;color:var(--st-ink)}
-.station .card-header{background:var(--st-panel-2);border-bottom:1px solid var(--st-line-soft);color:var(--st-ink)}
-.station .card-footer{background:var(--st-panel-2);border-top:1px solid var(--st-line-soft);color:var(--st-muted)}
-.station .card-body{color:var(--st-ink)}
-.station .table{--bs-table-bg:transparent;--bs-table-color:var(--st-ink);color:var(--st-ink);border-color:var(--st-line-soft);margin-bottom:0}
-.station .table thead th{color:var(--st-muted);background:var(--st-panel-2);border-bottom:1px solid var(--st-line);font-size:.78rem;font-weight:700;white-space:nowrap}
-.station .table td{border-color:var(--st-line-soft);vertical-align:middle}
-.station .table tbody tr:hover>*{--bs-table-accent-bg:#f8fafc;color:var(--st-ink)}
-.station .form-label{color:var(--st-muted);font-size:.8rem;margin-bottom:.25rem}
-.station .form-control,.station .form-select{border-color:#dbe3ec;border-radius:.5rem;min-height:38px;font-size:.88rem;color:var(--st-ink)}
-.station .form-control::placeholder{color:#a8b3c1}
-.station .form-control:focus,.station .form-select:focus{border-color:var(--st-accent);box-shadow:0 0 0 .2rem rgba(37,99,235,.12)}
-.station .form-check-input{border-color:#cbd5e1}
-.station .form-check-input:checked{background-color:var(--st-accent);border-color:var(--st-accent)}
-.station .btn{border-radius:.55rem}
-.station .btn-primary{--bs-btn-bg:var(--st-accent);--bs-btn-border-color:var(--st-accent);--bs-btn-hover-bg:#1d4ed8;--bs-btn-hover-border-color:#1d4ed8}
-.station .btn-success{--bs-btn-bg:var(--st-green);--bs-btn-border-color:var(--st-green);--bs-btn-hover-bg:#15803d;--bs-btn-hover-border-color:#15803d}
-.station .btn-outline-primary{--bs-btn-color:var(--st-accent);--bs-btn-border-color:#bfd3fa;--bs-btn-hover-bg:var(--st-accent);--bs-btn-hover-border-color:var(--st-accent)}
-.station .btn-outline-secondary{--bs-btn-color:var(--st-muted);--bs-btn-border-color:#dbe3ec;--bs-btn-hover-bg:var(--st-sunken);--bs-btn-hover-color:var(--st-ink);--bs-btn-hover-border-color:#c3ceda}
-.station .btn-secondary{--bs-btn-bg:#eef2f7;--bs-btn-border-color:#e2e8f0;--bs-btn-color:#334155;--bs-btn-hover-bg:#e2e8f0;--bs-btn-hover-border-color:#cbd5e1}
-.station .badge{font-weight:600}
-.station .badge.bg-light,.station .badge.text-bg-light{background:var(--st-sunken)!important;color:#334155!important;border:1px solid var(--st-line)!important}
-.station .badge.bg-primary{background:var(--st-accent)!important}
-.station .alert{border-radius:.6rem;font-size:.86rem}
-.station .alert-secondary{background:var(--st-sunken);border-color:var(--st-line);color:var(--st-muted)}
-.station .modal-content{border:1px solid var(--st-line);border-radius:.8rem;color:var(--st-ink)}
-.station details>summary{cursor:pointer;color:var(--st-muted)}
-.station details>summary:hover{color:var(--st-ink)}
-.station .text-muted{color:var(--st-muted)!important}
-.station .progress{background:var(--st-sunken);border:1px solid var(--st-line-soft)}
-.station .progress-bar{background:var(--st-green);color:#fff;font-weight:700}
-.station fieldset{min-width:0}
-.station legend{color:var(--st-muted)}
+/* جدول قطعات درون ردیف بازشونده */
+.ws-part-table thead th{border-bottom:1px solid var(--st-line);font-size:11.5px;color:var(--st-muted);padding:.4rem .55rem;background:transparent}
+.ws-part-table td{border:0;border-bottom:1px solid var(--st-line-soft);height:48px;padding:.35rem .55rem;background:transparent!important}
+.ws-part-table .cell-input{min-height:34px;font-size:13px;padding:.15rem .45rem;text-align:left;direction:ltr;font-variant-numeric:tabular-nums}
+.ws-part-table .cell-material{min-width:9rem}
+.ws-part-table tr.ws-row-locked td{color:var(--st-muted)}
+.ws-part-table tr.ws-row-locked .cell-input{opacity:.6;background:var(--st-sunken)}
+.ws-chips{display:flex;flex-wrap:wrap;gap:var(--sp-1)}
+.ws-chip{border:1px solid var(--st-line);background:var(--st-panel);color:var(--st-muted);border-radius:999px;font-size:12px;font-weight:700;padding:.22rem .65rem;min-height:30px;white-space:nowrap}
+.ws-chip.active{background:var(--st-accent);border-color:var(--st-accent);color:#fff}
+.ws-cell-state{font-size:11.5px;margin-top:2px}
+.ws-lock-note{font-size:12px;color:var(--st-amber)}
+.ws-modal-backdrop{position:fixed;inset:0;z-index:1080;background:rgba(16,24,40,.42);display:flex;align-items:center;justify-content:center;padding:var(--sp-3)}
+.ws-modal{max-width:26rem;width:100%}
+.ws-empty{padding:var(--sp-4);text-align:center;color:var(--st-muted);font-size:13px}
+.pager{display:flex;align-items:center;gap:var(--sp-2);justify-content:center;padding:var(--sp-2) 0 0}
+.pager .btn{min-height:32px}
 
-/* ---------- station nav ---------- */
-.station-nav,.cutting-nav{
-  display:flex;flex-wrap:wrap;align-items:center;gap:.6rem 1rem;
-  background:var(--st-panel);
-  border:1px solid var(--st-line);border-radius:var(--st-radius);
-  padding:.45rem .6rem;margin-bottom:.8rem;
+/* نوار پایین ثابت صف برش */
+.bottom-bar{
+  position:fixed;inset-inline:0;bottom:0;z-index:45;height:var(--dock-h);
+  display:flex;align-items:center;flex-wrap:wrap;gap:var(--sp-2) var(--sp-3);
+  padding:var(--sp-1) var(--sp-3);background:var(--st-panel);
+  border-top:1px solid var(--st-line);
 }
-.station-brand{display:flex;align-items:center;gap:.5rem;font-weight:800;font-size:.92rem;color:var(--st-ink);white-space:nowrap;padding-inline-end:.9rem;border-inline-end:1px solid var(--st-line)}
-.station-brand i{color:var(--st-accent)}
-.station-brand-sub{font-size:.6rem;font-weight:700;letter-spacing:.14em;color:var(--st-faint)}
-.station-nav .nav-tabs{gap:.15rem;border-bottom:0;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:thin}
-.station-nav .nav-link{border:0;border-radius:.5rem;color:var(--st-muted);padding:.45rem .8rem;font-size:.85rem;white-space:nowrap}
-.station-nav .nav-link:hover{color:var(--st-ink);background:var(--st-sunken)}
-.station-nav .nav-link.active{color:#fff;background:var(--st-accent);font-weight:700}
-.station-nav-actions{display:flex;flex-wrap:wrap;gap:.35rem;margin-inline-start:auto}
-.station-nav-actions .btn{--bs-btn-padding-y:.28rem;--bs-btn-padding-x:.65rem;font-size:.76rem}
-.station-nav .btn-primary{--bs-btn-padding-y:.28rem;--bs-btn-padding-x:.65rem;font-size:.76rem}
+.bottom-bar .dock-summary{font-weight:800;font-size:13.5px;white-space:nowrap}
+.bottom-bar .dock-spacer{flex:1 1 auto}
+.bottom-bar .form-check-input:checked{background-color:var(--st-green)}
+.preview-verdict{display:inline-flex;align-items:center;gap:.35rem;font-size:13px;font-weight:800;white-space:nowrap}
+.preview-verdict.good{color:var(--st-green)}
+.preview-verdict.bad{color:var(--st-red)}
+.preview-verdict.neutral{color:var(--st-muted)}
+.preview-verdict a{font-size:12px;font-weight:700}
+.dock-trigger{width:40px;height:40px;border:1px solid var(--st-line);background:var(--st-panel);border-radius:var(--st-radius);color:var(--st-muted);display:inline-flex;align-items:center;justify-content:center}
+.dock-trigger[aria-expanded="true"]{background:var(--st-accent-soft);color:var(--st-accent);border-color:#bfd3fa}
 
-/* ---------- flow stepper ---------- */
-.cutting-stepper{flex-wrap:wrap;gap:.35rem;margin:0 0 .8rem;font-size:.74rem}
-.cutting-stepper-compact{margin:0;gap:.25rem;font-size:.68rem}
-.cutting-stepper-compact .cutting-step{padding:.1rem .45rem;gap:.25rem;border-radius:999px}
-.cutting-stepper-compact .cutting-step span{width:.95rem;height:.95rem;font-size:.6rem}
-.cutting-stepper-compact .cutting-step{background:transparent;border-color:transparent;color:var(--st-faint)}
-.cutting-stepper-compact .cutting-step.current{border-color:#bfd3fa;color:var(--st-accent);background:var(--st-accent-soft)}
-.cutting-step{display:flex;align-items:center;gap:.4rem;padding:.22rem .6rem;border:1px solid var(--st-line);border-radius:999px;color:var(--st-muted);background:var(--st-panel);text-decoration:none}
-.station a.cutting-step:hover{color:var(--st-ink);border-color:#c3ceda}
-.cutting-stepper .cutting-step span{display:inline-flex;width:1.2rem;height:1.2rem;align-items:center;justify-content:center;border-radius:50%;background:var(--st-sunken);color:var(--st-muted);font-weight:700;font-size:.68rem}
-.cutting-stepper .cutting-step.current{border-color:#bfd3fa;color:var(--st-accent);background:var(--st-accent-soft)}
-.cutting-stepper .cutting-step.current span{background:var(--st-accent);color:#fff}
-
-/* ---------- station head + KPI ---------- */
-.station-head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:.7rem;margin-bottom:.85rem}
-.station-head h1{font-size:1.2rem;font-weight:800;margin:0}
-.station-head .cf-sub{color:var(--st-muted);font-size:.8rem;margin:.2rem 0 0}
-.cf-page-actions{display:flex;gap:.5rem;flex-wrap:wrap}
-
-/* ============================================================
-   PLAN DETAIL (چیدمان / اجرا) — ایستگاه تمام‌قد: بدون اسکرول،
-   اطلاعات اضافه زیر لایه‌های پنهان (فهرست قطعات، ثبت نتیجه)
-   ============================================================ */
-.plan-bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.6rem 1.1rem;background:var(--st-panel);border:1px solid var(--st-line);border-radius:var(--st-radius);padding:.6rem .9rem;margin-bottom:.6rem}
-
-/* ---------- statusbar (bottom) ---------- */
-.station-statusbar{
-  position:sticky;bottom:.6rem;z-index:1030;
-  display:flex;flex-wrap:wrap;align-items:center;gap:.5rem 1rem;
-  background:rgba(255,255,255,.97);border:1px solid var(--st-line);border-radius:.7rem;
-  padding:.5rem .85rem;box-shadow:0 -4px 20px rgba(15,23,42,.08);
+/* پنل بالاآمدهٔ جزئیات متریال */
+.pop-panel{
+  position:fixed;z-index:46;bottom:calc(var(--dock-h) + var(--sp-2));
+  inset-inline:var(--sp-3);margin-inline-start:auto;max-width:30rem;
+  background:var(--st-panel);border:1px solid var(--st-line);border-radius:var(--st-radius);
+  box-shadow:var(--st-shadow);padding:var(--sp-3);max-height:min(56vh,26rem);overflow:auto;
 }
-.sb-progress{display:flex;align-items:center;gap:.6rem;font-size:.75rem;color:var(--st-muted);white-space:nowrap}
-.sb-progress b{color:var(--st-ink)}
-.station-statusbar .progress{width:9rem;height:.5rem}
-.station-statusbar .progress-bar{font-size:.55rem;line-height:.5rem;padding:0}
-.sb-pills{display:flex;flex-wrap:wrap;gap:.3rem}
-.sb-actions{display:flex;flex-wrap:wrap;gap:.4rem;margin-inline-start:auto;align-items:center}
-.sb-summary{font-size:.74rem;color:var(--st-muted);max-width:34rem;white-space:normal}
+.pop-panel h2{font-size:13.5px;font-weight:800;margin:0 0 var(--sp-2)}
+.preview-material{border:1px solid var(--st-line);border-radius:var(--st-radius);padding:var(--sp-2);margin-bottom:var(--sp-2)}
+.preview-material.good{border-inline-start:3px solid var(--st-green)}
+.preview-material.bad{border-inline-start:3px solid var(--st-red)}
+.preview-material-heading{display:flex;align-items:center;gap:var(--sp-2);font-size:13px;font-weight:700}
+.preview-material-heading .num{margin-inline-start:auto;color:var(--st-muted);font-weight:600;font-size:12.5px}
+.pm-details summary{font-size:12px;color:var(--st-accent);cursor:pointer;font-weight:700}
+.pm-details .small{font-size:12px;color:var(--st-muted)}
 
-/* ============================================================
-   PLANNER — یک ستون تمام‌عرض: سگمنت حالت، نوار پیش‌نمایش، فضای کاری؛
-   تنظیمات و برنامه‌ها در کشوهای کناری
-   ============================================================ */
-.planner-page{padding-bottom:6rem}
-.mode-segment{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem 1rem;padding:.55rem .75rem}
-.segmented-radio{display:inline-flex;gap:.15rem;background:var(--st-sunken);border:1px solid var(--st-line);border-radius:999px;padding:.15rem;max-width:100%;overflow-x:auto}
-.seg-opt{display:inline-flex;align-items:center;gap:.45rem;border:0;background:transparent;color:var(--st-muted);font-size:.78rem;padding:.3rem .8rem;border-radius:999px;cursor:pointer;min-height:36px;white-space:nowrap}
-.seg-opt input{width:.95rem;height:.95rem;flex:none}
-.seg-opt:has(input:checked){background:var(--st-panel);color:var(--st-accent);box-shadow:0 1px 2px rgba(15,23,42,.1)}
-.seg-opt:has(input:checked) b{color:var(--st-accent)}
-.seg-opt:has(input:focus-visible){outline:2px solid #93c5fd;outline-offset:2px}
-.seg-copy{display:inline-flex;flex-direction:column;line-height:1.3}
-.seg-copy b{font-size:.8rem;color:var(--st-ink);font-weight:700}
-.seg-copy small{color:var(--st-muted);font-size:.64rem}
-.seg-opt:has(input:checked) .seg-copy b{color:var(--st-accent)}
-.cnc-offcut-toggle{display:none;align-items:center;gap:.4rem;margin:0}
-.cnc-offcut-toggle .form-check-input{margin-top:0}
-#planning-form:has(input[name="planning_mode"][value="cnc_sheets"]:checked) .cnc-offcut-toggle{display:inline-flex}
-.panel-toolbar{display:flex;flex-wrap:wrap;gap:.5rem;align-items:end;padding:.65rem .8rem;border-bottom:1px solid var(--st-line-soft);background:var(--st-panel-2);border-radius:var(--st-radius) var(--st-radius) 0 0}
-.panel-title{font-size:.88rem;font-weight:800;color:var(--st-ink);margin:0}
+/* ---------- plan_detail: چیدمان ریل + نقشه ---------- */
+.plan-layout{display:grid;grid-template-columns:56px minmax(0,1fr);align-items:stretch}
+.sheet-rail{
+  grid-column:1;background:var(--st-panel);border-inline-end:1px solid var(--st-line);
+  padding:var(--sp-2) 0;overflow-y:auto;display:flex;flex-direction:column;align-items:center;gap:var(--sp-1);
+}
+.rail-group{display:flex;flex-direction:column;align-items:center;gap:var(--sp-1);padding-bottom:var(--sp-2);margin-bottom:var(--sp-1);border-bottom:1px solid var(--st-line-soft);width:100%}
+.rail-group:last-child{border-bottom:0}
+.rail-mat{border:0;background:transparent;color:var(--st-muted);font-size:10.5px;font-weight:800;padding:.2rem .1rem;max-width:52px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-radius:6px;min-height:28px}
+.rail-mat[aria-current="true"],.rail-mat:hover{color:var(--st-accent)}
+.rail-dot{
+  position:relative;width:40px;height:40px;border-radius:50%;border:2px solid var(--st-line);
+  background:var(--st-panel);color:var(--st-muted);font-weight:800;font-size:13px;font-variant-numeric:tabular-nums;
+  display:inline-flex;align-items:center;justify-content:center;cursor:pointer;
+}
+.rail-dot:hover{border-color:var(--st-faint)}
+.rail-dot.active{border-color:var(--st-accent);color:var(--st-accent);box-shadow:0 0 0 2px var(--st-accent-soft)}
+.rail-dot.outcome-used{border-color:var(--st-green);color:var(--st-green);background:var(--st-green-soft)}
+.rail-dot.outcome-untouched{border-color:var(--st-faint);color:var(--st-muted);background:var(--st-sunken)}
+.rail-dot.outcome-scrapped{border-color:var(--st-red);color:var(--st-red);background:var(--st-red-soft);text-decoration:line-through}
+.rail-dot .rail-flag{position:absolute;inset-block-end:-2px;inset-inline-start:-2px;width:14px;height:14px;border-radius:50%;background:var(--st-amber);color:#fff;font-size:9px;display:flex;align-items:center;justify-content:center}
+.plan-stage{grid-column:2;min-width:0;display:flex;flex-direction:column}
+.station-plan .plan-layout{height:calc(100dvh - var(--bar-h) - var(--head-h));grid-template-rows:minmax(0,1fr)}
+.station-plan.has-result .plan-layout{height:calc(100dvh - var(--bar-h) - var(--head-h) - var(--dock-h) - var(--sp-2))}
+.station-plan .plan-stage>[data-material-section]{flex:1;min-height:0;display:flex;flex-direction:column}
+.station-plan .sheet-panel{flex:1;min-height:0;display:flex;flex-direction:column}
+.station-plan .sheet-panel .map-meta{flex:none}
+.station-plan .sheet-panel .map-stage{flex:1;min-height:0}
 
-/* نوار پیش‌نمایش نیاز مواد — یک نگاه: verdict + دو عدد + کارت تک‌خطی متریال‌ها */
-.preview-strip-head{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem 1rem;padding:.55rem .8rem;border-bottom:1px solid var(--st-line-soft)}
-.preview-strip-head .preview-verdict{margin-inline-start:auto}
-.preview-strip-body{padding:.55rem .8rem;display:grid;gap:.45rem}
-.preview-mat-list{display:grid;gap:.4rem}
-.preview-verdict{border-radius:.5rem;padding:.45rem .75rem;font-weight:700;font-size:.84rem}
-.preview-verdict.neutral{background:var(--st-sunken);color:var(--st-muted)}
-.preview-verdict.good{background:#f0fdf4;color:#166534;border:1px solid #bbf7d0}
-.preview-verdict.bad{background:#fef2f2;color:#b91c1c;border:1px solid #fecaca}
-.preview-material{border:1px solid var(--st-line);border-radius:.55rem;padding:.5rem .7rem;background:var(--st-panel-2)}
-.preview-material.good{border-inline-start:4px solid var(--st-green)}
-.preview-material.bad{border-inline-start:4px solid var(--st-red)}
-.preview-material-heading{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.5rem}
-.preview-material .pm-details summary{font-size:.72rem;cursor:pointer;color:var(--st-muted);margin-top:.25rem}
-.preview-material .pm-details[open] summary{color:var(--st-accent)}
-.plan-mini{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem;padding:.5rem .65rem;border:1px solid var(--st-line);border-radius:.55rem;text-decoration:none;color:var(--st-ink);font-size:.8rem;background:var(--st-panel)}
-.plan-mini:hover{border-color:#c3ceda;background:var(--st-panel-2)}
-.cut-map-wrap{background:var(--st-canvas);border:1px solid var(--st-line);border-radius:.6rem;padding:.6rem;overflow:auto}
-.result-entry{scroll-margin-top:1rem}
+/* نوار metadata ورق — یک خط ظریف روی نقشه */
+.map-meta{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-1) var(--sp-3);min-height:40px;padding:var(--sp-1) var(--sp-3);font-size:12.5px;color:var(--st-muted);background:var(--st-panel);border-bottom:1px solid var(--st-line-soft)}
+.map-meta b{color:var(--st-ink);white-space:nowrap}
+.map-meta .ms-end{margin-inline-start:auto;display:flex;align-items:center;gap:var(--sp-2)}
 
-/* planner sticky bar */
-.cutting-sticky-bar{position:fixed;inset-inline:0;bottom:0;z-index:1030;background:rgba(255,255,255,.97);border-top:1px solid var(--st-line);box-shadow:0 -4px 20px rgba(15,23,42,.08);color:var(--st-ink)}
-.cutting-sticky-bar .small{color:var(--st-muted)}
+/* نقشهٔ برش — عنصر اصلی (≥۶۰٪ ارتفاع) */
+.map-stage{flex:1;min-height:0;padding:var(--sp-3);display:flex;background:var(--st-canvas);position:relative;overflow:hidden}
+.map-stage .map-fit{flex:1;min-width:0;min-height:0;display:flex;align-items:center;justify-content:center}
+.cut-map{display:block;width:100%;height:100%}
+.verlist-pop{position:absolute;top:var(--sp-2);inset-inline-end:var(--sp-2);z-index:20;min-width:19rem;max-height:min(60%,24rem);overflow:auto}
 
-/* settings card fields (planner) */
-.cut-setting{display:grid;gap:.3rem}
-.cut-setting>.form-label{margin-bottom:0}
-.cut-setting-list{display:grid;gap:.35rem}
-.cut-setting-list .form-check{min-height:0;margin-bottom:0}
-.cut-setting-list .form-check-label{font-size:.8rem;color:var(--st-ink)}
-
-/* ============================================================
-   PLAN DETAIL — سربرگ و آمار
-   ============================================================ */
-.plan-bar-main{min-width:0}
-.plan-title-row{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem}
-.plan-title-row h1{font-size:1.05rem;font-weight:800;margin:0}
-.plan-stats{display:flex;align-items:stretch}
-.plan-bar-actions{display:flex;flex-wrap:wrap;gap:.45rem;align-items:center}
-.plan-bar-actions form{margin:0}
-.status-pill{display:inline-flex;align-items:center;gap:.25rem;border:1px solid var(--st-line);border-radius:999px;padding:.18rem .5rem;background:var(--st-panel);white-space:nowrap;font-size:.74rem;color:var(--st-muted);min-height:26px}
-.status-pill b{color:inherit;font-weight:800}
-.status-pill .bi{font-size:.78rem}
-.status-pill.is-zero{opacity:.6;border-style:dashed}
-.status-pill-pending{color:#475569}
-.status-pill-used{color:#166534;border-color:#bbf7d0;background:#f0fdf4}
-.status-pill-untouched{color:#1d4ed8;border-color:#bfdbfe;background:var(--st-accent-soft)}
-.status-pill-scrapped{color:#b91c1c;border-color:#fecaca;background:#fef2f2}
-.status-pill.is-zero.status-pill-used,.status-pill.is-zero.status-pill-untouched,.status-pill.is-zero.status-pill-scrapped{color:var(--st-muted);border-color:var(--st-line);background:var(--st-panel)}
-.material-tabs{display:flex;gap:.35rem;overflow-x:auto;padding-bottom:.3rem;margin-bottom:.7rem;scrollbar-width:thin}
-.material-tab{display:flex;align-items:center;gap:.5rem;padding:.35rem .75rem;border:1px solid var(--st-line);border-radius:999px;background:var(--st-panel);color:var(--st-muted);text-align:start;white-space:nowrap}
-.material-tab:hover{border-color:#c3ceda;color:var(--st-ink)}
-.material-tab b{color:var(--st-ink);font-size:.83rem}
-.material-tab .mat-count{font-size:.72rem}
-.material-tab .mat-progress{font-size:.7rem;font-weight:800;color:var(--st-faint);background:var(--st-sunken);border-radius:999px;padding:.05rem .45rem}
-.material-tab.active{border-color:var(--st-accent);background:var(--st-accent-soft);color:var(--st-accent)}
-.material-tab.active b{color:var(--st-accent)}
-.material-tab.complete .mat-progress{color:#166534;background:#f0fdf4}
-
-/* ---------- ایستگاه تمام‌قد: ستون‌بندی عمودی بدون اسکرول صفحه ---------- */
-.station-plan{display:flex;flex-direction:column}
-#cut-results-form{display:contents}
-.material-section{flex:1;display:flex;flex-direction:column;min-height:0;gap:.55rem}
-.station-stage{position:relative;flex:1;min-height:320px;display:flex;align-items:stretch}
-.draw-pane{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0}
-.sheet-panels{position:relative;flex:1;min-height:0}
-.sheet-panel{position:absolute;inset:0;display:flex;flex-direction:column;gap:.55rem;margin:0;min-height:0}
-.sheet-panel.d-none{display:none!important}
-
-.sheet-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.35rem .8rem;min-height:2rem;flex:none}
-.sheet-head .sh-main{display:flex;flex-wrap:wrap;align-items:center;gap:.45rem;min-width:0}
-.sheet-head .sh-side{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem;margin-inline-start:auto}
-.sheet-head .h6,.sheet-head h2{color:var(--st-ink)}
-.sheet-kind{font-size:.7rem;font-weight:700;border-radius:999px;padding:.14rem .55rem;background:var(--st-accent-soft);color:#1d4ed8;border:1px solid #bfdbfe}
-.sheet-kind.offcut{background:#fffbeb;color:#b45309;border-color:#fde68a}
-
-/* لایه‌های پنهان: هر بخش حداکثر یک کشو باز (فهرست قطعات یا ثبت نتیجه) */
-.side-dock{position:absolute;top:0;bottom:0;z-index:6;width:min(21.5rem,92%);overflow:auto;
-  background:var(--st-panel);border:1px solid var(--st-line);border-radius:.65rem;
-  box-shadow:0 10px 32px rgba(15,23,42,.16);padding:.7rem .8rem}
-.dock-start{inset-inline-start:0}
-.dock-end{inset-inline-end:0}
-.side-dock .verlist{height:100%;display:flex;flex-direction:column;border:0;position:static}
-.side-dock .verlist-rows{flex:1;max-height:none;overflow:auto}
-.side-dock .result-entry{height:100%}
-.dock-toggle.active{background:var(--st-accent);border-color:var(--st-accent);color:#fff}
-.sheet-nav-group{display:flex;align-items:center;gap:.35rem;flex:none}
-.sheet-selector{gap:.35rem}
-.sheet-tab{min-width:2.4rem;min-height:2.4rem;border:1px solid var(--st-line);border-radius:.55rem;background:var(--st-panel);color:var(--st-muted);font-size:.95rem;font-weight:800;padding:.2rem .5rem;display:inline-flex;flex-direction:column;align-items:center;line-height:1.2}
-.sheet-tab:hover{border-color:#c3ceda;color:var(--st-ink)}
-.sheet-tab.active{outline:2px solid var(--st-accent);outline-offset:1px}
-.sheet-tab.outcome-none{color:#475569;background:var(--st-panel);border-color:var(--st-line)}
-.sheet-tab.outcome-used{color:#166534;background:#f0fdf4;border-color:#86efac}
-.sheet-tab.outcome-untouched{color:#1d4ed8;background:var(--st-accent-soft);border-color:#93c5fd}
-.sheet-tab.outcome-scrapped{color:#b91c1c;background:#fef2f2;border-color:#fca5a5}
-/* status text only on the active tab — one label instead of nine */
-.sheet-tab-status{display:none;font-size:.58rem;line-height:1.25;margin-top:.1rem;font-weight:600}
-.sheet-tab.active .sheet-tab-status{display:block}
-.sheet-selector .btn{min-width:42px;min-height:42px}
-
-.cut-map-wrap{position:relative}
-/* نقشه در ارتفاع باقی‌ماندهٔ صفحه جا می‌شود — بدون اسکرول صفحه */
-.sheet-map{--map-w:1;--map-h:1;flex:1;min-height:200px;display:flex;overflow:hidden}
-.sheet-map .canvas-frame{flex:1;min-width:0;display:flex}
-.sheet-map .cut-map-wrap{flex:1;min-width:0;overflow:auto}
-.station-plan .cut-map{display:block;width:100%;height:100%;min-height:180px}
+/* SVG نقشهٔ برش */
 .cut-map text{font-family:system-ui,sans-serif;font-weight:600;text-anchor:middle}
-.canvas-frame{position:relative;background:var(--st-canvas);border:1px solid var(--st-line);border-radius:.7rem;padding:.9rem;overflow:hidden}
-
-/* ---------- AutoSAW process view: verlist به‌عنوان لایهٔ پنهان ---------- */
-.verlist{background:var(--st-panel);border:1px solid var(--st-line);border-radius:.65rem;overflow:hidden}
-.verlist-head{display:flex;align-items:center;gap:.4rem;padding:.5rem .75rem;background:var(--st-panel-2);border-bottom:1px solid var(--st-line-soft);font-weight:800;font-size:.78rem;color:var(--st-ink)}
-.verlist-head i{color:var(--st-accent)}
-.verlist-count{margin-inline-start:auto;font-size:.7rem;background:var(--st-accent-soft);color:var(--st-accent);border-radius:999px;padding:.05rem .5rem}
-.verlist-rows{max-height:min(56vh,540px);overflow:auto}
-.verlist-row{display:flex;align-items:center;gap:.5rem;padding:.4rem .7rem;border-bottom:1px solid var(--st-line-soft)}
-.verlist-row:last-child{border-bottom:0}
-.verlist-row.done{opacity:.55}
-.vl-code{font-weight:800;font-size:.72rem;background:var(--st-accent-soft);color:var(--st-accent);border-radius:.35rem;padding:.12rem .3rem;min-width:2.7rem;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:5.5rem}
-.vl-main{display:flex;flex-direction:column;min-width:0;flex:1}
-.vl-name{font-size:.75rem;font-weight:600;color:var(--st-ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.vl-dims{font-size:.7rem;color:var(--st-muted)}
-.vl-counts{display:flex;flex-direction:column;align-items:center;line-height:1.15;flex:none}
-.vl-need{font-weight:800;font-size:.86rem;color:var(--st-ink)}
-.vl-cut{font-size:.68rem;font-weight:800;color:var(--st-green)}
-.verlist-legend{display:flex;align-items:center;gap:.9rem;padding:.4rem .75rem;background:var(--st-panel-2);border-top:1px solid var(--st-line-soft);font-size:.68rem;color:var(--st-muted)}
-.vl-sw{width:10px;height:10px;border-radius:2px;display:inline-block;margin-inline-end:.28rem;vertical-align:-1px}
-.boards-bar{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem;padding:.4rem .6rem;background:var(--st-panel-2);border:1px solid var(--st-line);border-radius:.6rem}
-.boards-label{font-weight:800;font-size:.8rem;color:var(--st-ink);white-space:nowrap}
-.boards-label i{color:var(--st-faint);margin-inline-end:.25rem}
-.boards-bar .sheet-selector{flex:1;min-width:0}
-.boards-progress{width:90px;height:8px;background:var(--st-sunken);border-radius:999px;overflow:hidden;flex:none}
-.boards-progress i{display:block;height:100%;width:0;background:var(--st-accent);transition:width .3s}
-.boards-bar .mat-count{font-size:.72rem;font-weight:800;color:var(--st-muted);flex:none}
-
-/* AutoSAW piece rendering (SVG): green = consumed, periwinkle = waiting */
 .sheet-bg{fill:#fff;stroke:#94a3b8;stroke-width:3}
 .trim-strip{fill:#f1f5f9;stroke:#cbd5e1;stroke-width:2;stroke-dasharray:14 8}
 .trim-label{fill:#94a3b8;font-weight:700;text-anchor:start}
-.cut-piece .piece-rect{fill:#6666c8;stroke:#111827;stroke-width:4}
-.cut-piece.used .piece-rect{fill:#16a34a}
-.cut-piece.scrapped .piece-rect{fill:#e11d48}
+.cut-piece .piece-rect{fill:#7378d6;stroke:#111827;stroke-width:4}
+.cut-piece.used .piece-rect{fill:var(--st-green)}
+.cut-piece.scrapped .piece-rect{fill:var(--st-red)}
 .cut-piece text{fill:#fff}
 .cut-piece .piece-no{font-weight:800}
 .cut-piece .piece-dims{opacity:.92;font-weight:600}
-.offcut-box{fill:#fbbf2414;stroke:#d97706;stroke-width:4;stroke-dasharray:16 10}
+.offcut-box{fill:rgba(251,191,36,.08);stroke:var(--st-amber);stroke-width:4;stroke-dasharray:16 10}
+.legend-swatch{width:12px;height:12px;border-radius:3px;display:inline-block;flex:none;border:1px solid rgba(16,24,40,.2)}
 
-.legend-swatch{width:12px;height:12px;border-radius:3px;display:inline-block;flex:none;border:1px solid rgba(15,23,42,.2)}
-.sheet-info{background:var(--st-panel);border:1px solid var(--st-line);border-radius:.65rem;padding:.7rem .85rem}
-.sheet-info ol{color:var(--st-muted)}
-.sheet-info ol b{color:var(--st-ink)}
+/* نتیجهٔ واقعی ورق — نوار پایین ثابت (فقط planned) */
+.result-bar{
+  position:fixed;inset-inline:0;bottom:0;z-index:45;
+  display:flex;align-items:center;flex-wrap:wrap;gap:var(--sp-2) var(--sp-3);
+  min-height:var(--dock-h);padding:var(--sp-1) var(--sp-3);
+  background:var(--st-panel);border-top:1px solid var(--st-line);
+}
+.result-bar .rb-label{font-size:13.5px;font-weight:800;white-space:nowrap}
+.outcome-radios{display:inline-flex;gap:var(--sp-1)}
+.outcome-radios .out-opt{position:relative;display:inline-flex;align-items:center;gap:.35rem;border:1.5px solid var(--st-line);border-radius:999px;background:var(--st-panel);color:var(--st-muted);font-size:13px;font-weight:800;padding:.4rem .95rem;min-height:40px;cursor:pointer;white-space:nowrap}
+.outcome-radios input{position:absolute;inset:0;opacity:0;margin:0;cursor:pointer}
+.outcome-radios .out-opt:has(input:checked){border-color:currentColor}
+.outcome-radios .out-opt.opt-used{color:var(--st-green)}
+.outcome-radios .out-opt.opt-used:has(input:checked){background:var(--st-green-soft)}
+.outcome-radios .out-opt.opt-untouched{color:var(--st-muted)}
+.outcome-radios .out-opt.opt-untouched:has(input:checked){background:var(--st-sunken)}
+.outcome-radios .out-opt.opt-scrapped{color:var(--st-red)}
+.outcome-radios .out-opt.opt-scrapped:has(input:checked){background:var(--st-red-soft)}
+.outcome-radios .out-opt:has(input:focus-visible){outline:2px solid var(--st-accent);outline-offset:1px}
+.result-bar .rb-progress{display:flex;align-items:center;gap:var(--sp-2);font-size:12.5px;color:var(--st-muted);white-space:nowrap}
+.result-bar .rb-progress .progress{width:88px;height:6px;background:var(--st-sunken)}
+.result-bar .rb-progress .progress-bar{background:var(--st-green)}
+.result-bar .rb-actions{margin-inline-start:auto;display:flex;align-items:center;gap:var(--sp-2)}
+.result-bar .rb-counts{display:none}
+@media (min-width:1200px){.result-bar .rb-counts{display:inline-flex}}
+.result-bar .rb-counts{gap:var(--sp-1);color:var(--st-faint);font-size:12px}
+.result-bar .rb-counts [data-count]{font-weight:800;color:var(--st-muted)}
 
-/* result entry + remnants */
-.outcome-group{border:0;padding:0;margin:0;min-width:0}
-.outcome-group legend{float:none;width:auto}
-.outcome-group .d-grid{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:.4rem!important}
-.outcome-group .btn{min-height:40px;padding:.3rem .4rem;font-size:.82rem;white-space:nowrap}
-.sheet-panel .result-entry{color:var(--st-ink)}
-.result-entry .form-label{color:var(--st-muted)}
-.station .btn-check:checked+.btn-outline-success{background:#f0fdf4;border-color:var(--st-green);color:#166534}
-.station .btn-check:checked+.btn-outline-secondary{background:var(--st-sunken);border-color:#94a3b8;color:var(--st-ink)}
-.station .btn-check:checked+.btn-outline-danger{background:#fef2f2;border-color:var(--st-red);color:#b91c1c}
-.remnant-fields{border-top:1px dashed var(--st-line);padding-top:.7rem}
-.remnant-row .form-control{min-height:42px}
-.remnant-area-total{font-size:.72rem;color:var(--st-muted)}
-.remnant-validation{font-size:.74rem;color:var(--st-red)}
-.outcome-group .btn{min-height:44px}
-.sheet-position{color:var(--st-muted)}
+/* پنل پرت واقعی (بازشونده از نوار نتیجه) */
+.rem-panel{
+  position:fixed;z-index:46;bottom:calc(var(--dock-h) + var(--sp-2));
+  inset-inline:var(--sp-3);margin-inline-start:auto;max-width:34rem;
+  background:var(--st-panel);border:1px solid var(--st-line);border-radius:var(--st-radius);
+  box-shadow:var(--st-shadow);padding:var(--sp-3);max-height:min(58vh,28rem);overflow:auto;
+}
+.rem-panel h2{font-size:13.5px;font-weight:800;margin:0}
+.remnant-row{display:grid;grid-template-columns:auto 1fr 1fr 40px;gap:var(--sp-2);align-items:center;margin-bottom:var(--sp-2)}
+.remnant-number{font-size:12.5px;font-weight:800;color:var(--st-muted);white-space:nowrap}
+.remnant-rows .cell-note{font-size:11px;color:var(--st-faint)}
 
-/* ---------- responsive: روی صفحهٔ کوچک کشوها در جریان صفحه می‌آیند ---------- */
+/* ⓘ پاپ‌اور برنامه */
+.plan-pop{min-width:20rem}
+.engine-row{display:flex;align-items:center;gap:var(--sp-2);padding:.25rem 0;font-size:12.5px}
+.engine-row .engine-name{flex:0 0 auto;min-width:8.5rem;font-weight:700}
+.engine-row .engine-bar{flex:1;height:6px;border-radius:3px;background:var(--st-sunken);overflow:hidden}
+.engine-row .engine-bar i{display:block;height:100%;background:var(--st-accent)}
+.engine-row.best .engine-bar i{background:var(--st-green)}
+.engine-row.failed .engine-value{color:var(--st-red)}
+.engine-best-badge{font-size:10.5px;color:var(--st-green);border:1px solid #b7e4c7;background:var(--st-green-soft);border-radius:999px;padding:0 .4rem;font-weight:800}
+.verlist{max-height:16rem;overflow:auto}
+.verlist-row{display:flex;align-items:center;gap:var(--sp-2);padding:.3rem 0;border-bottom:1px solid var(--st-line-soft);font-size:12.5px}
+.verlist-row .vl-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.verlist-row.done .vl-name{text-decoration:line-through;color:var(--st-muted)}
+.verlist-row .vl-counts{display:flex;gap:.3rem}
+.verlist-row .vl-need{color:var(--st-muted)}
+.verlist-row .vl-cut{color:var(--st-green);font-weight:800}
+.verlist-row .vl-counts{border:1px solid var(--st-line);border-radius:999px;padding:0 .4rem}
+
+/* هشدارهای وضعیت — یک خط */
+.station .alert{border-radius:var(--st-radius);font-size:13px;padding:.5rem .85rem;border:1px solid var(--st-line)}
+.station .alert-warning{background:var(--st-amber-soft);border-color:#f4dcbb;color:#92400e}
+.station .alert-secondary{background:var(--st-sunken);border-color:var(--st-line);color:var(--st-muted)}
+
+/* ---------- CNC ---------- */
+.kpi-inline{display:inline-flex;align-items:center;gap:.45rem;white-space:nowrap}
+.kpi-inline b{font-size:13.5px}
+.inventory-sheet-visual{display:inline-block;flex:none;background:var(--st-accent-soft);border:1px solid #bfd3fa;border-radius:2px;max-width:44px;max-height:30px}
+.inventory-sheet-visual.offcut{background:var(--st-amber-soft);border-color:#f4dcbb}
+.rail-mat.is-ok{color:var(--st-green)}
+.d-contents{display:contents}
+.cnc-layout{display:grid;grid-template-columns:264px minmax(0,1fr);align-items:stretch;min-height:calc(100vh - var(--bar-h) - var(--head-h))}
+.cnc-list{background:var(--st-panel);border-inline-end:1px solid var(--st-line);overflow-y:auto;max-height:calc(100vh - var(--bar-h) - var(--head-h))}
+.cnc-plan-row{display:block;width:100%;text-align:start;border:0;background:transparent;border-bottom:1px solid var(--st-line-soft);padding:var(--sp-2) var(--sp-3);min-height:52px;cursor:pointer}
+.cnc-plan-row:hover{background:var(--st-sunken)}
+.cnc-plan-row.active{background:var(--st-accent-soft);box-shadow:inset 3px 0 0 var(--st-accent)}
+.cnc-plan-row .cnc-program-id{font-size:11.5px;color:var(--st-muted);font-variant-numeric:tabular-nums;display:block}
+.cnc-plan-row b{font-size:13.5px}
+.cnc-plan-row .row-meta{display:flex;justify-content:space-between;align-items:center;gap:var(--sp-2);font-size:12px;color:var(--st-muted)}
+.cnc-stage{display:flex;flex-direction:column;min-width:0;padding:var(--sp-3);background:var(--st-canvas)}
+.cnc-stage-head{display:flex;align-items:center;gap:var(--sp-3);margin-bottom:var(--sp-2)}
+.cnc-stage-head h2{font-size:15px;font-weight:800;margin:0}
+.cnc-canvas{position:relative;background:var(--st-panel);border:1px solid var(--st-line);border-radius:var(--st-radius);aspect-ratio:1/var(--sheet-ratio);width:min(100%,calc((100vh - 230px)/max(var(--sheet-ratio,1),1)));margin-inline:auto;overflow:hidden;flex:none}
+.cnc-canvas-grid{position:absolute;inset:0;background-image:linear-gradient(var(--st-line-soft) 1px,transparent 1px),linear-gradient(90deg,var(--st-line-soft) 1px,transparent 1px);background-size:24px 24px}
+.cnc-sheet-label{position:absolute;top:6px;inset-inline-start:8px;font-size:11.5px;color:var(--st-faint)}
+.cnc-part-box{position:absolute;border:2px solid #111827;background:rgba(115,120,214,.32);color:#101828;font-size:10.5px;font-weight:700;display:flex;align-items:center;justify-content:center;overflow:hidden;border-radius:2px}
+.cnc-part-box.rotated{outline:2px dashed var(--st-amber);outline-offset:-4px}
+.cnc-part-box.clickable{cursor:pointer}
+.cnc-part-box.clickable:hover{background:rgba(37,99,235,.3)}
+.cnc-stage-meta{display:flex;flex-wrap:wrap;gap:var(--sp-1) var(--sp-3);font-size:12.5px;color:var(--st-muted);padding:var(--sp-2) 0}
+.cnc-stage-meta b{color:var(--st-ink)}
+.cnc-stage-actions{display:flex;flex-wrap:wrap;gap:var(--sp-2);align-items:center}
+.cnc-output-chip{display:inline-flex;align-items:center;gap:.3rem;font-size:12.5px;font-weight:700;color:var(--st-amber)}
+.cnc-muted-note{font-size:12.5px;color:var(--st-muted);padding-top:var(--sp-2)}
+.cnc-issue{border:1px solid var(--st-line);border-radius:var(--st-radius);padding:var(--sp-2);margin-bottom:var(--sp-2);background:var(--st-panel)}
+.cnc-issue-top{display:flex;justify-content:space-between;gap:var(--sp-2);font-size:12px;color:var(--st-muted);margin-bottom:.2rem}
+.cnc-issue-reason{font-size:11.5px;color:var(--st-amber);margin:.15rem 0}
+.cnc-issue-actions{display:flex;flex-wrap:wrap;gap:var(--sp-1);margin-top:var(--sp-1)}
+.cnc-result-form label{display:block;font-size:12.5px;font-weight:700;color:var(--st-muted);margin-bottom:.15rem}
+.cnc-result-form select,.cnc-result-form input{width:100%}
+.cnc-remnant-row{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-2);margin-bottom:var(--sp-2)}
+.cnc-empty{margin:auto;text-align:center;color:var(--st-muted);padding:var(--sp-4)}
+
+/* ---------- responsive: 768 / 360 ---------- */
 @media (max-width:991.98px){
-  .side-dock{position:static;width:auto;order:5;margin-top:.4rem}
-  .sheet-map{min-height:280px}
+  .cnc-layout{grid-template-columns:200px minmax(0,1fr)}
+}
+@media (max-width:767.98px){
+  .cnc-layout{grid-template-columns:minmax(0,1fr)}
+  .cnc-list{display:flex;overflow-x:auto;border-inline-end:0;border-bottom:1px solid var(--st-line);max-height:none}
+  .cnc-plan-row{flex:0 0 auto;width:auto;border-bottom:0;border-inline-end:1px solid var(--st-line-soft);min-width:11rem}
+  .cnc-plan-row.active{box-shadow:inset 0 -3px 0 var(--st-accent)}
+  .plan-layout{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr)}
+  .station-plan .plan-layout,.station-plan.has-result .plan-layout{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);height:auto;min-height:calc(100dvh - var(--bar-h) - var(--head-h) - var(--dock-h))}
+  .sheet-rail,.station-plan .sheet-rail{grid-column:1;flex-direction:row;align-items:center;overflow-x:auto;overflow-y:hidden;border-inline-end:0;border-bottom:1px solid var(--st-line);padding:var(--sp-1) var(--sp-2)}
+  .rail-group,.station-plan .rail-group{flex-direction:row;border-bottom:0;width:auto;padding-bottom:0;margin-bottom:0;padding-inline-end:var(--sp-2);margin-inline-end:var(--sp-2);border-inline-end:1px solid var(--st-line-soft)}
+  .rail-mat{max-width:none}
+  .plan-stage{grid-column:1}
+  .station-plan .plan-stage>[data-material-section],.station-plan .sheet-panel{min-height:52vh}
+  .queue-head{display:none}
+  .queue-row{grid-template-columns:36px minmax(0,1fr) auto 40px;grid-template-areas:"check order status expand" "check count status expand";row-gap:0}
+  .queue-row .q-check{grid-area:check}
+  .queue-row .q-order{grid-area:order}
+  .queue-row .q-count{grid-area:count;text-align:right;direction:rtl}
+  .queue-row .q-count small{display:inline;margin-inline-start:.3rem}
+  .queue-row .q-status{grid-area:status}
+  .queue-row .q-expand{grid-area:expand}
+  .bottom-bar,.result-bar{gap:var(--sp-2);padding-inline:var(--sp-2)}
+  .result-bar .rb-counts{display:none}
+  .result-bar .rb-progress .progress{width:56px}
+  .outcome-radios .out-opt{padding-inline:.7rem}
+}
+@media (max-width:419.98px){
+  .page-head h1{font-size:16px}
+  .outcome-radios{width:100%;justify-content:stretch}
+  .outcome-radios .out-opt{flex:1;justify-content:center}
+  .result-bar .rb-actions{margin-inline-start:0;width:100%}
+  .result-bar .rb-actions .btn{flex:1}
+  .bottom-bar .btn{min-width:9.5rem}
 }
 
-/* ---------- print: همهٔ ورق‌ها و لایه‌ها روی کاغذ ---------- */
+/* ---------- چاپ برگهٔ اپراتور ---------- */
 @media print{
-  .sheet-panels,.sheet-panel{position:static}
-  .side-dock{position:static;width:auto;box-shadow:none}
-  .side-dock[hidden]{display:block!important}
-  .station-plan .cut-map{height:auto;min-height:0;max-height:26cm}
+  .cutting-nav,.page-head,.result-bar,.bottom-bar,.sheet-rail,.rail-group,.pop-panel,.rem-panel,.cut-drawer,.map-meta .ms-end,.rb-actions{display:none!important}
+  body.cutting-station .main-content{padding:0}
+  .station{padding:0}
+  .plan-layout{display:block}
+  .map-stage{padding:0;background:#fff}
+  .cut-map{max-height:24cm}
+  .canvas-frame{background:#fff!important;border-color:#999!important}
+  .map-meta{border:0}
 }
-
-/* shared misc */
-.sheet-tab.outcome-none,.sheet-tab.outcome-used,.sheet-tab.outcome-untouched,.sheet-tab.outcome-scrapped{border-color:currentColor}
-
-/* engine report — یک خطِ جمع‌شونده، نه کارت */
-.engine-report{border:1px solid var(--st-line);border-radius:.6rem;background:var(--st-panel-2);padding:.4rem .6rem}
-.engine-report summary{cursor:pointer;color:var(--st-muted);letter-spacing:.01em;font-size:.78rem;font-weight:600}
-.engine-report[open]{background:var(--st-panel)}
-.engine-report summary:hover{color:var(--st-ink)}
-.engine-rows{display:flex;flex-direction:column;gap:.4rem}
-.engine-row{display:grid;grid-template-columns:minmax(140px,220px) 1fr 70px 90px;align-items:center;gap:.8rem;
-  padding:.38rem .6rem;border:1px solid var(--st-line-soft);border-radius:8px;background:var(--st-panel-2)}
-.engine-row.best{border-color:#86efac;background:#f0fdf4}
-.engine-row.failed{opacity:.6}
-.engine-name{color:var(--st-ink);font-size:.83rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.engine-best-badge{background:var(--st-green);color:#fff;font-size:.66rem;font-weight:800;padding:.1rem .45rem;border-radius:99px;vertical-align:1px}
-.engine-bar{display:block;height:10px;border-radius:99px;background:var(--st-sunken);border:1px solid var(--st-line);overflow:hidden;min-width:80px}
-.engine-bar i{display:block;height:100%;background:linear-gradient(90deg,#2563eb,#38bdf8);border-radius:99px}
-.engine-row.best .engine-bar i{background:linear-gradient(90deg,#15803d,#22c55e)}
-.engine-value{color:var(--st-ink);font-size:.83rem;font-weight:700}
-.engine-error{color:var(--st-red);font-size:.76rem;font-weight:600}
-.engine-sheets{color:var(--st-muted);font-size:.76rem;text-align:left;white-space:nowrap}
-@media (max-width:768px){
-  .engine-row{grid-template-columns:1fr 70px;grid-template-areas:"name value" "bar bar" "sheets sheets"}
-  .engine-name{grid-area:name}.engine-bar{grid-area:bar}.engine-value{grid-area:value}.engine-sheets{grid-area:sheets}
-}
-
-/* ============================================================
-   PLAN LIST / HISTORY (گزارش)
-   ============================================================ */
-.cutting-page{max-width:1800px}
-.station .table td{overflow-wrap:break-word}
-.cutting-history-page .table td{overflow-wrap:anywhere}
-.station .table thead th a{color:var(--st-muted);text-decoration:underline dotted}
-
-/* ============================================================
-   CNC SHEET PLANS (استاد-جزئیات)
-   ============================================================ */
-.cnc-master{display:grid;grid-template-columns:19rem minmax(0,1fr) 19rem;gap:.9rem;align-items:start}
-.cnc-plan-list,.cnc-stage,.cnc-side-panel{background:var(--st-panel);border:1px solid var(--st-line);border-radius:var(--st-radius);min-width:0}
-.cnc-plan-list{max-height:calc(100vh - 12rem);overflow:auto}
-.cnc-list-head,.cnc-panel-head{display:flex;justify-content:space-between;align-items:center;gap:.6rem;border-bottom:1px solid var(--st-line-soft);padding:.55rem .75rem;position:sticky;top:0;background:var(--st-panel-2);z-index:2}
-.cnc-panel-head h2{font-size:.88rem;font-weight:800;color:var(--st-ink);margin:0}
-.cnc-count-badge{font-size:.68rem;font-weight:700;color:var(--st-muted);background:var(--st-sunken);border:1px solid var(--st-line);border-radius:999px;padding:.08rem .5rem;white-space:nowrap}
-.cnc-plan-row{display:block;width:100%;text-align:start;background:transparent;border:0;border-bottom:1px solid var(--st-line-soft);padding:.55rem .75rem;color:var(--st-muted)}
-.cnc-plan-row:hover{background:#f8fafc;color:var(--st-ink)}
-.cnc-plan-row.active{background:var(--st-accent-soft);color:var(--st-ink);box-shadow:inset -3px 0 var(--st-accent)}
-.cnc-plan-row .cnc-program-id{font-size:.64rem;font-weight:700;letter-spacing:.05em;color:var(--st-faint);direction:ltr;unicode-bidi:isolate;display:inline-block}
-.cnc-plan-row b{display:block;color:var(--st-ink);font-size:.83rem}
-.cnc-plan-row .row-meta{display:flex;gap:.6rem;font-size:.69rem;margin-top:.15rem;align-items:center}
-.cf-status{display:inline-flex;align-items:center;gap:.35rem;font-size:.7rem;font-weight:700;border-radius:999px;padding:.13rem .5rem;background:var(--st-sunken);border:1px solid var(--st-line);color:var(--st-muted);white-space:nowrap}
-.cf-status .dot{width:.5rem;height:.5rem;border-radius:50%;background:#94a3b8;display:inline-block}
-.cf-status.ready{color:#166534;background:#f0fdf4;border-color:#bbf7d0}.cf-status.ready .dot{background:var(--st-green)}
-.cf-status.done{color:#1d4ed8;background:var(--st-accent-soft);border-color:#bfdbfe}.cf-status.done .dot{background:#3b82f6}
-.cf-status.warn{color:#b45309;background:#fffbeb;border-color:#fde68a}.cf-status.warn .dot{background:var(--st-amber)}
-.cf-status.cancelled{color:var(--st-muted)}.cf-status.cancelled .dot{background:#94a3b8}
-
-.cnc-stage{padding:.75rem .85rem 1rem}
-.cnc-stage-panel.d-none{display:none!important}
-.cnc-stage-head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:.5rem;margin-bottom:.6rem}
-.cnc-stage-head h2{font-size:1rem;font-weight:800;color:var(--st-ink);margin:0}
-.cnc-stage-canvas{position:relative;margin-inline:auto;border:1px solid #cbd5e1;background:var(--st-sheet);aspect-ratio:1/var(--sheet-ratio);width:min(100%,calc(58vh / var(--sheet-ratio,1)));overflow:hidden;box-shadow:0 1px 6px rgba(15,23,42,.06)}
-.cnc-stage-canvas .cnc-canvas-grid{position:absolute;inset:0;background-image:linear-gradient(#0f172a0d 1px,transparent 1px),linear-gradient(90deg,#0f172a0d 1px,transparent 1px);background-size:24px 24px}
-.cnc-stage-canvas .cnc-sheet-label{position:absolute;inset-inline-start:.35rem;bottom:.25rem;font-size:.62rem;color:#475569;background:#ffffffd9;padding:.05rem .3rem;border-radius:.25rem}
-.cnc-part-box{position:absolute;border:1px solid #2563eb;background:#dbeafe;color:#0f172a;display:flex;align-items:center;justify-content:center;overflow:hidden;font-size:.62rem;font-weight:700;padding:.05rem;transition:filter .15s}
-.cnc-part-box:hover{filter:brightness(1.05);z-index:2}
-.cnc-part-box.rotated{background:#fef3c7;border-color:#b45309;color:#7c2d12}
-.cnc-stage-meta{display:flex;flex-wrap:wrap;gap:.25rem .9rem;padding:.6rem 0 0;font-size:.75rem;color:var(--st-muted)}
-.cnc-stage-meta b{color:var(--st-ink);font-weight:700}
-.cnc-orders{padding:.25rem 0 0;font-size:.75rem;color:var(--st-muted)}
-.cnc-orders b{color:var(--st-accent)}
-.cnc-stage-actions{display:flex;flex-wrap:wrap;gap:.45rem;padding-top:.65rem;margin-top:.4rem;border-top:1px solid var(--st-line-soft)}
-.cnc-output-chip{flex:1;display:flex;align-items:center;gap:.4rem;font-size:.75rem;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:.4rem;padding:.38rem .6rem}
-.cnc-output-chip i{flex:none}
-.cnc-muted-note{padding:.5rem 0 0;font-size:.73rem;color:var(--st-muted);line-height:1.6}
-.cnc-result-form{display:grid;gap:.5rem;padding:.7rem .8rem;border:1px dashed #c3ceda;border-radius:.6rem;background:var(--st-panel-2);margin-top:.7rem}
-.cnc-result-form h4{font-size:.8rem;font-weight:800;color:var(--st-ink);margin:0}
-.cnc-result-form label{display:grid;gap:.2rem;font-size:.71rem;color:var(--st-muted)}
-.cnc-result-form input,.cnc-result-form select,.cnc-issue-actions input{min-width:0;width:100%;padding:.38rem .5rem;border:1px solid #dbe3ec;border-radius:.4rem;background:var(--st-panel);color:var(--st-ink);font-size:.78rem}
-.cnc-remnant-row{display:grid;grid-template-columns:1fr 1fr;gap:.35rem;margin:.3rem 0}
-.cnc-result-form [data-remnants] p{font-size:.71rem;margin:.2rem 0;color:var(--st-muted)}
-
-.cnc-issue{border:1px solid #fde68a;background:#fffbeb;border-radius:.5rem;padding:.5rem .6rem;margin:.4rem 0;font-size:.73rem}
-.cnc-issue-top{display:flex;justify-content:space-between;gap:.3rem;font-size:.63rem;color:var(--st-muted)}
-.cnc-issue strong{display:block;margin:.25rem 0 .1rem;color:var(--st-ink)}
-.cnc-issue-reason{color:#b45309;line-height:1.55;margin-top:.3rem}
-.cnc-issue-actions{display:grid;gap:.3rem;margin-top:.45rem}
-.cnc-issue-actions form{display:flex;gap:.3rem;align-items:center}
-.cnc-issue-actions input{flex:1;min-height:30px}
-.cnc-issue-actions button{white-space:nowrap;--bs-btn-padding-y:.2rem;--bs-btn-padding-x:.55rem;font-size:.74rem}
-.cnc-issue-actions .btn{min-height:30px}
-.cnc-no-issues{display:flex;align-items:center;gap:.55rem;justify-content:center;color:#166534;background:#f0fdf4;border:1px dashed #bbf7d0;border-radius:.5rem;padding:1.1rem .7rem;font-size:.79rem}
-.cnc-empty{grid-column:1/-1;text-align:center;padding:3rem 1rem;color:var(--st-muted)}
-.cnc-empty i{font-size:2.2rem;color:#cbd5e1}
-.cnc-empty h3{font-size:1rem;color:var(--st-ink)}
-.cnc-empty p{font-size:.82rem}
-.cnc-side-panel{max-height:calc(100vh - 12rem);overflow:auto}
-
-/* ============================================================
-   INVENTORY / STOCK
-   ============================================================ */
-.inventory-status-cards .card{border:1px solid var(--st-line)!important;border-top:3px solid #94a3b8!important;border-radius:var(--st-radius);box-shadow:none}
-.inventory-status-cards .card.border-primary{border-top-color:var(--st-accent)!important}
-.inventory-status-cards .card.border-warning{border-top-color:var(--st-amber)!important}
-.inventory-status-cards .card.border-success{border-top-color:var(--st-green)!important}
-.inventory-status-cards .card.border-info{border-top-color:var(--st-cyan)!important}
-.inventory-status-cards .card.border-danger{border-top-color:var(--st-red)!important}
-.inventory-status-cards .card-body{padding:.9rem}
-.inventory-status-cards .fs-3{font-size:clamp(1.3rem,2vw,1.7rem)!important;line-height:1.25;overflow-wrap:anywhere}
-.inventory-status-cards .small{line-height:1.55;color:var(--st-muted)}
-.inventory-status-cards .text-muted{color:var(--st-faint)!important}
-.inventory-sheet-visual{display:inline-block;flex:none;border:2px solid #64748b;border-radius:3px;background:linear-gradient(135deg,#dbeafe,#bfdbfe)}
-.inventory-sheet-visual.offcut{background:repeating-linear-gradient(135deg,#fef3c7,#fef3c7 5px,#fde68a 5px,#fde68a 10px);border-color:var(--st-amber)}
-#inventory-filters .form-control,#inventory-filters .form-select{min-height:40px}
-#inventory-filters{row-gap:.75rem!important}
-.cutting-stock-form-page{max-width:1100px;margin-inline:auto}
-.cutting-stock-form-page .card-body{padding:clamp(1rem,2.2vw,1.6rem)}
-
-/* ============================================================
-   RESPONSIVE
-   ============================================================ */
-@media(max-width:1200px){
-  .cnc-master{grid-template-columns:15rem minmax(0,1fr)}
-  .cnc-master > .cnc-side-panel{grid-column:1/-1}
-}
-@media(max-width:991.98px){
-  .station-plan .cut-map{max-height:none}
-}
-@media(max-width:767.98px){
-  .cnc-master{grid-template-columns:1fr}
-  .cnc-plan-list{max-height:16rem}
-  .cnc-side-panel{max-height:none}
-  .station-statusbar{bottom:0;border-radius:.7rem .7rem 0 0}
-  .sb-actions{width:100%;justify-content:stretch}
-  .sb-actions .btn{flex:1}
-  .sb-summary{max-width:none}
-  .cutting-sticky-bar > .container-fluid{align-items:stretch!important}
-  .cutting-sticky-bar #plan-submit{min-height:44px}
-  .kpi{padding:0 .55rem}
-  .cut-map{min-height:200px}
-}
-@media(prefers-reduced-motion:reduce){
-  .station *{transition-duration:.01ms!important;scroll-behavior:auto!important}
-}
-
-/* ============================================================
-   PRINT — برگهٔ اپراتور
-   ============================================================ */
-@media print{
-  body.admin-panel{background:#fff}
-  .navbar,.station-nav,.cutting-nav,.cutting-stepper,.station-statusbar,.cutting-sticky-bar,.sheet-selector,.plan-bar-actions,.material-tabs,.btn,details summary,.cnc-plan-list,.cnc-side-panel,.data-side{display:none!important}
-  .station{background:#fff!important;color:#000!important;margin:0;padding:0;min-height:0}
-  .station .card,.station .plan-bar,.sheet-info,.result-entry{background:#fff!important;border-color:#bbb!important;color:#000!important}
-  .station .table{color:#000}
-  .station .table thead th{background:#f1f5f9!important;color:#000}
-  .sheet-panel.d-none{display:block!important}
-  .material-section.d-none{display:block!important}
-  .cnc-stage-panel.d-none{display:block!important}
-  .cut-map{max-height:85vh;min-height:0}
-  .sheet-panel{break-inside:avoid;margin-bottom:1rem;display:block!important}
-  .cut-map-wrap,.canvas-frame{background:#fff!important;border-color:#999!important}
-  .sheet-tab-status{color:#000}
-}
-
-/* ---------- فضای کاری برش (workspace) ---------- */
-.ws-low-density td { padding: .28rem .5rem; font-size: .855rem; vertical-align: middle; }
-.ws-chips { display: flex; flex-wrap: wrap; gap: .25rem; align-items: center; }
-.ws-chip {
-  border: 1px solid var(--bs-border-color); border-radius: 2rem;
-  padding: .08rem .6rem; font-size: .78rem; background: #fff; cursor: pointer;
-  transition: background .15s, color .15s;
-}
-.ws-chip:hover { border-color: #0d6efd; }
-.ws-chip.active { background: #0d6efd; color: #fff; border-color: #0d6efd; }
-.ws-edit-grid input.cell-input, .ws-edit-grid select.cell-input {
-  width: 100%; min-width: 4.2rem; border: 1px solid transparent;
-  background: transparent; padding: .12rem .3rem; border-radius: .25rem;
-}
-.ws-edit-grid input.cell-input:hover:not(:disabled),
-.ws-edit-grid select.cell-input:hover:not(:disabled) { border-color: var(--bs-border-color); }
-.ws-edit-grid input.cell-input:focus, .ws-edit-grid select.cell-input:focus {
-  border-color: #0d6efd; background: #fff; outline: 0; box-shadow: 0 0 0 .15rem rgba(13, 110, 253, .12);
-}
-.ws-edit-grid input.cell-input:disabled, .ws-edit-grid select.cell-input:disabled { color: #6c757d; }
-.ws-edit-grid input[type="number"].cell-input { direction: ltr; text-align: left; }
-.ws-edge-cell { min-width: 7rem; }
-.ws-edge-cell .cell-input { min-width: 6.5rem; margin-bottom: .15rem; }
-.ws-cell-state { font-size: .7rem; min-height: .9rem; }
-.ws-cell-state.text-success::before { content: '✓ '; }
-.ws-cell-state.text-danger::before { content: '✘ '; }
-tr.ws-row-changed { background: #fffbea; }
-tr.ws-row-changed td { background: transparent; }
-tr.ws-row-excluded { background: #f8f9fa; }
-tr.ws-row-excluded td:first-child { border-inline-start: 3px solid #adb5bd; }
-tr.ws-row-locked { background: #f1f3f5; }
-tr.ws-row-locked .cell-input { color: #adb5bd; }
-tr.ws-order-selected td { background: #eef5ff; }
-tr.ws-order-focused td { background: #e2edff; }
-tr.ws-order-focused td:first-child { border-inline-start: 3px solid #0d6efd; }
-.ws-status { font-size: .72rem; white-space: nowrap; max-width: 9rem; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; display: inline-block; }
-.ws-status-ready { background: #d1e7dd; color: #0a3622; }
-.ws-status-excluded { background: #e9ecef; color: #495057; }
-.ws-status-needs_cnc { background: #cfe2ff; color: #084298; }
-.ws-status-needs_cnc_manual { background: #fff3cd; color: #664d03; }
-.ws-status-auto_adjusted, .ws-status-manual_resolved { background: #d1e7dd; color: #0a3622; }
-.ws-status-locked_in_plan { background: #dee2e6; color: #343a40; }
-.ws-lock-note { font-size: .72rem; color: #6c757d; }
-.ws-sortable { cursor: pointer; user-select: none; }
-.ws-sortable::after { content: ' ⇅'; opacity: .35; font-size: .7rem; }
-.ws-sortable.ws-sorted::after { content: ' ↓'; opacity: 1; }
-.ws-modal-backdrop {
-  position: fixed; inset: 0; background: rgba(0, 0, 0, .45);
-  display: flex; align-items: center; justify-content: center; z-index: 1080;
-}
-.ws-modal { width: min(28rem, 92vw); }
-
-/* ---------- قطعات قابل کلیک روی چیدمان CNC (لینک به ابزار CAD) ---------- */
-.cnc-part-box.clickable{cursor:pointer;text-decoration:none}
-.cnc-part-box.clickable::after{content:"↗";position:absolute;top:1px;inset-inline-end:3px;font-size:.55rem;opacity:.55}
-.cnc-part-box.clickable:hover,.cnc-part-box.clickable:focus-visible{outline:2px solid #1d4ed8;outline-offset:1px;z-index:3;filter:brightness(1.08)}

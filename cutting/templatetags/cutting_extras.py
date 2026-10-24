@@ -27,3 +27,25 @@ def jalali(value, fmt='%Y/%m/%d %H:%M'):
 def encode_url_slashes(value):
     """HTML-encode slashes in trusted reversed URL values for the template attribute."""
     return mark_safe(str(value).replace('/', '&#47;'))
+
+
+class CaptureNode(template.Node):
+    """Store rendered block in a context variable — for _table_row partial."""
+    def __init__(self, nodelist, var_name):
+        self.nodelist = nodelist
+        self.var_name = var_name
+
+    def render(self, context):
+        context[self.var_name] = self.nodelist.render(context)
+        return ''
+
+
+@register.tag
+def capture(parser, token):
+    """{% capture var_name %}…{% endcapture %}"""
+    bits = token.split_contents()
+    if len(bits) != 2:
+        raise template.TemplateSyntaxError('%r needs exactly one variable name' % bits[0])
+    nodelist = parser.parse(('endcapture',))
+    parser.delete_first_token()
+    return CaptureNode(nodelist, bits[1])

@@ -1,8 +1,7 @@
-/* فضای کاری برش — صف سفارش‌ها ← آیتم ← متریال ← جدول قطعات قابل‌ویرایش.
- * همهٔ داده‌ها از API فضای کاری (cutting.workspace_views) می‌آید؛ فیلترها و
- * ویرایش‌های سلولی بدون بارگذاری کامل صفحه انجام می‌شوند. اعداد لاتین‌اند و
- * پیام‌ها فارسی. Fail-closed: خطای هر عملیات در همان ردیف/نوار وضعیت نشان
- * داده می‌شود و مقدار سلول به حالت قبل برمی‌گردد.
+/* فضای کاری برش v2 — صف سفارش‌ها به‌صورت لیست اصلی صفحه و جدول قطعات
+ * قابل‌ویرایش درون «ردیف بازشونده» همان سفارش (بدون کارت جدا).
+ * داده‌ها از API فضای کاری (cutting.workspace_views) می‌آید؛ منطق PATCH/409/قفل
+ * و پیام‌ها دست‌نخورده مانده است. جست‌وجوی سفارش در سربرگ صفحه است (ws-order-search).
  */
 (() => {
   const root = document.getElementById('workspace-root');
@@ -27,7 +26,7 @@
     selection: new Set(),
     focusId: null, orderInfo: null, items: [], materials: [],
     item: 'all', material: 'all', search: '', sort: '',
-    rows: [], partsPage: 1, partsPages: 1,
+    rows: {}, partsPage: 1, partsPages: 1,
   };
 
   async function api(url, options = {}) {
@@ -57,67 +56,12 @@
   /* ---------- skeleton ---------- */
 
   root.innerHTML = `
-    <section class="card" aria-label="صف سفارش‌ها">
-      <div class="panel-toolbar">
-        <div class="flex-fill" style="min-width:12rem">
-          <label class="form-label" for="ws-order-search">جست‌وجوی شماره سفارش یا مشتری</label>
-          <input id="ws-order-search" class="form-control form-control-sm" placeholder="مثلاً 142 یا نام مشتری" autocomplete="off">
-        </div>
-        <div style="min-width:9rem">
-          <label class="form-label" for="ws-order-status">وضعیت سفارش</label>
-          <select id="ws-order-status" class="form-select form-select-sm"><option value="">همه وضعیت‌ها</option></select>
-        </div>
-      </div>
-      <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2 border-0 py-2">
-        <b class="panel-title">تقاضای برش — صف سفارش‌ها</b>
-        <span id="ws-order-count" class="small text-muted" aria-live="polite"></span>
-      </div>
-      <div class="table-responsive"><table class="table table-hover align-middle ws-low-density table-cards">
-        <thead><tr>
-          <th></th><th>سفارش / مشتری</th>
-          <th class="d-none d-md-table-cell">تاریخ</th>
-          <th>قطعه باقی‌مانده</th><th>برنامه</th>
-        </tr></thead>
-        <tbody id="ws-order-rows"></tbody>
-      </table></div>
-      <div class="card-footer d-flex justify-content-between align-items-center py-1">
-        <button id="ws-queue-prev" type="button" class="btn btn-sm btn-outline-secondary">قبلی</button>
-        <span id="ws-queue-page" class="small text-muted num"></span>
-        <button id="ws-queue-next" type="button" class="btn btn-sm btn-outline-secondary">بعدی</button>
-      </div>
-    </section>
-
-    <section class="card mt-3" id="ws-parts-card" hidden aria-label="جدول قطعات">
-      <div class="card-header d-flex flex-wrap align-items-center gap-2 py-2 border-0">
-        <b class="panel-title" id="ws-focus-title"></b>
-        <span class="small text-muted">آیتم‌ها:</span>
-        <div id="ws-item-chips" class="ws-chips"></div>
-        <span class="small text-muted">متریال‌ها:</span>
-        <div id="ws-material-chips" class="ws-chips"></div>
-        <input id="ws-parts-search" class="form-control form-control-sm" style="max-width:13rem" placeholder="نام قطعه یا بارکد…" autocomplete="off">
-      </div>
-      <div class="table-responsive"><table class="table table-sm table-hover align-middle ws-low-density ws-edit-grid table-cards">
-        <thead><tr>
-          <th>قطعه</th>
-          <th data-sort="length" class="ws-sortable">طول</th><th data-sort="width" class="ws-sortable">عرض</th>
-          <th data-sort="quantity" class="ws-sortable">تعداد</th>
-          <th data-sort="material" class="ws-sortable">متریال</th><th title="چرخش ۹۰ درجه">چرخش</th>
-          <th data-sort="status" class="ws-sortable">وضعیت</th><th><span class="visually-hidden">جزئیات بیشتر</span></th>
-        </tr></thead>
-        <tbody id="ws-part-rows"></tbody>
-      </table></div>
-      <div class="card-footer d-flex flex-wrap justify-content-between align-items-center gap-2 py-1">
-        <span id="ws-summary" class="small text-muted"></span>
-        <span class="d-flex align-items-center gap-2">
-          <button id="ws-parts-prev" type="button" class="btn btn-sm btn-outline-secondary">قبلی</button>
-          <span id="ws-parts-page" class="small text-muted num"></span>
-          <button id="ws-parts-next" type="button" class="btn btn-sm btn-outline-secondary">بعدی</button>
-        </span>
-      </div>
-    </section>
+    <div class="queue-head" aria-hidden="true"><span></span><span>سفارش / مشتری</span><span class="text-start">قطعه</span><span class="text-start">وضعیت</span><span></span></div>
+    <div class="queue" id="ws-order-rows"></div>
     <div id="ws-modal-holder"></div>
     <p id="ws-live" class="visually-hidden" aria-live="polite"></p>
   `;
+  const queueEl = document.getElementById('ws-order-rows');
 
   /* ---------- order queue ---------- */
 
@@ -125,43 +69,44 @@
     const params = new URLSearchParams({ page: state.queuePage });
     if (state.queueQuery) params.set('q', state.queueQuery);
     if (state.queueStatus) params.set('status', state.queueStatus);
-    const tbody = document.getElementById('ws-order-rows');
-    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">در حال خواندن…</td></tr>';
+    state.focusId = null;
+    queueEl.innerHTML = '<div class="ws-empty">در حال خواندن…</div>';
     try {
       const data = await api(`${CONFIG.orders}?${params}`);
-      document.getElementById('ws-order-count').textContent = `${fmt(data.count)} سفارش`;
-      document.getElementById('ws-queue-page').textContent = `صفحهٔ ${fmt(data.page)} از ${fmt(data.pages)}`;
-      tbody.innerHTML = data.rows.length ? '' : '<tr><td colspan="5" class="text-center text-muted py-4">سفارشی برای برش پیدا نشد؛ ممکن است در برنامه‌های فعال رزرو باشند.</td></tr>';
-      data.rows.forEach(row => tbody.appendChild(queueRow(row)));
+      queueEl.innerHTML = data.rows.length ? '' :
+        '<div class="ws-empty">سفارشی برای برش پیدا نشد؛ ممکن است در برنامه‌های فعال رزرو باشند.</div>';
+      data.rows.forEach(row => queueEl.appendChild(queueRow(row)));
       state.queuePages = data.pages;
     } catch (error) {
-      tbody.innerHTML = `<tr><td colspan="5" class="text-center text-danger py-3">${esc(error.message)}</td></tr>`;
+      queueEl.innerHTML = `<div class="ws-empty text-danger">${esc(error.message)}</div>`;
     }
   }
 
   function queueRow(row) {
-    const tr = document.createElement('tr');
-    tr.className = 'ws-order-row';
-    tr.dataset.orderId = row.id;
+    const el = document.createElement('div');
+    el.className = 'queue-row';
+    el.dataset.orderId = row.id;
     const inPlan = row.planning_state === 'in_plan';
-    tr.innerHTML = `
-      <td class="td-lead"><input class="form-check-input ws-order-select" type="checkbox" value="${row.id}" aria-label="انتخاب سفارش ${row.id}"></td>
-      <td data-label="سفارش"><b class="num">#${row.id}</b>${row.number ? ` · ${esc(row.number)}` : ''}<div class="small text-muted" title="نماینده: ${esc(row.rep_name) || '—'}">${esc(row.customer_name)}</div></td>
-      <td class="d-none d-md-table-cell text-nowrap small num" data-label="تاریخ">${esc(row.date_jalali)}</td>
-      <td class="fw-bold num" data-label="قطعه باقی‌مانده">${fmt(row.remaining_pieces)}<div class="small text-muted fw-normal num">${fmt(row.item_count)} آیتم</div></td>
-      <td data-label="برنامه">${inPlan ? '<span class="badge bg-secondary">در برنامهٔ فعال</span>' : '<span class="badge bg-light text-dark">آزاد</span>'}</td>`;
-    tr.querySelector('.ws-order-select').checked = state.selection.has(String(row.id));
-    tr.querySelector('.ws-order-select').addEventListener('change', event => {
+    el.innerHTML = `
+      <span class="q-check"><input class="form-check-input ws-order-select" type="checkbox" value="${row.id}" aria-label="انتخاب سفارش ${row.id}"></span>
+      <span class="q-order"><b class="num">#${row.id}</b>${row.number ? ` <span class="num help">· ${esc(row.number)}</span>` : ''}<span class="q-cust" title="نماینده: ${esc(row.rep_name) || '—'}">${esc(row.customer_name)}</span></span>
+      <span class="q-count num">${fmt(row.remaining_pieces)}<small class="num">${fmt(row.item_count)} آیتم</small></span>
+      <span class="q-status"><span class="badge-status ${inPlan ? 'is-warn' : 'is-mute'}">${inPlan ? 'در برنامه' : 'آزاد'}</span></span>
+      <span class="q-expand"><button type="button" class="row-expand-toggle" aria-expanded="false" aria-controls="wsd-${row.id}" title="آیتم‌ها، متریال‌ها و جدول قطعات" aria-label="جزئیات سفارش ${row.id}"><i class="bi bi-chevron-down" aria-hidden="true"></i></button></span>`;
+    el.querySelector('.ws-order-select').checked = state.selection.has(String(row.id));
+    if (state.selection.has(String(row.id))) el.classList.add('is-selected');
+    el.querySelector('.ws-order-select').addEventListener('change', event => {
       const id = String(row.id);
       if (event.target.checked) state.selection.add(id); else state.selection.delete(id);
-      tr.classList.toggle('ws-order-selected', event.target.checked);
+      el.classList.toggle('is-selected', event.target.checked);
       syncSelection();
     });
-    tr.addEventListener('click', event => {
-      if (event.target.closest('input, a, button')) return;
+    el.querySelector('.q-expand .row-expand-toggle').addEventListener('click', () => focusOrder(row.id));
+    el.addEventListener('click', event => {
+      if (event.target.closest('input, a, button, select')) return;
       focusOrder(row.id);
     });
-    return tr;
+    return el;
   }
 
   function syncSelection() {
@@ -175,29 +120,79 @@
     document.dispatchEvent(new CustomEvent('ws:selection-changed', { detail: { ids: [...state.selection] } }));
   }
 
-  /* ---------- focused order: items + materials + parts ---------- */
+  /* ---------- expanded order: meta + chips + parts table ---------- */
 
   async function focusOrder(orderId) {
+    const rowEl = queueEl.querySelector(`.queue-row[data-order-id="${orderId}"]`);
+    if (!rowEl) return;
+    const toggle = rowEl.querySelector('.row-expand-toggle');
+    if (String(state.focusId) === String(orderId)) {
+      closeDetails(rowEl);
+      return;
+    }
+    queueEl.querySelectorAll('.queue-details').forEach(node => node.remove());
+    queueEl.querySelectorAll('.queue-row').forEach(node => {
+      node.classList.remove('is-focused');
+      node.querySelector('.row-expand-toggle')?.setAttribute('aria-expanded', 'false');
+    });
     state.focusId = orderId;
-    document.querySelectorAll('.ws-order-row').forEach(row =>
-      row.classList.toggle('ws-order-focused', row.dataset.orderId === String(orderId)));
-    const card = document.getElementById('ws-parts-card');
-    card.hidden = false;
-    document.getElementById('ws-focus-title').textContent = `سفارش #${orderId} — در حال خواندن…`;
+    state.item = 'all'; state.material = 'all'; state.search = ''; state.sort = '';
+    state.partsPage = 1; state.rows = {};
+    rowEl.classList.add('is-focused');
+    toggle?.setAttribute('aria-expanded', 'true');
+
+    const details = document.createElement('div');
+    details.className = 'queue-details';
+    details.id = `wsd-${orderId}`;
+    details.innerHTML = '<div class="help">در حال خواندن…</div>';
+    rowEl.insertAdjacentElement('afterend', details);
     try {
       const data = await api(pattern(CONFIG.order_pattern, orderId));
       state.orderInfo = data.order;
       state.items = data.items;
       state.materials = data.materials;
-      state.item = 'all'; state.material = 'all'; state.partsPage = 1;
+      details.innerHTML = detailsTemplate(data.order);
       renderChips();
-      document.getElementById('ws-focus-title').textContent =
-        `سفارش #${data.order.id}${data.order.number ? ` · ${data.order.number}` : ''} — ${data.order.customer_name}`;
       await loadParts();
     } catch (error) {
-      document.getElementById('ws-focus-title').textContent = `سفارش #${orderId}`;
+      details.innerHTML = `<div class="ws-empty text-danger">${esc(error.message)}</div>`;
       announce(error.message);
     }
+  }
+
+  function closeDetails(rowEl) {
+    rowEl?.querySelector('.row-expand-toggle')?.setAttribute('aria-expanded', 'false');
+    rowEl?.classList.remove('is-focused');
+    document.getElementById(`wsd-${rowEl?.dataset.orderId}`)?.remove();
+    state.focusId = null;
+  }
+
+  function detailsTemplate(order) {
+    return `
+      <div class="qd-meta">
+        <span>تاریخ <b class="num">${esc(order.date_jalali || '—')}</b></span>
+        <span>نماینده <b>${esc(order.rep_name || '—')}</b></span>
+        <span>مشتری <b>${esc(order.customer_name)}</b></span>
+      </div>
+      <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+        <span class="help">آیتم‌ها:</span><div class="ws-chips" data-ws-item-chips></div>
+        <span class="help">متریال‌ها:</span><div class="ws-chips" data-ws-material-chips></div>
+        <span class="input-search ms-auto"><i class="bi bi-search" aria-hidden="true"></i><input class="form-control form-control-sm ws-parts-search" type="search" placeholder="قطعه یا بارکد" aria-label="جست‌وجوی قطعه" autocomplete="off"></span>
+      </div>
+      <div class="table-responsive"><table class="table table-min ws-part-table mb-0">
+        <thead><tr>
+          <th>قطعه</th>
+          <th class="ws-sortable" data-sort="length">طول</th><th class="ws-sortable" data-sort="width">عرض</th>
+          <th class="ws-sortable" data-sort="quantity">تعداد</th>
+          <th class="ws-sortable" data-sort="material">متریال</th><th title="چرخش ۹۰ درجه">چرخش</th>
+          <th class="ws-sortable" data-sort="status">وضعیت</th><th><span class="visually-hidden">جزئیات بیشتر</span></th>
+        </tr></thead>
+        <tbody class="ws-part-rows"></tbody>
+      </table></div>
+      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-2">
+        <span class="ws-summary help"></span>
+        <span class="pager m-0 p-0"><button type="button" class="btn btn-sm btn-outline-secondary ws-parts-prev">قبلی</button><span class="ws-parts-page help num"></span><button type="button" class="btn btn-sm btn-outline-secondary ws-parts-next">بعدی</button></span>
+      </div>`;
   }
 
   function chip(label, active, onClick, title = '') {
@@ -211,8 +206,9 @@
   }
 
   function renderChips() {
-    const itemHolder = document.getElementById('ws-item-chips');
-    const materialHolder = document.getElementById('ws-material-chips');
+    const itemHolder = root.querySelector('[data-ws-item-chips]');
+    const materialHolder = root.querySelector('[data-ws-material-chips]');
+    if (!itemHolder || !materialHolder) return;
     itemHolder.replaceChildren();
     materialHolder.replaceChildren();
     itemHolder.appendChild(chip('همهٔ آیتم‌ها', state.item === 'all', () => {
@@ -243,7 +239,8 @@
     });
     if (state.search) params.set('q', state.search);
     if (state.sort) params.set('sort', state.sort);
-    const tbody = document.getElementById('ws-part-rows');
+    const tbody = root.querySelector('.ws-part-rows');
+    if (!tbody) return;
     tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3">در حال خواندن قطعات…</td></tr>';
     try {
       const data = await api(`${pattern(CONFIG.parts_pattern, state.focusId)}?${params}`);
@@ -252,12 +249,13 @@
       tbody.innerHTML = data.rows.length ? '' :
         '<tr><td colspan="8" class="text-center text-muted py-4">قطعه‌ای با این فیلترها پیدا نشد.</td></tr>';
       data.rows.forEach(row => tbody.appendChild(partRow(row)));
-      document.getElementById('ws-parts-page').textContent = `صفحهٔ ${fmt(data.page)} از ${fmt(data.pages)}`;
-      const summary = document.getElementById('ws-summary');
-      summary.innerHTML = `جمع ${fmt(data.count)} قطعه — نیاز هر متریال: ` + data.summary.map(entry =>
-        `<span class="badge bg-light text-dark">${esc(entry.name)}: <b class="num">${fmt(entry.piece_need)}</b></span>`
+      const pageLabel = root.querySelector('.ws-parts-page');
+      if (pageLabel) pageLabel.textContent = `صفحهٔ ${fmt(data.page)} از ${fmt(data.pages)}`;
+      const summary = root.querySelector('.ws-summary');
+      if (summary) summary.innerHTML = `جمع ${fmt(data.count)} قطعه — نیاز هر متریال: ` + data.summary.map(entry =>
+        `<span class="badge-status">${esc(entry.name)}: <b class="num">${fmt(entry.piece_need)}</b></span>`
       ).join(' ');
-      document.querySelectorAll('.ws-sortable').forEach(th =>
+      root.querySelectorAll('.ws-sortable').forEach(th =>
         th.classList.toggle('ws-sorted', th.dataset.sort === state.sort.replace('-', '')));
     } catch (error) {
       tbody.innerHTML = `<tr><td colspan="8" class="text-center text-danger py-3">${esc(error.message)}</td></tr>`;
@@ -288,8 +286,8 @@
         ${MATERIALS.map(m => `<option value="${m.id}" ${String(m.id) === String(row.material_id) ? 'selected' : ''}>${esc(m.name)} (${m.thickness})</option>`).join('')}
       </select></td>
       <td data-label="چرخش"><input class="form-check-input cell-turn" type="checkbox" ${row.turn ? 'checked' : ''} ${editable ? '' : 'disabled'} aria-label="چرخش ${esc(row.name)}" title="چرخش ۹۰ درجه"></td>
-      <td data-label="وضعیت"><span class="badge ws-status ws-status-${row.status_code}" title="${esc(statusTitle)}">${esc(row.status_label)}</span>${row.overridden_fields.length ? ' <span class="text-warning" title="مشخصات از پایه تغییر کرده">●</span>' : ''}</td>
-      <td class="text-nowrap"><button type="button" class="row-expand-toggle" data-row-expand aria-expanded="false" aria-controls="${detailsId}" title="بارکد، نوار لبه، وضعیت و اقدامات" aria-label="جزئیات بیشتر ${esc(row.name)}"><i class="bi bi-chevron-down"></i></button></td>`;
+      <td data-label="وضعیت"><span class="badge-status ${row.excluded ? 'is-bad' : row.status_code === 'locked_in_plan' ? 'is-warn' : 'is-mute'}" title="${esc(statusTitle)}">${esc(row.status_label)}</span>${row.overridden_fields.length ? ' <span class="text-warning" title="مشخصات از پایه تغییر کرده">●</span>' : ''}</td>
+      <td class="text-nowrap text-end"><button type="button" class="row-expand-toggle" data-row-expand aria-expanded="false" aria-controls="${detailsId}" title="بارکد، نوار لبه، وضعیت و اقدامات" aria-label="جزئیات بیشتر ${esc(row.name)}"><i class="bi bi-chevron-down" aria-hidden="true"></i></button></td>`;
     frag.appendChild(tr);
 
     const lock = row.reserved_plan
@@ -316,7 +314,7 @@
           <div class="col-12">${lock}</div>
           <div class="col-12"><span class="d-block small text-muted">نوار لبه — طول۱/طول۲/عرض۱/عرض۲</span><div class="ws-edge-cell d-flex flex-wrap gap-1">${edgeInput('f4')}${edgeInput('f5')}${edgeInput('f18')}${edgeInput('f26')}</div></div>
           <div class="col-12 d-flex flex-wrap align-items-center gap-2">
-            <span class="badge ws-status ws-status-${row.status_code}" title="${esc(statusTitle)}">${esc(row.status_label)}</span>
+            <span class="badge-status ${row.excluded ? 'is-bad' : row.status_code === 'locked_in_plan' ? 'is-warn' : 'is-mute'}" title="${esc(statusTitle)}">${esc(row.status_label)}</span>
             ${row.excluded ? `<span class="small text-danger">علت: ${esc(row.excluded_reason)}</span>` : ''}
             <span class="ms-auto d-flex flex-wrap gap-1">${actionsHtml(row, editable)}</span>
           </div>
@@ -341,7 +339,8 @@
 
   function replaceRow(row) {
     state.rows[row.task_id] = row;
-    const tbody = document.getElementById('ws-part-rows');
+    const tbody = root.querySelector('.ws-part-rows');
+    if (!tbody) return;
     const old = tbody.querySelector(`tr[data-task-id="${row.task_id}"]:not(.row-expand-details)`);
     if (old) {
       tbody.querySelector(`tr[data-details-for="${row.task_id}"]`)?.remove();
@@ -372,7 +371,7 @@
     const previous = input ? input.defaultValue : '';
     input?.setAttribute('disabled', 'disabled');
     cellState(input, 'در حال ذخیره…', 'text-muted');
-    const freshInput = () => table.querySelector(`tr[data-task-id="${taskId}"] [data-field="${domField}"]`);
+    const freshInput = () => root.querySelector(`tr[data-task-id="${taskId}"] [data-field="${domField}"]`);
     try {
       const data = await api(pattern(CONFIG.spec_pattern, taskId), {
         method: 'PATCH',
@@ -409,19 +408,18 @@
     }
   }
 
-  const table = document.getElementById('ws-part-rows');
-  table.addEventListener('keydown', event => {
+  root.addEventListener('keydown', event => {
     if (event.key === 'Enter' && event.target.matches('.cell-input')) {
       event.preventDefault();
       event.target.dispatchEvent(new Event('focusout'));
       event.target.blur();
     }
   });
-  table.addEventListener('focusout', event => {
+  root.addEventListener('focusout', event => {
     const input = event.target;
     if (!input.matches('.cell-input')) return;
     const tr = input.closest('tr');
-    const row = state.rows[tr.dataset.taskId];
+    const row = state.rows[tr?.dataset.taskId];
     if (!row || row.status_code === 'locked_in_plan') return;
     if (input.classList.contains('cell-dim')) {
       const field = input.dataset.field === 'quantity_total' ? 'quantity' : input.dataset.field;
@@ -439,17 +437,32 @@
       patchField(tr, field, input.value);
     }
   });
-  table.addEventListener('change', event => {
+  root.addEventListener('change', event => {
     if (!event.target.matches('.cell-turn')) return;
     patchField(event.target.closest('tr'), 'turn', event.target.checked);
   });
-  table.addEventListener('click', event => {
+  root.addEventListener('click', event => {
     const exclude = event.target.closest('.ws-exclude');
     if (exclude) { openExcludeModal(Number(exclude.dataset.task)); return; }
     const include = event.target.closest('.ws-include');
     if (include) { postAction('include', include.closest('tr')); return; }
     const reset = event.target.closest('.ws-reset');
-    if (reset) { postAction('reset', reset.closest('tr')); }
+    if (reset) { postAction('reset', reset.closest('tr')); return; }
+    const sortable = event.target.closest('.ws-sortable');
+    if (sortable) {
+      const field = sortable.dataset.sort;
+      state.sort = state.sort === field ? `-${field}` : field;
+      state.partsPage = 1;
+      loadParts();
+      return;
+    }
+    if (event.target.closest('.ws-parts-prev')) {
+      if (state.partsPage > 1) { state.partsPage -= 1; loadParts(); }
+      return;
+    }
+    if (event.target.closest('.ws-parts-next')) {
+      if (state.partsPage < state.partsPages) { state.partsPage += 1; loadParts(); }
+    }
   });
 
   /* ---------- exclude modal ---------- */
@@ -490,7 +503,7 @@
         holder.querySelector('#ws-exclude-error').textContent = 'ثبت علت الزامی است.';
         return;
       }
-      const tr = table.querySelector(`tr[data-task-id="${taskId}"]`);
+      const tr = root.querySelector(`tr[data-task-id="${taskId}"]`);
       await postAction('exclude', tr, { reason: value });
       closeModal();
     });
@@ -500,7 +513,7 @@
     if (event.key === 'Escape') closeModal();
   });
 
-  /* ---------- queue toolbar + pagination + chips/search/sort ---------- */
+  /* ---------- queue toolbar + parts search (delegated) ---------- */
 
   let searchTimer = null;
   document.getElementById('ws-order-search').addEventListener('input', event => {
@@ -516,34 +529,15 @@
     state.queuePage = 1;
     loadQueue();
   });
-  document.getElementById('ws-queue-prev').addEventListener('click', () => {
-    if (state.queuePage > 1) { state.queuePage -= 1; loadQueue(); }
-  });
-  document.getElementById('ws-queue-next').addEventListener('click', () => {
-    if (state.queuePage < state.queuePages) { state.queuePage += 1; loadQueue(); }
-  });
   let partsSearchTimer = null;
-  document.getElementById('ws-parts-search').addEventListener('input', event => {
+  root.addEventListener('input', event => {
+    if (!event.target.matches('.ws-parts-search')) return;
     clearTimeout(partsSearchTimer);
     partsSearchTimer = setTimeout(() => {
       state.search = event.target.value.trim();
       state.partsPage = 1;
       loadParts();
     }, 350);
-  });
-  document.getElementById('ws-parts-prev').addEventListener('click', () => {
-    if (state.partsPage > 1) { state.partsPage -= 1; loadParts(); }
-  });
-  document.getElementById('ws-parts-next').addEventListener('click', () => {
-    if (state.partsPage < state.partsPages) { state.partsPage += 1; loadParts(); }
-  });
-  document.querySelector('.ws-edit-grid thead').addEventListener('click', event => {
-    const th = event.target.closest('.ws-sortable');
-    if (!th) return;
-    const field = th.dataset.sort;
-    state.sort = state.sort === field ? `-${field}` : field;
-    state.partsPage = 1;
-    loadParts();
   });
 
   /* ---------- init ---------- */

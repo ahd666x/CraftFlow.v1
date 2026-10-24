@@ -1,0 +1,24 @@
+{# بدنهٔ کشوی تنظیمات برش — تیغه، سیاست، الگوریتم، رگه، سربر (قراردادهای name ثابت) #}
+<div class="d-grid gap-3">
+  <div class="cut-setting">
+    <label class="form-label" for="kerf">تیغه (mm)</label>
+    <input id="kerf" class="form-control form-control-sm" name="kerf" type="number" min="0" step="0.1" value="{{ setting.default_kerf }}" required>
+  </div>
+  <fieldset class="cut-setting">
+    <legend class="form-label mb-0">اولویت مصرف ورق</legend>
+    <div class="cut-setting-list d-grid gap-2">
+      {% for value, label in stock_policy_choices %}<label class="form-check"><input class="form-check-input" type="radio" name="stock_policy" value="{{ value }}" {% if value == default_stock_policy %}checked{% endif %}><span class="form-check-label">{{ label }}</span></label>{% endfor %}
+    </div>
+  </fieldset>
+  <fieldset class="cut-setting">
+    <legend class="form-label mb-0">الگوریتم — بهترین خودکار انتخاب می‌شود</legend>
+    <div class="cut-setting-list d-grid gap-2">
+      {% for value, label in engine_choices %}<label class="form-check"><input class="form-check-input" type="checkbox" name="algorithms" value="{{ value }}" {% if value == 'shelf' %}checked{% endif %}><span class="form-check-label">{{ label }}</span></label>{% endfor %}
+      <label class="form-check"><input class="form-check-input" type="checkbox" name="respect_grain" value="1"><span class="form-check-label">رعایت رگه (قطعهٔ رگه‌دار نمی‌چرخد)</span></label>
+    </div>
+  </fieldset>
+  <div class="cut-setting">
+    <label class="form-label" for="trim-input">سربر (mm)</label>
+    <input id="trim-input" class="form-control form-control-sm" name="trim" type="number" min="0" max="500" step="0.1" value="0">
+  </div>
+</div>
