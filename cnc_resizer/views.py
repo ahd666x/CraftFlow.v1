@@ -74,6 +74,11 @@ def index(request):
         "tool_sets_api_url": reverse("cnc_resizer:tool_sets"),
         "edit_templates_url": reverse("cnc_resizer:edit_templates"),
         "edit_template_delete_url": reverse("cnc_resizer:edit_template_delete", args=[0]),
+        # فاز ۲.۲: قالب‌های پارامتریک قطعه — API از قبل بود، از این جلسه UI دارد
+        "part_templates_url": reverse("cnc_resizer:part_templates"),
+        "part_template_apply_url": reverse("cnc_resizer:part_template_apply"),
+        "part_template_delete_url": reverse("cnc_resizer:part_template_delete", args=[0]),
+        "manual_queue_url": reverse("cnc_resizer:manual_queue"),
         "manual_resolution_url": reverse("cnc_resizer:api_manual_resolution"),
         "task_file_url": reverse("cnc_resizer:task_file"),
         "sheet_program_url": reverse("cnc_resizer:sheet_program", args=[0]),
@@ -683,6 +688,17 @@ def part_templates(request):
         part_options = [{'id': profile.part_id,
                          'label': str(profile.part)}
                         for profile in CncPartProfile.objects.select_related('part').all()[:300]]
+        # فاز ۲.۲: قطعهٔ زمینهٔ deep-link (صف دستی) همیشه در گزینه‌ها باشد —
+        # قطعهٔ صف دستی به‌تعریف غالباً «پروفایل ندارد»؛ اگر گزینه‌ها فقط از
+        # پروفایل‌ها می‌آمدند، ثبت قالب برای همان قطعه‌ای که باید اصلاح شود
+        # غیرممکن می‌شد و حلقهٔ صف دستی نیمه‌کاره می‌ماند.
+        raw_ctx_part = request.GET.get('part_id') or ''
+        try:
+            ctx_part = Part.objects.filter(pk=int(raw_ctx_part)).first()
+        except (TypeError, ValueError):
+            ctx_part = None
+        if ctx_part is not None and not any(opt['id'] == ctx_part.pk for opt in part_options):
+            part_options.insert(0, {'id': ctx_part.pk, 'label': str(ctx_part)})
         return JsonResponse({'ok': True, 'templates': templates, 'part_options': part_options},
                             json_dumps_params={'ensure_ascii': False})
     try:

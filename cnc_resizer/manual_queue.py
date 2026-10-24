@@ -17,6 +17,9 @@ Honesty contract — everything here is READ-ONLY:
     ``part_template_ready``   — a parametric part template exists, so the
                                 operator can produce the fixed file quickly
                                 in the CAD tool (it never bypasses checks).
+    ``part_template_names``   — phase 2.2, additive: the NAMES of those
+                                templates, so the queue badge points the
+                                operator to the right one in the CAD tool.
 - Rows with ``task = None`` (order/task deleted → SET_NULL) are skipped: they
   have no deep link, no effective spec and no pending quantity to show. They
   remain visible in the «نیازمند بررسی» drawer of the sheet page.
@@ -122,10 +125,20 @@ def _profile_signal(part):
 
 
 def _signals_for(part, spec_length):
+    """Advisory read-only signals for one row.
+
+    ``part_template_names`` (phase 2.2) is an additive key — the docstring
+    above is the honesty contract; the booleans keep their exact meaning.
+    """
+    templates = list(
+        CncPartTemplate.objects.filter(part=part).order_by('name')
+        .values('id', 'name')
+    )
     return {
         'manual_file_ready': _manual_file_signal(part, spec_length),
         'profile_ready': _profile_signal(part),
-        'part_template_ready': CncPartTemplate.objects.filter(part=part).exists(),
+        'part_template_ready': bool(templates),
+        'part_template_names': [template['name'] for template in templates],
     }
 
 

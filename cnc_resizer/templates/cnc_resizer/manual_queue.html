@@ -71,7 +71,7 @@
               <div class="d-grid gap-1">
                 {% if row.signals.manual_file_ready %}<span class="badge-status is-ok" title="فایل دستی برای همین طول مؤثر ثبت و تأیید شده است؛ بازچینش از آن استفاده می‌کند."><i class="dot"></i>فایل دستی آماده</span>{% endif %}
                 {% if row.signals.profile_ready %}<span class="badge-status is-info" title="الگوی تغییر اندازهٔ تأییدشده برای این قطعه ثبت شده است؛ برنامه‌ریز می‌تواند فایل مشتق بسازد."><i class="dot"></i>الگوی تأییدشده آماده</span>{% endif %}
-                {% if row.signals.part_template_ready %}<span class="badge-status is-mute" title="قالب پارامتریک این قطعه ثبت شده است؛ در ابزار CNC بارگذاری کنید تا ساخت فایل سریع‌تر شود."><i class="dot"></i>قالب پارامتریک ثبت شده</span>{% endif %}
+                {% if row.signals.part_template_ready %}<span class="badge-status is-mute" title="قالب پارامتریک این قطعه ثبت شده است؛ در ابزار CNC از پنل «تاریخچه» بارگذاری کنید تا ساخت فایل سریع‌تر شود.{% if row.signals.part_template_names %} قالب‌ها: {{ row.signals.part_template_names|join:'، ' }}{% endif %}"><i class="dot"></i>قالب پارامتریک ثبت شده{% if row.signals.part_template_names %}: {{ row.signals.part_template_names|join:'، ' }}{% endif %}</span>{% endif %}
                 {% if not row.signals.manual_file_ready and not row.signals.profile_ready and not row.signals.part_template_ready %}
                 <span class="help mb-0">—</span>
                 {% endif %}
@@ -79,7 +79,7 @@
             </td>
             <td>
               <div class="d-flex flex-wrap gap-1 align-items-center">
-                <a class="btn btn-sm btn-outline-primary" href="/cnc/?task_id={{ row.task_id }}" title="باز کردن فایل این تسک در ابزار CAD سی‌ان‌سی برای اصلاح و ثبت فایل دستی">رفع در ابزار CNC</a>
+                <a class="btn btn-sm btn-outline-primary" href="/cnc/?task_id={{ row.task_id }}&amp;from=manual" title="باز کردن فایل این تسک در ابزار CAD سی‌ان‌سی برای اصلاح و ثبت فایل دستی؛ بازگشت به همین صف">رفع در ابزار CNC</a>
                 {% if row.can_renest %}
                 <form method="post" action="{{ manual_renest_url }}" onsubmit="return confirm('بازچینش، برنامه‌ریز CNC را برای کل سفارش این مورد اجرا می‌کند و ممکن است ورق رزرو کند. ادامه می‌دهید؟')">
                   {% csrf_token %}

@@ -229,6 +229,24 @@ class PartTemplateApiTests(TestCase):
         option_labels = [option["label"] for option in listing["part_options"]]
         self.assertTrue(any(self.part.name in label for label in option_labels))
 
+    def test_listing_includes_context_part_without_profile(self):
+        """فاز ۲.۲ — قطعهٔ زمینهٔ deep-link (صف دستی) بدون پروفایل هم در
+        گزینه‌های «قطعهٔ مقصد» می‌آید؛ قطعهٔ صف دستی به‌تعریف غالباً پروفایل
+        ندارد و اگر گزینه‌ها فقط از پروفایل‌ها می‌آمدند، ثبت قالب برای همان
+        قطعه‌ای که باید اصلاح شود غیرممکن می‌شد."""
+        profileless = Part.objects.create(
+            material=self.part.material, name="صفهٔ بدون پروفایل",
+            length=1890, width=400, routing_code="CNC",
+        )
+        listing = self.client.get(self.list_url).json()
+        self.assertFalse(
+            any(option["id"] == profileless.pk for option in listing["part_options"]))
+        listing = self.client.get(self.list_url, {"part_id": profileless.pk}).json()
+        option_ids = [option["id"] for option in listing["part_options"]]
+        self.assertIn(profileless.pk, option_ids)
+        self.assertEqual(option_ids[0], profileless.pk)   # قطعهٔ زمینه اول لیست
+        self.assertIn(self.part.pk, option_ids)           # پروفایل‌دارها حذف نمی‌شوند
+
     def test_save_upserts_by_part_and_name(self):
         first = self._save_template()
         second = self._save_template(edits=[{"op": "shift", "feature_id": "feature-block-0001",

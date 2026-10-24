@@ -850,8 +850,14 @@
     if (file) { fileEl.textContent = file; fileEl.hidden = false; } else { fileEl.hidden = true; }
     $('tcStatus').hidden = !warn;
     $('tcRegister').hidden = !register;
+    // فاز ۲.۲: اگر از صف دستی باز شده (‎?from=manual‎)، بازگشت به همان صف باشد
     const back = $('tcBack');
-    if (back) back.href = CNC.urls.sheetPlans || '/cnc/sheets/';
+    if (back) {
+      back.href = state.fromManualQueue
+        ? (CNC.urls.manualQueue || '/cnc/manual/')
+        : (CNC.urls.sheetPlans || '/cnc/sheets/');
+      back.textContent = state.fromManualQueue ? 'بازگشت به صف دستی' : 'بازگشت به ورق‌ها';
+    }
     bar.hidden = false;
   }
 
@@ -868,7 +874,10 @@
         $('tcStatusLine').textContent = res.message || 'فایل دستی ثبت شد.';
         $('tcStatus').hidden = true;
         button.hidden = true;
-        alertBox('info', esc(res.message || 'فایل دستی ثبت و تأیید شد؛ به ایستگاه برش برگردید و برنامهٔ CNC را دوباره بسازید.'), 'manual-fix');
+        // فاز ۲.۲: حلقه را کامل کن — بازچینش در همان صف دستی در دسترس است
+        const queueLink = CNC.urls.manualQueue || '/cnc/manual/';
+        alertBox('info', esc(res.message || 'فایل دستی ثبت و تأیید شد.')
+          + ` برای چیدن دوباره، در <a href="${esc(queueLink)}">صف دستی CNC</a> دکمهٔ «بازچینش» را بزنید.`, 'manual-fix');
       } catch (err) {
         $('tcStatusLine').textContent = '';
         alertBox('err', 'ثبت فایل دستی رد شد: ' + esc(err.message), 'manual-fix');
@@ -897,6 +906,8 @@
         warn: !!meta.manual_required,
         register: !!meta.manual_required,
       });
+      // فاز ۲.۲: زمینهٔ فعلی برای پیش‌انتخاب قطعهٔ مقصد در «قالب قطعه»
+      state.taskContext = meta;
       const button = $('tcRegister');
       if (button) button.dataset.taskId = meta.task_id || '';
       if (!meta.resolvable && meta.failure_reason) {
@@ -924,6 +935,7 @@
           : '',
         file: meta.material || '',
       });
+      state.taskContext = null;   // برنامهٔ ورق قطعهٔ واحد ندارد — زمینهٔ قالب پاک شود
     } catch (err) {
       alertBox('err', 'بازکردن برنامهٔ ورق ناموفق بود: ' + esc(err.message), 'sheet-view');
     }
@@ -947,6 +959,8 @@
     const sheetId = Number(params.get('sheet_id') || 0);
     const taskId = Number(params.get('task_id') || 0);
     const partId = Number(params.get('part_id') || 0);
+    // فاز ۲.۲: ‎?from=manual‎ یعنی لینک از صف دستی آمده — دکمهٔ «بازگشت» همان‌جا برگردد
+    state.fromManualQueue = params.get('from') === 'manual';
     if (sheetId) await openSheetContext(sheetId);
     else if (taskId) await openTaskContext({ task_id: taskId });
     else if (partId) await openTaskContext({ part_id: partId });

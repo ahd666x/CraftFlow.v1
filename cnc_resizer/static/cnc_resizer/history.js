@@ -87,6 +87,27 @@
           <button type="button" data-tpl-del="${t.id}" class="danger">حذف</button>
         </span>
       </li>`).join('');
+    // قالب‌های قطعه: مقادیر فرم باز در رندرهای مجدد (push/undo) حفظ شود
+    const prevForm = panel.querySelector('#ptplForm');
+    const keepForm = prevForm && !prevForm.hidden
+      ? {
+          name: prevForm.querySelector('#ptplName').value,
+          part: prevForm.querySelector('#ptplPart').value,
+          note: prevForm.querySelector('#ptplNote').value,
+        }
+      : null;
+    const ctxPart = state.taskContext && state.taskContext.part_id;
+    const ptpls = orderedPartTemplates();
+    const ptplItems = ptpls.map((t) => `
+      <li data-ptpl="${t.id}" role="button" tabindex="0" class="${ctxPart && t.part_id === ctxPart ? 'sel' : ''}">
+        <span>📐 ${CNC.esc(t.name)}<small style="display:block;color:var(--muted);font-size:11px">${CNC.esc(t.part_label)} · ${Number(t.source_feature_count) || 0} ویژگی</small></span>
+        <span class="dims">
+          <button type="button" data-ptpl-load="${t.id}">بارگذاری</button>
+          <button type="button" data-ptpl-del="${t.id}" class="danger">حذف</button>
+        </span>
+      </li>`).join('');
+    const partOptions = (state._partOptions || []).map((opt) => `
+      <option value="${Number(opt.id)}" ${ctxPart && opt.id === ctxPart ? 'selected' : ''}>${CNC.esc(opt.label)}</option>`).join('');
     panel.innerHTML = `
       <h2>تاریخچهٔ ویرایش</h2>
       <ol>${items || '<li style="cursor:default">هنوز ویرایشی ثبت نشده است.</li>'}</ol>
@@ -96,8 +117,25 @@
       </div>
       <b style="display:block;font-size:11.5px;color:var(--muted);margin:10px 0 4px">الگوهای ویرایش (کارگاه مشترک)</b>
       <ul class="mlist">${templates || '<li style="cursor:default">الگویی ثبت نشده است.</li>'}</ul>
-      <p class="statusline">الگو فقط فهرست ویرایش‌ها را پیش‌بارگذاری می‌کند؛ اعمال نهایی همیشه از
-      پیش‌نمایش + گتهٔ برخورد + گتهٔ دیالکت همان سرور می‌گذرد.</p>
+      <b style="display:block;font-size:11.5px;color:var(--muted);margin:12px 0 4px">قالب‌های قطعه (پارامتریک — نقش‌های هندسی)</b>
+      <ul class="mlist" id="partTplList">${ptplItems || '<li style="cursor:default">قالب قطعه‌ای ثبت نشده است.</li>'}</ul>
+      <div class="toolbtns">
+        <button type="button" id="savePartTplBtn">📐 ذخیره به‌عنوان قالب قطعه…</button>
+        <button type="button" id="refreshPartTplBtn">↻ قالب‌های قطعه</button>
+      </div>
+      <div class="ptpl-form" id="ptplForm" ${keepForm ? '' : 'hidden'}>
+        <label>نام قالب <input id="ptplName" maxlength="80" placeholder="مثلاً آرایهٔ پیچ گوشه"></label>
+        <label>قطعهٔ مقصد <select id="ptplPart"><option value="">— انتخاب قطعه —</option>${partOptions}</select></label>
+        <label>یادداشت <input id="ptplNote" maxlength="200" placeholder="اختیاری"></label>
+        <div class="toolbtns">
+          <button type="button" id="ptplSave" class="primary">ذخیرهٔ قالب قطعه</button>
+          <button type="button" id="ptplCancel">انصراف</button>
+        </div>
+      </div>
+      <p class="statusline">الگوی ویرایش فهرست ویرایش‌ها را پیش‌بارگذاری می‌کند؛ قالب قطعه نقش‌های هندسی
+      ویرایش‌های ویژگی‌محور (آرایه/گرید/آینه/چرخش) را به قطعهٔ مقصد می‌بندد و روی فایل جدید همان قطعه
+      با تطبیق هندسی سرور بارگذاری می‌شود. اعمال نهایی هر دو همیشه از پیش‌نمایش + گتهٔ برخورد + گتهٔ
+      دیالکت همان سرور می‌گذرد. برای جابه‌جایی/کشش قطعه، «الگوی ویرایش» را ذخیره کنید.</p>
     `;
     panel.querySelectorAll('ol li[data-idx]').forEach((li) => {
       const go = () => jump(Number(li.dataset.idx));
@@ -121,6 +159,39 @@
         try {
           await CNC.api.deleteEditTemplate(Number(btn.dataset.tplDel));
           await loadTemplates();
+        } catch (err) { CNC.alert('err', CNC.esc(err.message)); }
+      };
+    });
+    // قالب‌های قطعه — فاز ۲.۲
+    if (keepForm) {
+      const form = panel.querySelector('#ptplForm');
+      if (form) {
+        form.querySelector('#ptplName').value = keepForm.name;
+        form.querySelector('#ptplPart').value = keepForm.part;
+        form.querySelector('#ptplNote').value = keepForm.note;
+      }
+    }
+    const savePTplBtn = panel.querySelector('#savePartTplBtn');
+    if (savePTplBtn) savePTplBtn.onclick = openPartTemplateForm;
+    const refreshPTplBtn = panel.querySelector('#refreshPartTplBtn');
+    if (refreshPTplBtn) refreshPTplBtn.onclick = loadPartTemplates;
+    const ptplSave = panel.querySelector('#ptplSave');
+    if (ptplSave) ptplSave.onclick = savePartTemplate;
+    const ptplCancel = panel.querySelector('#ptplCancel');
+    if (ptplCancel) ptplCancel.onclick = () => togglePartTemplateForm(false);
+    panel.querySelectorAll('[data-ptpl-load]').forEach((btn) => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        applyPartTemplate(Number(btn.dataset.ptplLoad));
+      };
+    });
+    panel.querySelectorAll('[data-ptpl-del]').forEach((btn) => {
+      btn.onclick = async (e) => {
+        e.stopPropagation();
+        if (!confirm('این قالب قطعه حذف شود؟')) return;
+        try {
+          await CNC.api.deletePartTemplate(Number(btn.dataset.ptplDel));
+          await loadPartTemplates();
         } catch (err) { CNC.alert('err', CNC.esc(err.message)); }
       };
     });
@@ -189,6 +260,120 @@
     CNC.alert('info', `الگوی «${CNC.esc(tpl.name)}» بارگذاری شد؛ نتیجه از پیش‌نمایش سرور می‌آید.`);
   }
 
+  // ------------------------------------------------_قالب‌های قطعه (پارامتریک — فاز ۲.۲)
+  // بستن حلقهٔ صف دستی: ثبت قالب از ابزار CAD + بارگذاری روی فایل جدید همان
+  // قطعه با تطبیق هندسی سرور. اعمال نهایی همیشه از پیش‌نمایش fail-closed
+  // همان سرور می‌گذرد — قالب فقط ویرایش‌ها را پیش‌بارگذاری می‌کند.
+  async function loadPartTemplates() {
+    try {
+      const data = await CNC.api.partTemplates();
+      state._partTemplates = data.templates || [];
+      state._partOptions = data.part_options || [];
+    } catch (err) {
+      state._partTemplates = [];
+      CNC.alert('err', 'بارگذاری قالب‌های قطعه ناموفق بود: ' + CNC.esc(err.message));
+    }
+    renderPanel();
+  }
+
+  // قالب‌های قطعهٔ زمینهٔ فعلی (deep-link تسک) اول — بقیه بر اساس تازگی.
+  function orderedPartTemplates() {
+    const ctxPart = state.taskContext && state.taskContext.part_id;
+    const list = (state._partTemplates || []).slice();
+    list.sort((a, b) => (
+      ((b.part_id === ctxPart) - (a.part_id === ctxPart))
+      || String(b.updated_at || '').localeCompare(String(a.updated_at || ''))
+    ));
+    return list;
+  }
+
+  function togglePartTemplateForm(show) {
+    const form = document.getElementById('ptplForm');
+    if (!form) return;
+    form.hidden = !show;
+    if (show) {
+      const name = form.querySelector('#ptplName');
+      const part = form.querySelector('#ptplPart');
+      if (name && !name.value) name.focus();
+      // پیش‌انتخاب قطعهٔ زمینهٔ فعلی (deep-link صف دستی)
+      const ctxPart = state.taskContext && state.taskContext.part_id;
+      if (part && ctxPart) part.value = String(ctxPart);
+    }
+  }
+
+  async function openPartTemplateForm() {
+    if (!state.text) {
+      CNC.alert('warn', 'اول فایل مقصد را باز کنید، بعد قالب قطعه را ذخیره کنید.');
+      return;
+    }
+    const payload = CNC.opsPayload();
+    if (!Array.isArray(payload.edits) || !payload.edits.length) {
+      CNC.alert('warn', 'ویرایشی برای ذخیره نیست؛ اول روی نقشه ویرایش ویژگی‌محور (آرایه/گرید/آینه/چرخش) ثبت کنید.');
+      return;
+    }
+    // صداقت: قالب قطعه فقط ویرایش ویژگی‌محور می‌پذیرد (قرارداد سرور). اگر
+    // ویرایش قطعه‌ای فعال است، صریح بگوییم چه چیزی ذخیره نمی‌شود.
+    if (state.partOp.size || state.gapOps.length) {
+      const ok = confirm('قالب قطعه فقط ویرایش‌های ویژگی‌محور (آرایه/گرید/آینه/چرخش) را نگه می‌دارد؛ '
+        + 'ویرایش‌های قطعه‌ای فعال (جابه‌جایی/کشش/فاصله) در آن ذخیره نمی‌شوند — '
+        + 'برای آن‌ها «ذخیره به‌عنوان الگو» را استفاده کنید. با ذخیرهٔ فقط بخش ویژگی‌محور ادامه می‌دهید؟');
+      if (!ok) return;
+    }
+    await loadPartTemplates();
+    togglePartTemplateForm(true);
+  }
+
+  async function savePartTemplate() {
+    const form = document.getElementById('ptplForm');
+    const nameEl = form && form.querySelector('#ptplName');
+    const partEl = form && form.querySelector('#ptplPart');
+    const noteEl = form && form.querySelector('#ptplNote');
+    const name = nameEl ? nameEl.value.trim() : '';
+    if (!name) { CNC.alert('warn', 'نام قالب قطعه لازم است.'); return; }
+    const partId = partEl ? Number(partEl.value || 0) : 0;
+    if (!partId) { CNC.alert('warn', 'قطعهٔ مقصد قالب را انتخاب کنید.'); return; }
+    try {
+      const res = await CNC.api.savePartTemplate({
+        name,
+        part_id: partId,
+        note: noteEl ? noteEl.value.trim() : '',
+        edits: state.featureOps.slice(),
+        content: state.text,
+        filename: state.filename,
+      });
+      togglePartTemplateForm(false);
+      await loadPartTemplates();
+      const queueLink = CNC.urls.manualQueue || '/cnc/manual/';
+      CNC.alert('info', CNC.esc(res.message || 'قالب قطعه ذخیره شد.')
+        + ` — اگر این قطعه در <a href="${CNC.esc(queueLink)}">صف دستی CNC</a> است، سیگنالش همین حالا زنده می‌شود.`,
+        'ptpl-save');
+    } catch (err) { CNC.alert('err', CNC.esc(err.message), 'ptpl-save'); }
+  }
+
+  async function applyPartTemplate(id) {
+    const tpl = (state._partTemplates || []).find((t) => t.id === id);
+    if (!tpl) return;
+    if (!state.text) {
+      CNC.alert('warn', 'اول فایل مقصد را باز کنید، بعد قالب قطعه را بارگذاری کنید.');
+      return;
+    }
+    if ((state.partOp.size || state.gapOps.length)
+        && !confirm('قالب قطعه وضعیت ویرایش فعلی (شامل ویرایش‌های قطعه‌ای) را کامل جایگزین می‌کند. ادامه می‌دهید؟')) {
+      return;
+    }
+    try {
+      const res = await CNC.api.applyPartTemplate(id, state.text, state.filename);
+      const concrete = Array.isArray(res.edits) ? res.edits : [];
+      state.partOp = new Map();
+      state.gapOps = [];
+      state.featureOps = concrete;
+      push(`قالب قطعهٔ «${tpl.name}»`);
+      CNC.requestPreview();
+      const matched = Array.isArray(res.mapping) ? res.mapping.length : 0;
+      CNC.alert('info', `قالب قطعهٔ «${CNC.esc(tpl.name)}» بارگذاری شد (${matched} نقش هندسی منطبق)؛ نتیجه از پیش‌نمایش سرور می‌آید.`);
+    } catch (err) { CNC.alert('err', CNC.esc(err.message)); }
+  }
+
   // ------------------------------------------------_رویدادها
   CNC.on('ops-changed', (detail) => {
     push((detail && detail.label) || 'ویرایش');
@@ -212,8 +397,8 @@
     else if ((key === 'z' && e.shiftKey) || key === 'y') { e.preventDefault(); redo(); }
   });
 
-  // پنل تاریخچه: باز شدن → بارگذاری الگوها
+  // پنل تاریخچه: باز شدن → بارگذاری الگوها + قالب‌های قطعه (فاز ۲.۲)
   CNC.on('panel-opened', ({ id }) => {
-    if (id === 'historyPanel') loadTemplates();
+    if (id === 'historyPanel') { loadTemplates(); loadPartTemplates(); }
   });
 })();

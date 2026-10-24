@@ -86,6 +86,38 @@ class ManualQueuePageTests(ManualQueueFixtureMixin, TestCase):
         page = self.client.get(reverse('cnc_resizer:manual_queue'))
         self.assertContains(page, 'قالب پارامتریک ثبت شده')
 
+    def test_part_template_signal_shows_names_and_backlink(self):
+        """فاز ۲.۲ — سیگنال قالب، نام قالب‌ها را هم نشان می‌دهد و لینک ابزار
+        با ‎?from=manual‎ برمی‌گردد؛ کلیدهای بولی قبلی معنایشان حفظ می‌شود."""
+        self.route_to_queue()
+        CncPartTemplate.objects.create(
+            part=self.part, name='آرایهٔ پیچ گوشه', payload=[],
+            roles=[], source_bounds={}, created_by=self.user,
+        )
+        page = self.client.get(reverse('cnc_resizer:manual_queue'))
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, 'قالب پارامتریک ثبت شده')
+        self.assertContains(page, 'آرایهٔ پیچ گوشه')
+        self.assertContains(page, 'from=manual')
+        rows = page.context['rows']
+        self.assertEqual(len(rows), 1)
+        signals = rows[0]['signals']
+        self.assertTrue(signals['part_template_ready'])
+        self.assertEqual(signals['part_template_names'], ['آرایهٔ پیچ گوشه'])
+        # کلیدهای فاز ۲.۱ دست‌نخورده
+        self.assertFalse(signals['manual_file_ready'])
+        self.assertFalse(signals['profile_ready'])
+
+    def test_part_template_names_empty_without_templates(self):
+        """فاز ۲.۲ — بدون قالب، کلید additive خالی است و badge رندر نمی‌شود."""
+        self.route_to_queue()
+        page = self.client.get(reverse('cnc_resizer:manual_queue'))
+        self.assertEqual(page.status_code, 200)
+        self.assertNotContains(page, 'قالب پارامتریک ثبت شده')
+        signals = page.context['rows'][0]['signals']
+        self.assertFalse(signals['part_template_ready'])
+        self.assertEqual(signals['part_template_names'], [])
+
     def test_row_disappears_once_pieces_are_placed(self):
         self.route_to_queue()
         register_manual_cnc_file(self.task, MINIMAL_1890, self.user)

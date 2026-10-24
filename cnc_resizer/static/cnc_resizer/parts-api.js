@@ -98,6 +98,8 @@
     measures: [],
     toolMap: {},
     fileMeta: null,          // {sheet_bbox, sheet_bbox_finished, sheet_thickness, warnings...}
+    taskContext: null,       // فاز ۲.۲: meta تسک deep-link (part_id برای پیش‌انتخاب قالب قطعه)
+    fromManualQueue: false,  // فاز ۲.۲: ‎?from=manual‎ — بازگشت نوار زمینه به صف دستی
     reqSeq: 0,
   };
 
@@ -181,6 +183,23 @@
     // قطعهٔ پایانی «/0/delete/» (که urls.py تضمینش می‌کند) جایگزین می‌شود.
     deleteEditTemplate(id) {
       return postJSON(CNC.urls.editTemplateDelete.replace(/\/0\/delete\/$/, `/${Number(id)}/delete/`), {});
+    },
+    // فاز ۲.۲: قالب‌های پارامتریک قطعه (نقش‌های هندسی) — بستن حلقهٔ صف دستی:
+    // ثبت از ابزار CAD، بارگذاری روی فایل جدید همان قطعه با تطبیق هندسی سرور.
+    // قطعهٔ زمینهٔ deep-link همراه درخواست می‌رود تا سرور آن را همیشه در
+    // گزینه‌های «قطعهٔ مقصد» بگذارد (قطعهٔ صف دستی پروفایل ندارد).
+    partTemplates() {
+      const ctx = CNC.state.taskContext;
+      const qs = (ctx && ctx.part_id) ? `?part_id=${Number(ctx.part_id)}` : '';
+      return getJSON(CNC.urls.partTemplates + qs);
+    },
+    savePartTemplate(payload) { return postJSON(CNC.urls.partTemplates, payload); },
+    applyPartTemplate(templateId, content, filename) {
+      return postJSON(CNC.urls.partTemplateApply,
+                      { template_id: Number(templateId), content, filename });
+    },
+    deletePartTemplate(id) {
+      return postJSON(CNC.urls.partTemplateDelete.replace(/\/0\/delete\/$/, `/${Number(id)}/delete/`), {});
     },
   };
 
