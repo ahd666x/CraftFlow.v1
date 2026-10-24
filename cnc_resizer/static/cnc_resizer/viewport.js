@@ -310,7 +310,12 @@
     const sheet = (state.preview && state.preview.resized && state.preview.resized.sheet_bbox_finished)
       || (state.fileMeta && state.fileMeta.sheet_bbox_finished);
     if (sheet) {
-      el('rect', { x: sheet.x_min, y: -sheet.y_max, width: sheet.width, height: sheet.height,
+      // الزامی: گوشهٔ ورق همیشه مبدأ (0,0) — sheet_bbox_finished حاشیهٔ ابزار
+      // را به bbox اضافه می‌کند و آفست x_min/y_min می‌دهد؛ مستطیل ورق نباید
+      // با آن جابه‌جا شود چون هندسهٔ قطعات و محورهای گرید مرجعِ صفر هستند.
+      const w = sheet.width != null ? sheet.width : (sheet.x_max - sheet.x_min);
+      const h = sheet.height != null ? sheet.height : (sheet.y_max - sheet.y_min);
+      el('rect', { x: 0, y: -h, width: w, height: h,
                    fill: 'var(--surface)', stroke: 'var(--line)', 'stroke-width': 1 }, gSheet);
     }
 

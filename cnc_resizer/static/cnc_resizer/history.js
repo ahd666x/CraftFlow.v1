@@ -140,7 +140,9 @@
 
   async function saveTemplate() {
     const payload = CNC.opsPayload();
-    if (payload.kind === 'none') {
+    // گارد روی دادهٔ واقعی، نه برچسب kind — «چیزی برای ذخیره هست؟» یعنی
+    // edits غیرخالی؛ اگر معناشناسی kind روزی تغییر کند گارد نمی‌شکند.
+    if (!Array.isArray(payload.edits) || !payload.edits.length) {
       CNC.alert('warn', 'ویرایشی برای ذخیره نیست؛ اول روی نقشه چیزی را ویرایش کنید.');
       return;
     }

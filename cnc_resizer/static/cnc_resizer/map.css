@@ -93,6 +93,8 @@ button.on { background: var(--accent); border-color: var(--accent); color: #fff;
 #inspector .actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 #inspector .actions button { font-size: 12px; padding: 4px 10px; min-height: 40px; }
 .insp-empty { color: var(--muted); font-size: 12.5px; }
+.insp-info { margin: 8px 0 0; padding: 7px 10px; border-radius: 8px; font-size: 12px;
+  background: var(--accent-soft); color: var(--accent); border: 1px solid rgba(29, 108, 224, .35); }
 .insp-warn { margin: 8px 0 0; padding: 7px 10px; border-radius: 8px; font-size: 12px;
   background: var(--warn-soft); color: var(--warn); border: 1px solid var(--warn); }
 

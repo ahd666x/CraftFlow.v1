@@ -61,6 +61,8 @@
       ${parts.length || ops.length
         ? `<p class="insp-empty" style="margin-top:8px">روی هر قطعه یا عملیات کلیک کنید تا بازرس همین‌جا شرح آن را بیاورد. Shift+کلیک چندانتخابی و کشیدن روی فضای خالی، کادر انتخاب می‌سازد.</p>`
         : ''}
+      ${(det && det.infos || []).length
+        ? `<div class="insp-info">ℹ ${det.infos.map(esc).join('<br>ℹ ')}</div>` : ''}
       ${(det && det.warnings || []).length
         ? `<div class="insp-warn">⚠ ${det.warnings.map(esc).join('<br>⚠ ')}</div>` : ''}
       ${!det || (!parts.length && !ops.length)

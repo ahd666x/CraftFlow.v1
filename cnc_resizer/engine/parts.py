@@ -525,9 +525,16 @@ def _tool_dia_for(tool: int | None, tool_map: dict[int, float], fallback: float)
 
 def _filename_check(filename: str, sheet: dict[str, float] | None,
                     part_count: int) -> list[str]:
-    warnings: list[str] = []
+    """Cross-checks against the file name.
+
+    Severity contract (P0 fix 1.1.4): these are *informational* hints, not
+    warnings — the file name is only cross-referenced, never authoritative,
+    so reading them as yellow warnings spooked operators. Returned list
+    lands in the detection payload as ``infos`` (blue), not ``warnings``.
+    """
+    infos: list[str] = []
     if not filename:
-        return warnings
+        return infos
     # integer-only WxH, last match wins: "t.1.1970x395.2set" -> (1970, 395);
     # the "t.1." family prefix cannot leak in because the W capture stops at
     # the first non-digit (the dot) before the x
@@ -538,7 +545,7 @@ def _filename_check(filename: str, sheet: dict[str, float] | None,
         actual = sorted((sheet["width"], sheet["height"]))
         for want, got in zip(expected, actual):
             if want > 0 and abs(want - got) / want > 0.02:
-                warnings.append(
+                infos.append(
                     f"ابعاد صفحه ({got:.0f}mm) با نام فایل ({want:.0f}mm) نمی‌خواند؛ "
                     "نام فایل فقط برای هشدار بررسی می‌شود، نه به‌عنوان حقیقت.")
                 break
@@ -546,10 +553,10 @@ def _filename_check(filename: str, sheet: dict[str, float] | None,
     if sets_match:
         declared = int(sets_match.group(1))
         if declared > 0 and part_count not in (0, declared):
-            warnings.append(
+            infos.append(
                 f"تعداد قطعهٔ شناسایی‌شده ({part_count}) با تعداد اعلامی نام فایل "
                 f"({declared}set) یکی نیست؛ تصمیم نهایی با اپراتور است.")
-    return warnings
+    return infos
 
 
 def part_index(program: Program, params: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -907,7 +914,7 @@ def part_index(program: Program, params: dict[str, Any] | None = None) -> dict[s
         sheet_finished["width"] = round(sheet_finished["x_max"] - sheet_finished["x_min"], 4)
         sheet_finished["height"] = round(sheet_finished["y_max"] - sheet_finished["y_min"], 4)
 
-    warnings.extend(_filename_check(program.filename or "", sheet_finished, len(parts)))
+    filename_infos = _filename_check(program.filename or "", sheet_finished, len(parts))
     if not parts and not operations:
         warnings.append("هندسهٔ برش قابل‌تشخیصی در فایل پیدا نشد؛ هیچ قطعه یا عملیاتی ثبت نشد.")
     if sheet_thickness is None:
@@ -920,6 +927,7 @@ def part_index(program: Program, params: dict[str, Any] | None = None) -> dict[s
         "sheet_bbox_finished": sheet_finished,
         "sheet_thickness": round(sheet_thickness, 4) if sheet_thickness is not None else None,
         "warnings": warnings,
+        "infos": filename_infos,
         "closed_path_count": len(closed_paths),
         "open_path_count": len(open_paths),
     }

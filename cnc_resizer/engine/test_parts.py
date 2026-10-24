@@ -209,12 +209,16 @@ class SyntheticDetectionTests(unittest.TestCase):
         self.assertEqual(sorted(ids_one), sorted(ids_two))
         self.assertNotEqual(ids_one[0], ids_one[1])
 
-    def test_filename_cross_check_warns_only(self):
+    def test_filename_cross_check_is_info_not_warning(self):
+        # P0 fix 1.1.4: file-name cross-checks are informational (blue
+        # "infos"), never yellow warnings — they must not spook operators.
         text = _rect(0, 0, 200, 300, tool=3)
         result = self._detect(text, filename="panel.999x999.1set.cnc")
-        self.assertTrue(any("نمی‌خواند" in warning for warning in result["warnings"]))
+        self.assertTrue(any("نمی‌خواند" in info for info in result["infos"]))
+        self.assertFalse(any("نمی‌خواند" in warning for warning in result["warnings"]))
         ok = self._detect(text, filename="panel.208x308.1set.cnc")
-        self.assertFalse(any("نمی‌خواند" in warning for warning in ok["warnings"]))
+        self.assertFalse(any("نمی‌خواند" in info for info in ok["infos"]))
+        self.assertFalse(ok["infos"])
 
     def test_bbox_finished_compensates_tool_diameter(self):
         text = _rect(0, 0, 200, 300, tool=3)

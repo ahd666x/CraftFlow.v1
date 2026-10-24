@@ -324,9 +324,10 @@ def parts_api(request):
 
     Returns the reconstructed workpieces (outer contour + depth passes +
     children + capabilities), the leftover operations (groove / saw_line /
-    raster / engraving / orphan), the sheet bbox and the warnings. Never
-    returns G-code text and never mutates anything; the editing path is the
-    engine preview/output chain with part-level ops.
+    raster / engraving / orphan), the sheet bbox, the warnings and the
+    informational hints (``infos`` — file-name cross-checks; blue, not
+    warnings). Never returns G-code text and never mutates anything; the
+    editing path is the engine preview/output chain with part-level ops.
     """
     import json
     import os
