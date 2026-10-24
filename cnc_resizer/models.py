@@ -161,6 +161,14 @@ class CncSheetPlan(models.Model):
     layout = models.JSONField(default=dict)
     gcode = models.TextField()
     output_verified = models.BooleanField(default=False, editable=False)
+    # فاز ۴ (P3): گزارش پیش‌بررسی ساختاری برنامهٔ ذخیره‌شده در لحظهٔ ساخت
+    # برنامه (بازخوانی همان gcode با پارسر صادقانهٔ sheet_preview + آمار)؛
+    # فقط-اطلاعاتی است و هیچ گته‌ای را دور نمی‌زند — گته‌های دانلود جدا هستند.
+    preflight_report = models.JSONField(default=dict, blank=True, editable=False)
+    # فاز ۴ (P3): سیگنال «قالب پارامتریک قطعه پس از چیدمان تغییر کرده» —
+    # مشورتی (advisory)؛ اعتبار فایل/گته‌های spec_hash دست‌نخورده می‌مانند.
+    template_stale = models.BooleanField(default=False, editable=False)
+    template_stale_info = models.JSONField(default=list, blank=True, editable=False)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name="cnc_sheet_plans")
     created_at = models.DateTimeField(auto_now_add=True)
 

@@ -26,6 +26,9 @@ it into a 409 instead of a partial/lying picture.
 from __future__ import annotations
 
 import math
+import types
+
+from django.utils import timezone
 
 from . import gcode_sheet
 
@@ -252,4 +255,29 @@ def sheet_toolpaths(plan):
             'depths': sorted(stats['depths']),
             'lines': stats['lines'],
         },
+    }
+
+
+def program_preflight(text, width, height, parts, adapter=''):
+    """Creation-time structural preflight for a freshly built sheet program (فاز ۴).
+
+    Re-reads the byte-exact program through the SAME fail-closed parser that
+    powers the operator-facing preview (``sheet_toolpaths``) and returns a
+    COMPACT, JSON-safe report — stats and tool events only, never the full
+    path polylines, so the stored payload stays small. This is an honest
+    consistency check of what was just built; it is advisory, adds no gate
+    and never blocks plan creation (callers catch everything).
+    """
+    shim = types.SimpleNamespace(
+        pk=None, gcode=text, width=width, height=height,
+        layout={'parts': parts, 'adapter': adapter})
+    data = sheet_toolpaths(shim)
+    return {
+        'ok': True,
+        'adapter': data['adapter'],
+        'pieces': len(data['boxes']),
+        'tools': data['tools'],
+        'tool_changes': len(data['tool_changes']),
+        'stats': data['stats'],
+        'checked_at': timezone.now().isoformat(),
     }

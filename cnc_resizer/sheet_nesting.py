@@ -488,12 +488,28 @@ def _plan_cnc(order_ids, user, kerf=Decimal('4.0'), use_offcuts=False):
             layout_payload = {'parts': output_parts, 'material_id': material_id}
             if adapter_used:
                 layout_payload['adapter'] = adapter_used
+            # فاز ۴ (P3): گزارش پیش‌بررسی ساختاری — همان برنامهٔ تازه‌ساخته
+            # با پارسر صادقانهٔ sheet_preview دوباره خوانده می‌شود؛ فقط
+            # اطلاعاتی است و هیچ‌وقت ساخت برنامه را مسدود نمی‌کند.
+            if gcode:
+                try:
+                    from .sheet_preview import program_preflight
+                    preflight = program_preflight(
+                        gcode, stock.width, stock.height, output_parts,
+                        adapter=adapter_used)
+                except Exception as exc:  # حتی خطای پیش‌بررسی هم برنامهٔ سالمِ گته‌شده را باطل نمی‌کند
+                    preflight = {'ok': False, 'error': f'پیش‌بررسی ساختاری ناموفق بود: {exc}'}
+            elif adapter_key:
+                preflight = {'ok': False, 'reason': 'خروجی دستگاه ساخته نشد؛ برنامه مسدود است.'}
+            else:
+                preflight = {'ok': None, 'reason': 'کنترلر/پست‌پروسسور ورق تأیید نشده؛ گزارش پیش‌بررسی در دسترس نیست.'}
             plan = CncSheetPlan.objects.create(
                 material=stock.material, source_stock=stock, sheet_index=sheet_index,
                 width=stock.width, height=stock.height, kerf=kerf,
                 planned_area=sum((Decimal(piece['width']) * Decimal(piece['height']) for piece in output_parts), Decimal('0')),
                 layout=layout_payload,
                 gcode=gcode, output_verified=output_verified, created_by=user,
+                preflight_report=preflight,
             )
             SheetStockEvent.objects.create(
                 stock=stock, material=stock.material, cnc_plan=plan, event_type='reserve',

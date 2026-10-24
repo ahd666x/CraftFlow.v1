@@ -1239,6 +1239,10 @@ def sheet_plans(request):
         plan.utilization = round(float(plan.planned_area) / total_area * 100, 1) if total_area else 0
         plan.unused_area_m2 = round(plan.unused_area / 1_000_000, 2)
         plan.output_status = 'فایل دستگاه تأییدشده' if plan.output_verified and plan.gcode.strip() else 'نوع خروجی نامشخص؛ فایل تولید نشده'
+        # فاز ۴ (P3): نام یکتای قالب‌هایی که پس از چیدمان تغییر کرده‌اند (برای title بج)
+        plan.stale_templates = sorted({
+            str(row.get('name')) for row in (plan.template_stale_info or []) if row.get('name')
+        })
     issue_query = CncPlanningIssue.objects.all() if can_view_all else CncPlanningIssue.objects.filter(created_by=request.user)
     issues = issue_query.select_related('task', 'order', 'part', 'resolved_by')[:100]
     issue_count = issue_query.count()
