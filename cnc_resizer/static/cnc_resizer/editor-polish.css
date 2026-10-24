@@ -1,0 +1,262 @@
+/* CraftFlow CNC editor — professional workshop UI layer
+   Visual-only overrides. Keep the existing SVG/editor behavior intact. */
+:root {
+  --bg: #f3f0e9;
+  --surface: #fffdf9;
+  --surface-2: #f7f3eb;
+  --line: #ded7ca;
+  --text: #292820;
+  --muted: #777367;
+  --accent: #a8782d;
+  --accent-soft: rgba(168,120,45,.12);
+  --good: #287653;
+  --good-soft: rgba(40,118,83,.10);
+  --bad: #b64235;
+  --bad-soft: rgba(182,66,53,.09);
+  --warn: #93651e;
+  --warn-soft: rgba(147,101,30,.10);
+  --ghost: #a9a397;
+  --canvas: #fbfaf6;
+  --grid-minor: #ebe6dc;
+  --grid-major: #d9d1c3;
+  --changed: rgba(168,120,45,.14);
+  --tb-h: 42px;
+  --fs-12: 12px;
+  --fs-13: 13px;
+  --fs-15: 15px;
+}
+html, body { background: var(--bg); }
+body { color: var(--text); letter-spacing: 0; }
+button, input, select, textarea { font-family: inherit; }
+button {
+  border-radius: 9px;
+  border-color: var(--line);
+  box-shadow: 0 1px 1px rgba(41,40,32,.025);
+}
+button:hover:not(:disabled) {
+  border-color: #bda16e;
+  background-color: #faf5e9;
+}
+button:focus-visible, input:focus-visible, select:focus-visible,
+textarea:focus-visible, [tabindex]:focus-visible {
+  outline: 2px solid #b98a43;
+  outline-offset: 2px;
+}
+button.primary {
+  color: #fffdf8;
+  background: #8d6427;
+  border-color: #8d6427;
+  box-shadow: 0 2px 5px rgba(111,77,26,.16);
+}
+button.primary:hover:not(:disabled) {
+  background: #76511f;
+  border-color: #76511f;
+}
+button.on { background: #8d6427; border-color: #8d6427; color: white; }
+#toolbar {
+  top: 12px;
+  gap: 3px;
+  padding: 5px;
+  border-radius: 14px;
+  border-color: rgba(190,180,160,.85);
+  background: rgba(255,253,249,.97);
+  box-shadow: 0 8px 28px rgba(54,47,34,.13), 0 1px 3px rgba(54,47,34,.06);
+  backdrop-filter: blur(12px);
+  max-width: calc(100vw - 24px);
+}
+#toolbar button {
+  min-height: 40px;
+  min-width: 40px;
+  padding: 5px 9px;
+  gap: 6px;
+  border-radius: 9px;
+  color: #5e594d;
+}
+#toolbar button:hover:not(:disabled) { background: #f4ecdc; color: #6d4c1e; }
+#toolbar button.on { background: #f1e5ce; color: #704d1b; box-shadow: inset 0 0 0 1px #e4d0aa; }
+#toolbar .tb-ico { font-size: 15px; }
+#toolbar .tb-lbl { font-size: 11.5px; }
+#toolbar .sep { background: #e6dfd2; margin-inline: 3px; }
+#gateChip {
+  border-color: #e3dccf;
+  background: #f8f5ee;
+  color: #6f695d;
+  padding: 5px 9px;
+}
+#gateChip.ok { border-color: #b7d4c3; background: #edf6ef; color: #287653; }
+#gateChip.blocked { border-color: #e8c0ba; background: #fff0ed; color: #a43a30; }
+.view {
+  background-color: var(--canvas);
+  background-image: radial-gradient(rgba(132,119,95,.13) .65px, transparent .65px);
+  background-size: 18px 18px;
+}
+.fpanel {
+  border: 1px solid rgba(190,180,160,.85);
+  border-radius: 14px;
+  background: rgba(255,253,249,.98);
+  box-shadow: 0 12px 36px rgba(54,47,34,.13), 0 2px 5px rgba(54,47,34,.04);
+  padding: 15px;
+  scrollbar-color: #d4c8b3 transparent;
+  scrollbar-width: thin;
+}
+.fpanel h2, #inspector h2 {
+  color: #494437;
+  font-size: 13px;
+  font-weight: 750;
+  letter-spacing: -.1px;
+}
+#inspector {
+  top: 72px;
+  inset-inline-end: 14px;
+  width: 304px;
+  max-height: calc(100vh - 94px);
+}
+#inspector .kv { gap: 4px 10px; }
+#inspector .kv dt { color: #827b6d; }
+#inspector .children li {
+  border-color: #e9e2d6;
+  background: #fffefa;
+  border-radius: 9px;
+  padding: 7px 9px;
+  min-height: 38px;
+}
+#inspector .children li:hover { border-color: #c9a66b; background: #fbf4e6; }
+#inspector .actions button { min-height: 36px; }
+.insp-info { border-color: #e4d0aa; background: #fbf4e6; color: #795821; }
+.insp-warn { border-color: #e4c995; background: #fff8e9; color: #80591b; }
+#filePanel, #toolsPanel, #layersPanel, #resizePanel, #helpPanel {
+  top: 72px;
+  inset-inline-start: 14px;
+  max-height: calc(100vh - 92px);
+}
+#filePanel { width: 300px; }
+#toolsPanel { width: 330px; }
+#layersPanel { width: 280px; }
+#resizePanel { width: min(360px, calc(100vw - 28px)); }
+#historyPanel {
+  top: 72px;
+  inset-inline-end: 332px;
+  width: 300px;
+  max-height: calc(100vh - 92px);
+}
+.drop {
+  border-color: #d9c9ad;
+  background: #faf6ed;
+  border-radius: 11px;
+}
+.drop:hover, .drop.over { border-color: #b98a43; background: #f5ead6; }
+.mlist li { border-color: #e9e2d6; border-radius: 9px; }
+.mlist li:hover, .mlist li.sel { border-color: #c9a66b; background: #fbf4e6; }
+#alertBox {
+  position: fixed;
+  z-index: 100;
+  top: 70px;
+  inset-inline-start: 50%;
+  transform: translateX(50%);
+  width: min(460px, calc(100vw - 32px));
+  max-height: 30vh;
+  overflow: auto;
+  pointer-events: none;
+}
+#alertBox .banner {
+  pointer-events: auto;
+  border-radius: 11px;
+  box-shadow: 0 8px 24px rgba(41,40,32,.16);
+  margin: 0 0 7px;
+}
+#emptyState .in {
+  border: 1px solid #e5dccb;
+  border-radius: 16px;
+  background: rgba(255,253,249,.95);
+  box-shadow: 0 12px 36px rgba(54,47,34,.08);
+  padding: 24px;
+}
+#emptyState b { color: #6d4c1e; font-size: 18px; }
+#emptyState .hintline { max-width: 560px; color: #777164; }
+#taskContextBar {
+  border: 1px solid #e0d5c2;
+  border-radius: 12px;
+  background: rgba(255,253,249,.97);
+  box-shadow: 0 6px 18px rgba(54,47,34,.08);
+}
+input, select, textarea {
+  border-color: #ded5c5;
+  border-radius: 8px;
+  background-color: #fffefa;
+  color: var(--text);
+}
+input:hover, select:hover, textarea:hover { border-color: #c8b28c; }
+hr { border: 0; border-top: 1px solid #ebe4d8; margin: 14px 0; }
+#resizePanel .statusline { color: #777164; line-height: 1.65; }
+#resizePanel .resradios label {
+  border: 1px solid #e8e0d2;
+  border-radius: 10px;
+  padding: 9px 10px;
+  margin-block: 5px;
+  background: #fffefa;
+}
+#resizePanel .resradios label:has(input:checked) {
+  border-color: #c6a36a;
+  background: #fbf4e6;
+}
+#resizePanel .resradios small { color: #827b6d; }
+#resizePanel .resgrid { gap: 9px; }
+#resizePanel .resgrid label { gap: 5px; color: #6f695d; }
+#resizePanel .reschips button { min-width: 42px; padding-inline: 8px; }
+#resizePanel .toolbtns { position: sticky; bottom: -15px; padding: 10px 0 2px; background: var(--surface); }
+#comparePanel { border-radius: 14px; }
+.cmp-pane { border-color: #e6dfd2; border-radius: 10px; }
+.cmp-pane figcaption { background: #f7f3eb; }
+#codeDrawer {
+  border-color: #d8cebd;
+  border-radius: 13px 13px 0 0;
+  box-shadow: 0 -8px 28px rgba(54,47,34,.14);
+}
+#zoombtns {
+  border: 1px solid #ded7ca;
+  border-radius: 12px;
+  padding: 4px;
+  background: rgba(255,253,249,.96);
+  box-shadow: 0 5px 18px rgba(54,47,34,.10);
+}
+#zoombtns button { min-width: 38px; min-height: 38px; font-size: 17px; }
+.coords, .scalebar, .maphud {
+  border: 1px solid #ded7ca;
+  border-radius: 9px;
+  background: rgba(255,253,249,.96);
+  box-shadow: 0 4px 14px rgba(54,47,34,.08);
+}
+@media (max-width: 900px) {
+  #toolbar { inset-inline: 8px; transform: none; justify-content: flex-start; overflow-x: auto; flex-wrap: nowrap; }
+  #toolbar .tb-lbl { display: none; }
+  #toolbar button { flex: 0 0 auto; }
+  #gateChip { max-width: 100px; }
+  #inspector { inset-inline-end: 8px; width: min(290px, calc(100vw - 16px)); }
+  #historyPanel { inset-inline-end: 8px; width: min(300px, calc(100vw - 16px)); }
+  #filePanel, #toolsPanel, #layersPanel, #resizePanel, #helpPanel {
+    inset-inline-start: 8px;
+    width: min(340px, calc(100vw - 16px));
+  }
+}
+@media (max-width: 560px) {
+  :root { --tb-h: 38px; }
+  #toolbar { top: 6px; gap: 2px; padding: 4px; }
+  #toolbar button { min-width: 36px; min-height: 36px; padding: 4px 7px; }
+  #gateChip { display: none; }
+  #inspector { top: 56px; max-height: 42vh; }
+  #filePanel, #toolsPanel, #layersPanel, #resizePanel, #helpPanel, #historyPanel {
+    top: auto;
+    bottom: 10px;
+    max-height: 62vh;
+  }
+  #alertBox { top: 54px; }
+  #emptyState .in { margin: 16px; padding: 18px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: .01ms !important;
+  }
+}
