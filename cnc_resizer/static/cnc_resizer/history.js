@@ -222,7 +222,7 @@
     try {
       const res = await CNC.api.saveEditTemplate(name.trim(), payload.edits,
           `ذخیره از رابط نقشه‌محور — ${state.filename} (${payload.kind})`);
-      CNC.alert('info', CNC.esc(res.message || 'الگو ذخیره شد.'));
+      CNC.alert('info', CNC.esc(res.message || 'الگو ذخیره شد.'), null, 5000);
       await loadTemplates();
     } catch (err) { CNC.alert('err', CNC.esc(err.message)); }
   }
@@ -257,7 +257,7 @@
     }
     push(`الگوی «${tpl.name}»`);
     CNC.requestPreview();
-    CNC.alert('info', `الگوی «${CNC.esc(tpl.name)}» بارگذاری شد؛ نتیجه از پیش‌نمایش سرور می‌آید.`);
+    CNC.alert('info', `الگوی «${CNC.esc(tpl.name)}» بارگذاری شد؛ نتیجه از پیش‌نمایش سرور می‌آید.`, null, 5000);
   }
 
   // ------------------------------------------------_قالب‌های قطعه (پارامتریک — فاز ۲.۲)
@@ -370,7 +370,7 @@
       push(`قالب قطعهٔ «${tpl.name}»`);
       CNC.requestPreview();
       const matched = Array.isArray(res.mapping) ? res.mapping.length : 0;
-      CNC.alert('info', `قالب قطعهٔ «${CNC.esc(tpl.name)}» بارگذاری شد (${matched} نقش هندسی منطبق)؛ نتیجه از پیش‌نمایش سرور می‌آید.`);
+      CNC.alert('info', `قالب قطعهٔ «${CNC.esc(tpl.name)}» بارگذاری شد (${matched} نقش هندسی منطبق)؛ نتیجه از پیش‌نمایش سرور می‌آید.`, null, 5000);
     } catch (err) { CNC.alert('err', CNC.esc(err.message)); }
   }
 

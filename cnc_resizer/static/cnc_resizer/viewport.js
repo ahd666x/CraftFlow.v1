@@ -13,8 +13,9 @@
   const PART_COLORS = ['var(--p1)', 'var(--p2)', 'var(--p3)', 'var(--p4)', 'var(--p5)',
                        'var(--p6)', 'var(--p7)', 'var(--p8)', 'var(--p9)', 'var(--p10)'];
   CNC.partColor = (part) => PART_COLORS[((part.index || 1) - 1) % PART_COLORS.length];
-  const DEPTH_COLORS = ['#1d6ce0', '#157a45', '#7c3aed', '#d97706', '#0e7490',
-                        '#be185d', '#4d7c0f', '#b45309', '#4338ca', '#334155'];
+  // فاز ۳.۲: همگام با پالت colorblind-safe در map.css (--p1..--p10)
+  const DEPTH_COLORS = ['#1d6ce0', '#157a45', '#6d28d9', '#c2410c', '#0e7490',
+                        '#be185d', '#4d7c0f', '#92400e', '#1e3a8a', '#334155'];
   CNC.depthColor = (z) => {
     const levels = (CNC.model && CNC.model.depthLevels) || [];
     const idx = levels.findIndex((v) => Math.abs(v - z) < 1e-6);

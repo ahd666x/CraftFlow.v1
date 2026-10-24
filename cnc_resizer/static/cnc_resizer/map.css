@@ -11,11 +11,19 @@
   --warn: #925b00; --warn-soft: rgba(146,91,0,.10);
   --ghost: #8a93a1; --canvas: #f8fafc; --grid-minor: #e3e8ef; --grid-major: #cfd8e4;
   --changed: rgba(29,108,224,.12);
-  /* رنگ ثابت هر قطعه (P1..Pn) — کنتراست کافی روی بوم روشن */
-  --p1: #1d6ce0; --p2: #d97706; --p3: #157a45; --p4: #7c3aed; --p5: #0e7490;
-  --p6: #be185d; --p7: #4d7c0f; --p8: #b45309; --p9: #4338ca; --p10: #0f766e;
-  --feat-hole: #157a45; --feat-outer: #1d6ce0; --feat-raster: #7c3aed;
-  --feat-groove: #d97706; --feat-unknown: #64748b;
+  /* فاز ۳.۲: مقیاس تایپوگرافی یکپارچه (۱۲ / ۱۳٫۵ / ۱۵px) — ارقام جدولی
+     برای اعداد از .num و font-variant-numeric می‌آید. */
+  --fs-12: 12px; --fs-13: 13.5px; --fs-15: 15px;
+  /* رنگ ثابت هر قطعه (P1..Pn) — فاز ۳.۲: پالت colorblind-safe.
+     همهٔ رنگ‌ها روی بوم روشن کنتراست ≥4.5:1 دارند؛ تمایز کوررنگی
+     (دوترانوپی/پروتانوپی) با نردبان روشنایی در خانوادهٔ گرم
+     (زیتونی #4d7c0f ← نارنجی #c2410c ← قهوه‌ای #92400e) و مؤلفهٔ آبی در
+     خانوادهٔ سرد تضمین می‌شود. جفت‌های تقریباً یکسان قبلی حذف شدند:
+     (#0e7490/#0f766e)، (#1d6ce0/#4338ca)، (#d97706/#b45309). */
+  --p1: #1d6ce0; --p2: #c2410c; --p3: #157a45; --p4: #6d28d9; --p5: #0e7490;
+  --p6: #be185d; --p7: #4d7c0f; --p8: #92400e; --p9: #1e3a8a; --p10: #334155;
+  --feat-hole: #157a45; --feat-outer: #1d6ce0; --feat-raster: #6d28d9;
+  --feat-groove: #c2410c; --feat-unknown: #64748b;
   --tb-h: 46px;
 }
 * { box-sizing: border-box; }
@@ -23,7 +31,7 @@
 html, body { height: 100%; }
 body {
   margin: 0; overflow: hidden; background: var(--bg); color: var(--text);
-  font: 13.5px/1.6 "Vazirmatn", "Segoe UI", Tahoma, system-ui, sans-serif;
+  font: var(--fs-13)/1.6 "Vazirmatn", "Segoe UI", Tahoma, system-ui, sans-serif;
 }
 .num, input[type=number], code, pre, .code {
   direction: ltr; unicode-bidi: plaintext; font-variant-numeric: tabular-nums;
@@ -31,10 +39,22 @@ body {
 button {
   font: inherit; cursor: pointer; border-radius: 8px; border: 1px solid var(--line);
   background: var(--surface); color: var(--text); padding: 6px 12px; min-height: 34px;
+  /* فاز ۳.۲: میکرو-اینترکشن — گذار ۱۵۰ms و حالت فشرده؛ ripple با span موقت
+     از app.js ساخته می‌شود و با prefers-reduced-motion خودکار خاموش است. */
+  position: relative; overflow: hidden;
+  transition: background-color .15s ease, border-color .15s ease, color .15s ease,
+              box-shadow .15s ease, transform .06s ease;
 }
 button:hover:not(:disabled) { border-color: var(--accent); }
+button:active:not(:disabled) { transform: translateY(1px); }
 button:disabled { opacity: .45; cursor: not-allowed; }
 button:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+button .ripple {
+  position: absolute; border-radius: 50%; pointer-events: none;
+  background: currentColor; opacity: .16; transform: scale(0);
+  animation: ripple .45s ease-out forwards;
+}
+@keyframes ripple { to { transform: scale(1); opacity: 0; } }
 button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
 button.danger { color: var(--bad); border-color: var(--bad); }
 button.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
@@ -82,7 +102,7 @@ button.on { background: var(--accent); border-color: var(--accent); color: #fff;
 .fpanel details > summary { border-radius: 7px; padding: 2px 6px; margin: 0 -6px; }
 .fpanel details > summary:hover { background: var(--surface-2); }
 #inspector { top: 72px; inset-inline-end: 12px; width: 320px; }
-#inspector h2 { margin: 0 0 8px; font-size: 13.5px; display: flex; align-items: center; gap: 8px; }
+#inspector h2 { margin: 0 0 8px; font-size: var(--fs-13); display: flex; align-items: center; gap: 8px; }
 #inspector .badge {
   width: 12px; height: 12px; border-radius: 4px; flex: none; border: 1px solid rgba(0,0,0,.15);
 }
@@ -242,7 +262,10 @@ button.on { background: var(--accent); border-color: var(--accent); color: #fff;
   position: fixed; top: 66px; inset-inline-start: 50%; transform: translateX(50%);
   z-index: 50; max-width: min(92vw, 640px); display: grid; gap: 6px;
 }
-#alertBox .banner { padding: 8px 13px; border-radius: 9px; font-size: 12.5px; box-shadow: 0 4px 14px rgba(23,34,46,.12); }
+/* فاز ۳.۲: toast — ورود نرم، خروج با .leaving، پاک‌سازی خودکار با ttl از app.js */
+#alertBox .banner { padding: 8px 13px; border-radius: 9px; font-size: 12.5px; box-shadow: 0 4px 14px rgba(23,34,46,.12); animation: banner-in .18s ease; }
+#alertBox .banner.leaving { opacity: 0; transform: translateY(-6px); transition: opacity .18s ease, transform .18s ease; }
+@keyframes banner-in { from { opacity: 0; transform: translateY(-6px); } }
 #alertBox .banner.err { background: var(--bad-soft); color: var(--bad); border: 1px solid var(--bad); }
 #alertBox .banner.warn { background: var(--warn-soft); color: var(--warn); border: 1px solid var(--warn); }
 #alertBox .banner.info { background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent); }
@@ -325,7 +348,7 @@ svg text { font-family: "Segoe UI", Tahoma, system-ui, sans-serif; user-select: 
 }
 #emptyState .in { max-width: 460px; pointer-events: auto; background: var(--surface);
   border: 1px solid var(--line); border-radius: 14px; padding: 26px 30px; box-shadow: 0 8px 30px rgba(23,34,46,.1); }
-#emptyState b { font-size: 15px; color: var(--text); }
+#emptyState b { font-size: var(--fs-15); color: var(--text); }
 #emptyState .hintline { margin-top: 8px; font-size: 12.5px; }
 #emptyState kbd { background: var(--surface-2); border: 1px solid var(--line); border-radius: 5px; padding: 0 6px; font-size: 11px; }
 

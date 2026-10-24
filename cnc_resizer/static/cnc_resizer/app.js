@@ -15,23 +15,36 @@
   try { CNC.setup = JSON.parse($('cncSetupData').textContent || 'null'); } catch (_) { CNC.setup = null; }
 
   // ------------------------------------------------_هشدارها + aria-live
-  const alerts = new Map();  // key -> {el}
-  function alertBox(kind, html, key) {
+  // فاز ۳.۲: toast — گروه‌بندی با key مثل قبل؛ پارامتر اختیاری ttl باعث
+  // پاک‌سازی خودکار (toast موقت) می‌شود؛ err/warn بدون ttl ماندگارند.
+  const alerts = new Map();  // key -> {el, timer}
+  function dismissAlert(el, key) {
+    el.classList.add('leaving');
+    setTimeout(() => el.remove(), 180);
+    if (key) alerts.delete(key);
+  }
+  function alertBox(kind, html, key, ttl) {
     const box = $('alertBox');
-    if (key && alerts.has(key)) alerts.get(key).el.remove();
+    const prev = key ? alerts.get(key) : null;
+    if (prev) { clearTimeout(prev.timer); prev.el.remove(); alerts.delete(key); }
     const el = document.createElement('div');
     el.className = `banner ${kind}`;
     el.innerHTML = html + ' <button type="button" class="x" aria-label="بستن">×</button>';
-    el.querySelector('.x').onclick = () => { el.remove(); alerts.delete(key); };
+    el.querySelector('.x').onclick = () => dismissAlert(el, key);
     box.appendChild(el);
-    if (key) alerts.set(key, { el });
+    let timer = null;
+    if (Number.isFinite(ttl) && ttl > 0) timer = setTimeout(() => dismissAlert(el, key), ttl);
+    if (key) alerts.set(key, { el, timer });
     if (kind === 'err') ariaLive(html, 'assertive'); else ariaLive(html, 'polite');
     return el;
   }
   function clearAlert(key) {
-    if (!key) { $('alertBox').replaceChildren(); alerts.clear(); return; }
+    if (!key) {
+      alerts.forEach(({ timer }) => clearTimeout(timer));
+      $('alertBox').replaceChildren(); alerts.clear(); return;
+    }
     const a = alerts.get(key);
-    if (a) { a.el.remove(); alerts.delete(key); }
+    if (a) { clearTimeout(a.timer); dismissAlert(a.el, key); }
   }
   function ariaLive(html, politeness) {
     const el = politeness === 'assertive' ? $('ariaLiveAssertive') : $('ariaLive');
@@ -235,6 +248,11 @@
   CNC.zoomToBBox = zoomToBBox;
 
   // ------------------------------------------------_پنل‌های شناور
+  // فاز ۳.۲: استک تک‌پنل (قبلاً بود) + ESC برای بستن + بازگرداندن فوکوس به
+  // دکمهٔ نوار ابزار. تلهٔ فوکوس سخت عمداً اعمال نمی‌شود: این پنل‌ها غیرمودال‌اند
+  // و باید کاربر هم‌زمان با نقشه هم تعامل کند؛ به‌جایش فوکوس به پنل می‌رود و
+  // با ESC به دکمهٔ فراخوان برمی‌گردد.
+  let openPanel = null;   // {id, btn} — فقط یک پنل در هر لحظه باز است
   function togglePanel(id, btn) {
     const panel = $(id);
     const show = panel.hidden;
@@ -244,6 +262,13 @@
     });
     panel.hidden = !show;
     if (btn) btn.classList.toggle('on', show);
+    if (show) {
+      openPanel = { id, btn: btn || null };
+      if (!panel.hasAttribute('tabindex')) panel.setAttribute('tabindex', '-1');
+      panel.focus({ preventScroll: true });
+    } else if (openPanel && openPanel.id === id) {
+      openPanel = null;
+    }
     if (show && id === 'toolsPanel') renderToolsPanel();
     if (show && id === 'layersPanel') renderLayersPanel();
     if (show && id === 'resizePanel') { syncResizeTarget(); if (CNC.fetchResizeGaps) CNC.fetchResizeGaps(); }
@@ -568,8 +593,9 @@
     $('layFix').onchange = (e) => { state._showFix = e.target.checked; CNC.toggleFixtures(e.target.checked); };
     $('layDims').onchange = (e) => { state.layers.showDims = e.target.checked; CNC.emit('rerender', {}); };
   }
-  const DEPTH_COLORS = ['#1d6ce0', '#157a45', '#7c3aed', '#d97706', '#0e7490',
-                        '#be185d', '#4d7c0f', '#b45309', '#4338ca', '#334155'];
+  // فاز ۳.۲: همگام با پالت colorblind-safe در map.css (--p1..--p10)
+  const DEPTH_COLORS = ['#1d6ce0', '#157a45', '#6d28d9', '#c2410c', '#0e7490',
+                        '#be185d', '#4d7c0f', '#92400e', '#1e3a8a', '#334155'];
 
   // ------------------------------------------------_گیت + دانلود
   function renderGate() {
@@ -769,7 +795,7 @@
     $('btnDownload').onclick = downloadOutput;
     $('gateChip').onclick = () => {
       const g = state.gate;
-      if (g.allowed === true) { alertBox('info', 'گتهٔ خروجی پاس شد: ' + esc(g.warnings?.join(' — ') || 'دیالکت کنترلر تأیید شد.'), 'gate'); return; }
+      if (g.allowed === true) { alertBox('info', 'گتهٔ خروجی پاس شد: ' + esc(g.warnings?.join(' — ') || 'دیالکت کنترلر تأیید شد.'), 'gate', 5000); return; }
       alertBox('err', 'دلایل مسدودبودن خروجی: <br>• ' + (g.blockers || []).map(esc).join('<br>• '), 'gate');
     };
 
@@ -839,9 +865,32 @@
   }
 
   // ------------------------------------------------_میانبرهای سراسری
+  // فاز ۳.۲: موج لمسی سبک روی همهٔ دکمه‌ها — span موقت با انیمیشن CSS؛
+  // با prefers-reduced-motion مدت انیمیشن صفر و بلافاصله حذف می‌شود.
+  document.addEventListener('pointerdown', (e) => {
+    const btn = e.target.closest && e.target.closest('button');
+    if (!btn || btn.disabled) return;
+    const rect = btn.getBoundingClientRect();
+    const size = Math.max(rect.width, rect.height) * 2;
+    const span = document.createElement('span');
+    span.className = 'ripple';
+    span.style.width = span.style.height = `${size}px`;
+    span.style.left = `${e.clientX - rect.left - size / 2}px`;
+    span.style.top = `${e.clientY - rect.top - size / 2}px`;
+    btn.appendChild(span);
+    span.addEventListener('animationend', () => span.remove());
+  }, { passive: true });
+
   document.addEventListener('keydown', (e) => {
-    if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
     if (e.key === 'Escape') {
+      // فاز ۳.۲: اول پنل باز بسته می‌شود (با بازگشت فوکوس)، بعد رفتار قبلی.
+      if (openPanel) {
+        const current = openPanel;
+        togglePanel(current.id, current.btn);
+        if (current.btn) current.btn.focus();
+        return;
+      }
+      if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
       setTool('select'); state._measureA = null; state._measureLive = null;
       CNC.drawMeasures(); clearAlert('measure');
       CNC.emit('edit-cancel', {});

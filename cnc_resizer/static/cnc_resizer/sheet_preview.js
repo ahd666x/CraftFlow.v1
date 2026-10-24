@@ -8,8 +8,10 @@
 (() => {
   'use strict';
   const NS = 'http://www.w3.org/2000/svg';
-  const TOOL_COLORS = ['#2563eb', '#d97706', '#16a34a', '#7c3aed', '#0284c7',
-    '#be185d', '#4d7c0f', '#b45309', '#4338ca', '#0f766e'];
+  // فاز ۳.۲: همگام با پالت colorblind-safe در map.css (--p1..--p10) —
+  // رنگ ابزارِ اول دیگر با رنگ برند اصلی اشتباه گرفته نمی‌شود.
+  const TOOL_COLORS = ['#1d6ce0', '#c2410c', '#157a45', '#6d28d9', '#0e7490',
+    '#be185d', '#4d7c0f', '#92400e', '#1e3a8a', '#334155'];
   const modalEl = document.getElementById('paths-modal');
   if (!modalEl) return;
 
