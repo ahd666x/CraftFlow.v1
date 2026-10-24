@@ -52,6 +52,7 @@
   <div class="tc-main">
     <b id="tcTitle">—</b>
     <span class="tc-chip num" id="tcDims" hidden></span>
+    <span class="tc-chip num" id="tcResizeDelta" hidden></span>
     <span class="tc-chip" id="tcFile" hidden></span>
     <span class="tc-chip warn" id="tcStatus" hidden>نیازمند اصلاح دستی</span>
   </div>
@@ -188,9 +189,10 @@
     <button type="button" data-d="0">صفر</button>
   </div>
   <label class="laycheck"><input type="checkbox" id="resizeSym" checked> تقارن آینه‌ای (فاصلهٔ بالا و پایین یکسان تغییر کند)</label>
+  <p class="statusline" id="resizePatternSummary" hidden></p>
   <b style="display:block;font-size:11.5px;color:var(--muted);margin:10px 0 2px">تقسیم فاصله بین گروه‌های سوراخ</b>
   <table class="gaptab" id="gapTable" hidden>
-    <thead><tr><th></th><th class="n">بازه Y (mm)</th><th class="n">طول</th><th class="n">تغییر</th><th class="n">جدید</th></tr></thead>
+    <thead><tr><th></th><th>گروه</th><th class="n">بازه Y (mm)</th><th class="n">طول</th><th class="n">تغییر</th><th class="n">جدید</th></tr></thead>
     <tbody id="gapTableBody"></tbody>
   </table>
   <p class="statusline" id="gapHint" hidden></p>
@@ -237,13 +239,13 @@
   <button type="button" id="zfit" title="نمایش کامل (F)">⤢</button>
 </div>
 
-<script src="{% static 'cnc_resizer/parts-api.js' %}" defer></script>
-<script src="{% static 'cnc_resizer/viewport.js' %}" defer></script>
+<script src="{% static 'cnc_resizer/parts-api.js' %}?v=resize-pattern-2" defer></script>
+<script src="{% static 'cnc_resizer/viewport.js' %}?v=resize-pattern-2" defer></script>
 <script src="{% static 'cnc_resizer/selection.js' %}" defer></script>
 <script src="{% static 'cnc_resizer/edit-tools.js' %}" defer></script>
 <script src="{% static 'cnc_resizer/history.js' %}" defer></script>
 <script src="{% static 'cnc_resizer/compare.js' %}" defer></script>
 <script src="{% static 'cnc_resizer/code-view.js' %}" defer></script>
-<script src="{% static 'cnc_resizer/app.js' %}" defer></script>
+<script src="{% static 'cnc_resizer/app.js' %}?v=resize-pattern-2" defer></script>
 </body>
 </html>

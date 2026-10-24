@@ -302,20 +302,36 @@
 
   // فاصله‌های بین گروه‌های سوراخ (features/gaps موتور قدیمی) — هم جدول پنل و
   // هم زنجیرهٔ اندازهٔ روی نقشه از همین پاسخ تغذیه می‌شود (delta=0 = فقط خواندن).
+  function withDisplayRanges(gaps) {
+    let cumulative = 0;
+    return (gaps || []).map((gap) => {
+      const item = { ...gap };
+      item.display_y0 = Number.isFinite(Number(item.display_y0))
+        ? Number(item.display_y0) : Number(item.y0 || 0) + cumulative;
+      cumulative += Number(item.increment || 0);
+      item.display_y1 = Number.isFinite(Number(item.display_y1))
+        ? Number(item.display_y1) : Number(item.y1 || 0) + cumulative;
+      return item;
+    });
+  }
   async function fetchResizeGaps() {
     const st = CNC.state;
+    if (st.appliedResizePattern) return;
     if (!st.text) return;
     const seq = ++st.resizeSeq;
     try {
       const res = await CNC.api.resize(st.text, st.filename,
                                        { mode: 'equal', delta: 0, symmetric: true });
-      if (seq !== st.resizeSeq) return;
+      // A task-derived file may load an exact applied pattern while this
+      // read-only delta=0 request is in flight. Never let that late response
+      // replace the persisted +per-gap values with zeros.
+      if (seq !== st.resizeSeq || st.appliedResizePattern) return;
       if (!res.resizable || !(res.gaps || []).length) {
         st.resizeGaps = null; st.resizeLengths = null;
         renderGapTable();
         return;
       }
-      st.resizeGaps = res.gaps.map((g) => ({ ...g, _enabled: true }));
+      st.resizeGaps = withDisplayRanges(res.gaps).map((g) => ({ ...g, _enabled: true }));
       st.resizeLengths = { before: res.length_before, after: res.length_after };
       renderGapTable();
       CNC.emit('rerender', {});   // زنجیرهٔ اندازه روی نقشه دوباره رسم شود
@@ -332,6 +348,21 @@
     if (!table || !tbody) return;
     const gaps = state.resizeGaps;
     const mode = (document.querySelector('input[name="resizeMode"]:checked') || {}).value || 'equal';
+    const summary = $('resizePatternSummary');
+    if (summary) {
+      const applied = state.appliedResizePattern;
+      if (applied) {
+        const modeName = { equal: 'مساوی', proportional: 'متناسب', manual: 'دستی', kerf: 'kerf' }[applied.mode] || applied.mode;
+        const d = Number(applied.delta) || 0;
+        summary.hidden = false;
+        summary.innerHTML = `الگوی ثبت‌شدهٔ این فایل: روش ${esc(modeName)}، تغییر کل <b dir="ltr">${esc(CNC.sgn(d))} mm</b>، محور ${esc(applied.axis || 'length')}، ابزار ${esc(String(applied.tool_dia ?? '—'))} mm، تقارن ${applied.symmetric ? 'روشن' : 'خاموش'}.`
+          + (applied.recovered ? '<br>تنظیمات فایل قدیمی از الگوی تأییدشده بازیابی و با محتوای فایل تطبیق داده شد.' : '')
+          + '<br>فایل فعلی این تغییر را دارد؛ «محاسبهٔ تغییر طول» آن را دوباره روی همین فایل اعمال می‌کند.';
+      } else {
+        summary.hidden = true;
+        summary.textContent = '';
+      }
+    }
     if (errMsg) {
       table.hidden = true; hint.hidden = false;
       hint.textContent = `فاصله‌های بین گروه‌ها خوانده نشد: ${errMsg}`;
@@ -348,14 +379,17 @@
       return;
     }
     table.hidden = false; hint.hidden = false;
-    hint.textContent = 'تیک فاصله را بردارید تا اندازه‌اش ثابت بماند؛ با بردن ماوس روی هر ردیف، همان ناحیه روی نقشه هایلایت می‌شود.';
+    hint.textContent = state.appliedResizePattern
+      ? 'این جدول، سهم واقعی هر فاصله در فایل مشتق را نشان می‌دهد؛ با بردن ماوس روی ردیف، همان ناحیه روی نقشه هایلایت می‌شود.'
+      : 'تیک فاصله را بردارید تا اندازه‌اش ثابت بماند؛ با بردن ماوس روی هر ردیف، همان ناحیه روی نقشه هایلایت می‌شود.';
     const manual = mode === 'manual';
     tbody.replaceChildren();
     gaps.forEach((g, k) => {
       const tr = document.createElement('tr');
       tr.innerHTML = `<td><input type="checkbox" class="gap-en" ${g._enabled === false ? '' : 'checked'}
                         aria-label="فاصلهٔ ${k + 1} تغییر کند"></td>`
-        + `<td class="n">${CNC.f1(g.y0)}…${CNC.f1(g.y1)}</td>`
+        + `<td>فاصله ${k + 1}</td>`
+        + `<td class="n">${CNC.f1(g.display_y0 ?? g.y0)}…${CNC.f1(g.display_y1 ?? g.y1)}</td>`
         + `<td class="n">${CNC.f1(g.length)}</td>`
         + (manual
           ? `<td class="n"><input type="number" class="gap-man" step="0.1"
@@ -363,7 +397,7 @@
           : `<td class="n">${g.increment ? CNC.sgn(g.increment) : '—'}</td>`)
         + `<td class="n">${CNC.f1((g.length || 0) + (g.increment || 0))}</td>`;
       tbody.appendChild(tr);
-      tr.addEventListener('mouseenter', () => CNC.viewport.gapHighlight(g.y0, g.y1));
+      tr.addEventListener('mouseenter', () => CNC.viewport.gapHighlight(g.display_y0 ?? g.y0, g.display_y1 ?? g.y1));
       tr.addEventListener('mouseleave', () => CNC.viewport.gapHighlight(null, null));
       tr.querySelector('.gap-en').addEventListener('change', (e) => { g._enabled = e.target.checked; });
       const man = tr.querySelector('.gap-man');
@@ -390,7 +424,7 @@
     }
     // جدول/زنجیره با نتیجهٔ واقعی به‌روز شود (در حالت kerf فاصله‌ای برنمی‌گردد)
     if (res.gaps && res.gaps.length) {
-      state.resizeGaps = res.gaps.map((g, k) => ({
+      state.resizeGaps = withDisplayRanges(res.gaps).map((g, k) => ({
         ...g, _enabled: !!(state.resizeGaps && state.resizeGaps[k]
           ? state.resizeGaps[k]._enabled : g.enabled),
       }));
@@ -450,6 +484,9 @@
         return;
       }
       if (!state.text) { resizeStatus('err', 'اول یک فایل CNC باز کنید.'); return; }
+      if (state.appliedResizePattern && state.taskContext && state.taskContext.file_kind === 'derived') {
+        if (!confirm(`این فایل از قبل تغییر طول ${CNC.sgn(Number(state.appliedResizePattern.delta) || 0)} mm را دارد. محاسبه روی فایل فعلی تغییر تازه‌ای اضافه می‌کند. ادامه می‌دهید؟`)) return;
+      }
       const params = { mode, delta, symmetric: $('resizeSym').checked };
       // بازخورد اپراتور: انتخاب فاصله‌ها مثل روش قدیمی — تیک هر فاصله و
       // در حالت دستی مقدار هر کدام به همان پارامترهای engine قدیمی می‌رود.
@@ -921,12 +958,23 @@
   // ------------------------------------------------_لینک عمیق از صف ورق‌ها
   // ?task_id= / ?part_id=  → فایل فعلیِ همان قطعه (همان مسیر حل برنامه‌ریزی)
   // ?sheet_id=             → برنامهٔ کل ورق چیدمان‌شده (فقط خروجی تأییدشده)
-  function setContextBar({ title, dims, file, warn, register }) {
+  function setContextBar({ title, dims, resizeDelta, file, warn, register }) {
     const bar = $('taskContextBar');
     if (!bar) return;
     $('tcTitle').textContent = title || '—';
     const dimsEl = $('tcDims');
     if (dims) { dimsEl.textContent = dims; dimsEl.hidden = false; } else { dimsEl.hidden = true; }
+    const deltaEl = $('tcResizeDelta');
+    if (Number.isFinite(resizeDelta)) {
+      const formattedDelta = CNC.f1(resizeDelta);
+      const signedDelta = resizeDelta > 0 ? `+${formattedDelta}` : formattedDelta;
+      deltaEl.textContent = Math.abs(resizeDelta) < 0.05
+        ? 'بدون تغییر نسبت به استاندارد'
+        : `تغییر نسبت به استاندارد ${signedDelta} mm`;
+      deltaEl.hidden = false;
+    } else {
+      deltaEl.hidden = true;
+    }
     const fileEl = $('tcFile');
     if (file) { fileEl.textContent = file; fileEl.hidden = false; } else { fileEl.hidden = true; }
     $('tcStatus').hidden = !warn;
@@ -971,7 +1019,7 @@
   async function openTaskContext(params) {
     try {
       const data = await CNC.api.taskFile(params);
-      CNC.loadText(data.filename, data.content);
+      await CNC.loadText(data.filename, data.content);
       $('dropTitle').textContent = 'فایل از ایستگاه برش باز شد';
       $('fname').textContent = data.filename;
       const meta = data.meta || {};
@@ -983,12 +1031,30 @@
         dims: (meta.effective_length && meta.effective_width)
           ? `طول مؤثر ${CNC.f1(parseFloat(meta.effective_length))} × عرض ${CNC.f1(parseFloat(meta.effective_width))} mm`
           : '',
+        resizeDelta: Number.isFinite(parseFloat(meta.resize_delta)) ? parseFloat(meta.resize_delta) : null,
         file: kindLabel,
         warn: !!meta.manual_required,
         register: !!meta.manual_required,
       });
       // فاز ۲.۲: زمینهٔ فعلی برای پیش‌انتخاب قطعهٔ مقصد در «قالب قطعه»
       state.taskContext = meta;
+      const applied = meta.resize_pattern;
+      if (applied && Array.isArray(applied.gaps)) {
+        state.resizeSeq++; // invalidate the detection event's in-flight Δ=0 read
+        state.appliedResizePattern = applied;
+        state.resizeGaps = withDisplayRanges(applied.gaps).map((g) => ({
+          ...g, _enabled: g.enabled !== false,
+          _manual: Number.isFinite(Number(g.increment)) ? Number(g.increment) : 0,
+        }));
+        state.resizeLengths = { before: meta.file_length_before, after: meta.file_length_after };
+        const radio = document.querySelector(`input[name="resizeMode"][value="${CSS.escape(applied.mode || 'equal')}"]`);
+        if (radio) radio.checked = true;
+        $('resizeDelta').value = Number(applied.delta) || 0;
+        $('resizeSym').checked = applied.symmetric !== false;
+        syncResizeTarget();
+        renderGapTable();
+        CNC.emit('rerender', {});
+      }
       const button = $('tcRegister');
       if (button) button.dataset.taskId = meta.task_id || '';
       if (!meta.resolvable && meta.failure_reason) {

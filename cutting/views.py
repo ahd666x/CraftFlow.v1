@@ -409,11 +409,13 @@ def planner(request):
             return redirect('cutting:plan_detail', plan_id=plan.pk)
         except ValueError as exc:
             messages.error(request, str(exc)); return redirect('cutting:planner')
-    reserved_order_ids = CutPlanTask.objects.filter(plan__status='planned').values('task__order_id')
+    # Keep an order selectable while it still has unreserved tasks. A mixed
+    # order may have its standard parts reserved and its CNC-first parts free.
+    reserved_task_ids = CutPlanTask.objects.filter(plan__status='planned').values('task_id')
     available_tasks = ProductionTask.objects.filter(
         station_name='cut', status='pending', part__isnull=False,
         quantity__gt=F('completed_quantity'), order__isnull=False,
-    ).exclude(order_id__in=reserved_order_ids)
+    ).exclude(pk__in=reserved_task_ids)
     order_qs = Order.objects.filter(pk__in=available_tasks.values('order_id')).select_related('customer')
     status_filter = request.GET.get('status', '')
     valid_statuses = dict(Order.ORDER_STATUS)
@@ -493,12 +495,16 @@ def planner_preview(request):
     if not order_ids:
         return JsonResponse({'selected_order_count': 0, 'piece_count': 0, 'materials': []})
 
-    reserved_order_ids = CutPlanTask.objects.filter(plan__status='planned').values('task__order_id')
+    # A standard cut plan may reserve non-CNC parts from an order while its
+    # CNC-first parts are still free to be planned on CNC sheets. Exclude the
+    # reserved tasks themselves, not their entire order, or the CNC preview
+    # appears empty and disables planning for the remaining CNC tasks.
+    reserved_task_ids = CutPlanTask.objects.filter(plan__status='planned').values('task_id')
     tasks = list(ProductionTask.objects.filter(
         order_id__in=order_ids, station_name='cut', status='pending', part__isnull=False,
     ).filter(
         Q(quantity__gt=F('completed_quantity')) | Q(spec_override__quantity__gt=F('completed_quantity')),
-    ).exclude(spec_override__excluded=True).exclude(order_id__in=reserved_order_ids).select_related(
+    ).exclude(spec_override__excluded=True).exclude(pk__in=reserved_task_ids).select_related(
         'part__material', 'order', 'order__customer', 'spec_override__material',
     ).order_by('pk'))
     from .specs import effective_specs

@@ -1153,12 +1153,12 @@ def task_file(request):
                             json_dumps_params={'ensure_ascii': False})
     param_name = 'task_id' if request.GET.get('task_id') else 'part_id'
     if param_name == 'task_id':
-        task = ProductionTask.objects.select_related('part__material', 'order').filter(pk=raw_id).first()
+        task = ProductionTask.objects.select_related('part__material', 'part__base_part', 'order').filter(pk=raw_id).first()
     else:
         part_stub = Part.objects.filter(pk=raw_id).first()
         task = None
         if part_stub is not None:
-            task = ProductionTask.objects.select_related('part__material', 'order').filter(
+            task = ProductionTask.objects.select_related('part__material', 'part__base_part', 'order').filter(
                 part_id=part_stub.pk, station_name='cut').order_by('pk').last()
     if task is None or task.part is None:
         return JsonResponse({'ok': False, 'error': 'تسک یا قطعهٔ مربوط پیدا نشد.'}, status=404,
@@ -1204,6 +1204,57 @@ def task_file(request):
         return JsonResponse({'ok': False, 'error': 'فایل CNC متنی (UTF-8) نیست؛ در ابزار باز نمی‌شود.'},
                             status=409, json_dumps_params={'ensure_ascii': False})
     params = record.params or {}
+    standard_part = part.base_part or part
+    resize_delta = spec.length - standard_part.length
+    resize_pattern = None
+    if record.kind == CncFile.KIND_DERIVED and not params.get('manual_for_task'):
+        # New derived files carry an immutable snapshot. For older records,
+        # recover it from the approved profile only when replay produces the
+        # exact same bytes as the stored file.
+        pattern_params = params
+        gaps = params.get('resize_gaps')
+        if not isinstance(gaps, list):
+            gaps = None
+            profile = CncPartProfile.objects.filter(
+                part__in=[part, standard_part], source_file=record.source_file, approved=True,
+            ).order_by('part_id').first()
+            if profile and record.source_file_id:
+                try:
+                    with open(record.source_file.path, 'rb') as stream:
+                        source = stream.read(core.MAX_BYTES + 1).decode('utf-8-sig')
+                    replay_params = dict(profile.params or {})
+                    replay_params.update({k: params[k] for k in (
+                        'mode', 'delta', 'symmetric', 'enabled', 'manual', 'tool_dia'
+                    ) if k in params})
+                    replay_params['delta'] = float(params.get('delta', resize_delta))
+                    replay = core.process(source, replay_params)
+                    import hashlib
+                    if hashlib.sha256(replay['cnc_text'].encode('utf-8')).hexdigest() == record.sha256:
+                        gaps = replay.get('gaps') or []
+                        pattern_params = {**replay_params, 'families': replay.get('families', [])}
+                except (OSError, UnicodeDecodeError, core.CncError, KeyError, TypeError, ValueError):
+                    gaps = None
+        if gaps is not None:
+            cumulative = 0.0
+            display_gaps = []
+            for gap in gaps:
+                item = dict(gap)
+                item['display_y0'] = round(float(item.get('y0', 0)) + cumulative, 3)
+                cumulative += float(item.get('increment', 0))
+                item['display_y1'] = round(float(item.get('y1', 0)) + cumulative, 3)
+                display_gaps.append(item)
+            resize_pattern = {
+                'mode': pattern_params.get('mode', 'equal'),
+                'delta': float(params.get('delta', resize_delta)),
+                'symmetric': bool(pattern_params.get('symmetric', True)),
+                'enabled': [bool(g.get('enabled', True)) for g in display_gaps],
+                'manual': list(pattern_params.get('manual') or []),
+                'tool_dia': pattern_params.get('tool_dia', 8.0),
+                'axis': pattern_params.get('axis', 'length'),
+                'families': pattern_params.get('families') or [],
+                'gaps': display_gaps,
+                'recovered': not bool(params.get('resize_gaps')),
+            }
     return JsonResponse({
         'ok': True,
         'filename': f'{record.barcode_key}.cnc',
@@ -1214,9 +1265,12 @@ def task_file(request):
             'order_id': task.order_id,
             'file_id': record.pk, 'file_kind': record.kind,
             'file_mode': params.get('mode', ''),
+            'file_length_before': str(record.length_before or ''),
             'file_length_after': str(record.length_after or ''),
             'effective_length': format(spec.length, 'f'),
             'effective_width': format(spec.width, 'f'),
+            'resize_delta': format(resize_delta, 'f'),
+            'resize_pattern': resize_pattern,
             'resolvable': resolvable,
             'failure_reason': failure_reason,
             'manual_required': spec.status_code == 'needs_cnc_manual' or not resolvable,

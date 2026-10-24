@@ -97,6 +97,7 @@
     resizeSeq: 0,            // race-guard: پاسخ‌های کهنهٔ جدول فاصله‌ها دور ریخته می‌شوند
     resizeGaps: null,        // فاصله‌های بین گروه‌های سوراخ (پنل «طول») + زنجیرهٔ اندازه روی نقشه
     resizeLengths: null,     // {before, after} از آخرین محاسبهٔ تغییر طول
+    appliedResizePattern: null, // snapshot الگوی اعمال‌شده روی فایل مشتق فعلی
     layers: { depth: new Map(), tool: new Map(), kind: new Map(),
               showGhost: true, showDims: true, showOps: true, showGrid: true },
     measures: [],
@@ -218,6 +219,8 @@
     st.outputsExcluded = new Set(); st.fixedParts = new Set();
     st.selection = []; st.measures = [];
     st.resizeGaps = null; st.resizeLengths = null; st.resizeOp = null;
+    st.appliedResizePattern = null;
+    st.resizeSeq++; // ignore resize-gap reads that belong to the previous file
     st.gate = { allowed: null, blockers: [], warnings: [], edits: false };
     st.layers.depth = new Map(); st.layers.tool = new Map(); st.layers.kind = new Map();
     CNC.emit('file', { name, text });

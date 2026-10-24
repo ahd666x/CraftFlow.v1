@@ -242,6 +242,17 @@ def resolve_cnc_file(part, created_by=None, effective_length=None):
                 'delta': str(delta),
                 'mode': rules.get('mode', 'equal'),
                 'symmetric': bool(rules.get('symmetric', True)),
+                # Snapshot the exact approved resize pattern used for this
+                # immutable derived file. The live profile may change later.
+                'enabled': [bool(g.get('enabled', True)) for g in result.get('gaps', [])],
+                'manual': list(rules.get('manual') or []),
+                'tool_dia': rules.get('tool_dia', 8.0),
+                'axis': profile.get('axis', 'length'),
+                'resize_gaps': result.get('gaps', []),
+                'families': result.get('families', []),
+                'cuts': result.get('cuts', []),
+                'length_before': result.get('length_before'),
+                'length_after': result.get('length_after'),
                 'changed_lines': len(result.get('changed_lines', [])),
                 'warnings': result.get('warnings', []),
             },

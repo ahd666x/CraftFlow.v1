@@ -33,7 +33,7 @@
   };
 
   let svg = null, vb = null;
-  let gGrid, gSheet, gGapHl, gGhost, gCollide, gParts, gOps, gDims, gStretch, gHandles, gMeas, gSel, gHud, gFix;
+  let gGrid, gSheet, gGapHl, gGhost, gCollide, gParts, gOps, gDims, gResizeMarks, gStretch, gHandles, gMeas, gSel, gHud, gFix;
   const refs = {};          // part_id -> {g, selbox, label, hit}
   const opEls = {};         // op_id  -> {g, selbox, hit}
   CNC.viewEls = { refs, opEls };
@@ -277,7 +277,7 @@
 
   // ================================================================_رندر صحنه
   function clearGroups() {
-    [gSheet, gGapHl, gGhost, gCollide, gParts, gOps, gDims, gStretch, gHandles, gMeas, gSel, gHud, gFix]
+    [gSheet, gGapHl, gGhost, gCollide, gParts, gOps, gDims, gResizeMarks, gStretch, gHandles, gMeas, gSel, gHud, gFix]
       .forEach((g) => g && g.replaceChildren());
     for (const k in refs) delete refs[k];
     for (const k in opEls) delete opEls[k];
@@ -455,6 +455,7 @@
       for (const pid in refs) refs[pid].g.classList.add('collision');
     }
 
+    drawResizeIncrements();
     drawFixtures();
     drawMeasures();
     drawGrid();
@@ -588,6 +589,36 @@
   }
   CNC.drawMeasures = drawMeasures;
 
+  // نمایش سهم واقعی هر فاصله روی نقشهٔ فایل مشتق یا نتیجهٔ محاسبه‌شده.
+  function drawResizeIncrements() {
+    if (!gResizeMarks) return;
+    gResizeMarks.replaceChildren();
+    const gaps = state.resizeGaps || [];
+    const bb = sceneBBox();
+    const px = pxPerMM();
+    gaps.forEach((gap, index) => {
+      const amount = Number(gap.increment) || 0;
+      if (Math.abs(amount) < 0.05) return;
+      const y0 = Number(gap.display_y0 ?? gap.y0);
+      const y1 = Number(gap.display_y1 ?? gap.y1);
+      if (!Number.isFinite(y0) || !Number.isFinite(y1)) return;
+      const x = bb.x0 - 8 / px;
+      const y = -(y0 + y1) / 2;
+      const label = `${amount > 0 ? '+' : ''}${CNC.f1(amount)} mm`;
+      const t = el('text', {
+        x, y, 'font-size': 14 / px, fill: 'var(--accent)', 'font-weight': 800,
+        'text-anchor': 'end', 'dominant-baseline': 'middle', direction: 'ltr',
+        style: 'paint-order:stroke; stroke:var(--canvas); stroke-width:4px; stroke-linejoin:round; pointer-events:none;',
+      }, gResizeMarks);
+      t.textContent = label;
+      const lineY = y;
+      el('line', { x1: bb.x0 - 5 / px, y1: lineY, x2: bb.x0 + 5 / px, y2: lineY,
+                   stroke: 'var(--accent)', 'stroke-width': 1.5 / px, 'stroke-dasharray': `${3 / px} ${2 / px}`,
+                   'pointer-events': 'none' }, gResizeMarks);
+      t.setAttribute('aria-label', `فاصله ${index + 1}: افزایش ${label}`);
+    });
+  }
+
   // ================================================================_init
   CNC.viewport.init = function init(svgEl) {
     svg = svgEl;
@@ -602,13 +633,14 @@
     gParts = el('g', { id: 'gParts' }, svg);
     gOps = el('g', { id: 'gOps' }, svg);
     gDims = el('g', { id: 'gDims' }, svg);
+    gResizeMarks = el('g', { id: 'gResizeMarks', 'pointer-events': 'none' }, svg);
     gStretch = el('g', { id: 'gStretch' }, svg);
     gHandles = el('g', { id: 'gHandles' }, svg);
     gMeas = el('g', { id: 'gMeas' }, svg);
     gSel = el('g', { id: 'gSel' }, svg);
     gHud = el('g', { id: 'gHud', 'pointer-events': 'none' }, svg);
     gFix = el('g', { id: 'gFix', 'pointer-events': 'none' }, svg);
-    CNC.groups = { gGrid, gSheet, gGapHl, gGhost, gCollide, gParts, gOps, gDims, gStretch, gHandles, gMeas, gSel, gHud, gFix };
+    CNC.groups = { gGrid, gSheet, gGapHl, gGhost, gCollide, gParts, gOps, gDims, gResizeMarks, gStretch, gHandles, gMeas, gSel, gHud, gFix };
     bindGestures();
     drawGrid();
   };
