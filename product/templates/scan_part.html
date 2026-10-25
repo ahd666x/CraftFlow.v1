@@ -54,12 +54,15 @@
         </div>
 
         <div class="col-lg-7">
+            {% comment %}فعلاً غیرفعال — بخش «راهنمای اپراتور CNC» طبق درخواست موقتاً خاموش است.{% endcomment %}
+            {% comment %}
             <div id="cnc-guide-card" class="card shadow mb-3 border-warning" style="display:none;">
                 <div class="card-header bg-warning text-dark">
                     <h5 class="mb-0">🛠 راهنمای اپراتور CNC</h5>
                 </div>
                 <div class="card-body cnc-guide" id="cnc-guide-body"></div>
             </div>
+            {% endcomment %}
             <div id="instructions-card" class="card shadow mb-3" style="display:none;">
                 <div class="card-header bg-dark text-white">
                     <h5 class="mb-0">📋 دستورالعمل‌های این سفارش در این مرحله</h5>
@@ -239,6 +242,9 @@ function renderInstructions(list) {
 let lastCncSetupUrl = '';
 
 function renderCncSetup(setup) {
+    // فعلاً غیرفعال — بخش «راهنمای اپراتور CNC» طبق درخواست موقتاً خاموش است؛
+    // برای فعال‌سازی دوباره: return زیر را حذف و کارت cnc-guide-card را از کامنت خارج کنید.
+    return;
     // راهنمای خودکار اپراتور CNC: پارکینگ ابزار + آفست + وضعیت نقاط میخ برای همین قطعه
     const card = document.getElementById('cnc-guide-card');
     const body = document.getElementById('cnc-guide-body');

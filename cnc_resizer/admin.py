@@ -8,6 +8,8 @@ controller profiles in the admin — with nothing registered, «تأیید
 gate in ``controller.py`` (an active, unapproved profile blocks output).
 """
 from django.contrib import admin
+from django.urls import reverse
+from django.utils.html import format_html
 
 from .models import (
     CncControllerProfile,
@@ -59,10 +61,18 @@ class CncPartProfileAdmin(admin.ModelAdmin):
 
 @admin.register(CncSheetPlan)
 class CncSheetPlanAdmin(admin.ModelAdmin):
-    list_display = ("id", "material", "source_stock", "sheet_index", "status", "result_outcome", "completed_by", "completed_at", "created_at")
+    list_display = ("id", "material", "source_stock", "sheet_index", "status", "result_outcome", "completed_by", "completed_at", "created_at", "open_sheet_planner")
     list_filter = ("status", "result_outcome", "material")
     search_fields = ("material__name",)
     readonly_fields = tuple(field.name for field in CncSheetPlan._meta.fields)
+
+    @admin.display(description="برنامه‌های ورق CNC")
+    def open_sheet_planner(self, obj):
+        """لینک صفحهٔ برنامه‌ریزی ورق از پنل ادمین — لینک اپراتور در ادیتور فعلاً کامنت است."""
+        return format_html(
+            '<a href="{}" target="_blank">باز کردن صفحهٔ برنامه‌های ورق CNC ←</a>',
+            reverse("cnc_resizer:sheet_plans"),
+        )
 
     def has_add_permission(self, request):
         return False

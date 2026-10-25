@@ -47,7 +47,7 @@
   </div>
 </div>
 
-<section id="taskContextBar" hidden aria-label="زمینهٔ تسک از ایستگاه CNC">
+<section id="taskContextBar" hidden aria-label="زمینهٔ دستور کار از ایستگاه CNC">
   <div class="tc-main">
     <b id="tcTitle">—</b>
     <span class="tc-chip num" id="tcDims" hidden></span>
@@ -57,7 +57,7 @@
   </div>
   <div class="tc-actions">
     <span id="tcStatusLine" role="status" aria-live="polite"></span>
-    <button type="button" id="tcRegister" class="primary" hidden>ثبت این فایل به‌عنوان اصلاح دستی تسک</button>
+    <button type="button" id="tcRegister" class="primary" hidden>ثبت این فایل به‌عنوان اصلاح دستی دستور کار</button>
     <a id="tcBack" href="">بازگشت به ورق‌ها</a>
   </div>
 </section>
@@ -95,7 +95,8 @@
   </div>
   <input type="file" id="file" accept=".cnc,.nc,.tap,.txt,.gcode,text/plain" hidden>
   <ul class="mlist" id="archiveList" style="margin-top:10px;border-top:1px solid var(--line);padding-top:8px"></ul>
-  <a href="{{ sheet_plans_url }}" style="font-size:12px">برنامه‌های ورق CNC ←</a>
+  {% comment %}فعلاً غیرفعال — برنامه‌های ورق CNC از پنل ادمین در دسترس است.{% endcomment %}
+  {% comment %} <a href="{{ sheet_plans_url }}" style="font-size:12px">برنامه‌های ورق CNC ←</a> {% endcomment %}
 </section>
 
 <section id="toolsPanel" class="fpanel" hidden aria-label="میز ابزار">
@@ -144,7 +145,7 @@
     <input type="number" id="chainStretchDelta" value="100" step="1" placeholder="دلتا (mm)" aria-label="دلتا برای هر قطعه (mm)">
   </div>
   <p class="statusline" id="chainStretchSelection" hidden></p>
-  <div class="toolbtns"><button type="button" id="chainStretchApply" class="primary">اعمال کشش زنجیره‌ای</button></div>
+  <div class="toolbtns"><button type="button" id="chainStretchApply" class="primary">Apply chain stretch</button></div>
   <hr>
   <div class="resradios" id="resizeModes">
     <label><input type="radio" name="resizeMode" value="equal" checked>
@@ -154,7 +155,7 @@
     <label><input type="radio" name="resizeMode" value="manual">
       <span>Manual — دستی</span></label>
     <label><input type="radio" name="resizeMode" value="kerf">
-      <span>Kerf — شیار پیوسته</span></label>
+      <span>Kerf — continuous groove</span></label>
   </div>
   <div class="resgrid">
     <input type="number" id="resizeDelta" value="0" step="1" placeholder="تغییر کل (mm)" aria-label="تغییر کل (mm)">
@@ -181,7 +182,7 @@
   </div>
   <div class="toolbtns">
     <button type="button" id="profileConfirm" class="primary" disabled
-            title="الگوی تغییر طول این قطعه ذخیره و فعال می‌شود؛ سفارش‌های بعدی با طول متفاوت همان الگو را خودکار به‌کار می‌برند. پیش‌نیاز: محاسبهٔ معتبر + باز بودن فایل از لینک تسک">ذخیره الگو برای این قطعه</button>
+            title="الگوی تغییر طول این قطعه ذخیره و فعال می‌شود؛ سفارش‌های بعدی با طول متفاوت همان الگو را خودکار به‌کار می‌برند. پیش‌نیاز: محاسبهٔ معتبر + باز بودن فایل از لینک دستور کار">ذخیره الگو برای این قطعه</button>
   </div>
   <p class="statusline" id="profileStatus" hidden></p>
   <div id="resizeResult" hidden></div>

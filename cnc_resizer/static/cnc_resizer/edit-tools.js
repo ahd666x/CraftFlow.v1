@@ -1166,7 +1166,7 @@
     ctxMenu = document.createElement('div');
     ctxMenu.className = 'ctxmenu';
     ctxMenu.setAttribute('role', 'menu');
-    item(fixed ? '🔓 کشیدنی کن (کشش این قطعه فعال شود)' : '🔒 ثابت کن (کشش این قطعه قفل شود)',
+    item(fixed ? '🔓 Make draggable (stretch enabled)' : '🔒 Pin (locked against stretch)',
          () => {
            if (fixed) state.fixedParts.delete(partId); else state.fixedParts.add(partId);
            CNC.emit('rerender', {}); CNC.renderInspector();

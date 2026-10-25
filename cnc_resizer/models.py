@@ -204,7 +204,7 @@ class CncPlanningIssue(models.Model):
         verbose_name_plural = "خطاهای برنامه‌ریزی CNC"
 
     def __str__(self):
-        return f"خطای CNC تسک {self.task_id or '-'}: {self.reason[:60]}"
+        return f"خطای CNC دستور کار {self.task_id or '-'}: {self.reason[:60]}"
 
 
 class ToolSlot(models.Model):

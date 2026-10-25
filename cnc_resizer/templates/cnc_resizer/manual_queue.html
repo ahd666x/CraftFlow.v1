@@ -30,7 +30,7 @@
         <thead>
           <tr>
             <th scope="col">قطعه</th>
-            <th scope="col">تسک / سفارش</th>
+            <th scope="col">دستور کار / سفارش</th>
             <th scope="col">باقی‌مانده</th>
             <th scope="col">وضعیت</th>
             <th scope="col">علت</th>
@@ -75,7 +75,7 @@
             </td>
             <td>
               <div class="d-flex flex-wrap gap-1 align-items-center">
-                <a class="btn btn-sm btn-outline-primary" href="/cnc/?task_id={{ row.task_id }}&amp;from=manual" title="باز کردن فایل این تسک در ابزار CAD سی‌ان‌سی برای اصلاح و ثبت فایل دستی؛ بازگشت به همین صف">رفع در ابزار CNC</a>
+                <a class="btn btn-sm btn-outline-primary" href="/cnc/?task_id={{ row.task_id }}&amp;from=manual" title="باز کردن فایل این دستور کار در ابزار CAD سی‌ان‌سی برای اصلاح و ثبت فایل دستی؛ بازگشت به همین صف">رفع در ابزار CNC</a>
                 {% if row.can_renest %}
                 <form method="post" action="{{ manual_renest_url }}" onsubmit="return confirm('بازچینش، برنامه‌ریز CNC را برای کل سفارش این مورد اجرا می‌کند و ممکن است ورق رزرو کند. ادامه می‌دهید؟')">
                   {% csrf_token %}

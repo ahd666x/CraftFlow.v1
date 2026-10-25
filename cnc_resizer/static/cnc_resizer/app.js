@@ -75,11 +75,11 @@
       <h2><span class="badge" style="background:${CNC.partColor(part)}"></span>
           ${esc(CNC.partName(part))} — ${esc(CNC.SHAPE_FA[part.shape_kind] || part.shape_kind)}</h2>
       <dl class="kv">
-        <dt>ابعاد کانتور</dt><dd class="num">${CNC.f1(dims.x_max - dims.x_min)}×${CNC.f1(dims.y_max - dims.y_min)} mm</dd>
-        <dt>عمق‌ها</dt><dd class="num">${(part.depths || []).map((v) => CNC.f1(v)).join('، ') || '—'} mm</dd>
-        <dt>پاس‌ها</dt><dd class="num">${(part.passes || []).length}</dd>
-        <dt>ابزار</dt><dd class="num">${part.tool != null ? 'T' + part.tool : '—'}</dd>
-        <dt>مساحت</dt><dd class="num">${CNC.f1(part.area_path)} mm²</dd>
+        <dt>Contour dims</dt><dd class="num">${CNC.f1(dims.x_max - dims.x_min)}×${CNC.f1(dims.y_max - dims.y_min)} mm</dd>
+        <dt>Depths</dt><dd class="num">${(part.depths || []).map((v) => CNC.f1(v)).join('، ') || '—'} mm</dd>
+        <dt>Passes</dt><dd class="num">${(part.passes || []).length}</dd>
+        <dt>Tool</dt><dd class="num">${part.tool != null ? 'T' + part.tool : '—'}</dd>
+        <dt>Area</dt><dd class="num">${CNC.f1(part.area_path)} mm²</dd>
       </dl>
       ${opText ? `<div class="insp-warn" style="background:var(--accent-soft);color:var(--accent);border-color:var(--accent)">
         ${opText}</div>` : ''}
@@ -87,8 +87,8 @@
       ${(part.warnings || []).length ? `<div class="insp-warn">⚠ ${part.warnings.map(esc).join('<br>⚠ ')}</div>` : ''}
       ${excluded ? `<div class="insp-warn">از خروجی حذف شده — دانلود مسدود است.</div>` : ''}
       <div class="actions">
-        <button type="button" data-act="zoom">🔍 زوم</button>
-        <button type="button" data-act="toggle-fixed" title="قطعهٔ ثابت با ویرایش کشش جابه‌جا نمی‌شود">${fixed ? '🔓 کشیدنی کن' : '🔒 ثابت کن'}</button>
+        <button type="button" data-act="zoom">🔍 Zoom</button>
+        <button type="button" data-act="toggle-fixed" title="قطعهٔ ثابت با ویرایش کشش جابه‌جا نمی‌شود">${fixed ? '🔓 Make draggable' : '🔒 Pin'}</button>
         <button type="button" data-act="toggle-exclude" class="danger" title="حذف از خروجی دانلود را مسدود می‌کند">${excluded ? '↩ برگرداندن به خروجی' : '🚫 حذف از خروجی'}</button>
         ${op ? '<button type="button" data-act="reset-op">↩ بازگردانی ویرایش این قطعه</button>' : ''}
       </div>
@@ -124,7 +124,7 @@
         <dt>قطعهٔ مالک</dt><dd>${owner ? esc(CNC.partName(owner)) : 'ندارد — عملیات مستقل'}</dd>
       </dl>
       ${owner ? '' : `<div class="insp-warn">عملیات مستقل — با ویرایش قطعه‌ای جابه‌جا نمی‌شود.</div>`}
-      <div class="actions"><button type="button" data-act="zoom">🔍 زوم</button></div>
+      <div class="actions"><button type="button" data-act="zoom">🔍 Zoom</button></div>
     `;
   }
 
@@ -322,10 +322,7 @@
       hint.textContent = 'در حالت Kerf توزیع کاملاً خودکار است (گام شیار ثابت می‌ماند)؛ جدول فاصله‌ها فقط برای Equal/Proportional/Manual معنا دارد.';
       return;
     }
-    table.hidden = false; hint.hidden = false;
-    hint.textContent = state.appliedResizePattern
-      ? 'این جدول، سهم واقعی هر فاصله در فایل مشتق را نشان می‌دهد؛ با بردن ماوس روی ردیف، همان ناحیه روی نقشه هایلایت می‌شود.'
-      : 'تیک فاصله را بردارید تا اندازه‌اش ثابت بماند؛ با بردن ماوس روی هر ردیف، همان ناحیه روی نقشه هایلایت می‌شود.';
+    table.hidden = false; hint.hidden = true;   // بدون متن راهنما — فقط جدول
     const manual = mode === 'manual';
     tbody.replaceChildren();
     gaps.forEach((g, k) => {
@@ -421,13 +418,9 @@
       renderGapTable();
       CNC.emit('rerender', {});
     }
-    const before = res.length_before != null ? CNC.f1(res.length_before) : '—';
-    const after = res.length_after != null ? CNC.f1(res.length_after) : '—';
-    const modeName = { equal: 'Equal', proportional: 'Proportional', kerf: 'Kerf', manual: 'Manual' }[mode] || mode;
+    // بازخورد فقط با دکمهٔ اقدام — بدون متن نتیجه/هشدار (بند کاربر)
     resizeStatus('ok',
-      `تغییر طول با روش «${esc(modeName)}» محاسبه شد: طول <span class="num">${before}</span> → <span class="num">${after}</span> mm`
-      + (warnings ? `<br>• ${warnings}` : '')
-      + '<div class="toolbtns" style="margin-top:8px"><button type="button" id="resizeReplace" class="primary">جایگزینی فایل روی نقشه با نسخهٔ جدید</button></div>');
+      '<div class="toolbtns"><button type="button" id="resizeReplace" class="primary">جایگزینی فایل روی نقشه با نسخهٔ جدید</button></div>');
     const replaceBtn = $('resizeReplace');
     if (replaceBtn) replaceBtn.onclick = async () => {
       if (!res.cnc_text || !String(res.cnc_text).trim()) { resizeStatus('err', 'متن نتیجه خالی است.'); return; }
@@ -552,8 +545,8 @@
       : noProfileLine;
     if (!st.taskContext || !st.taskContext.part_id) {
       btn.disabled = true;
-      btn.title = 'بدون هویت قطعه (بازکردن از لینک تسک)، ثبت الگو ممکن نیست';
-      show(esc(profileLine) + ' — برای ذخیرهٔ الگو، فایل را از لینک تسک/صف دستی باز کنید.');
+      btn.title = 'بدون هویت قطعه (بازکردن از لینک دستور کار)، ذخیرهٔ الگو ممکن نیست';
+      el.hidden = true;   // بدون الگو/هویت: هیچ توضیحی نمایش داده نمی‌شود
       return;
     }
     if (p && p.loading) {
@@ -571,7 +564,8 @@
     if (!last) {
       btn.disabled = true;
       btn.title = 'ابتدا «محاسبهٔ تغییر طول» را اجرا کنید';
-      show(esc(profileLine) + ' — برای ذخیرهٔ الگو، اول «محاسبهٔ تغییر طول» را اجرا کنید (پیش‌نمایش معتبر لازم است).');
+      if (p && p.approved) show(esc(profileLine));   // فقط وضعیت، بدون توضیح
+      else el.hidden = true;                          // «الگوی تغییر طول تعریف نشده» — بدون توضیح
       return;
     }
     if (st.profileSaving) {
@@ -1151,7 +1145,7 @@
         ? (meta.file_mode === 'manual' ? 'فایل دستی ثبت‌شدهٔ اپراتور' : 'فایل مشتق با الگوی تأییدشده')
         : 'فایل پایهٔ آرشیو';
       setContextBar({
-        title: `تسک #${meta.task_id} — ${meta.part_name || meta.barcode || 'قطعه'}`,
+        title: `دستور کار #${meta.task_id} — ${meta.part_name || meta.barcode || 'قطعه'}`,
         dims: (meta.effective_length && meta.effective_width)
           ? `طول مؤثر ${CNC.f1(parseFloat(meta.effective_length))} × عرض ${CNC.f1(parseFloat(meta.effective_width))} mm`
           : '',
@@ -1192,7 +1186,7 @@
           'task-file');
       }
     } catch (err) {
-      alertBox('err', 'بازکردن فایل تسک ناموفق بود: ' + esc(err.message), 'task-file');
+      alertBox('err', 'بازکردن فایل دستور کار ناموفق بود: ' + esc(err.message), 'task-file');
     }
   }
 

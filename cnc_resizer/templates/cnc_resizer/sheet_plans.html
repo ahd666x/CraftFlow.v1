@@ -57,7 +57,7 @@
           <div class="cnc-canvas-grid" aria-hidden="true"></div>
           <div class="cnc-sheet-label num">{{ plan.width }} × {{ plan.height }}</div>
           {% for box in plan.preview %}{% if box.task_id %}
-          <a class="cnc-part-box {% if box.rotated %}rotated{% endif %} clickable" href="{% url 'cnc_resizer:index' %}?task_id={{ box.task_id }}" style="left:{{ box.left }}%;top:{{ box.top }}%;width:{{ box.width }}%;height:{{ box.height }}%" title="{{ box.label }} · {{ box.width_mm }} × {{ box.height_mm }} mm{% if box.rotated %} · چرخش ۹۰°{% endif %} · تسک #{{ box.task_id }}{% if box.file_label %} · {{ box.file_label }}{% endif %} — باز کردن در ابزار CNC"><span>{{ box.label }}</span></a>
+          <a class="cnc-part-box {% if box.rotated %}rotated{% endif %} clickable" href="{% url 'cnc_resizer:index' %}?task_id={{ box.task_id }}" style="left:{{ box.left }}%;top:{{ box.top }}%;width:{{ box.width }}%;height:{{ box.height }}%" title="{{ box.label }} · {{ box.width_mm }} × {{ box.height_mm }} mm{% if box.rotated %} · چرخش ۹۰°{% endif %} · دستور کار #{{ box.task_id }}{% if box.file_label %} · {{ box.file_label }}{% endif %} — باز کردن در ابزار CNC"><span>{{ box.label }}</span></a>
           {% else %}
           <div class="cnc-part-box {% if box.rotated %}rotated{% endif %}" style="left:{{ box.left }}%;top:{{ box.top }}%;width:{{ box.width }}%;height:{{ box.height }}%" title="{{ box.label }} · {{ box.width_mm }} × {{ box.height_mm }} mm{% if box.rotated %} · چرخش ۹۰°{% endif %}"><span>{{ box.label }}</span></div>
           {% endif %}{% endfor %}
@@ -219,7 +219,7 @@
       rows2.appendChild(row);
     });
     form.addEventListener('submit', (event) => {
-      if (!confirm('نتیجه ثبت می‌شود و در صورت مصرف یا ضایعات، موجودی ورق و وضعیت تسک‌ها تغییر می‌کند. ادامه می‌دهید؟')) event.preventDefault();
+      if (!confirm('نتیجه ثبت می‌شود و در صورت مصرف یا ضایعات، موجودی ورق و وضعیت دستور کارها تغییر می‌کند. ادامه می‌دهید؟')) event.preventDefault();
     });
   });
 })();

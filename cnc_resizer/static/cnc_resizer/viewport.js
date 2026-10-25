@@ -22,9 +22,9 @@
     return DEPTH_COLORS[(idx < 0 ? levels.length : idx) % DEPTH_COLORS.length];
   };
   const KIND_FA = {
-    pocket_or_hole: 'سوراخ/شیارِ داخل قطعه', engraving_loop: 'حکاکی (حلقهٔ کم‌عمق)',
-    groove: 'شیار باز', saw_line: 'خط اره/برش مستقیم', raster: 'راستر/سطح‌خوری',
-    engraving: 'حکاکی', orphan_loop: 'حلقهٔ بیرون از قطعه‌ها',
+    pocket_or_hole: 'Pocket/Hole', engraving_loop: 'Engraving (shallow loop)',
+    groove: 'Open groove', saw_line: 'Saw line', raster: 'Raster/Hatching',
+    engraving: 'Engraving', orphan_loop: 'Orphan loop',
   };
   CNC.KIND_FA = KIND_FA;
   CNC.SHAPE_FA = {
