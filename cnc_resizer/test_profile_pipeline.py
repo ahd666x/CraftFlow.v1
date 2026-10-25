@@ -285,6 +285,52 @@ class AutomaticProductionFlowTests(ManualQueueFlowMixin, TestCase):
         self.assertAlmostEqual(float(long.length_after) - float(long.length_before), 150.0, places=2)
         self.assertAlmostEqual(float(short.length_after) - float(short.length_before), 50.0, places=2)
 
+    def test_proportional_profile_automatically_resizes_next_order(self):
+        """مثال الزامی پرامپت با روش Proportional: الگو یک بار برای قطعه ذخیره
+        می‌شود؛ سفارشِ هم‌طولِ پایه دلتای صفر و همان فایل پایه را می‌گیرد و
+        سفارش بعدی با طول متفاوت — بدون هیچ تنظیم دستی — فایل مشتق با دلتای
+        مخصوص همان سفارش می‌سازد. دلتا هرگز در الگو ذخیره نمی‌شود."""
+        self._login_manager()
+        self._save_profile({"mode": "proportional", "symmetric": True})
+        self.client.logout()
+        # سفارش اول: همان طول پایه ⇒ دلتای صفر ⇒ همان فایل پایه (بدون مشتق)
+        same = resolve_cnc_file(self.dynamic, self.user, effective_length=Decimal("1740.0"))
+        self.assertEqual(same.pk, self.base_record.pk)
+        # سفارش بعدی: طول متفاوت ⇒ مشتق خودکار از الگوی Proportional
+        record = resolve_cnc_file(self.dynamic, self.user, effective_length=Decimal("1890.0"))
+        self.assertEqual(record.kind, CncFile.KIND_DERIVED)
+        self.assertEqual(record.source_file_id, self.base_record.pk)
+        self.assertEqual((record.params or {}).get("mode"), "proportional")
+        self.assertAlmostEqual(
+            float(record.length_after) - float(record.length_before), 150.0, places=2)
+
+    def test_profile_of_one_part_is_invisible_to_unrelated_parts(self):
+        """بند ۸-۴: الگوی یک قطعه به قطعهٔ/سفارش نامرتبط نشت نمی‌کند؛
+        GET زنجیرهٔ دیگر «تعریف نشده» می‌دهد و resolve آن همان‌جا مسیر
+        صف دستی (no_profile) می‌رود، نه استفاده از الگوی قطعهٔ دیگر."""
+        self._login_manager()
+        self._save_profile({"mode": "equal", "symmetric": True})   # الگوی زنجیرهٔ پایه/بلند
+        other_base = Part.objects.create(
+            material=self.material, name="پایهٔ زنجیرهٔ دیگر", length=Decimal("2000.0"),
+            width=Decimal("600.0"), f3="panel.other.2000x600", routing_code="cnc",
+        )
+        other = Part.objects.create(
+            material=self.material, name="دیگر", length=Decimal("2200.0"),
+            width=Decimal("600.0"), f3="panel.other.2200x600", routing_code="cnc",
+            base_part=other_base,
+        )
+        other_path = os.path.join(self.archive, "panel.other.2000x600.cnc")
+        with open(other_path, "w", encoding="utf-8") as stream:
+            stream.write(_sample_text().replace("N10G90G54", "N10G21G90G54", 1))
+        register_base_file(other_path, other_base.f3, self.manager)
+        self.client.logout()
+        self._login_manager()   # نشست تازه — بازیابی الگو پس از ورود دوباره (بند ۸-۲)
+        data = self._get_profile(other)
+        self.assertFalse(data["approved"])   # الگوی زنجیرهٔ دیگر برای این قطعه دیده نمی‌شود
+        with self.assertRaises(CncResolutionError) as ctx:
+            resolve_cnc_file(other, self.user, effective_length=Decimal("2200.0"))
+        self.assertEqual(_manual_reason_code(ctx.exception), "no_profile")
+
     def test_api_saved_profile_reaches_sheet_planner(self):
         self._login_manager()
         self._save_profile({"mode": "equal", "symmetric": True})

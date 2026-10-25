@@ -434,7 +434,7 @@
       if (CNC.hasOps() && !confirm('ویرایش‌های فعلی نقشه و تاریخچهٔ واگرد با جایگزینی فایل پاک می‌شوند. ادامه می‌دهید؟')) return;
       const baseName = (state.filename || 'part.cnc').replace(/\.[^.]+$/, '');
       // keepContext: جایگزینی درون-نشست است — هویت قطعهٔ deep-link و
-      // وضعیت الگو برای «تأیید روش تغییر طول» باید باقی بماند.
+      // وضعیت الگو برای «ذخیره الگو برای این قطعه» باید باقی بماند.
       await CNC.loadText(`${baseName}_L${CNC.f1(res.length_after ?? 0)}.cnc`, res.cnc_text, { keepContext: true });
       // بازخورد اپراتور: فایل جایگزین‌شدهٔ پنل طول بدون ویرایش نقشه هم از
       // «دانلود G-code» (گتهٔ دیالکت) قابل دانلود است.
@@ -543,7 +543,7 @@
     const show = (html) => { el.innerHTML = html; el.hidden = false; };
     if (st._profileNote) { show(st._profileNote.html); btn.disabled = true; return; }
     const p = st.profile;
-    const noProfileLine = 'الگوی خودکار تأییدشده برای این قطعه ثبت نشده است';
+    const noProfileLine = 'الگوی تغییر طول تعریف نشده';
     const profileLine = p
       ? (p.loading ? 'در حال خواندن وضعیت الگو…'
                    : (p.approved
@@ -553,7 +553,7 @@
     if (!st.taskContext || !st.taskContext.part_id) {
       btn.disabled = true;
       btn.title = 'بدون هویت قطعه (بازکردن از لینک تسک)، ثبت الگو ممکن نیست';
-      show(esc(profileLine) + ' — برای تأیید الگو، فایل را از لینک تسک/صف دستی باز کنید.');
+      show(esc(profileLine) + ' — برای ذخیرهٔ الگو، فایل را از لینک تسک/صف دستی باز کنید.');
       return;
     }
     if (p && p.loading) {
@@ -571,7 +571,7 @@
     if (!last) {
       btn.disabled = true;
       btn.title = 'ابتدا «محاسبهٔ تغییر طول» را اجرا کنید';
-      show(esc(profileLine) + ' — برای تأیید الگو، اول «محاسبهٔ تغییر طول» را اجرا کنید (پیش‌نمایش معتبر لازم است).');
+      show(esc(profileLine) + ' — برای ذخیرهٔ الگو، اول «محاسبهٔ تغییر طول» را اجرا کنید (پیش‌نمایش معتبر لازم است).');
       return;
     }
     if (st.profileSaving) {
@@ -586,9 +586,9 @@
       return;
     }
     btn.disabled = false;
-    btn.title = 'ثبت این روش به‌عنوان الگوی تأییدشدهٔ تغییر اندازهٔ خودکار این قطعه';
+    btn.title = 'ذخیرهٔ این روش به‌عنوان الگوی تغییر طول تأییدشدهٔ این قطعه؛ سفارش‌های بعدی همان الگو را خودکار به‌کار می‌برند';
     const derivedNote = st.fileIsDerivedArtifact ? ' (قاعده نسبت به فایل پایه ارزیابی می‌شود)' : '';
-    show(esc(profileLine) + ` — روش «${esc(modeName(last.params.mode))}» آمادهٔ ثبت است${esc(derivedNote)}.`);
+    show(esc(profileLine) + ` — روش «${esc(modeName(last.params.mode))}» آمادهٔ ذخیره است${esc(derivedNote)}.`);
   }
 
   async function confirmProfile() {

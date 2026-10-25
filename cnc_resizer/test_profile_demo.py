@@ -89,7 +89,7 @@ class ProfileEndToEndDemo(TestCase):
            f"span(Y) = {base_record.length_before}mm — resizable=True")
 
         # ---- ۳) ثبت الگو از مسیر واقعی HTTP ادیتور (همان API که دکمهٔ
-        #         «تأیید روش تغییر طول برای این قطعه» صدا می‌زند)
+        #         «ذخیره الگو برای این قطعه» صدا می‌زند)
         client = Client()
         client.force_login(manager)
         profile_url = reverse("cnc_resizer:part_profile")
