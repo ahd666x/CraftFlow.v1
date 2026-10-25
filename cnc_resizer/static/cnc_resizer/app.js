@@ -71,9 +71,6 @@
     return `
       <h2>نقشهٔ CNC</h2>
       <dl class="kv">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>
-      ${parts.length || ops.length
-        ? `<p class="insp-empty" style="margin-top:8px">روی هر قطعه یا عملیات کلیک کنید تا بازرس همین‌جا شرح آن را بیاورد. Shift+کلیک چندانتخابی و کشیدن روی فضای خالی، کادر انتخاب می‌سازد.</p>`
-        : ''}
       ${(det && det.infos || []).length
         ? `<div class="insp-info">ℹ ${det.infos.map(esc).join('<br>ℹ ')}</div>` : ''}
       ${(det && det.warnings || []).length
@@ -256,7 +253,7 @@
   function togglePanel(id, btn) {
     const panel = $(id);
     const show = panel.hidden;
-    ['filePanel', 'toolsPanel', 'layersPanel', 'historyPanel', 'comparePanel', 'resizePanel', 'helpPanel'].forEach((pid) => {
+    ['filePanel', 'toolsPanel', 'layersPanel', 'historyPanel', 'comparePanel', 'resizePanel'].forEach((pid) => {
       const p = $(pid);
       if (p && pid !== id) p.hidden = true;
     });
@@ -842,7 +839,8 @@
       togglePanel('resizePanel', e.currentTarget);
       syncResizeTarget();
     };
-    $('btnHelp').onclick = (e) => togglePanel('helpPanel', e.currentTarget);
+    const emptyOpen = $('emptyOpenFile');
+    if (emptyOpen) emptyOpen.onclick = () => togglePanel('filePanel', $('btnFile'));
     bindResizePanel();
     $('btnDownload').onclick = downloadOutput;
     $('gateChip').onclick = () => {

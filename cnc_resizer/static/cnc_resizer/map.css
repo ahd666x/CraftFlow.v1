@@ -24,7 +24,7 @@
   --p6: #be185d; --p7: #4d7c0f; --p8: #92400e; --p9: #1e3a8a; --p10: #334155;
   --feat-hole: #157a45; --feat-outer: #1d6ce0; --feat-raster: #6d28d9;
   --feat-groove: #c2410c; --feat-unknown: #64748b;
-  --tb-h: 46px;
+  --tb-h: 30px;
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
@@ -59,25 +59,27 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 button.danger { color: var(--bad); border-color: var(--bad); }
 button.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
 
-/* ---------- نوار ابزار شناور ---------- */
+/* ---------- نوار ابزار شناور — خیلی جمع‌وجور، همیشه یک خط ---------- */
 #toolbar {
-  position: fixed; top: 10px; inset-inline-start: 50%; transform: translateX(50%);
-  display: flex; align-items: center; gap: 4px; padding: 5px;
-  background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
-  box-shadow: 0 4px 18px rgba(23,34,46,.13); z-index: 40; flex-wrap: wrap;
-  max-width: min(96vw, 980px);
+  position: fixed; top: 6px; inset-inline-start: 50%; transform: translateX(50%);
+  display: flex; align-items: center; gap: 2px; padding: 3px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+  box-shadow: 0 3px 14px rgba(23,34,46,.13); z-index: 40;
+  flex-wrap: nowrap; max-width: 96vw; overflow-x: auto; scrollbar-width: none;
 }
-#toolbar .sep { width: 1px; align-self: stretch; background: var(--line); margin: 2px 3px; }
-#toolbar button { min-height: var(--tb-h); min-width: 44px; border: 0; border-radius: 9px; display: inline-flex; align-items: center; gap: 6px; justify-content: center; }
+#toolbar::-webkit-scrollbar { display: none; }
+#toolbar .sep { width: 1px; align-self: stretch; background: var(--line); margin: 1px 2px; }
+#toolbar button { min-height: var(--tb-h); min-width: 30px; border: 0; border-radius: 8px; display: inline-flex; align-items: center; gap: 4px; justify-content: center; padding: 0 7px; flex: none; }
 #toolbar button:hover:not(:disabled) { background: var(--surface-2); }
 #toolbar button.on { background: var(--accent-soft); color: var(--accent); }
-#toolbar .tb-ico { font-size: 16px; line-height: 1; }
-#toolbar .tb-lbl { font-size: 12px; font-weight: 600; }
+#toolbar .tb-ico { font-size: 14px; line-height: 1; }
+/* بازخورد اپراتور: نوار ابزار خیلی کوچک و یک‌خطی — فقط آیکن (عنوان دکمه در tooltip می‌ماند) */
+#toolbar .tb-lbl { display: none; }
 /* نشان وضعیت پست‌پروسسور کنار دکمهٔ دانلود — همیشه دیده می‌شود */
 #gateChip {
-  display: inline-flex; align-items: center; gap: 6px; border-radius: 20px;
-  font-size: 11.5px; padding: 3px 10px; border: 1px solid var(--line);
-  background: var(--surface-2); color: var(--muted); max-width: 250px; cursor: default;
+  display: inline-flex; align-items: center; gap: 5px; border-radius: 20px; flex: none;
+  font-size: 10.5px; padding: 2px 8px; border: 1px solid var(--line);
+  background: var(--surface-2); color: var(--muted); max-width: 170px; cursor: default;
 }
 #gateChip .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--ghost); flex: none; }
 #gateChip.ok { color: var(--good); border-color: var(--good); background: var(--good-soft); }
@@ -101,7 +103,7 @@ button.on { background: var(--accent); border-color: var(--accent); color: #fff;
 .fpanel details > summary, .fpanel button { transition: background-color .15s ease, color .15s ease; }
 .fpanel details > summary { border-radius: 7px; padding: 2px 6px; margin: 0 -6px; }
 .fpanel details > summary:hover { background: var(--surface-2); }
-#inspector { top: 72px; inset-inline-end: 12px; width: 320px; }
+#inspector { top: 46px; inset-inline-end: 12px; width: 320px; }
 #inspector h2 { margin: 0 0 8px; font-size: var(--fs-13); display: flex; align-items: center; gap: 8px; }
 #inspector .badge {
   width: 12px; height: 12px; border-radius: 4px; flex: none; border: 1px solid rgba(0,0,0,.15);
@@ -128,7 +130,7 @@ button.on { background: var(--accent); border-color: var(--accent); color: #fff;
   background: var(--warn-soft); color: var(--warn); border: 1px solid var(--warn); }
 
 /* فایل */
-#filePanel { top: 72px; inset-inline-start: 12px; width: 300px; }
+#filePanel { top: 46px; inset-inline-start: 12px; width: 300px; }
 #filePanel h2, #toolsPanel h2, #layersPanel h2, #historyPanel h2, #comparePanel h2 {
   margin: 0 0 8px; font-size: 13px; color: var(--muted); font-weight: 700;
 }
@@ -150,7 +152,7 @@ button.on { background: var(--accent); border-color: var(--accent); color: #fff;
 .mlist .dims { direction: ltr; unicode-bidi: isolate; color: var(--muted); margin-inline-start: auto; font-size: 11.5px; }
 
 /* ابزار */
-#toolsPanel { top: 72px; inset-inline-start: 12px; width: 330px; }
+#toolsPanel { top: 46px; inset-inline-start: 12px; width: 330px; }
 #toolsPanel table { width: 100%; border-collapse: collapse; font-size: 12px; }
 #toolsPanel th { color: var(--muted); font-weight: 600; text-align: start; padding: 3px 5px; border-bottom: 1px solid var(--line); }
 #toolsPanel td { padding: 3px 5px; border-bottom: 1px solid var(--surface-2); }
@@ -167,7 +169,7 @@ button.on { background: var(--accent); border-color: var(--accent); color: #fff;
 .ptpl-form .toolbtns { margin-top: 2px; }
 
 /* لایه‌ها */
-#layersPanel { top: 72px; inset-inline-start: 12px; width: 280px; }
+#layersPanel { top: 46px; inset-inline-start: 12px; width: 280px; }
 .layrow { margin: 0 0 10px; }
 .layrow > b { display: block; font-size: 11.5px; color: var(--muted); margin-bottom: 5px; }
 .chips { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -182,7 +184,7 @@ button.on { background: var(--accent); border-color: var(--accent); color: #fff;
 .laylegend span { display: inline-flex; align-items: center; gap: 5px; }
 
 /* تاریخچه */
-#historyPanel { top: 72px; inset-inline-end: 344px; width: 300px; }
+#historyPanel { top: 46px; inset-inline-end: 344px; width: 300px; }
 #historyPanel ol { margin: 6px 0 0; padding: 0; list-style: none; font-size: 12.5px; display: grid; gap: 4px; }
 #historyPanel ol li {
   border: 1px solid var(--line); border-radius: 7px; padding: 5px 9px; display: flex; gap: 8px;
@@ -193,8 +195,8 @@ button.on { background: var(--accent); border-color: var(--accent); color: #fff;
 #historyPanel ol li .idx { color: var(--muted); font-size: 11px; }
 
 /* تغییر طول فایل (روش‌های محیط قدیمی: توزیع/kerf) */
-#resizePanel { top: 72px; inset-inline-start: 12px; width: 330px; }
-#resizePanel h2, #helpPanel h2 {
+#resizePanel { top: 46px; inset-inline-start: 12px; width: 330px; }
+#resizePanel h2 {
   margin: 0 0 8px; font-size: 13px; color: var(--muted); font-weight: 700;
 }
 .resradios { display: flex; flex-direction: column; gap: 6px; margin: 8px 0 10px; }
@@ -210,14 +212,7 @@ button.on { background: var(--accent); border-color: var(--accent); color: #fff;
 #resizeResult .banner.err { background: var(--bad-soft); color: var(--bad); border: 1px solid var(--bad); }
 #resizeResult .banner.warn { background: var(--warn-soft); color: var(--warn); border: 1px solid var(--warn); }
 
-/* راهنما */
-#helpPanel { top: 72px; inset-inline-start: 12px; width: 360px; }
-.helpsteps { margin: 6px 0 0; padding-inline-start: 18px; font-size: 12.5px; display: grid; gap: 7px; }
-.helpsteps li::marker { color: var(--accent); font-weight: 800; }
-.helpsteps kbd {
-  border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; font-size: 11px;
-  background: var(--surface-2); font-family: inherit;
-}
+/* راهنما — حذف شد؛ فقط آیکن‌های نوار ابزار با tooltip */
 
 /* ---------- HUD نقشه ---------- */
 .view { position: fixed; inset: 0; background: var(--canvas); }
@@ -226,17 +221,17 @@ button.on { background: var(--accent); border-color: var(--accent); color: #fff;
 .view svg.dragging { cursor: grabbing; }
 .view svg.tool-move { cursor: move; }
 .coords {
-  position: fixed; bottom: 10px; inset-inline-start: 12px; font-size: 12px; color: var(--muted);
+  position: fixed; bottom: 6px; inset-inline-start: 10px; font-size: 11px; color: var(--muted);
   direction: ltr; background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
-  padding: 4px 11px; display: flex; gap: 14px; z-index: 30; box-shadow: 0 2px 8px rgba(23,34,46,.07);
+  padding: 2px 9px; display: flex; gap: 12px; z-index: 30; box-shadow: 0 2px 8px rgba(23,34,46,.07);
 }
 .scalebar {
-  position: fixed; bottom: 10px; inset-inline-start: 50%; transform: translateX(50%);
-  direction: ltr; text-align: center; color: var(--muted); font-size: 11px; z-index: 30;
+  position: fixed; bottom: 6px; inset-inline-start: 50%; transform: translateX(50%);
+  direction: ltr; text-align: center; color: var(--muted); font-size: 10.5px; z-index: 30;
 }
 .scalebar .bar { height: 4px; border: 1.5px solid var(--muted); border-top: 0; margin: 0 auto 2px; box-sizing: border-box; }
-.zoombtns { position: fixed; bottom: 10px; inset-inline-end: 12px; display: flex; gap: 4px; z-index: 30; }
-.zoombtns button { min-width: 44px; min-height: 44px; font-size: 15px; }
+.zoombtns { position: fixed; bottom: 6px; inset-inline-end: 10px; display: flex; gap: 4px; z-index: 30; }
+.zoombtns button { min-width: 34px; min-height: 34px; font-size: 13px; padding: 0; }
 
 /* برچسب هاور و راهنمای زندهٔ درگ */
 .maphud {
@@ -259,7 +254,7 @@ button.on { background: var(--accent); border-color: var(--accent); color: #fff;
 
 /* بنر خطا/هشدار — هیچ‌وقت صفحهٔ خالی خطا نمی‌دهد */
 #alertBox {
-  position: fixed; top: 66px; inset-inline-start: 50%; transform: translateX(50%);
+  position: fixed; top: 44px; inset-inline-start: 50%; transform: translateX(50%);
   z-index: 50; max-width: min(92vw, 640px); display: grid; gap: 6px;
 }
 /* فاز ۳.۲: toast — ورود نرم، خروج با .leaving، پاک‌سازی خودکار با ttl از app.js */
@@ -341,21 +336,18 @@ svg text { font-family: "Segoe UI", Tahoma, system-ui, sans-serif; user-select: 
 .meas-g line, .meas-g path { vector-effect: non-scaling-stroke; }
 .meas-g text { font-size: 12px; paint-order: stroke; stroke: var(--canvas); stroke-width: 3px; }
 
-/* وضعیت خالی — راهنمای شروع، نه صفحهٔ خطا */
+/* وضعیت خالی — فقط یک دکمهٔ شروع */
 #emptyState {
   position: fixed; inset: 0; display: grid; place-items: center; z-index: 20;
   color: var(--muted); text-align: center; pointer-events: none; padding: 20px;
 }
-#emptyState .in { max-width: 460px; pointer-events: auto; background: var(--surface);
-  border: 1px solid var(--line); border-radius: 14px; padding: 26px 30px; box-shadow: 0 8px 30px rgba(23,34,46,.1); }
-#emptyState b { font-size: var(--fs-15); color: var(--text); }
-#emptyState .hintline { margin-top: 8px; font-size: 12.5px; }
-#emptyState kbd { background: var(--surface-2); border: 1px solid var(--line); border-radius: 5px; padding: 0 6px; font-size: 11px; }
+#emptyState .in { pointer-events: auto; background: var(--surface);
+  border: 1px solid var(--line); border-radius: 14px; padding: 18px 22px; box-shadow: 0 8px 30px rgba(23,34,46,.1); }
+#emptyState b { font-size: var(--fs-13); color: var(--text); }
 
 @media (max-width: 760px) {
-  #toolbar .tb-lbl { display: none; }
   #inspector { width: min(86vw, 320px); }
-  #historyPanel { inset-inline-end: 12px; top: 120px; }
+  #historyPanel { inset-inline-end: 12px; top: 56px; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
@@ -375,30 +367,31 @@ table.gaptab input[type=checkbox] { min-height: 0; accent-color: var(--accent); 
 .chain-ext { stroke: var(--line); stroke-dasharray: 3 4; stroke-width: 1; }
 .chain-dim { font-weight: 600; }
 
-/* ---------- نوار زمینهٔ تسک/ورق (لینک عمیق از صف ورق‌های CNC) ---------- */
+/* ---------- نوار زمینهٔ تسک/ورق (لینک عمیق از صف ورق‌های CNC) — یک خط فشرده ---------- */
 #taskContextBar {
-  position: fixed; bottom: 12px; inset-inline-start: 50%; transform: translateX(50%);
-  z-index: 45; display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
-  background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
-  box-shadow: 0 4px 18px rgba(23,34,46,.13); padding: 8px 14px;
-  max-width: min(96vw, 980px);
+  position: fixed; bottom: 6px; inset-inline-start: 50%; transform: translateX(50%);
+  z-index: 45; display: flex; align-items: center; gap: 8px; flex-wrap: nowrap;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+  box-shadow: 0 3px 14px rgba(23,34,46,.13); padding: 3px 10px;
+  max-width: min(96vw, 980px); white-space: nowrap; overflow: hidden;
 }
-#taskContextBar .tc-main { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+#taskContextBar .tc-main { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; min-width: 0; overflow: hidden; }
 #taskContextBar .tc-chip {
   border: 1px solid var(--line); background: var(--surface-2); border-radius: 999px;
-  padding: 1px 10px; font-size: 12px; color: var(--muted); white-space: nowrap;
+  padding: 0 8px; font-size: 11px; color: var(--muted); white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; flex: none;
 }
 #taskContextBar .tc-chip.warn {
   background: var(--warn-soft); color: var(--warn); border-color: var(--warn); font-weight: 700;
 }
-#taskContextBar .tc-actions { display: flex; align-items: center; gap: 10px; margin-inline-start: auto; }
-#taskContextBar .tc-actions a { color: var(--accent); font-size: 12.5px; text-decoration: none; white-space: nowrap; }
-#taskContextBar .tc-actions button { min-height: 30px; padding: 3px 12px; font-size: 12.5px; }
-#taskContextBar #tcStatusLine { font-size: 12.5px; color: var(--good); max-width: 340px; }
+#taskContextBar .tc-actions { display: flex; align-items: center; gap: 8px; margin-inline-start: auto; flex: none; }
+#taskContextBar .tc-actions a { color: var(--accent); font-size: 11.5px; text-decoration: none; white-space: nowrap; }
+#taskContextBar .tc-actions button { min-height: 24px; padding: 1px 9px; font-size: 11.5px; }
+#taskContextBar #tcStatusLine { font-size: 11.5px; color: var(--good); max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
 
 /* ===== فاز ۳.۲ — مقایسهٔ قبل/بعد ===== */
 /* پنل پهن وسط‌چین — در RTL/LTR هر دو با inset-inline + margin auto مرکز می‌شود */
-#comparePanel { top: 72px; inset-inline: 0; margin-inline: auto; width: min(760px, 94vw); }
+#comparePanel { top: 46px; inset-inline: 0; margin-inline: auto; width: min(760px, 94vw); }
 .cmp-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
 .cmp-head h2 { margin: 0; }
 .cmp-close {

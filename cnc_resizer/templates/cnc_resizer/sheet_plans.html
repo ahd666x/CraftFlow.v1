@@ -98,7 +98,7 @@
         {% elif not plan.output_verified %}<div class="cnc-muted-note">تا تأیید خروجی دستگاه، ثبت مصرف مجاز نیست.</div>{% endif %}
       </article>
       {% empty %}
-      <div class="cnc-empty"><i class="bi bi-layers" aria-hidden="true"></i><h3 class="h6">هنوز برنامه‌ای ساخته نشده است</h3><p class="help">از صف برش، حالت «CNC» را انتخاب کنید.</p><a class="btn btn-primary" href="{% url 'cutting:planner' %}">رفتن به برنامه‌ریزی</a></div>
+      <div class="cnc-empty"><i class="bi bi-layers" aria-hidden="true"></i><h3 class="h6">هنوز برنامه‌ای ساخته نشده است</h3><a class="btn btn-primary" href="{% url 'cutting:planner' %}">رفتن به برنامه‌ریزی</a></div>
       {% endfor %}
     </section>
   </main>

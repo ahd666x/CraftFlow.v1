@@ -26,10 +26,6 @@
   {% include 'cutting/_messages.html' %}
 
   <main class="cnc-manual-wrap">
-    <p class="help mb-2">
-      قطعاتی که برنامه‌ریز خودکار نتوانست فایل CNC آن‌ها را بسازد. اصلاح در ابزار CNC انجام و فایل ثبت می‌شود؛
-      سیگنال‌ها فقط وضعیت را گزارش می‌کنند و هیچ فایلی از همین صفحه ساخته یا تأیید نمی‌شود.
-    </p>
     {% if rows %}
     <div class="table-responsive card">
       <table class="table table-min align-middle mb-0">
@@ -119,7 +115,7 @@
       </table>
     </div>
     {% else %}
-    <div class="cnc-empty card"><i class="bi bi-shield-check" aria-hidden="true"></i><h3 class="h6 mb-1">صف دستی خالی است</h3><p class="help">هیچ قطعهٔ CNC در انتظار اصلاح دستی یا بازچینش نیست.</p></div>
+    <div class="cnc-empty card"><i class="bi bi-shield-check" aria-hidden="true"></i><h3 class="h6 mb-1">صف دستی خالی است</h3></div>
     {% endif %}
   </main>
 </div>

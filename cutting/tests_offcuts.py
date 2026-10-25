@@ -64,10 +64,10 @@ class PlannerOffcutSurfaceTests(TestCase):
 
     def test_default_radio_follows_cutting_settings(self):
         response = self.client.get(reverse('cutting:planner'))
-        self.assertContains(response, 'value="offcuts_first" checked')
+        self.assertContains(response, 'value="offcuts_first" form="planning-form" checked')
         CuttingSettings.objects.update_or_create(pk=1, defaults={'strategy': 'priority'})
         response = self.client.get(reverse('cutting:planner'))
-        self.assertContains(response, 'value="priority" checked')
+        self.assertContains(response, 'value="priority" form="planning-form" checked')
 
     def test_priority_radio_present_with_manual_priority_hint(self):
         response = self.client.get(reverse('cutting:planner'))

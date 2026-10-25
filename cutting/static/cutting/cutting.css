@@ -15,7 +15,7 @@
   --st-canvas:#eef1f6;
   --st-radius:8px;
   --sp-1:4px; --sp-2:8px; --sp-3:16px; --sp-4:24px;
-  --bar-h:48px; --head-h:52px; --dock-h:58px;
+  --bar-h:40px; --head-h:42px; --dock-h:46px;
   --st-shadow:0 8px 28px rgba(16,24,40,.14);
 }
 
@@ -28,37 +28,37 @@ body.cutting-station .main-content{padding:0}
 .station ::-webkit-scrollbar{height:8px;width:8px}
 .station ::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:4px}
 .station ::-webkit-scrollbar-track{background:transparent}
-.station h1{font-size:18px;font-weight:800;margin:0;letter-spacing:-.01em}
+.station h1{font-size:15px;font-weight:800;margin:0;letter-spacing:-.01em}
 .station .help{font-size:12px;color:var(--st-muted)}
 @media (prefers-reduced-motion:reduce){
   .station *,.station *::before,.station *::after{transition:none!important;animation:none!important}
 }
 
-/* ---------- نوار ایستگاه — تنها لایهٔ ناوبری ---------- */
+/* ---------- نوار ایستگاه — تنها لایهٔ ناوبری (خیلی جمع‌وجور) ---------- */
 .cutting-nav{
   position:sticky;top:0;z-index:40;height:var(--bar-h);
-  display:flex;align-items:center;gap:var(--sp-2);
-  padding:0 var(--sp-3);background:var(--st-panel);
+  display:flex;align-items:center;gap:var(--sp-1);
+  padding:0 var(--sp-2);background:var(--st-panel);
   border-bottom:1px solid var(--st-line);
 }
 .cutting-nav .nav-item{
-  display:inline-flex;align-items:center;min-height:32px;
-  padding:.2rem .8rem;border-radius:999px;border:0;background:transparent;
-  color:var(--st-muted);font-size:13.5px;font-weight:700;text-decoration:none;white-space:nowrap;
+  display:inline-flex;align-items:center;min-height:26px;
+  padding:.1rem .6rem;border-radius:999px;border:0;background:transparent;
+  color:var(--st-muted);font-size:12.5px;font-weight:700;text-decoration:none;white-space:nowrap;
 }
 .cutting-nav .nav-item:hover{color:var(--st-ink);background:var(--st-sunken)}
 .cutting-nav .nav-item[aria-current="page"]{color:var(--st-accent);background:var(--st-accent-soft)}
 .cutting-nav .nav-user{
   margin-inline-start:auto;display:inline-flex;align-items:center;gap:.35rem;
-  color:var(--st-faint);font-size:12px;text-decoration:none;min-height:32px;padding:0 .4rem;border-radius:6px;
+  color:var(--st-faint);font-size:11.5px;text-decoration:none;min-height:26px;padding:0 .4rem;border-radius:6px;
 }
 .cutting-nav .nav-user:hover{color:var(--st-muted)}
 .cutting-nav .nav-user .bi{font-size:1rem}
 
-/* ---------- سربرگ صفحه — یک خط ---------- */
+/* ---------- سربرگ صفحه — یک خط فشرده ---------- */
 .page-head{
-  display:flex;align-items:center;flex-wrap:wrap;gap:var(--sp-2);
-  min-height:var(--head-h);padding:var(--sp-2) var(--sp-3);
+  display:flex;align-items:center;flex-wrap:wrap;gap:var(--sp-1) var(--sp-2);
+  min-height:var(--head-h);padding:var(--sp-1) var(--sp-2);
   background:var(--st-panel);border-bottom:1px solid var(--st-line);
 }
 .page-head .head-actions{display:flex;align-items:center;gap:var(--sp-1);margin-inline-start:auto}
@@ -67,7 +67,7 @@ body.cutting-station .main-content{padding:0}
 /* ---------- سگمنت (زیربخش درون صفحه) ---------- */
 .seg{display:inline-flex;align-items:center;gap:2px;background:var(--st-sunken);border:1px solid var(--st-line);border-radius:999px;padding:2px;max-width:100%;overflow-x:auto;scrollbar-width:none}
 .seg::-webkit-scrollbar{display:none}
-.seg .seg-opt{position:relative;display:inline-flex;align-items:center;gap:.3rem;border:0;background:transparent;color:var(--st-muted);font-size:12.5px;font-weight:700;padding:.32rem .75rem;border-radius:999px;text-decoration:none;white-space:nowrap;min-height:32px;cursor:pointer}
+.seg .seg-opt{position:relative;display:inline-flex;align-items:center;gap:.3rem;border:0;background:transparent;color:var(--st-muted);font-size:12px;font-weight:700;padding:.22rem .65rem;border-radius:999px;text-decoration:none;white-space:nowrap;min-height:28px;cursor:pointer}
 .seg .seg-opt:hover{color:var(--st-ink)}
 .seg input[type="radio"],.seg input[type="checkbox"]{position:absolute;inset:0;opacity:0;margin:0;cursor:pointer}
 .seg .seg-opt:has(input:checked),.seg a[aria-current="page"]{background:var(--st-panel);color:var(--st-accent);box-shadow:0 1px 2px rgba(16,24,40,.12)}
@@ -97,15 +97,15 @@ body.cutting-station .main-content{padding:0}
 
 /* ---------- دکمه‌ها ---------- */
 .station .btn{border-radius:var(--st-radius);font-weight:700}
-.station .btn,.station .icon-btn{min-height:38px}
-.station .btn-sm{min-height:32px}
+.station .btn,.station .icon-btn{min-height:32px}
+.station .btn-sm{min-height:28px}
 .station .btn-primary{--bs-btn-bg:var(--st-accent);--bs-btn-border-color:var(--st-accent);--bs-btn-hover-bg:#1d4ed8;--bs-btn-hover-border-color:#1d4ed8}
 .station .btn-success{--bs-btn-bg:var(--st-green);--bs-btn-border-color:var(--st-green);--bs-btn-hover-bg:#15803d;--bs-btn-hover-border-color:#15803d}
 .station .btn-danger{--bs-btn-bg:var(--st-red);--bs-btn-border-color:var(--st-red);--bs-btn-hover-bg:#b91c1c;--bs-btn-hover-border-color:#b91c1c}
 .station .btn-outline-primary{--bs-btn-color:var(--st-accent);--bs-btn-border-color:#bfd3fa;--bs-btn-hover-bg:var(--st-accent);--bs-btn-hover-border-color:var(--st-accent)}
 .station .btn-outline-secondary{--bs-btn-color:var(--st-muted);--bs-btn-border-color:#dbe3ec;--bs-btn-hover-bg:var(--st-sunken);--bs-btn-hover-color:var(--st-ink);--bs-btn-hover-border-color:#c3ceda}
 .station .btn-outline-danger{--bs-btn-color:var(--st-red);--bs-btn-border-color:#f6c8c8;--bs-btn-hover-bg:var(--st-red);--bs-btn-hover-border-color:var(--st-red)}
-.station .icon-btn{width:40px;height:40px;padding:0;display:inline-flex;align-items:center;justify-content:center;line-height:1}
+.station .icon-btn{width:36px;height:36px;padding:0;display:inline-flex;align-items:center;justify-content:center;line-height:1}
 .station .icon-btn .bi{font-size:1.05rem}
 .station .btn.icon-btn{--bs-btn-padding-x:0;--bs-btn-padding-y:0}
 
@@ -213,22 +213,22 @@ tr.row-expand-details>td{background:var(--st-sunken);border-bottom:1px solid var
 .pager{display:flex;align-items:center;gap:var(--sp-2);justify-content:center;padding:var(--sp-2) 0 0}
 .pager .btn{min-height:32px}
 
-/* نوار پایین ثابت صف برش */
+/* نوار پایین ثابت صف برش — یک خط فشرده */
 .bottom-bar{
   position:fixed;inset-inline:0;bottom:0;z-index:45;height:var(--dock-h);
-  display:flex;align-items:center;flex-wrap:wrap;gap:var(--sp-2) var(--sp-3);
+  display:flex;align-items:center;flex-wrap:nowrap;gap:var(--sp-1) var(--sp-3);
   padding:var(--sp-1) var(--sp-3);background:var(--st-panel);
-  border-top:1px solid var(--st-line);
+  border-top:1px solid var(--st-line);overflow:hidden;
 }
-.bottom-bar .dock-summary{font-weight:800;font-size:13.5px;white-space:nowrap}
+.bottom-bar .dock-summary{font-weight:800;font-size:12.5px;white-space:nowrap}
 .bottom-bar .dock-spacer{flex:1 1 auto}
 .bottom-bar .form-check-input:checked{background-color:var(--st-green)}
-.preview-verdict{display:inline-flex;align-items:center;gap:.35rem;font-size:13px;font-weight:800;white-space:nowrap}
+.preview-verdict{display:inline-flex;align-items:center;gap:.35rem;font-size:12.5px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .preview-verdict.good{color:var(--st-green)}
 .preview-verdict.bad{color:var(--st-red)}
 .preview-verdict.neutral{color:var(--st-muted)}
 .preview-verdict a{font-size:12px;font-weight:700}
-.dock-trigger{width:40px;height:40px;border:1px solid var(--st-line);background:var(--st-panel);border-radius:var(--st-radius);color:var(--st-muted);display:inline-flex;align-items:center;justify-content:center}
+.dock-trigger{width:32px;height:32px;border:1px solid var(--st-line);background:var(--st-panel);border-radius:var(--st-radius);color:var(--st-muted);display:inline-flex;align-items:center;justify-content:center;flex:none}
 .dock-trigger[aria-expanded="true"]{background:var(--st-accent-soft);color:var(--st-accent);border-color:#bfd3fa}
 
 /* پنل بالاآمدهٔ جزئیات متریال */

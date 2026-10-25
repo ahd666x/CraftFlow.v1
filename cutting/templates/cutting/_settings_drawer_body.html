@@ -11,10 +11,10 @@
     </div>
   </fieldset>
   <fieldset class="cut-setting">
-    <legend class="form-label mb-0">الگوریتم — بهترین خودکار انتخاب می‌شود</legend>
+    <legend class="form-label mb-0">الگوریتم</legend>
     <div class="cut-setting-list d-grid gap-2">
       {% for value, label in engine_choices %}<label class="form-check"><input class="form-check-input" type="checkbox" name="algorithms" value="{{ value }}" form="planning-form" {% if value == 'shelf' %}checked{% endif %}><span class="form-check-label">{{ label }}</span></label>{% endfor %}
-      <label class="form-check"><input class="form-check-input" type="checkbox" name="respect_grain" value="1" form="planning-form"><span class="form-check-label">رعایت رگه (قطعهٔ رگه‌دار نمی‌چرخد)</span></label>
+      <label class="form-check"><input class="form-check-input" type="checkbox" name="respect_grain" value="1" form="planning-form"><span class="form-check-label">رعایت رگه</span></label>
     </div>
   </fieldset>
   <div class="cut-setting">

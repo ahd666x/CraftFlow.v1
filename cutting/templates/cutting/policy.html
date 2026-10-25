@@ -17,7 +17,6 @@
     <section class="card" aria-labelledby="default-kerf-title" style="max-width:26rem">
       <div class="card-header py-2"><h2 class="h6 mb-0" id="default-kerf-title">ضخامت تیغه پیش‌فرض</h2></div>
       <div class="card-body">
-        <p class="help" title="پیش‌فرض صف برش؛ اپراتور می‌تواند برای هر برنامه تغییر دهد">پیش‌فرض صف برش؛ اپراتور می‌تواند برای هر برنامه تغییر دهد.</p>
         <form method="post" class="d-flex gap-2 align-items-end">{% csrf_token %}<input type="hidden" name="action" value="save_kerf">
           <div><label class="form-label" for="default-kerf">ضخامت تیغه (mm)</label><input class="form-control form-control-sm" id="default-kerf" name="default_kerf" type="number" min="0" max="999.9" step="0.1" value="{{ setting.default_kerf }}" required></div>
           <button class="btn btn-primary btn-sm">ذخیره تیغه</button>

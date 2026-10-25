@@ -1217,10 +1217,6 @@
       requestPreview();
     }, { disabled: mixed || !part.capabilities?.can_rotate90 || part.locked,
          why: mixed ? 'با ویرایش‌های قطعه‌ای فعلی قابل ترکیب نیست.' : 'قطعهٔ قفل نمی‌چرخد.' });
-    const note = document.createElement('div');
-    note.className = 'ctx-note';
-    note.textContent = 'آرایه/آینه/چرخش از ماشین‌آلات ویژگی‌محورِ همان موتور می‌گذرند و گتهٔ برخورد و دیالکت همیشه سرِ کار خودش است.';
-    ctxMenu.appendChild(note);
     ctxMenu.style.left = Math.min(info.client.x, window.innerWidth - 240) + 'px';
     ctxMenu.style.top = Math.min(info.client.y, window.innerHeight - 340) + 'px';
     document.body.appendChild(ctxMenu);

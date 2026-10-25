@@ -40,11 +40,10 @@
 
 <div id="emptyState">
   <div class="in">
-    <b>نقشه خودِ رابط است</b>
-    <div class="hintline">فایل CNC را همین‌جا باز کنید: از دکمهٔ «فایل» در نوار ابزار، فایل را انتخاب یا رها کنید.
-      هر قطعه روی نقشه دیده می‌شود، با کلیک انتخاب و روی خودِ نقشه ویرایش می‌شود؛
-      ستون کناری فقط بازرسِ همان چیزی است که انتخاب کرده‌اید.</div>
-    <div class="hintline"><kbd>Tab</kbd> رفتن بین قطعه‌ها · <kbd>M</kbd> اندازه‌گیری · <kbd>F</kbd> جا کردن نمای کامل · <kbd>G</kbd> شبکه</div>
+    <b>فایل CNC را باز کنید</b>
+    <div class="toolbtns" style="justify-content:center;margin-top:10px">
+      <button type="button" id="emptyOpenFile" class="primary">📂 بازکردن فایل</button>
+    </div>
   </div>
 </div>
 
@@ -77,8 +76,7 @@
   <button type="button" id="btnFile" title="بازکردن فایل (بارگذاری یا آرشیو)"><span class="tb-ico">📂</span><span class="tb-lbl">فایل</span></button>
   <button type="button" id="btnTools" title="میز ابزار (قطر پارکینگ T)"><span class="tb-ico">🧰</span><span class="tb-lbl">ابزار</span></button>
   <button type="button" id="btnCode" title="نمای کد و همگامی با نقشه"><span class="tb-ico">⌨</span><span class="tb-lbl">کد</span></button>
-  <button type="button" id="btnResize" title="تغییر طول خودکار فایل: توزیع بین فاصله‌ها یا بازتولید شیار kerf (روش‌های محیط قدیمی)"><span class="tb-ico">↔</span><span class="tb-lbl">طول</span></button>
-  <button type="button" id="btnHelp" title="راهنمای کار با نقشه"><span class="tb-ico">؟</span><span class="tb-lbl">راهنما</span></button>
+  <button type="button" id="btnResize" title="تغییر طول خودکار فایل"><span class="tb-ico">↔</span><span class="tb-lbl">طول</span></button>
   <span class="sep"></span>
   <span id="gateChip" role="status" title="وضعیت پست‌پروسسور">
     <span class="dot"></span><span class="txt">بدون فایل</span>
@@ -94,14 +92,11 @@
   <h2>فایل CNC</h2>
   <div class="drop" id="drop" tabindex="0" role="button" aria-label="انتخاب فایل cnc">
     <b id="dropTitle">انتخاب فایل .cnc</b>
-    <small>یا فایل را اینجا رها کنید</small>
     <div class="fname" id="fname"></div>
   </div>
   <input type="file" id="file" accept=".cnc,.nc,.tap,.txt,.gcode,text/plain" hidden>
   <b style="display:block;font-size:11.5px;color:var(--muted);margin:10px 0 4px">یا از آرشیو</b>
   <ul class="mlist" id="archiveList"></ul>
-  <p class="hintline" style="font-size:11.5px;color:var(--muted);margin-top:8px">
-    قطر سوراخ‌ها از میز ابزار (پارکینگ T) خوانده می‌شود؛ دکمهٔ «ابزار» همان جدول را باز می‌کند.</p>
   <a href="{{ sheet_plans_url }}" style="font-size:12px">برنامه‌های ورق CNC ←</a>
 </section>
 
@@ -117,14 +112,13 @@
   </div>
   <b style="display:block;font-size:11.5px;color:var(--muted);margin:10px 0 4px">ست‌های آماده</b>
   <ul class="mlist" id="toolSetList"></ul>
-  <b style="display:block;font-size:11.5px;color:var(--muted);margin:12px 0 4px">قیدهای دستگاه (بررسی پاکت پیش از دانلود)</b>
+  <b style="display:block;font-size:11.5px;color:var(--muted);margin:12px 0 4px">قیدهای دستگاه</b>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
     <label style="font-size:11.5px;color:var(--muted)">X min <input type="number" id="machineXMin" step="1"></label>
     <label style="font-size:11.5px;color:var(--muted)">X max <input type="number" id="machineXMax" step="1"></label>
     <label style="font-size:11.5px;color:var(--muted)">Y min <input type="number" id="machineYMin" step="1"></label>
     <label style="font-size:11.5px;color:var(--muted)">Y max <input type="number" id="machineYMax" step="1"></label>
   </div>
-  <p class="statusline">قیدها محلی ذخیره می‌شوند و با هر تغییر به پیش‌فلایت خروجی می‌روند؛ بدون آن‌ها دانلود صادقانه مسدود است.</p>
   <p class="statusline" id="toolStatus"></p>
 </section>
 
@@ -138,11 +132,11 @@
   </div>
   <div class="cmp-grid">
     <figure class="cmp-pane">
-      <figcaption>قبل — فایل اصلی بارگذاری‌شده</figcaption>
+      <figcaption>قبل</figcaption>
       <svg id="cmpBefore" role="img" aria-label="نقشهٔ فایل اصلی"></svg>
     </figure>
     <figure class="cmp-pane">
-      <figcaption>بعد — نتیجهٔ پیش‌نمایش ویرایش‌ها</figcaption>
+      <figcaption>بعد</figcaption>
       <svg id="cmpAfter" role="img" aria-label="نقشهٔ پس از ویرایش‌ها"></svg>
     </figure>
   </div>
@@ -151,13 +145,8 @@
 
 <section id="resizePanel" class="fpanel" hidden aria-label="تغییر طول فایل">
   <h2>تغییر طول فایل (خودکار)</h2>
-  <p class="statusline">همان روش‌های محیط قدیمی: طول کل فایل با توزیع بین فاصله‌ها یا با بازتولید شیار kerf تغییر می‌کند.
-    برای جابه‌جایی/کششِ یک قطعهٔ مشخص، از ویرایش روی خود نقشه (درگ/نوار کشش) استفاده کنید.</p>
   <hr>
   <h3>کشش پارامتریک زنجیرهٔ قطعات</h3>
-  <p class="statusline">با Shift+کلیک قطعاتِ مرتب‌شده را انتخاب کنید. هر قطعه به‌اندازهٔ دلتا کشیده می‌شود؛
-    قطعات بعدی به‌صورت تجمعی جابه‌جا می‌شوند (۰، دلتا، ۲×دلتا، ...). در قطعه‌های سوراخ‌دار طول اضافه مثل روش قدیمی بین
-    فاصلهٔ گروه‌های سوراخ توزیع می‌شود و شیار طولی همراه قطعه بلند می‌شود؛ در بقیه، فرزندها فاصله‌شان را از لبهٔ پایین حفظ می‌کنند.</p>
   <div class="resgrid">
     <label>محور <select id="chainStretchAxis"><option value="y" selected>Y — ارتفاع</option><option value="x">X — عرض</option></select></label>
     <label>دلتا برای هر قطعه (mm) <input type="number" id="chainStretchDelta" value="100" step="1"></label>
@@ -167,13 +156,13 @@
   <hr>
   <div class="resradios" id="resizeModes">
     <label><input type="radio" name="resizeMode" value="equal" checked>
-      <span>مساوی بین گروه‌ها <small>هر گروه فاصله سهم برابر می‌گیرد</small></span></label>
+      <span>مساوی بین گروه‌ها</span></label>
     <label><input type="radio" name="resizeMode" value="proportional">
-      <span>متناسب با طول فاصله‌ها <small>فاصلهٔ بلندتر سهم بیشتری می‌گیرد</small></span></label>
+      <span>متناسب با طول فاصله‌ها</span></label>
     <label><input type="radio" name="resizeMode" value="manual">
-      <span>دستی <small>برای هر فاصله مقدار دلخواه بنویسید؛ تغییر کل از جمع آن‌ها به‌دست می‌آید</small></span></label>
+      <span>دستی</span></label>
     <label><input type="radio" name="resizeMode" value="kerf">
-      <span>خم‌کاری kerf (شیار پیوسته) <small>نوارهای شیار رفت‌وبرگشتی شناسایی و ناحیهٔ خالی وسط هم شیار می‌خورد؛ گام ثابت می‌ماند و طول اضافه با شیار جدید ساخته می‌شود — کاملاً خودکار</small></span></label>
+      <span>خم‌کاری kerf (شیار پیوسته)</span></label>
   </div>
   <div class="resgrid">
     <label>تغییر کل (mm) <input type="number" id="resizeDelta" value="0" step="1"></label>
@@ -188,7 +177,7 @@
     <button type="button" data-d="100">+۱۰۰</button>
     <button type="button" data-d="0">صفر</button>
   </div>
-  <label class="laycheck"><input type="checkbox" id="resizeSym" checked> تقارن آینه‌ای (فاصلهٔ بالا و پایین یکسان تغییر کند)</label>
+  <label class="laycheck"><input type="checkbox" id="resizeSym" checked> تقارن آینه‌ای</label>
   <p class="statusline" id="resizePatternSummary" hidden></p>
   <b style="display:block;font-size:11.5px;color:var(--muted);margin:10px 0 2px">تقسیم فاصله بین گروه‌های سوراخ</b>
   <table class="gaptab" id="gapTable" hidden>
@@ -200,19 +189,6 @@
     <button type="button" id="resizeApply" class="primary">محاسبهٔ تغییر طول</button>
   </div>
   <div id="resizeResult" hidden></div>
-</section>
-
-<section id="helpPanel" class="fpanel" hidden aria-label="راهنما">
-  <h2>راهنمای کار با نقشه</h2>
-  <ol class="helpsteps">
-    <li><b>بازکردن فایل:</b> دکمهٔ «فایل» — از آرشیو یا فایل محلی؛ قطعه‌ها خودکار شناسایی و رنگ‌بندی می‌شوند.</li>
-    <li><b>انتخاب:</b> کلیک روی هر نقطهٔ قطعه (حتی روی مسیرهای داخلش) همان قطعه را انتخاب می‌کند؛ <kbd>Shift</kbd>+کلیک چندانتخابی، <kbd>Tab</kbd> پیمایش. انتخابِ مستقیم یک عملیات (راستر/شیار): <kbd>Shift</kbd>+کلیک روی آن.</li>
-    <li><b>ویرایش روی نقشه:</b> درگ برای جابه‌جایی (با اسنپ)، نوارهای سبز لبه برای کشش، کلیک روی ابعاد برای ورود عددی، راست‌کلیک برای آرایه/آینه/چرخش/فاصله. در قطعهٔ سوراخ‌دار کشش طول، طول اضافه را بین فاصلهٔ گروه‌های سوراخ توزیع می‌کند (مثل روش قدیمی) و شیار طولی را بلند می‌کند؛ درب/صفحهٔ بدون سوراخ با برش تک‌نواری کشیده می‌شود.</li>
-    <li><b>تغییر طول کل فایل:</b> دکمهٔ «طول» — توزیع مساوی/متناسب/دستی با جدول انتخاب فاصله‌ها (تیک هر فاصله بین گروه‌های سوراخ) یا خم‌کاری kerf؛ اندازه‌های بین سوراخ‌ها با دلتا روی خود نقشه زنجیره‌کشی می‌شود؛ نتیجه می‌تواند جایگزین فایل روی نقشه شود و بعد از جایگزینی هم از «دانلود G-code» بیرون می‌آید.</li>
-    <li><b>واگرد/ازنو:</b> <kbd>Ctrl+Z</kbd> / <kbd>Ctrl+Shift+Z</kbd> — هر مرحلهٔ ویرایش قابل بازگشت است؛ قالب‌های ذخیره‌شده در «تاریخچه»اند.</li>
-    <li><b>خروجی:</b> «دانلود G-code» فقط وقتی فعال است که گتهٔ دیالکت کنترلر (چیپ وضعیت) پاس شود. خطای هم‌پوشانی واقعی یعنی دو مسیر برش به هم رسیده‌اند — قطعه را برگردانید یا فاصله را بیشتر کنید.</li>
-  </ol>
-  <p class="statusline">هشدار «فقط کادری» یعنی کادر محیطی دو قطعه هم‌پوشان است ولی مسیرهای برش فاصله دارند — پیش‌نمایش صادر شده و فقط فاصلهٔ قطعات پس از برش (قطر ابزار) باید چک شود.</p>
 </section>
 
 <div id="alertBox" role="region" aria-label="هشدارها"></div>
