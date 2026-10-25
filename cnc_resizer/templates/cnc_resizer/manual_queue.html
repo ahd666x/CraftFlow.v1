@@ -72,7 +72,7 @@
               <div class="d-flex flex-wrap gap-1 align-items-center">
                 <a class="btn btn-sm btn-outline-primary" href="/cnc/?task_id={{ row.task_id }}&amp;from=manual" title="باز کردن فایل این دستور کار در ابزار CAD سی‌ان‌سی برای اصلاح و ثبت فایل دستی؛ بازگشت به همین صف">رفع در ابزار CNC</a>
                 {% if row.can_renest %}
-                <form method="post" action="{{ manual_renest_url }}" onsubmit="return confirm('Nesting، برنامه‌ریز CNC را برای کل سفارش این مورد اجرا می‌کند و ممکن است ورق رزرو کند. ادامه می‌دهید؟')">
+                <form method="post" action="{{ manual_renest_url }}" data-confirm="Nesting، برنامه‌ریز CNC را برای کل سفارش این مورد اجرا می‌کند و ممکن است ورق رزرو کند. ادامه می‌دهید؟" data-confirm-title="اجرای Nesting">
                   {% csrf_token %}
                   <input type="hidden" name="issue_id" value="{{ row.issue.id }}">
                   <input type="hidden" name="next" value="{{ manual_queue_url }}">

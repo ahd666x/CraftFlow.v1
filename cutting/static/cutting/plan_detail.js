@@ -424,9 +424,8 @@
   });
 
   document.getElementById('print-operator-sheet')?.addEventListener('click', () => window.print());
-  document.querySelectorAll('[data-confirm-cancel]').forEach(form => form.addEventListener('submit', event => {
-    if (!window.confirm('برنامه لغو و رزرو ورق‌ها آزاد شود؟ موجودی واقعی تغییر نمی‌کند.')) event.preventDefault();
-  }));
+  // تأیید لغو برنامه → مودال درون‌برنامه‌ای (SelviDialog) با رهگیری سراسری
+  // data-confirm در ui-dialogs.js — listener محلی confirm حذف شد (بند ب-۸).
 
   const downloadTrigger = document.getElementById('cut-download-trigger');
   const warningElement = document.getElementById('cut-warning-modal');

@@ -149,7 +149,7 @@
     panel.querySelectorAll('[data-tpl-del]').forEach((btn) => {
       btn.onclick = async (e) => {
         e.stopPropagation();
-        if (!confirm('این الگو حذف شود؟')) return;
+        if (!(await SelviDialog.confirm({ title: 'حذف الگو', danger: true, message: 'این الگو حذف شود؟' }))) return;
         try {
           await CNC.api.deleteEditTemplate(Number(btn.dataset.tplDel));
           await loadTemplates();
@@ -182,7 +182,7 @@
     panel.querySelectorAll('[data-ptpl-del]').forEach((btn) => {
       btn.onclick = async (e) => {
         e.stopPropagation();
-        if (!confirm('این قالب قطعه حذف شود؟')) return;
+        if (!(await SelviDialog.confirm({ title: 'حذف قالب قطعه', danger: true, message: 'این قالب قطعه حذف شود؟' }))) return;
         try {
           await CNC.api.deletePartTemplate(Number(btn.dataset.ptplDel));
           await loadPartTemplates();
@@ -216,7 +216,7 @@
       CNC.alert('warn', 'ویرایشی برای ذخیره نیست؛ اول روی نقشه چیزی را ویرایش کنید یا از پنل «طول» تغییر طول بدهید و جایگزین کنید.');
       return;
     }
-    const name = prompt('نام الگو (مثلاً «کشش قطعهٔ t.16»):');
+    const name = await SelviDialog.prompt({ title: 'ذخیره به‌عنوان الگو', message: 'نام الگو:', placeholder: 'مثلاً «کشش قطعهٔ t.16»', ltr: false, okLabel: 'ذخیره' });
     if (!name || !name.trim()) return;
     const RESIZE_MODE_NAMES = { equal: 'Equal', proportional: 'Proportional', kerf: 'Kerf', manual: 'Manual' };
     const noteExtra = state.resizeOp
@@ -246,7 +246,10 @@
     const resizeEdit = edits.find((e) => e && e.op === 'resize_length') || null;
     const rest = resizeEdit ? edits.filter((e) => e !== resizeEdit) : edits;
     if (resizeEdit) {
-      if (CNC.hasOps() && !confirm('این الگو شامل تغییر طول است؛ فایل با نتیجهٔ تغییر طول جایگزین می‌شود و ویرایش‌های فعلی پاک می‌شوند. ادامه می‌دهید؟')) return;
+      if (CNC.hasOps() && !(await SelviDialog.confirm({
+        title: 'اعمال الگو',
+        message: 'این الگو شامل تغییر طول است؛ فایل با نتیجهٔ تغییر طول جایگزین می‌شود و ویرایش‌های فعلی پاک می‌شوند. ادامه می‌دهید؟',
+      }))) return;
       const params = { mode: resizeEdit.mode || 'equal',
                        delta: Number(resizeEdit.delta) || 0,
                        symmetric: resizeEdit.symmetric !== false };
@@ -356,9 +359,12 @@
     // صداقت: قالب قطعه فقط ویرایش ویژگی‌محور می‌پذیرد (قرارداد سرور). اگر
     // ویرایش قطعه‌ای فعال است، صریح بگوییم چه چیزی ذخیره نمی‌شود.
     if (state.partOp.size || state.gapOps.length) {
-      const ok = confirm('قالب قطعه فقط ویرایش‌های ویژگی‌محور (آرایه/گرید/آینه/چرخش) را نگه می‌دارد؛ '
-        + 'ویرایش‌های قطعه‌ای فعال (جابه‌جایی/کشش/فاصله) در آن ذخیره نمی‌شوند — '
-        + 'برای آن‌ها «ذخیره به‌عنوان الگو» را استفاده کنید. با ذخیرهٔ فقط بخش ویژگی‌محور ادامه می‌دهید؟');
+      const ok = await SelviDialog.confirm({
+        title: 'ذخیره قالب قطعه',
+        message: 'قالب قطعه فقط ویرایش‌های ویژگی‌محور (آرایه/گرید/آینه/چرخش) را نگه می‌دارد؛ '
+          + 'ویرایش‌های قطعه‌ای فعال (جابه‌جایی/کشش/فاصله) در آن ذخیره نمی‌شوند — '
+          + 'برای آن‌ها «ذخیره به‌عنوان الگو» را استفاده کنید. با ذخیرهٔ فقط بخش ویژگی‌محور ادامه می‌دهید؟',
+      });
       if (!ok) return;
     }
     await loadPartTemplates();
@@ -400,7 +406,10 @@
       return;
     }
     if ((state.partOp.size || state.gapOps.length)
-        && !confirm('قالب قطعه وضعیت ویرایش فعلی (شامل ویرایش‌های قطعه‌ای) را کامل جایگزین می‌کند. ادامه می‌دهید؟')) {
+        && !(await SelviDialog.confirm({
+          title: 'اعمال قالب قطعه',
+          message: 'قالب قطعه وضعیت ویرایش فعلی (شامل ویرایش‌های قطعه‌ای) را کامل جایگزین می‌کند. ادامه می‌دهید؟',
+        }))) {
       return;
     }
     try {

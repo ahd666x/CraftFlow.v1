@@ -26,6 +26,8 @@
     <script src="{% static 'selvi/js/jquery-3.6.4.min.js' %}"></script>
     {# CSRF & AJAX helpers (App.postJSON, showToast, showLoading) #}
     <script src="{% static 'selvi/js/csrf.js' %}"></script>
+    {# In-app dialogs (SelviDialog) — replaces window.confirm/window.prompt (audit B8) #}
+    <script src="{% static 'selvi/js/ui-dialogs.js' %}" defer></script>
 
     {% block extra_css %}{% endblock %}
 </head>

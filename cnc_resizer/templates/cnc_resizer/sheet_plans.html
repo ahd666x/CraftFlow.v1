@@ -89,7 +89,7 @@
           <button type="button" class="btn btn-outline-secondary btn-sm" data-paths-open="{{ plan.id }}" data-paths-url="{% url 'cnc_resizer:sheet_preview' plan.id %}" title="پیش‌نمایش مسیرهای ابزار از روی همان برنامهٔ ذخیره‌شدهٔ دستگاه (برش، سریع، تعویض ابزار)"><i class="bi bi-signpost-2" aria-hidden="true"></i> مسیرها</button>
           <a class="btn btn-success" href="{% url 'cnc_resizer:download_sheet_plan' plan.id %}"><i class="bi bi-download" aria-hidden="true"></i> {% if plan.status == 'done' %}دانلود مجدد فایل{% else %}دریافت فایل دستگاه{% endif %}</a>
           {% else %}<span class="cnc-output-chip" title="کنترلر مقصد و پست‌پروسسور اختصاصی تأیید نشده‌اند."><i class="bi bi-exclamation-triangle" aria-hidden="true"></i> فایل دستگاه تأیید نشده</span>{% endif %}
-          {% if plan.status == 'planned' %}<form method="post" action="{% url 'cnc_resizer:cancel_sheet_plan' plan.id %}" onsubmit="return confirm('این برنامه لغو و ورق و قطعات آن آزاد شوند؟')" class="ms-auto">{% csrf_token %}<button class="btn btn-outline-danger btn-sm" title="لغو برنامه و آزادسازی ورق و قطعات"><i class="bi bi-x-lg" aria-hidden="true"></i> لغو برنامه</button></form>{% endif %}
+          {% if plan.status == 'planned' %}<form method="post" action="{% url 'cnc_resizer:cancel_sheet_plan' plan.id %}" data-confirm="این برنامه لغو و ورق و قطعات آن آزاد شوند؟" data-confirm-title="لغو برنامه" data-confirm-danger class="ms-auto">{% csrf_token %}<button class="btn btn-outline-danger btn-sm" title="لغو برنامه و آزادسازی ورق و قطعات"><i class="bi bi-x-lg" aria-hidden="true"></i> لغو برنامه</button></form>{% endif %}
         </div>
         {% endif %}
         {% if plan.status == 'done' %}<div class="cnc-muted-note">نتیجه: <b>{% if plan.result_outcome == 'scrapped' %}ضایعات شد{% else %}{{ plan.get_result_outcome_display }}{% endif %}</b>{% if plan.result_note %} — {{ plan.result_note }}{% endif %}{% if plan.actual_offcuts %} · پرت واقعی: {% for offcut in plan.actual_offcuts %}<span class="num">{{ offcut.width }} × {{ offcut.height }}</span>{% if not forloop.last %}، {% endif %}{% endfor %}{% endif %}</div>{% endif %}
@@ -235,8 +235,14 @@
       row.innerHTML = `<input type="number" min="0.1" step="0.1" name="rem_${planId}_${index}_width" class="form-control form-control-sm" placeholder="عرض (mm)" aria-label="عرض پرت"><input type="number" min="0.1" step="0.1" name="rem_${planId}_${index}_height" class="form-control form-control-sm" placeholder="طول (mm)" aria-label="طول پرت">`;
       rows2.appendChild(row);
     });
-    form.addEventListener('submit', (event) => {
-      if (!confirm('نتیجه ثبت می‌شود و در صورت مصرف یا ضایعات، موجودی ورق و وضعیت دستور کارها تغییر می‌کند. ادامه می‌دهید؟')) event.preventDefault();
+    form.addEventListener('submit', async (event) => {
+      if (form.dataset.resultArmed === '1') return;
+      event.preventDefault();
+      const ok = await SelviDialog.confirm({
+        title: 'ثبت نتیجه',
+        message: 'نتیجه ثبت می‌شود و در صورت مصرف یا ضایعات، موجودی ورق و وضعیت دستور کارها تغییر می‌کند. ادامه می‌دهید؟',
+      });
+      if (ok) { form.dataset.resultArmed = '1'; form.submit(); }
     });
   });
 })();

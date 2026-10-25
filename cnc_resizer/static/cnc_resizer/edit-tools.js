@@ -1200,12 +1200,12 @@
       CNC.applyPartStates(); CNC.renderGate(); CNC.renderInspector();
     }, { disabled: !excluded && !part.capabilities?.can_translate,
          why: 'قطعهٔ قفل را نمی‌توان علامت زد.' });
-    item('⧉ تکرار آرایه…', () => {
-      const count = Number(prompt('چند کپی اضافه شود؟ (۱ تا ۶۴)'));
+    item('⧉ تکرار آرایه…', async () => {
+      const count = Number(await SelviDialog.prompt({ title: 'تکرار آرایه', message: 'چند کپی اضافه شود؟ (۱ تا ۶۴)', inputType: 'number', ltr: true, okLabel: 'ادامه' }));
       if (!Number.isInteger(count) || count < 1 || count > 64) return;
-      const axis = prompt('محور آرایه: x یا y؟', 'x');
+      const axis = await SelviDialog.prompt({ title: 'تکرار آرایه', message: 'محور آرایه: x یا y؟', value: 'x', ltr: true, okLabel: 'ادامه' });
       if (axis !== 'x' && axis !== 'y') return;
-      const pitch = Number(prompt('گام آرایه (mm — علامت‌دار):', '120'));
+      const pitch = Number(await SelviDialog.prompt({ title: 'تکرار آرایه', message: 'گام آرایه (mm — علامت‌دار):', value: '120', inputType: 'decimal', ltr: true, okLabel: 'اعمال' }));
       if (!Number.isFinite(pitch) || Math.abs(pitch) < 1e-6) return;
       state.featureOps = state.featureOps.filter((o) => o.feature_id !== contourFeature);
       state.featureOps.push({ op: 'array', feature_id: contourFeature, axis, count, pitch });

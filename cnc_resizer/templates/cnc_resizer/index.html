@@ -1,14 +1,36 @@
+{% extends "base.html" %}
 {% load static %}
-<!doctype html>
-<html lang="fa" dir="rtl">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CNC — نقشهٔ ویرایش قطعه</title>
-<link rel="stylesheet" href="{% static 'selvi/css/vazirmatn.css' %}">
+{# بند ب-۳ بازبینی UI/UX: ادیتور CNC از قالب پایهٔ سایت ارث می‌برد — ناوبری و
+   هویت بصری مشترک، بوم CAD زیر نوار ناوبری با متغیر --cnc-top (map.css). #}
+
+{% block title %}CNC — نقشهٔ ویرایش قطعه{% endblock %}
+{% block body_class %}admin-panel cnc-station{% endblock %}
+
+{% block extra_css %}
 <link rel="stylesheet" href="{% static 'cnc_resizer/map.css' %}">
-</head>
-<body>
+{% endblock %}
+
+{# بوم تمام‌صفحه است؛ wrapper با padding قالب پایه رندر نمی‌شود #}
+{% block before_content %}{% endblock %}
+{% block after_content %}{% endblock %}
+
+{% block content %}
+<script>
+(() => {
+  /* بند ب-۳ — ارتفاع ناوبری سایت → متغیر --cnc-top برای نشستن بوم و
+     پنل‌های fixed زیر نوار ناوبری (در نبود ناوبری: 0). */
+  const setTop = () => {
+    const nav = document.querySelector('.navbar-custom');
+    const h = (nav && !nav.hidden) ? nav.getBoundingClientRect().height : 0;
+    document.documentElement.style.setProperty('--cnc-top', (Math.round(h) || 0) + 'px');
+  };
+  setTop();
+  window.addEventListener('resize', setTop);
+  window.addEventListener('load', setTop);
+  const navEl = document.querySelector('.navbar-custom');
+  if (navEl && 'ResizeObserver' in window) new ResizeObserver(setTop).observe(navEl);
+})();
+</script>
 {% csrf_token %}
 {{ cnc_setup|json_script:"cncSetupData" }}
 <script>window.__CNC_URLS__ = {
@@ -220,7 +242,9 @@
   <button type="button" id="zout" title="کوچک‌نمایی">−</button>
   <button type="button" id="zfit" title="نمایش کامل (F)">⤢</button>
 </div>
+{% endblock %}
 
+{% block extra_js %}
 <script src="{% static 'cnc_resizer/parts-api.js' %}?v=resize-pattern-2" defer></script>
 <script src="{% static 'cnc_resizer/viewport.js' %}?v=resize-pattern-2" defer></script>
 <script src="{% static 'cnc_resizer/selection.js' %}" defer></script>
@@ -229,5 +253,4 @@
 <script src="{% static 'cnc_resizer/compare.js' %}" defer></script>
 <script src="{% static 'cnc_resizer/code-view.js' %}" defer></script>
 <script src="{% static 'cnc_resizer/app.js' %}?v=resize-pattern-2" defer></script>
-</body>
-</html>
+{% endblock %}

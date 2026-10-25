@@ -424,7 +424,10 @@
     const replaceBtn = $('resizeReplace');
     if (replaceBtn) replaceBtn.onclick = async () => {
       if (!res.cnc_text || !String(res.cnc_text).trim()) { resizeStatus('err', 'متن نتیجه خالی است.'); return; }
-      if (CNC.hasOps() && !confirm('ویرایش‌های فعلی نقشه و تاریخچهٔ واگرد با جایگزینی فایل پاک می‌شوند. ادامه می‌دهید؟')) return;
+      if (CNC.hasOps() && !(await SelviDialog.confirm({
+        title: 'جایگزینی فایل', danger: true,
+        message: 'ویرایش‌های فعلی نقشه و تاریخچهٔ واگرد با جایگزینی فایل پاک می‌شوند. ادامه می‌دهید؟',
+      }))) return;
       const baseName = (state.filename || 'part.cnc').replace(/\.[^.]+$/, '');
       // keepContext: جایگزینی درون-نشست است — هویت قطعهٔ deep-link و
       // وضعیت الگو برای «ذخیره الگو برای این قطعه» باید باقی بماند.
@@ -473,7 +476,10 @@
       }
       if (!state.text) { resizeStatus('err', 'اول یک فایل CNC باز کنید.'); return; }
       if (state.appliedResizePattern && state.taskContext && state.taskContext.file_kind === 'derived') {
-        if (!confirm(`این فایل از قبل تغییر طول ${CNC.sgn(Number(state.appliedResizePattern.delta) || 0)} mm را دارد. محاسبه روی فایل فعلی تغییر تازه‌ای اضافه می‌کند. ادامه می‌دهید؟`)) return;
+        if (!(await SelviDialog.confirm({
+          title: 'تغییر طول دوباره',
+          message: `این فایل از قبل تغییر طول ${CNC.sgn(Number(state.appliedResizePattern.delta) || 0)} mm را دارد. محاسبه روی فایل فعلی تغییر تازه‌ای اضافه می‌کند. ادامه می‌دهید؟`,
+        }))) return;
       }
       const params = { mode, delta, symmetric: $('resizeSym').checked };
       // بازخورد اپراتور: انتخاب فاصله‌ها مثل روش قدیمی — تیک هر فاصله و
@@ -685,7 +691,7 @@
         try { const d = await CNC.api.toolSet('load', name); await loadTools(); toolStatus(d.message); } catch (e) { toolStatus(e.message); }
       };
       li.querySelector('[data-a=del]').onclick = async () => {
-        if (!confirm(`ست «${name}» حذف شود؟`)) return;
+        if (!(await SelviDialog.confirm({ title: 'حذف ست ابزار', danger: true, message: `ست «${name}» حذف شود؟` }))) return;
         try { const d = await CNC.api.toolSet('delete', name); await loadTools(); toolStatus(d.message); } catch (e) { toolStatus(e.message); }
       };
       sets.appendChild(li);
@@ -1002,7 +1008,7 @@
       } catch (err) { toolStatus(err.message); }
     };
     $('saveToolSetBtn').onclick = async () => {
-      const name = prompt('نام ست ابزار (مثلاً «ست قطعه A»):');
+      const name = await SelviDialog.prompt({ title: 'ذخیره به‌عنوان ست ابزار', message: 'نام ست ابزار:', placeholder: 'مثلاً «ست قطعه A»', ltr: false, okLabel: 'ذخیره' });
       if (!name || !name.trim()) return;
       try { const d = await CNC.api.toolSet('save', name.trim()); await loadTools(); toolStatus(d.message); }
       catch (err) { toolStatus(err.message); }

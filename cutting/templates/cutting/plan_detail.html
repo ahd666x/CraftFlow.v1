@@ -21,7 +21,7 @@
     <div class="head-actions">
       <a class="btn btn-primary btn-sm" id="cut-download-trigger" href="{% url 'cutting:download_cut' plan.id %}" title="دانلود فایل .CUT"><i class="bi bi-download" aria-hidden="true"></i> .CUT</a>
       <button class="btn btn-outline-secondary icon-btn" type="button" id="print-operator-sheet" title="چاپ برگهٔ اپراتور" aria-label="چاپ برگهٔ اپراتور"><i class="bi bi-printer" aria-hidden="true"></i></button>
-      {% if plan.status == 'planned' %}<form method="post" action="{% url 'cutting:cancel_plan' plan.id %}" data-confirm-cancel>{% csrf_token %}<button class="btn btn-outline-danger icon-btn" title="لغو و آزادسازی رزرو" aria-label="لغو برنامه"><i class="bi bi-x-lg" aria-hidden="true"></i></button></form>{% endif %}
+      {% if plan.status == 'planned' %}<form method="post" action="{% url 'cutting:cancel_plan' plan.id %}" data-confirm-cancel data-confirm="برنامه لغو و رزرو ورق‌ها آزاد شود؟ موجودی واقعی تغییر نمی‌کند." data-confirm-title="لغو برنامه" data-confirm-danger>{% csrf_token %}<button class="btn btn-outline-danger icon-btn" title="لغو و آزادسازی رزرو" aria-label="لغو برنامه"><i class="bi bi-x-lg" aria-hidden="true"></i></button></form>{% endif %}
       <details class="detail-pop">
         <summary title="سفارش‌ها، تیغه، سیاست، الگوریتم، مقایسه و راهنما"><i class="bi bi-info-circle" aria-hidden="true"></i><span class="visually-hidden">جزئیات برنامه</span></summary>
         <div class="detail-pop-panel plan-pop">
