@@ -105,6 +105,12 @@
     fileMeta: null,          // {sheet_bbox, sheet_bbox_finished, sheet_thickness, warnings...}
     taskContext: null,       // فاز ۲.۲: meta تسک deep-link (part_id برای پیش‌انتخاب قالب قطعه)
     fromManualQueue: false,  // فاز ۲.۲: ‎?from=manual‎ — بازگشت نوار زمینه به صف دستی
+    profile: null,           // الگوی تأییدشدهٔ تغییر اندازهٔ خودکار قطعهٔ زمینه (GET part_profile)
+    profileSeq: 0,           // race-guard: پاسخ‌های کهنهٔ پروفایل دور ریخته می‌شوند
+    profileSaving: false,    // درخواست ذخیرهٔ الگو در راه است
+    lastResizeValid: null,   // آخرین «محاسبهٔ تغییر طول» موفق ({params, toolDia, onDerived}) —
+                             // شرط گره‌گشایی «تأیید روش تغییر طول برای این قطعه» (بدون پیش‌نمایش معتبر، تأیید ممنوع)
+    fileIsDerivedArtifact: false, // فایلِ روی نقشه مشتقِ آرشیو است (قاعده باید از فایل پایه ثبت شود)
     reqSeq: 0,
   };
 
@@ -206,11 +212,21 @@
     deletePartTemplate(id) {
       return postJSON(CNC.urls.partTemplateDelete.replace(/\/0\/delete\/$/, `/${Number(id)}/delete/`), {});
     },
+    // الگوی تأییدشدهٔ تغییر اندازهٔ خودکار قطعه (CncPartProfile) — حلقهٔ
+    // «تأیید از ادیتور → تولید خودکار تسک بعدی». part_id همیشه در query
+    // string می‌رود (بدنهٔ JSON در request.POST دیده نمی‌شود).
+    partProfile(partId) {
+      return getJSON(`${CNC.urls.profile}?part_id=${Number(partId)}`);
+    },
+    savePartProfile(partId, sourceId, params) {
+      return postJSON(`${CNC.urls.profile}?part_id=${Number(partId)}`,
+                      { part_id: Number(partId), source_id: Number(sourceId), params });
+    },
   };
 
   // ------------------------------------------------_بارگذاری فایل
   // جریان: text → detectParts + analyze (موازی) → emit؛ سپس گیت بازبینی می‌شود.
-  CNC.loadText = async function loadText(name, text) {
+  CNC.loadText = async function loadText(name, text, opts = {}) {
     const st = CNC.state;
     st.filename = name; st.text = text;
     st.resizedFromPanel = false;
@@ -220,6 +236,20 @@
     st.selection = []; st.measures = [];
     st.resizeGaps = null; st.resizeLengths = null; st.resizeOp = null;
     st.appliedResizePattern = null;
+    // فایل تازه ⇒ پیش‌نمایش معتبر قبلی برای تأیید الگو دیگر معتبر نیست
+    st.lastResizeValid = null;
+    if (opts.keepContext) {
+      // جایگزینی درون-نشست (نتیجهٔ «محاسبهٔ تغییر طول» روی همین فایل):
+      // هویت قطعهٔ deep-link و پروفایل خوانده‌شده حفظ می‌شود — provenance
+      // فایل هم به‌عنوان مشتق باقی می‌ماند اگر از قبل مشتق بوده است.
+    } else {
+      // بارگذاری عادی (آرشیو/انتخاب فایل/قالب): زمینهٔ تسک قبلی دیگر معتبر
+      // نیست — الگوی تأییدشده هرگز نباید به قطعهٔ اشتباه وصل شود.
+      st.taskContext = null;
+      st.profile = null;
+      st.fileIsDerivedArtifact = false;
+      st.profileSeq++;   // پاسخ‌های شناور پروفایلِ قطعهٔ قبلی دور ریخته شوند
+    }
     st.resizeSeq++; // ignore resize-gap reads that belong to the previous file
     st.gate = { allowed: null, blockers: [], warnings: [], edits: false };
     st.layers.depth = new Map(); st.layers.tool = new Map(); st.layers.kind = new Map();

@@ -343,9 +343,9 @@
       tbody.appendChild(tr);
       tr.addEventListener('mouseenter', () => CNC.viewport.gapHighlight(g.display_y0 ?? g.y0, g.display_y1 ?? g.y1));
       tr.addEventListener('mouseleave', () => CNC.viewport.gapHighlight(null, null));
-      tr.querySelector('.gap-en').addEventListener('change', (e) => { g._enabled = e.target.checked; });
+      tr.querySelector('.gap-en').addEventListener('change', (e) => { g._enabled = e.target.checked; invalidateResizeValidation(); });
       const man = tr.querySelector('.gap-man');
-      if (man) man.addEventListener('input', (e) => { g._manual = Number(e.target.value); });
+      if (man) man.addEventListener('input', (e) => { g._manual = Number(e.target.value); invalidateResizeValidation(); });
     });
   }
 
@@ -359,6 +359,49 @@
     return op;
   }
 
+  const RESIZE_MODE_NAMES = { equal: 'مساوی بین گروه‌ها', proportional: 'متناسب با فاصله‌ها', kerf: 'خم‌کاری kerf', manual: 'دستی' };
+  const modeName = (m) => RESIZE_MODE_NAMES[m] || m || '—';
+
+  // فرمِ ذخیره‌شدنیِ الگو از تنظیمات محاسبه — delta عمداً حذف می‌شود:
+  // دلتای هر تسک در زمان resolve از طول مؤثر − طول پایه ساخته می‌شود
+  // و هرگز به‌عنوان قاعدهٔ مهندسی ماندگار ذخیره نمی‌شود.
+  function profileParamsFromResize(params) {
+    const clean = { mode: (params && params.mode) || 'equal', symmetric: !params || params.symmetric !== false };
+    if (Array.isArray(params && params.enabled)) clean.enabled = params.enabled.map(Boolean);
+    if (Array.isArray(params && params.manual)) clean.manual = params.manual.map((v) => (Number.isFinite(Number(v)) ? Number(v) : 0));
+    return clean;
+  }
+
+  function profileParamsEqual(a, b) {
+    const norm = (p) => JSON.stringify({
+      mode: (p && p.mode) || 'equal',
+      symmetric: !p || p.symmetric !== false,
+      enabled: (p && Array.isArray(p.enabled)) ? p.enabled.map(Boolean) : null,
+      manual: (p && Array.isArray(p.manual)) ? p.manual.map((v) => Math.round(Number(v) * 1000) / 1000) : null,
+      tool_dia: (p && p.tool_dia != null && Number.isFinite(Number(p.tool_dia))) ? Math.round(Number(p.tool_dia) * 100) / 100 : null,
+    });
+    return norm(a) === norm(b);
+  }
+
+  // ثبت آخرین «محاسبهٔ تغییر طول» موفق — دقیقاً همان تنظیماتی که این
+  // پیش‌نمایش را ساخته‌اند، نه تنظیمات فعلی پنل (پیش‌نیاز تأیید الگو).
+  function captureValidResize(params, res) {
+    const td = Number(res && res.finished_tool_dia);
+    state.lastResizeValid = {
+      params: profileParamsFromResize(params),
+      toolDia: Number.isFinite(td) && td > 0 ? td : null,
+    };
+    state._profileNote = null;
+  }
+
+  // هر تغییری در تنظیمات پنل، پیش‌نمایش معتبر قبلی را باطل می‌کند —
+  // تأیید الگو فقط با پیش‌نمایشی که همان تنظیمات را دیده باشد مجاز است.
+  function invalidateResizeValidation() {
+    state.lastResizeValid = null;
+    state._profileNote = null;
+    renderProfileStatus();
+  }
+
   function renderResizeResult(res, mode, params) {
     if (res.ok === false) { resizeStatus('err', esc(res.error || 'تغییر طول ناموفق بود.')); return; }
     const warnings = (res.warnings || []).map(esc).join('<br>• ');
@@ -366,6 +409,8 @@
       resizeStatus('warn', 'این فایل قابل تغییر طول خودکار نیست.<br>• ' + (warnings || 'دلیل در پیام‌ها آمده است.'));
       return;
     }
+    captureValidResize(params, res);
+    renderProfileStatus();
     // جدول/زنجیره با نتیجهٔ واقعی به‌روز شود (در حالت kerf فاصله‌ای برنمی‌گردد)
     if (res.gaps && res.gaps.length) {
       state.resizeGaps = withDisplayRanges(res.gaps).map((g, k) => ({
@@ -388,12 +433,15 @@
       if (!res.cnc_text || !String(res.cnc_text).trim()) { resizeStatus('err', 'متن نتیجه خالی است.'); return; }
       if (CNC.hasOps() && !confirm('ویرایش‌های فعلی نقشه و تاریخچهٔ واگرد با جایگزینی فایل پاک می‌شوند. ادامه می‌دهید؟')) return;
       const baseName = (state.filename || 'part.cnc').replace(/\.[^.]+$/, '');
-      await CNC.loadText(`${baseName}_L${CNC.f1(res.length_after ?? 0)}.cnc`, res.cnc_text);
+      // keepContext: جایگزینی درون-نشست است — هویت قطعهٔ deep-link و
+      // وضعیت الگو برای «تأیید روش تغییر طول» باید باقی بماند.
+      await CNC.loadText(`${baseName}_L${CNC.f1(res.length_after ?? 0)}.cnc`, res.cnc_text, { keepContext: true });
       // بازخورد اپراتور: فایل جایگزین‌شدهٔ پنل طول بدون ویرایش نقشه هم از
       // «دانلود G-code» (گتهٔ دیالکت) قابل دانلود است.
       state.resizedFromPanel = true;
-      // ثبت تغییر طول به‌صورت op قابل‌بازپخش: «ذخیره به‌عنوان الگو» آن را در
-      // الگو نگه می‌دارد و بارگذاری الگو روی فایل بعدی همان Δ را خودکار اعمال می‌کند.
+      // تنظیماتِ همین محاسبهٔ معتبر دوباره ثبت می‌شوند (محاسبه روی فایلِ
+      // قبل از جایگزینی = فایل پایه انجام شده است).
+      captureValidResize(params, res);
       if (params) state.resizeOp = resizeOpFromParams(params);
       CNC.renderGate();
       resizeStatus('ok', 'فایل جایگزین شد و نقشه دوباره شناسایی شد؛ این تغییر طول برای الگو ثبت شد'
@@ -408,18 +456,21 @@
       if (cur != null && Number.isFinite(Number(deltaIn.value))) {
         targetIn.value = Math.round((cur + Number(deltaIn.value)) * 10) / 10;
       }
+      invalidateResizeValidation();
     };
     targetIn.oninput = () => {
       const cur = currentFileLength();
       const t = Number(targetIn.value);
       if (cur != null && Number.isFinite(t)) deltaIn.value = Math.round((t - cur) * 10) / 10;
+      invalidateResizeValidation();
     };
     $('resizeChips').querySelectorAll('button[data-d]').forEach((btn) => {
-      btn.onclick = () => { deltaIn.value = btn.dataset.d; syncResizeTarget(); };
+      btn.onclick = () => { deltaIn.value = btn.dataset.d; syncResizeTarget(); invalidateResizeValidation(); };
     });
     // تغییر روش: ستون «تغییر» بین نمایشی/دستی عوض می‌شود؛ kerf جدول را جمع می‌کند
     const modes = $('resizeModes');
-    if (modes) modes.addEventListener('change', () => renderGapTable());
+    if (modes) modes.addEventListener('change', () => { renderGapTable(); invalidateResizeValidation(); });
+    if ($('resizeSym')) $('resizeSym').addEventListener('change', invalidateResizeValidation);
     $('resizeApply').onclick = async () => {
       const mode = (document.querySelector('input[name="resizeMode"]:checked') || {}).value || 'equal';
       const delta = Number(deltaIn.value);
@@ -449,6 +500,135 @@
         resizeStatus('err', esc(err.message));
       } finally { btn.disabled = false; }
     };
+  }
+
+  // -------------------------------------------_الگوی تأییدشدهٔ تغییر اندازهٔ خودکار (CncPartProfile)
+  // حلقهٔ «تأیید از ادیتور → تولید خودکار تسک بعدی»: GET وضعیت الگوی قطعه،
+  // POST ثبت/به‌روزرسانی با اعتبارسنجی و پروب سمت سرور. بدون هویت قطعه
+  // (لینک تسک) یا بدون پیش‌نمایش معتبر، تأیید غیرفعال است — هیچ حدس و
+  // انجمن‌سازی با قطعهٔ اشتباهی در کار نیست.
+  async function loadProfileForContext() {
+    const st = state;
+    if (!st.taskContext || !st.taskContext.part_id || !CNC.urls.profile) return;
+    const seq = ++st.profileSeq;
+    st.profile = { loading: true };
+    renderProfileStatus();
+    try {
+      const data = await CNC.api.partProfile(st.taskContext.part_id);
+      if (seq !== st.profileSeq) return;
+      st.profile = { params: data.params || {}, approved: !!data.approved,
+                     inherited: !!data.profile_inherited, sourceId: data.source_id,
+                     partName: data.part_name };
+      // پیش‌پرکردن ملایم روش/تقارن وقتی الگوی اعمال‌شده‌ای روی نقشه نیست و
+      // محاسبهٔ تازه‌ای در جریان نیست — آرایه‌های فاصله‌ها فقط با محاسبه پر می‌شوند.
+      if (!st.appliedResizePattern && !st.lastResizeValid && st.profile.params) {
+        const p = st.profile.params;
+        if (p.mode) {
+          const radio = document.querySelector(`input[name="resizeMode"][value="${CSS.escape(String(p.mode))}"]`);
+          if (radio) radio.checked = true;
+        }
+        if (p.symmetric != null && $('resizeSym')) $('resizeSym').checked = !!p.symmetric;
+      }
+    } catch (_) {
+      if (seq !== st.profileSeq) return;
+      st.profile = null;   // بدون الگو — وضعیت «ثبت‌نشده»
+    }
+    renderProfileStatus();
+  }
+
+  function renderProfileStatus() {
+    const el = $('profileStatus'), btn = $('profileConfirm');
+    if (!el || !btn) return;
+    const st = state;
+    const show = (html) => { el.innerHTML = html; el.hidden = false; };
+    if (st._profileNote) { show(st._profileNote.html); btn.disabled = true; return; }
+    const p = st.profile;
+    const noProfileLine = 'الگوی خودکار تأییدشده برای این قطعه ثبت نشده است';
+    const profileLine = p
+      ? (p.loading ? 'در حال خواندن وضعیت الگو…'
+                   : (p.approved
+                       ? `الگوی فعال: «${esc(modeName(p.params && p.params.mode))}»${p.inherited ? ' (از قطعهٔ پایه)' : ''}`
+                       : noProfileLine))
+      : noProfileLine;
+    if (!st.taskContext || !st.taskContext.part_id) {
+      btn.disabled = true;
+      btn.title = 'بدون هویت قطعه (بازکردن از لینک تسک)، ثبت الگو ممکن نیست';
+      show(esc(profileLine) + ' — برای تأیید الگو، فایل را از لینک تسک/صف دستی باز کنید.');
+      return;
+    }
+    if (p && p.loading) {
+      btn.disabled = true;
+      show(esc(profileLine));
+      return;
+    }
+    const last = st.lastResizeValid;
+    if (last && last.params.mode === 'manual' && st.fileIsDerivedArtifact) {
+      btn.disabled = true;
+      btn.title = 'قاعدهٔ دستی باید نسبت به فایل پایه ثبت شود';
+      show(esc(profileLine) + ' — این فایل مشتق است؛ قاعدهٔ «دستی» باید از فایل پایه ثبت شود.');
+      return;
+    }
+    if (!last) {
+      btn.disabled = true;
+      btn.title = 'ابتدا «محاسبهٔ تغییر طول» را اجرا کنید';
+      show(esc(profileLine) + ' — برای تأیید الگو، اول «محاسبهٔ تغییر طول» را اجرا کنید (پیش‌نمایش معتبر لازم است).');
+      return;
+    }
+    if (st.profileSaving) {
+      btn.disabled = true;
+      show(esc(profileLine) + ' — در حال ذخیرهٔ الگو…');
+      return;
+    }
+    if (p && p.approved && profileParamsEqual({ ...last.params, tool_dia: last.toolDia }, p.params)) {
+      btn.disabled = true;
+      btn.title = 'این تنظیم همان الگوی ذخیره‌شدهٔ فعال است';
+      show(esc(profileLine) + ' — تنظیم فعلی با الگوی ذخیره‌شده یکسان است ✓');
+      return;
+    }
+    btn.disabled = false;
+    btn.title = 'ثبت این روش به‌عنوان الگوی تأییدشدهٔ تغییر اندازهٔ خودکار این قطعه';
+    const derivedNote = st.fileIsDerivedArtifact ? ' (قاعده نسبت به فایل پایه ارزیابی می‌شود)' : '';
+    show(esc(profileLine) + ` — روش «${esc(modeName(last.params.mode))}» آمادهٔ ثبت است${esc(derivedNote)}.`);
+  }
+
+  async function confirmProfile() {
+    const st = state;
+    const btn = $('profileConfirm');
+    if (!btn || btn.disabled || st.profileSaving) return;
+    const last = st.lastResizeValid;
+    if (!st.taskContext || !st.taskContext.part_id || !last) { renderProfileStatus(); return; }
+    if (last.params.mode === 'manual' && st.fileIsDerivedArtifact) { renderProfileStatus(); return; }
+    st.profileSaving = true;
+    renderProfileStatus();   // حالت «در حال ذخیره…»
+    try {
+      let sourceId = st.profile && st.profile.sourceId;
+      if (!sourceId) {
+        const data = await CNC.api.partProfile(st.taskContext.part_id);
+        sourceId = data.source_id;
+      }
+      const params = { ...last.params };
+      if (last.toolDia) params.tool_dia = last.toolDia;
+      await CNC.api.savePartProfile(st.taskContext.part_id, sourceId, params);
+      // تازه‌سازی وضعیت از سرور — موفقیت فقط از پاسخ واقعی سرور می‌آید
+      const fresh = await CNC.api.partProfile(st.taskContext.part_id);
+      st.profile = { params: fresh.params || {}, approved: !!fresh.approved,
+                     inherited: !!fresh.profile_inherited, sourceId: fresh.source_id,
+                     partName: fresh.part_name };
+    } catch (err) {
+      st._profileNote = { html: 'ذخیرهٔ الگو رد شد: ' + esc((err && err.message) || 'خطای شبکه') };
+    } finally {
+      st.profileSaving = false;
+      renderProfileStatus();
+    }
+  }
+
+  function bindProfileConfirm() {
+    const btn = $('profileConfirm');
+    if (!btn) return;
+    btn.addEventListener('click', confirmProfile);
+    // بارگذاری عادی فایل ⇒ زمینه/پروفایل عوض شده است؛ وضعیت دوباره رندر شود
+    CNC.on('file', () => { state._profileNote = null; renderProfileStatus(); });
+    renderProfileStatus();
   }
 
   // فایل
@@ -787,6 +967,7 @@
     const emptyOpen = $('emptyOpenFile');
     if (emptyOpen) emptyOpen.onclick = () => togglePanel('filePanel', $('btnFile'));
     bindResizePanel();
+    bindProfileConfirm();
     $('btnDownload').onclick = downloadOutput;
     $('gateChip').onclick = () => {
       const g = state.gate;
@@ -981,6 +1162,10 @@
       });
       // فاز ۲.۲: زمینهٔ فعلی برای پیش‌انتخاب قطعهٔ مقصد در «قالب قطعه»
       state.taskContext = meta;
+      // الگوی تأییدشدهٔ تغییر اندازه: هویت قطعه + منشأ فایل (مشتق آرشیو ⇒
+      // قاعدهٔ «دستی» فقط از فایل پایه ثبت می‌شود)
+      state.fileIsDerivedArtifact = meta.file_kind === 'derived';
+      loadProfileForContext();
       const applied = meta.resize_pattern;
       if (applied && Array.isArray(applied.gaps)) {
         state.resizeSeq++; // invalidate the detection event's in-flight Δ=0 read
@@ -1026,6 +1211,7 @@
         file: meta.material || '',
       });
       state.taskContext = null;   // برنامهٔ ورق قطعهٔ واحد ندارد — زمینهٔ قالب پاک شود
+      renderProfileStatus();      // دکمهٔ تأیید الگو هم بی‌زمینه شود
     } catch (err) {
       alertBox('err', 'بازکردن برنامهٔ ورق ناموفق بود: ' + esc(err.message), 'sheet-view');
     }

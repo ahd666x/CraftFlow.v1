@@ -95,7 +95,7 @@ class FullLoopIntegrationTests(SiteSettingsFixtureMixin, ManualQueueFixtureMixin
         self.assertEqual(plan.template_stale_info[0]['event'], 'saved')
         self.assertEqual(plan.template_stale_info[0]['name'], 'آرایهٔ پیچ گوشه')
         page = self.client.get(reverse('cnc_resizer:sheet_plans'))
-        self.assertContains(page, 'قالب قطعه تغییر کرده')
+        self.assertContains(page, 'قالب هندسی دستی تغییر کرده')
         self.assertContains(page, 'آرایهٔ پیچ گوشه')
         # Re-saving the SAME template refreshes its single entry (latest wins).
         for index in range(6):

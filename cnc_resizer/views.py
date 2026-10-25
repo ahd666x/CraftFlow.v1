@@ -8,6 +8,8 @@ from django.http import Http404
 from django.db import transaction
 from django.utils import timezone
 
+import math
+
 from . import core
 from .models import CncEngineeringProfile, CncFile, CncPartProfile, CncPlanningIssue, CncSheetPlan, EditTemplate, ToolSet, ToolSlot, ensure_tool_slots
 from product.models import Part
@@ -982,6 +984,90 @@ def archive_files(request):
     }, json_dumps_params={"ensure_ascii": False})
 
 
+# کلیدهای مجاز «الگوی تأییدشدهٔ تغییر اندازه» — همان قراردادی که
+# services.resolve_cnc_file به core.process می‌دهد؛ delta عمداً غایب است
+# (دلتای هر تسک در زمان resolve از طول مؤثر − طول base_part ساخته می‌شود و
+# هرگز به‌عنوان قاعدهٔ مهندسی ذخیره نمی‌شود). کلید 'profile'/'feature_profile'
+# هم عمداً ممنوع است چون core.process را به مسیر ویژگی‌محور می‌برد.
+_RESIZE_PARAM_KEYS = ('mode', 'symmetric', 'enabled', 'manual', 'tool_dia', 'axis')
+
+
+def _validated_resize_params(params, source):
+    """Clean + validate an operator resize rule, then probe it on the real file.
+
+    The probe (core.process با delta=0 روی فایل پایهٔ واقعی) گتهٔ صادقانهٔ
+    تأیید است: الگویی که موتور آن را رد کند (هندسهٔ پشتیبانی‌نشده، طول آرایهٔ
+    enabled/manual ناهم‌خوان با فاصله‌های فایل، حالت دستیِ فاصلهٔ منفی‌شونده)
+    هرگز approved ذخیره نمی‌شود. delta صفر فقط ساختار را می‌سنجد — اندازهٔ
+    واقعی تغییر مخصوص هر تسک است و در زمان resolve محاسبه می‌شود.
+    """
+    if not isinstance(params, dict):
+        raise ValueError('پارامترهای الگو باید یک شیء باشند.')
+    unknown = sorted(str(k) for k in set(params) - set(_RESIZE_PARAM_KEYS))
+    if unknown:
+        raise ValueError('کلیدهای ناشناخته در الگو مجاز نیست: ' + '، '.join(unknown))
+    cleaned = {
+        'mode': params.get('mode', 'equal'),
+        'symmetric': params.get('symmetric', True),
+        'axis': 'length',
+    }
+    if cleaned['mode'] not in ('equal', 'proportional', 'manual', 'kerf'):
+        raise ValueError('روش توزیع نامعتبر است؛ یکی از equal/proportional/manual/kerf.')
+    if not isinstance(cleaned['symmetric'], bool):
+        raise ValueError('تقارن آینه‌ای باید true/false باشد.')
+    enabled = params.get('enabled')
+    if enabled is not None:
+        if (not isinstance(enabled, list) or len(enabled) > 64
+                or not all(isinstance(item, bool) for item in enabled)):
+            raise ValueError('enabled باید فهرست true/false با حداکثر ۶۴ عضو باشد.')
+        cleaned['enabled'] = enabled
+    manual = params.get('manual')
+    if manual is not None:
+        if not isinstance(manual, list) or len(manual) > 64:
+            raise ValueError('manual باید فهرست اعداد با حداکثر ۶۴ عضو باشد.')
+        try:
+            manual = [float(v) for v in manual]
+        except (TypeError, ValueError):
+            raise ValueError('manual باید فهرست اعداد (mm) باشد.')
+        if not all(math.isfinite(v) for v in manual):
+            raise ValueError('manual باید فقط اعداد متناهی بپذیرد.')
+        cleaned['manual'] = manual
+    if cleaned['mode'] == 'manual' and 'manual' not in cleaned:
+        raise ValueError('روش دستی به فهرست تغییر هر فاصله (manual) نیاز دارد.')
+    tool_dia = params.get('tool_dia')
+    if tool_dia is not None:
+        try:
+            tool_dia = float(tool_dia)
+        except (TypeError, ValueError):
+            raise ValueError('قطر ابزار باید عدد باشد.')
+        if not math.isfinite(tool_dia) or not (0.1 <= tool_dia <= 100):
+            raise ValueError('قطر ابزار باید بین 0.1 و 100 میلی‌متر باشد.')
+        cleaned['tool_dia'] = tool_dia
+    with open(source.path, 'r', encoding='utf-8-sig') as stream:
+        source_text = stream.read(core.MAX_BYTES + 1)
+    probe_params = dict(cleaned)
+    probe_params['delta'] = 0.0
+    try:
+        result = core.process(source_text, probe_params)
+    except core.CncError as exc:
+        raise ValueError('موتور تغییر اندازه این الگو را برای فایل پایه تأیید نمی‌کند: ' + str(exc))
+    if not result.get('resizable'):
+        reasons = (result.get('profile_errors') or result.get('warnings')
+                   or ['فایل با این الگو قابل تغییر اندازه نیست'])
+        raise ValueError('فایل پایه با این الگو قابل تغییر اندازه نیست: '
+                         + '؛ '.join(str(item) for item in reasons))
+    gaps = result.get('gaps') or []
+    if 'enabled' in cleaned and len(cleaned['enabled']) != len(gaps):
+        raise ValueError(
+            f"تعداد enabled ({len(cleaned['enabled'])}) با فاصله‌های شناسایی‌شدهٔ فایل ({len(gaps)}) "
+            "نمی‌خواند؛ اول «محاسبهٔ تغییر طول» را روی همین فایل اجرا کنید.")
+    if 'manual' in cleaned and len(cleaned['manual']) != len(gaps):
+        raise ValueError(
+            f"تعداد manual ({len(cleaned['manual'])}) با فاصله‌های شناسایی‌شدهٔ فایل ({len(gaps)}) "
+            "نمی‌خواند؛ اول «محاسبهٔ تغییر طول» را روی همین فایل اجرا کنید.")
+    return cleaned
+
+
 @login_required
 @cnc_operator_required
 @require_http_methods(['GET', 'POST'])
@@ -991,16 +1077,30 @@ def part_profile(request):
     if not part:
         return JsonResponse({'success': False, 'error': 'قطعه پیدا نشد.'}, status=404)
     if request.method == 'GET':
+        # «الگوی قابل‌اعمال» همان است که تولید استفاده می‌کند: پروفایل خود
+        # قطعه، وگرنه پروفایل قطعهٔ پایه (fallback موجود در resolve) — با
+        # پرچم صادقانهٔ inherited تا اپراتور بداند قاعده از کجا می‌آید.
+        profile = None
+        inherited = False
         try:
             profile = part.cnc_profile
+        except CncPartProfile.DoesNotExist:
+            base_part = part.base_part
+            if base_part is not None:
+                try:
+                    profile = base_part.cnc_profile
+                    inherited = True
+                except CncPartProfile.DoesNotExist:
+                    profile = None
+        if profile is None:
+            params, approved, source_id = {'mode': 'equal', 'symmetric': True, 'axis': 'length'}, False, None
+            feature_profile, feature_source_id = {}, None
+        else:
             params = profile.params
             approved = profile.approved
             source_id = profile.source_file_id
             feature_profile = profile.feature_profile
             feature_source_id = profile.feature_source_file_id
-        except CncPartProfile.DoesNotExist:
-            params, approved, source_id = {'mode': 'equal', 'symmetric': True, 'axis': 'length'}, False, None
-            feature_profile, feature_source_id = {}, None
         try:
             base = part.base_part or part
             source = CncFile.objects.filter(pk=feature_source_id, kind=CncFile.KIND_BASE).first() if feature_source_id else None
@@ -1013,6 +1113,7 @@ def part_profile(request):
         return JsonResponse({'success': True, 'part_id': part.id, 'part_name': part.name,
                              'source_id': source_id or source.id, 'source_name': source.barcode_key,
                              'content': content, 'params': params, 'approved': approved,
+                             'profile_inherited': inherited,
                              'feature_profile': feature_profile, 'feature_source_id': feature_source_id,
                              'part_length': float(part.length), 'base_length': float(base.length)})
     import json
@@ -1052,14 +1153,21 @@ def part_profile(request):
         return JsonResponse({'success': True, 'feature_profile_saved': True,
                              'message': 'تحلیل ویژگی‌ها ذخیره شد؛ این پروفایل هنوز در تولید G-code استفاده نمی‌شود.'},
                             json_dumps_params={'ensure_ascii': False})
+    # ثبت/تأیید «الگوی تغییر اندازهٔ خودکار»: اعتبارسنجی ساختاری + پروب واقعی
+    # موتور روی فایل پایه؛ فقط پاس‌کننده approved=True می‌شود (fail-closed).
+    try:
+        cleaned = _validated_resize_params(params, source)
+    except ValueError as exc:
+        return JsonResponse({'success': False, 'error': str(exc)}, status=400,
+                            json_dumps_params={'ensure_ascii': False})
     profile, _ = CncPartProfile.objects.update_or_create(
         part=part,
-        defaults={'source_file': source, 'params': params, 'approved': True, 'approved_by': request.user},
+        defaults={'source_file': source, 'params': cleaned, 'approved': True, 'approved_by': request.user},
     )
     if part.base_part_id:
         CncPartProfile.objects.update_or_create(
             part=part.base_part,
-            defaults={'source_file': source, 'params': params, 'approved': True, 'approved_by': request.user},
+            defaults={'source_file': source, 'params': cleaned, 'approved': True, 'approved_by': request.user},
         )
     return JsonResponse({'success': True, 'profile_id': profile.id, 'message': 'الگوی CNC برای این قطعه ثبت و تأیید شد.'})
 

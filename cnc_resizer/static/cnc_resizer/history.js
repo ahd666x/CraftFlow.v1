@@ -117,15 +117,16 @@
       <ul class="mlist" style="border-top:1px solid var(--line);padding-top:8px">${templates}</ul>
       <ul class="mlist" id="partTplList" style="margin-top:8px">${ptplItems}</ul>
       <div class="toolbtns">
-        <button type="button" id="savePartTplBtn">📐 ذخیره به‌عنوان قالب قطعه…</button>
-        <button type="button" id="refreshPartTplBtn">↻ قالب‌های قطعه</button>
+        <button type="button" id="savePartTplBtn">📐 ذخیره به‌عنوان قالب هندسی…</button>
+        <button type="button" id="refreshPartTplBtn">↻ قالب ویرایش هندسی دستی</button>
       </div>
+      <small class="help" style="display:block;margin-top:2px">قالب ویرایش هندسی دستی (آرایه، آینه و چرخش) فقط ویرایش‌ها را پیش‌بارگذاری می‌کند و جای «الگوی تأییدشدهٔ تغییر اندازهٔ خودکار» نیست.</small>
       <div class="ptpl-form" id="ptplForm" ${keepForm ? '' : 'hidden'}>
         <input id="ptplName" maxlength="80" placeholder="نام قالب" aria-label="نام قالب">
         <select id="ptplPart" aria-label="قطعهٔ مقصد"><option value="">— قطعهٔ مقصد —</option>${partOptions}</select>
         <input id="ptplNote" maxlength="200" placeholder="یادداشت (اختیاری)" aria-label="یادداشت">
         <div class="toolbtns">
-          <button type="button" id="ptplSave" class="primary">ذخیرهٔ قالب قطعه</button>
+          <button type="button" id="ptplSave" class="primary">ذخیرهٔ قالب هندسی</button>
           <button type="button" id="ptplCancel">انصراف</button>
         </div>
       </div>

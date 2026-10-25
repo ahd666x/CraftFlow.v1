@@ -31,6 +31,7 @@
   taskFile: "{{ task_file_url }}",
   sheetProgram: "{{ sheet_program_url }}",
   sheetPlans: "{{ sheet_plans_url }}",
+  profile: "{{ profile_api_url }}",
 };</script>
 
 <div class="view">
@@ -178,6 +179,11 @@
   <div class="toolbtns">
     <button type="button" id="resizeApply" class="primary">محاسبهٔ تغییر طول</button>
   </div>
+  <div class="toolbtns">
+    <button type="button" id="profileConfirm" class="primary" disabled
+            title="الگوی تأییدشدهٔ تغییر اندازهٔ خودکار این قطعه ثبت می‌شود؛ پیش‌نیاز: محاسبهٔ معتبر + باز بودن فایل از لینک تسک">تأیید روش تغییر طول برای این قطعه</button>
+  </div>
+  <p class="statusline" id="profileStatus" hidden></p>
   <div id="resizeResult" hidden></div>
 </section>
 

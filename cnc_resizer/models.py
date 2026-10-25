@@ -303,8 +303,8 @@ class CncPartTemplate(models.Model):
     class Meta:
         ordering = ("name",)
         constraints = [models.UniqueConstraint(fields=("part", "name"), name="cnc_part_template_part_name_uniq")]
-        verbose_name = "قالب پارامتریک قطعه"
-        verbose_name_plural = "قالب‌های پارامتریک قطعات"
+        verbose_name = "قالب ویرایش هندسی دستی قطعه"
+        verbose_name_plural = "قالب‌های ویرایش هندسی دستی قطعات"
 
     def __str__(self):
         return f"قالب قطعه: {self.name} — {self.part}"

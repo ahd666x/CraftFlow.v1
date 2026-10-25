@@ -75,7 +75,7 @@ class ManualQueuePageTests(ManualQueueFixtureMixin, TestCase):
         page = self.client.get(reverse('cnc_resizer:manual_queue'))
         self.assertEqual(page.status_code, 200)
         self.assertContains(page, 'در انتظار اصلاح دستی')
-        self.assertContains(page, 'الگوی تأییدشده آماده')
+        self.assertContains(page, 'الگوی خودکار تأییدشده آماده')
 
     def test_part_template_signal_appears(self):
         self.route_to_queue()
@@ -84,7 +84,7 @@ class ManualQueuePageTests(ManualQueueFixtureMixin, TestCase):
             roles=[], source_bounds={}, created_by=self.user,
         )
         page = self.client.get(reverse('cnc_resizer:manual_queue'))
-        self.assertContains(page, 'قالب پارامتریک ثبت شده')
+        self.assertContains(page, 'قالب ویرایش هندسی دستی ثبت شده')
 
     def test_part_template_signal_shows_names_and_backlink(self):
         """فاز ۲.۲ — سیگنال قالب، نام قالب‌ها را هم نشان می‌دهد و لینک ابزار
@@ -96,7 +96,7 @@ class ManualQueuePageTests(ManualQueueFixtureMixin, TestCase):
         )
         page = self.client.get(reverse('cnc_resizer:manual_queue'))
         self.assertEqual(page.status_code, 200)
-        self.assertContains(page, 'قالب پارامتریک ثبت شده')
+        self.assertContains(page, 'قالب ویرایش هندسی دستی ثبت شده')
         self.assertContains(page, 'آرایهٔ پیچ گوشه')
         self.assertContains(page, 'from=manual')
         rows = page.context['rows']
@@ -113,7 +113,7 @@ class ManualQueuePageTests(ManualQueueFixtureMixin, TestCase):
         self.route_to_queue()
         page = self.client.get(reverse('cnc_resizer:manual_queue'))
         self.assertEqual(page.status_code, 200)
-        self.assertNotContains(page, 'قالب پارامتریک ثبت شده')
+        self.assertNotContains(page, 'قالب ویرایش هندسی دستی ثبت شده')
         signals = page.context['rows'][0]['signals']
         self.assertFalse(signals['part_template_ready'])
         self.assertEqual(signals['part_template_names'], [])
