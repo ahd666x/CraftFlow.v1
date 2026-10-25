@@ -18,6 +18,8 @@
     open = next;
     $('codeDrawer').hidden = !open;
     $('btnCode').classList.toggle('on', open);
+    // عناصر ثابت پایین صفحه (زوم، نوار زمینه، خط‌کش) بالای کشو بروند (بازبینی UI/UX بند ۳)
+    document.body.classList.toggle('code-open', open);
     if (open) render();
     else clearMapHl();
   }

@@ -237,7 +237,8 @@ tr.row-expand-details>td{background:var(--st-sunken);border-bottom:1px solid var
 .preview-verdict.bad{color:var(--st-red)}
 .preview-verdict.neutral{color:var(--st-muted)}
 .preview-verdict a{font-size:12px;font-weight:700}
-.dock-trigger{width:26px;height:26px;border:1px solid var(--st-line);background:var(--st-panel);border-radius:var(--st-radius);color:var(--st-muted);display:inline-flex;align-items:center;justify-content:center;flex:none}
+.dock-trigger{min-width:26px;height:26px;border:1px solid var(--st-line);background:var(--st-panel);border-radius:var(--st-radius);color:var(--st-muted);display:inline-flex;align-items:center;justify-content:center;gap:3px;padding:0 6px;flex:none}
+.dock-trigger .dock-trigger-label{font-size:11px;white-space:nowrap}
 .dock-trigger[aria-expanded="true"]{background:var(--st-accent-soft);color:var(--st-accent);border-color:#bfd3fa}
 
 /* پنل بالاآمدهٔ جزئیات متریال */
@@ -489,3 +490,10 @@ tr.row-expand-details>td{background:var(--st-sunken);border-bottom:1px solid var
 
 /* ── داشبورد پرت یکپارچه (فاز ۳.۱.۱) — فقط summary حس‌وحال کافی دارد ── */
 #offcut-dashboard > summary{cursor:pointer}
+
+/* صفحه‌بندی صف سفارش‌ها */
+.ws-pager { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 10px 0 4px; }
+
+/* fallback بدون :has() برای انتخاب نتیجهٔ ورق (بازبینی UI/UX بند ۱۷) */
+.outcome-radios .out-opt.is-checked{border-color:currentColor}
+.outcome-radios .out-opt.opt-used.is-checked{background:var(--st-green-soft)}

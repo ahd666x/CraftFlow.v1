@@ -460,6 +460,9 @@ def planner(request):
         'cut_plan_pattern': reverse('cutting:plan_detail', args=[0]),
         'cnc_plans': reverse('cnc_resizer:sheet_plans'),
         'planner_preview': reverse('cutting:planner_preview'),
+        # مسیر «ثبت موجودی» برای لینک کمبود ورق (planner.js از data-stock-url می‌خواند) —
+        # فقط برای کسی که دسترسی انبار دارد؛ دیگران لینک نمی‌بینند، نه لینکِ به ۴۰۳.
+        'stock_create_url': reverse('cutting:stock_create') if (can_inventory(request.user) or can_manage(request.user)) else '',
     }
     workspace_materials = [
         {'id': material.pk, 'name': material.name, 'thickness': format(material.thickness, 'f')}

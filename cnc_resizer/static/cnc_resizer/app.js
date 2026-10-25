@@ -1064,11 +1064,11 @@
       setTool('select'); state._measureA = null; state._measureLive = null;
       CNC.drawMeasures(); clearAlert('measure');
       CNC.emit('edit-cancel', {});
-    } else if (e.key === 'm' || e.key === 'M' || e.key === 'م') {
+    } else if (e.code === 'KeyM' || e.key === 'm' || e.key === 'M' || e.key === 'م') {
       setTool(state.tool === 'measure' ? 'select' : 'measure');
-    } else if (e.key === 'f' || e.key === 'F') {
+    } else if (e.code === 'KeyF' || e.key === 'f' || e.key === 'F') {
       CNC.viewport.fit();
-    } else if (e.key === 'g' || e.key === 'G') {
+    } else if (e.code === 'KeyG' || e.key === 'g' || e.key === 'G') {
       state.layers.showGrid = !state.layers.showGrid; CNC.emit('rerender', {});
     }
   });
@@ -1106,6 +1106,8 @@
       back.textContent = state.fromManualQueue ? 'بازگشت به صف دستی' : 'بازگشت به ورق‌ها';
     }
     bar.hidden = false;
+    // خط‌کش مقیاس باید بداند نوار زمینه فعال است تا همپوشانی نکند (بازبینی UI/UX بند ۳)
+    document.body.classList.add('has-taskbar');
   }
 
   function bindTaskContext() {
@@ -1236,4 +1238,20 @@
     else if (partId) await openTaskContext({ part_id: partId });
   }
   document.addEventListener('DOMContentLoaded', boot);
+
+  /* پذیرش ارقام فارسی/عربی در فیلدهای عددی (بازبینی UI/UX بند ۱۸) —
+     کلید رقم فارسی معادل رقم لاتین در همان محل درج می‌شود. */
+  const FA_DIGITS = '۰۱۲۳۴۵۶۷۸۹', AR_DIGITS = '٠١٢٣٤٥٦٧٨٩';
+  document.addEventListener('keydown', (e) => {
+    const target = e.target;
+    if (!target || target.type !== 'number' || e.ctrlKey || e.metaKey) return;
+    let digit = FA_DIGITS.indexOf(e.key);
+    if (digit < 0) digit = AR_DIGITS.indexOf(e.key);
+    if (digit < 0) return;
+    e.preventDefault();
+    const start = target.selectionStart ?? target.value.length;
+    const end = target.selectionEnd ?? target.value.length;
+    target.setRangeText(String(digit), start, end, 'end');
+    target.dispatchEvent(new Event('input', { bubbles: true }));
+  });
 })();

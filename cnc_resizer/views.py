@@ -7,6 +7,7 @@ from django.views.decorators.http import require_GET, require_POST, require_http
 from django.http import Http404
 from django.db import transaction
 from django.utils import timezone
+import jdatetime
 
 import math
 
@@ -1436,12 +1437,22 @@ def sheet_plans(request):
         plan.utilization = round(float(plan.planned_area) / total_area * 100, 1) if total_area else 0
         plan.unused_area_m2 = round(plan.unused_area / 1_000_000, 2)
         plan.output_status = 'فایل دستگاه تأییدشده' if plan.output_verified and plan.gcode.strip() else 'نوع خروجی نامشخص؛ فایل تولید نشده'
+        # تاریخ شمسی و شمار سفارش‌ها برای فهرست برنامه‌ها (بازبینی UI/UX بند ۱۳-ب)
+        plan.created_jalali = jdatetime.date.fromgregorian(date=timezone.localdate(plan.created_at)).strftime('%Y/%m/%d')
         # فاز ۴ (P3): نام یکتای قالب‌هایی که پس از چیدمان تغییر کرده‌اند (برای title بج)
         plan.stale_templates = sorted({
             str(row.get('name')) for row in (plan.template_stale_info or []) if row.get('name')
         })
     issue_query = CncPlanningIssue.objects.all() if can_view_all else CncPlanningIssue.objects.filter(created_by=request.user)
     issues = issue_query.select_related('task', 'order', 'part', 'resolved_by')[:100]
+    # برچسب فارسیِ خوانا به‌جای کد خام reason_code (بازبینی UI/UX بند ۵-ب)
+    from .manual_queue import REASON_LABELS
+    for issue in issues:
+        details = issue.details or {}
+        if details.get('stage') == 'output_blocked':
+            issue.reason_label = 'خروجی دستگاه مسدود شد'
+        else:
+            issue.reason_label = REASON_LABELS.get(details.get('reason_code', ''), 'نیاز به بررسی')
     issue_count = issue_query.count()
     manual_open_count = issue_query.filter(
         status='open', mode='cnc_sheets', details__stage='manual_required',

@@ -91,7 +91,8 @@
     } else if (shortages.length) {
       const names = shortages.map(item => item.name).join('، ');
       verdict.className = 'preview-verdict bad';
-      verdict.innerHTML = `✘ کمبود: ${esc(names)} <a href="${form.dataset.stockUrl}">ثبت موجودی</a>`;
+      const stockLink = form.dataset.stockUrl ? ` <a href="${form.dataset.stockUrl}">ثبت موجودی</a>` : '';
+      verdict.innerHTML = `✘ کمبود: ${esc(names)}${stockLink}`;
     } else if (issues.length) {
       verdict.className = 'preview-verdict good';
       verdict.innerHTML = `✔ قابل برش — <span class="text-muted">${issues.length} قطعه به صف دستی CNC می‌رود</span>`;
@@ -141,6 +142,9 @@
         document.getElementById('preview-error').textContent = error.message;
         document.getElementById('preview-error').hidden = false;
         document.getElementById('preview-state').textContent = 'خطا';
+        // علتِ غیرفعال‌بودن دکمه باید بیرونِ پنلِ بسته هم دیده شود (بازبینی UI/UX بند ۸)
+        verdict.className = 'preview-verdict bad';
+        verdict.textContent = `✘ ${error.message}`;
       }
     }, 600);
   }
@@ -181,4 +185,39 @@
     submit.querySelector('.submit-label').textContent = 'در حال محاسبه…';
   });
   updatePreview();
+
+  /* خلاصهٔ تنظیمات برش کنار دکمهٔ «محاسبه و رزرو» (بازبینی UI/UX بند ۷) —
+     تنظیمات در کشو است و کاربر هنگام محاسبه نمی‌بیند چه انتخاب شده. */
+  const settingsSummary = document.getElementById('settings-summary');
+  const planningForm = document.getElementById('planning-form');
+  function updateSettingsSummary() {
+    if (!settingsSummary || !planningForm) return;
+    const kerf = planningForm.querySelector('input[name="kerf"]')?.value ?? '؟';
+    const trim = planningForm.querySelector('input[name="trim"]')?.value ?? '0';
+    const policy = planningForm.querySelector('input[name="stock_policy"]:checked');
+    const policyLabel = (policy?.closest('label')?.textContent || '').trim() || '—';
+    const engines = [...planningForm.querySelectorAll('input[name="algorithms"]:checked')]
+      .map(input => (input.closest('label')?.textContent || '').trim())
+      .filter(Boolean).map(text => text.replace(/\s*\(.*\)$/, '')).join(' / ');
+    const grain = planningForm.querySelector('input[name="respect_grain"]:checked') ? ' · رگه' : '';
+    settingsSummary.textContent = `تیغه ${kerf} · ${engines || '—'} · ${policyLabel} · Trim ${trim}${grain}`;
+  }
+  updateSettingsSummary();
+  planningForm?.addEventListener('change', updateSettingsSummary);
+
+  /* پذیرش ارقام فارسی/عربی در فیلدهای عددی (بازبینی UI/UX بند ۱۸) —
+     کلید رقم فارسی معادل رقم لاتین در همان محل درج می‌شود. */
+  const FA_DIGITS = '۰۱۲۳۴۵۶۷۸۹', AR_DIGITS = '٠١٢٣٤٥٦٧٨٩';
+  document.addEventListener('keydown', (e) => {
+    const target = e.target;
+    if (!target || target.type !== 'number' || e.ctrlKey || e.metaKey) return;
+    let digit = FA_DIGITS.indexOf(e.key);
+    if (digit < 0) digit = AR_DIGITS.indexOf(e.key);
+    if (digit < 0) return;
+    e.preventDefault();
+    const start = target.selectionStart ?? target.value.length;
+    const end = target.selectionEnd ?? target.value.length;
+    target.setRangeText(String(digit), start, end, 'end');
+    target.dispatchEvent(new Event('input', { bubbles: true }));
+  });
 })();

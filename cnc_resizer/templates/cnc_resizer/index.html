@@ -140,13 +140,19 @@
 </section>
 
 <section id="resizePanel" class="fpanel" hidden aria-label="تغییر طول فایل">
+  <b class="reshead">کشش زنجیره‌ای قطعات انتخاب‌شده</b>
   <div class="resgrid">
+    <label>محور کشش
     <select id="chainStretchAxis" aria-label="محور کشش"><option value="y" selected>Y — ارتفاع</option><option value="x">X — عرض</option></select>
+    </label>
+    <label>دلتا هر قطعه (mm)
     <input type="number" id="chainStretchDelta" value="100" step="1" placeholder="دلتا (mm)" aria-label="دلتا برای هر قطعه (mm)">
+    </label>
   </div>
   <p class="statusline" id="chainStretchSelection" hidden></p>
   <div class="toolbtns"><button type="button" id="chainStretchApply" class="primary">Apply chain stretch</button></div>
   <hr>
+  <b class="reshead">تغییر طول کل فایل</b>
   <div class="resradios" id="resizeModes">
     <label><input type="radio" name="resizeMode" value="equal" checked>
       <span>Equal — مساوی بین گروه‌ها</span></label>
@@ -158,8 +164,12 @@
       <span>Kerf — continuous groove</span></label>
   </div>
   <div class="resgrid">
+    <label>تغییر کل (mm)
     <input type="number" id="resizeDelta" value="0" step="1" placeholder="تغییر کل (mm)" aria-label="تغییر کل (mm)">
+    </label>
+    <label>طول نهایی (mm)
     <input type="number" id="resizeTarget" step="1" placeholder="طول نهایی (mm)" aria-label="طول نهایی (mm)">
+    </label>
   </div>
   <div class="reschips" id="resizeChips">
     <button type="button" data-d="-100">−۱۰۰</button>

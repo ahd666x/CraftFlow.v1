@@ -434,9 +434,12 @@
 
   document.addEventListener('keydown', (e) => {
     if (!(e.ctrlKey || e.metaKey)) return;
-    const key = e.key.toLowerCase();
-    if (key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
-    else if ((key === 'z' && e.shiftKey) || key === 'y') { e.preventDefault(); redo(); }
+    // e.code مستقل از چیدمان است؛ روی کیبورد فارسی e.key به‌جای z «ظ» می‌شود
+    // (بازبینی UI/UX بند ۱) — از هر دو برای سازگاری استفاده می‌کنیم.
+    const isZ = e.code === 'KeyZ' || e.key.toLowerCase() === 'z';
+    const isY = e.code === 'KeyY' || e.key.toLowerCase() === 'y';
+    if (isZ && !e.shiftKey) { e.preventDefault(); undo(); }
+    else if ((isZ && e.shiftKey) || isY) { e.preventDefault(); redo(); }
   });
 
   // پنل تاریخچه: باز شدن → بارگذاری الگوها + قالب‌های قطعه (فاز ۲.۲)

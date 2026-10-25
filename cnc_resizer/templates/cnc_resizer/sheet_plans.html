@@ -34,10 +34,10 @@
       <button type="button" class="cnc-plan-row {% if forloop.first %}active{% endif %}" data-cnc-select="{{ plan.id }}">
         <span class="cnc-program-id num" title="شماره برنامه">CNC-{{ plan.id|stringformat:'04d' }} <span class="badge-status {% if plan.status == 'planned' %}is-info{% elif plan.status == 'done' %}is-ok{% else %}is-mute{% endif %}"><i class="dot"></i>{{ plan.get_status_display }}</span></span>
         <b>{{ plan.material.name }}</b>
-        <span class="row-meta"><span>بهره‌وری <b class="num">{{ plan.utilization|floatformat:1 }}%</b></span></span>
+        <span class="row-meta"><span>بهره‌وری <b class="num">{{ plan.utilization|floatformat:1 }}%</b></span>{% if plan.orders %}<span aria-hidden="true"> · </span><span title="سفارش‌های این برنامه">سفارش <b class="num">#{{ plan.orders|join:", #" }}</b></span>{% endif %}<span aria-hidden="true"> · </span><span class="num" title="تاریخ ایجاد">{{ plan.created_jalali }}</span></span>
       </button>
       {% empty %}
-      <div class="cnc-empty"><i class="bi bi-layers" aria-hidden="true"></i></div>
+      <div class="cnc-empty"><i class="bi bi-layers" aria-hidden="true"></i><p>برنامه‌ای ثبت نشده است.<br>از صفحهٔ «برش» با انتخاب سفارش و حالت CNC برنامهٔ ورق بسازید.</p></div>
       {% endfor %}
     </aside>
 
@@ -50,7 +50,8 @@
           <h2>{{ plan.material.name }}</h2>
           <span class="badge-status {% if plan.status == 'planned' %}is-info{% elif plan.status == 'done' %}is-ok{% else %}is-mute{% endif %}"><i class="dot"></i>{{ plan.get_status_display }}</span>
           <span class="ms-end d-flex gap-2">
-            <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="offcanvas" data-bs-target="#result-drawer" data-result-open="{{ plan.id }}" title="ثبت نتیجهٔ اجرا"><i class="bi bi-clipboard-check" aria-hidden="true"></i> ثبت نتیجه</button>
+            {# فقط برنامهٔ جاری نتیجه دارد؛ برنامهٔ ثبت‌شده/لغوشده کشو را خالی باز نمی‌کند (بازبینی UI/UX بند ۶-الف) #}
+            {% if plan.status == 'planned' %}<button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="offcanvas" data-bs-target="#result-drawer" data-result-open="{{ plan.id }}" title="ثبت نتیجهٔ اجرا"><i class="bi bi-clipboard-check" aria-hidden="true"></i> ثبت نتیجه</button>{% endif %}
           </span>
         </div>
         <div class="cnc-canvas" style="--sheet-ratio:{{ plan.aspect }}" role="img" aria-label="چیدمان قطعات روی ورق {{ plan.width }} در {{ plan.height }}">
@@ -108,7 +109,7 @@
         <div class="cnc-issue-top"><span class="num">#{{ issue.task_id|default:'-' }} · سفارش #{{ issue.order_id|default:'-' }}</span><span>{{ issue.get_mode_display }}</span></div>
         <strong>{{ issue.part.name|default:issue.part.f3|default:'قطعه نامشخص' }}</strong>
         {% if issue.part %}<div class="help num">{{ issue.part.width }} × {{ issue.part.length }} mm</div>{% endif %}
-        <span class="badge-status is-warn" title="{{ issue.reason }}">{{ issue.details.reason_code|default:'بررسی' }}</span>
+        <span class="badge-status is-warn" title="{{ issue.reason }}">{{ issue.reason_label }}</span>
         {% if issue.status == 'open' %}
           <div class="cnc-issue-actions">
             {% if issue.details.stage == 'manual_required' %}<a class="btn btn-sm btn-outline-primary" href="/cnc/?task_id={{ issue.task_id }}">رفع در ابزار CNC</a>{% endif %}
@@ -137,7 +138,7 @@
         {% endif %}
         {% if issue.resolution_note %}<p class="help mt-1 mb-0">{{ issue.resolution_note }}</p>{% endif %}
       </div>
-      {% empty %}<div class="cnc-empty"><i class="bi bi-shield-check" aria-hidden="true"></i></div>{% endfor %}
+      {% empty %}<div class="cnc-empty"><i class="bi bi-shield-check" aria-hidden="true"></i><p>موردی برای بررسی نیست.</p></div>{% endfor %}
     </div>
   </div>
 
@@ -145,11 +146,13 @@
   <div class="offcanvas offcanvas-end cut-drawer" tabindex="-1" id="result-drawer" aria-labelledby="result-drawer-title" style="width:min(23rem,94vw)">
     <div class="offcanvas-header"><h2 class="offcanvas-title" id="result-drawer-title">ثبت نتیجهٔ اجرا</h2><button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="بستن"></button></div>
     <div class="offcanvas-body">
-      {% for plan in plans %}{% if plan.status == 'planned' and plan.output_verified and plan.gcode %}
+      {% for plan in plans %}{% if plan.status == 'planned' %}
+      {# هم‌تراز با سرور: بدون فایل تأییدشده فقط «مصرف نشد» و «ضایعات» مجاز است (بازبینی UI/UX بند ۶-الف) #}
       <form class="cnc-result-form d-grid gap-2" method="post" action="{% url 'cnc_resizer:complete_sheet_plan' plan.id %}" data-cnc-result data-plan-id="{{ plan.id }}">
         {% csrf_token %}
         <b class="num">CNC-{{ plan.id|stringformat:'04d' }}</b>
-        <div><label for="cnc-outcome-{{ plan.id }}">نتیجهٔ ورق</label><select id="cnc-outcome-{{ plan.id }}" name="outcome" class="form-select form-select-sm" required><option value="">انتخاب کنید…</option><option value="used">مصرف شد</option><option value="untouched">مصرف نشد</option><option value="scrapped">ضایعات شد</option></select></div>
+        {% if not plan.output_verified or not plan.gcode.strip %}<p class="help mb-0">فایل دستگاه تأییدشده ندارد؛ فقط «مصرف نشد» یا «ضایعات» قابل ثبت است.</p>{% endif %}
+        <div><label for="cnc-outcome-{{ plan.id }}">نتیجهٔ ورق</label><select id="cnc-outcome-{{ plan.id }}" name="outcome" class="form-select form-select-sm" required><option value="">انتخاب کنید…</option><option value="used" {% if not plan.output_verified or not plan.gcode.strip %}disabled{% endif %}>مصرف شد</option><option value="untouched">مصرف نشد</option><option value="scrapped">ضایعات شد</option></select></div>
         <div><label for="cnc-note-{{ plan.id }}">یادداشت</label><input id="cnc-note-{{ plan.id }}" name="note" class="form-control form-control-sm" maxlength="255" placeholder="برای ضایعات الزامی است"></div>
         <div data-remnants hidden><p class="help mb-1">پرت‌های واقعی (اختیاری)</p><div data-remnant-rows><div class="cnc-remnant-row"><input type="number" min="0.1" step="0.1" name="rem_{{ plan.id }}_1_width" class="form-control form-control-sm" placeholder="عرض (mm)" aria-label="عرض پرت"><input type="number" min="0.1" step="0.1" name="rem_{{ plan.id }}_1_height" class="form-control form-control-sm" placeholder="طول (mm)" aria-label="طول پرت"></div></div><button type="button" class="btn btn-sm btn-outline-secondary" data-add-remnant>افزودن پرت</button></div>
         <button class="btn btn-primary" type="submit">ثبت نتیجه</button>
@@ -188,6 +191,20 @@
   </div>
 <script>
 (() => {
+  /* پذیرش ارقام فارسی/عربی در فیلدهای عددی پرت‌ها (بازبینی UI/UX بند ۱۸) */
+  const FA_DIGITS = '۰۱۲۳۴۵۶۷۸۹', AR_DIGITS = '٠١٢٣٤٥٦٧٨٩';
+  document.addEventListener('keydown', (e) => {
+    const target = e.target;
+    if (!target || target.type !== 'number' || e.ctrlKey || e.metaKey) return;
+    let digit = FA_DIGITS.indexOf(e.key);
+    if (digit < 0) digit = AR_DIGITS.indexOf(e.key);
+    if (digit < 0) return;
+    e.preventDefault();
+    const start = target.selectionStart ?? target.value.length;
+    const end = target.selectionEnd ?? target.value.length;
+    target.setRangeText(String(digit), start, end, 'end');
+    target.dispatchEvent(new Event('input', { bubbles: true }));
+  });
   const rows = [...document.querySelectorAll('[data-cnc-select]')];
   const panels = [...document.querySelectorAll('[data-cnc-panel]')];
   const resultForms = [...document.querySelectorAll('[data-cnc-result]')];

@@ -74,12 +74,36 @@
     try {
       const data = await api(`${CONFIG.orders}?${params}`);
       queueEl.innerHTML = data.rows.length ? '' :
-        '<div class="ws-empty"><i class="bi bi-inbox" aria-hidden="true"></i></div>';
+        '<div class="ws-empty"><i class="bi bi-inbox" aria-hidden="true"></i><p>سفارشی برای برنامه‌ریزی در این صفحه نیست — جست‌وجو یا فیلتر وضعیت را تغییر دهید.</p></div>';
       data.rows.forEach(row => queueEl.appendChild(queueRow(row)));
       state.queuePages = data.pages;
+      renderQueuePager();
     } catch (error) {
       queueEl.innerHTML = `<div class="ws-empty text-danger">${esc(error.message)}</div>`;
     }
+  }
+
+  /* صفحه‌بندی صف سفارش‌ها (بازبینی UI/UX بند ۳) */
+  function renderQueuePager() {
+    document.getElementById('ws-queue-pager')?.remove();
+    if (state.queuePages <= 1) return;
+    const pager = document.createElement('div');
+    pager.className = 'ws-pager';
+    pager.id = 'ws-queue-pager';
+    pager.innerHTML = `
+      <button type="button" class="btn btn-sm btn-outline-secondary" data-pager-prev ${state.queuePage <= 1 ? 'disabled' : ''}>قبلی</button>
+      <span class="num small">صفحهٔ ${state.queuePage} از ${state.queuePages}</span>
+      <button type="button" class="btn btn-sm btn-outline-secondary" data-pager-next ${state.queuePage >= state.queuePages ? 'disabled' : ''}>بعدی</button>`;
+    pager.querySelector('[data-pager-prev]').addEventListener('click', () => goQueuePage(state.queuePage - 1));
+    pager.querySelector('[data-pager-next]').addEventListener('click', () => goQueuePage(state.queuePage + 1));
+    queueEl.appendChild(pager);
+  }
+
+  async function goQueuePage(page) {
+    if (page < 1 || page > state.queuePages || page === state.queuePage) return;
+    state.queuePage = page;
+    await loadQueue();
+    queueEl.scrollIntoView({ block: 'start' });
   }
 
   function queueRow(row) {
@@ -372,8 +396,33 @@
     if (!tbody) return;
     const old = tbody.querySelector(`tr[data-task-id="${row.task_id}"]:not(.row-expand-details)`);
     if (old) {
+      // حفظ فوکوس هنگام بازسازی ردیف (بازبینی UI/UX بند ۴):
+      // اگر کاربر روی سلولی از همین ردیف بود، معادلش در ردیف تازه فوکوس می‌گیرد.
+      const active = document.activeElement;
+      const inside = active && old.contains(active) ? active : null;
+      const detailsOld = tbody.querySelector(`tr[data-details-for="${row.task_id}"]`);
+      const insideDetails = active && detailsOld && detailsOld.contains(active) ? active : null;
+      const target = inside || insideDetails;
+      let selector = null;
+      if (target) {
+        selector = target.dataset?.field ? `[data-field="${target.dataset.field}"]`
+          : target.classList.length ? `${target.tagName.toLowerCase()}.${[...target.classList].join('.')}`
+          : target.tagName.toLowerCase();
+      }
       tbody.querySelector(`tr[data-details-for="${row.task_id}"]`)?.remove();
       old.replaceWith(partRow(row));
+      if (selector) {
+        const fresh = tbody.querySelector(`tr[data-task-id="${row.task_id}"] ${selector}`);
+        restoreCaret(fresh);
+      }
+    }
+  }
+
+  function restoreCaret(input) {
+    if (!input || input.disabled) return;
+    input.focus();
+    if (typeof input.value === 'string' && input.setSelectionRange) {
+      try { input.setSelectionRange(input.value.length, input.value.length); } catch (_) { /* type=number اجازهٔ نمی‌دهد؛ بی‌اهمیت */ }
     }
   }
 
@@ -398,6 +447,8 @@
     const domField = field === 'quantity' ? 'quantity_total' : field;
     const input = tr.querySelector(`[data-field="${domField}"]`);
     const previous = input ? input.defaultValue : '';
+    // فوکوس هنگام disable پرت می‌شود؛ بعد از جایگزینی ردیف به همان سلول برمی‌گردد
+    const hadFocus = document.activeElement === input;
     input?.setAttribute('disabled', 'disabled');
     cellState(input, 'در حال ذخیره…', 'text-muted');
     const freshInput = () => root.querySelector(`tr[data-task-id="${taskId}"] [data-field="${domField}"]`);
@@ -408,11 +459,13 @@
       });
       replaceRow(data.row);
       cellState(freshInput(), data.message, 'text-success');
+      if (hadFocus) restoreCaret(freshInput());
       announce(`${data.message} (${field})`);
       document.dispatchEvent(new CustomEvent('ws:specs-changed'));
     } catch (error) {
       if (error.status === 409 && error.payload?.row) {
         replaceRow(error.payload.row);
+        if (hadFocus) restoreCaret(freshInput());
         announce('این ردیف جای دیگر تغییر کرده بود؛ ردیف تازه شد.');
         cellState(freshInput(), 'ناسازگاری نسخه؛ ردیف دوباره بارگذاری شد', 'text-danger');
         return;
@@ -583,4 +636,20 @@
     } catch (error) { /* status list is cosmetic */ }
     loadQueue();
   })();
+
+  /* پذیرش ارقام فارسی/عربی در فیلدهای عددی (بازبینی UI/UX بند ۱۸) —
+     کلید رقم فارسی معادل رقم لاتین در همان محل درج می‌شود. */
+  const FA_DIGITS = '۰۱۲۳۴۵۶۷۸۹', AR_DIGITS = '٠١٢٣٤٥٦٧٨٩';
+  document.addEventListener('keydown', (e) => {
+    const target = e.target;
+    if (!target || target.type !== 'number' || e.ctrlKey || e.metaKey) return;
+    let digit = FA_DIGITS.indexOf(e.key);
+    if (digit < 0) digit = AR_DIGITS.indexOf(e.key);
+    if (digit < 0) return;
+    e.preventDefault();
+    const start = target.selectionStart ?? target.value.length;
+    const end = target.selectionEnd ?? target.value.length;
+    target.setRangeText(String(digit), start, end, 'end');
+    target.dispatchEvent(new Event('input', { bubbles: true }));
+  });
 })();

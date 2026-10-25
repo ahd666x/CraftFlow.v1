@@ -151,7 +151,7 @@ class CncSheetPlan(models.Model):
     height = models.DecimalField(max_digits=10, decimal_places=1)
     planned_area = models.DecimalField(max_digits=20, decimal_places=2, default=0, editable=False)
     status = models.CharField(max_length=12, choices=STATUS, default="planned")
-    RESULT_OUTCOMES = (("used", "مصرف شد"), ("untouched", "استفاده نشد"), ("scrapped", "اسقاط شد"))
+    RESULT_OUTCOMES = (("used", "مصرف شد"), ("untouched", "مصرف نشد"), ("scrapped", "ضایعات شد"))
     result_outcome = models.CharField(max_length=12, choices=RESULT_OUTCOMES, blank=True)
     actual_offcuts = models.JSONField(default=list, blank=True)
     result_note = models.CharField(max_length=255, blank=True)

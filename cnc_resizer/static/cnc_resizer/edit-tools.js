@@ -222,7 +222,7 @@
     const hit = el('line', { x1: opts.x1, y1: -opts.y1, x2: opts.x2, y2: -opts.y2,
                              stroke: 'transparent', 'stroke-width': 14, 'pointer-events': 'stroke' }, g);
     hit.dataset.dim = opts.dimId;
-    if (opts.locked && opts.reason) g.dataset.reason = opts.reason;
+    if (opts.locked && opts.reason) markLockedReason(g, opts.reason);
     const mx = (opts.x1 + opts.x2) / 2, my = (opts.y1 + opts.y2) / 2;
     const t = el('text', {
       x: opts.vertical ? mx + 8 / px() : mx,
@@ -536,6 +536,24 @@
   }
   CNC.showTransient = showTransient;
 
+  /* دلیل قفل بودن روی عناصر SVG: علاوه بر data-reason، <title> بومی SVG هم
+     گذاشته می‌شود تا با هاور دیده شود؛ و هاور روی هر عنصر data-reason توست
+     زنده نشان می‌دهد (بازبینی UI/UX بند ۴ — داده بود ولی نمایش داده نمی‌شد). */
+  function markLockedReason(node, text) {
+    if (!node || !text) return;
+    node.dataset.reason = text;
+    if (node.querySelector && !node.querySelector(':scope > title')) {
+      const titleEl = el('title', {}, node);
+      titleEl.textContent = text;
+    }
+  }
+  document.getElementById('svg')?.addEventListener('pointerover', (e) => {
+    const holder = e.target.closest ? e.target.closest('[data-reason]') : null;
+    if (holder && holder.dataset.reason) {
+      showTransient({ x: e.clientX + 14, y: e.clientY + 16 }, esc(holder.dataset.reason));
+    }
+  });
+
   CNC.on('map-click', (info) => {
     if (!info.dimId) return;
     openDimEditor(info.dimId, info.client);
@@ -777,7 +795,7 @@
                                  stroke: 'transparent', 'stroke-width': 16,
                                  'pointer-events': 'stroke' }, g1);
         hit.dataset.bar = `band:${part.id}:y:free`;
-        g1.dataset.reason = note;
+        markLockedReason(g1, note);
         // لنگر (پایین)
         const g2 = el('g', { class: 'stretchbar', 'data-bar': `band:${part.id}:y:anchor` }, g);
         el('line', { x1: bb.x_min, y1: -band[0], x2: bb.x_max, y2: -band[0], class: 'lockseg' }, g2);
@@ -785,7 +803,7 @@
                                   stroke: 'transparent', 'stroke-width': 16,
                                   'pointer-events': 'stroke' }, g2);
         hit2.dataset.bar = `band:${part.id}:y:anchor`;
-        g2.dataset.reason = 'این لبه لنگر است؛ بخش زیر نوار ثابت می‌ماند و کشش از همین‌جا اندازه گرفته می‌شود.';
+        markLockedReason(g2, 'این لبه لنگر است؛ بخش زیر نوار ثابت می‌ماند و کشش از همین‌جا اندازه گرفته می‌شود.');
       } else {
         const g1 = el('g', { class: 'stretchbar', 'data-bar': `band:${part.id}:x:free` }, g);
         el('line', { x1: band[1], y1: -bb.y_min, x2: band[1], y2: -bb.y_max, class: color }, g1);
@@ -793,14 +811,14 @@
                                  stroke: 'transparent', 'stroke-width': 16,
                                  'pointer-events': 'stroke' }, g1);
         hit.dataset.bar = `band:${part.id}:x:free`;
-        g1.dataset.reason = note;
+        markLockedReason(g1, note);
         const g2 = el('g', { class: 'stretchbar', 'data-bar': `band:${part.id}:x:anchor` }, g);
         el('line', { x1: band[0], y1: -bb.y_min, x2: band[0], y2: -bb.y_max, class: 'lockseg' }, g2);
         const hit2 = el('line', { x1: band[0], y1: -bb.y_min, x2: band[0], y2: -bb.y_max,
                                   stroke: 'transparent', 'stroke-width': 16,
                                   'pointer-events': 'stroke' }, g2);
         hit2.dataset.bar = `band:${part.id}:x:anchor`;
-        g2.dataset.reason = 'این لبه لنگر است؛ بخش سمت دیگر نوار ثابت می‌ماند.';
+        markLockedReason(g2, 'این لبه لنگر است؛ بخش سمت دیگر نوار ثابت می‌ماند.');
       }
     }
   }
@@ -1004,7 +1022,7 @@
         x: cx - s, y: -cy - s, width: s * 2, height: s * 2, rx: 2,
         class: 'handle' + (locked ? ' locked' : ''), 'data-handle': key,
       }, g);
-      if (reason) h.dataset.reason = reason;
+      if (reason) markLockedReason(h, reason);
       return h;
     };
     const ry = stretchReason(part, 'y'), rx = stretchReason(part, 'x');

@@ -291,7 +291,13 @@
   updateProgress();
 
   document.querySelectorAll('input.cut-outcome').forEach(radio => {
-    radio.addEventListener('change', () => syncOutcome(radio.dataset.sheet));
+    radio.addEventListener('change', () => {
+      syncOutcome(radio.dataset.sheet);
+      // fallback مرورگرهای بدون :has() — انتخابِ نتیجه باید بدون CSS4 هم دیده شود (بازبینی UI/UX بند ۱۷)
+      radio.closest('.outcome-radios')?.querySelectorAll('.out-opt').forEach(label => {
+        label.classList.toggle('is-checked', label.contains(radio) && radio.checked);
+      });
+    });
   });
   dots.forEach(dot => dot.addEventListener('click', () => {
     showPanel(panels.find(item => item.dataset.sheetPk === dot.dataset.sheetPk));

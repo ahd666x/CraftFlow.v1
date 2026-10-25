@@ -38,7 +38,9 @@
     }
 
     for (const option of spec.options) {
-      if (option.value) option.hidden = option.dataset.material !== material.value;
+      // option.hidden در Safari/iOS پشتیبانی نمی‌شود؛ disabled همه‌جا کار می‌کند
+      // (بازبینی UI/UX بند ۵) — گزینه‌های متریال دیگر غیرفعال می‌شوند، نه مخفی.
+      if (option.value) option.disabled = option.dataset.material !== material.value;
     }
     if (isStandard) {
       let selected = spec.selectedOptions[0];

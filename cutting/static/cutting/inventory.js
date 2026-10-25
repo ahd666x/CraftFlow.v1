@@ -5,13 +5,11 @@
     bootstrap.Modal.getOrCreateInstance(document.getElementById('deactivate-modal')).show();
   }));
 
+  // جست‌وجو فقط با Enter یا دکمه «اعمال» ارسال می‌شود؛
+  // ارسال خودکار وسط تایپ، فوکوس و مکان‌نما را می‌بُرد (بازبینی UI/UX بند ۲).
   const search = document.querySelector('[data-inventory-search]');
   const form = search?.form;
   if (search && form) {
-    let timer;
-    search.addEventListener('input', () => {
-      window.clearTimeout(timer);
-      timer = window.setTimeout(() => form.requestSubmit(), 500);
-    });
+    form.addEventListener('submit', () => search.blur());
   }
 })();

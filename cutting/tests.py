@@ -697,6 +697,8 @@ class InventoryAndCutFlowTests(TestCase):
                 self.assertEqual(response.status_code, 200)
                 self.assertContains(response, 'class="cutting-nav')
         plan = self.make_plan()
+        # بند ۱ بازبینی UI/UX: لینک «ثبت موجودی» در کمبود ورق باید URL معتبر داشته باشد
+        self.assertContains(self.client.get(reverse('cutting:planner')), '"stock_create_url": "/cutting/inventory/new/"')
         # بازطراحی: نوار ایستگاه تک‌لایه جایگزین stepper شد — stepper باید حذف باشد
         self.assertNotContains(self.client.get(reverse('cutting:planner')), 'cutting-stepper')
         self.assertNotContains(self.client.get(reverse('cutting:plan_detail', args=[plan.pk])), 'cutting-stepper')

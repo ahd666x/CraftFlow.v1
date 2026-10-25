@@ -115,7 +115,7 @@ class CutPlanTask(models.Model):
 
 
 class CutPlanSheet(models.Model):
-    OUTCOMES = [('reserved', 'در انتظار نتیجه'), ('used', 'مصرف شد'), ('untouched', 'استفاده نشد'), ('scrapped', 'غیرقابل استفاده'), ('released', 'رزرو آزاد شد؛ برنامه لغو شد')]
+    OUTCOMES = [('reserved', 'در انتظار نتیجه'), ('used', 'مصرف شد'), ('untouched', 'مصرف نشد'), ('scrapped', 'ضایعات شد'), ('released', 'رزرو آزاد شد؛ برنامه لغو شد')]
     plan = models.ForeignKey(CutPlan, on_delete=models.CASCADE, related_name='planned_sheets')
     source_stock = models.ForeignKey(SheetStock, on_delete=models.PROTECT, related_name='plan_reservations')
     material = models.ForeignKey(Material, on_delete=models.PROTECT, related_name='cut_plan_sheets')
@@ -210,7 +210,7 @@ class SheetStockEvent(models.Model):
     TYPES = [
         ('receive', 'ثبت ورود'), ('adjust', 'اصلاح موجودی'), ('deactivate', 'غیرفعال‌سازی'),
         ('reactivate', 'فعال‌سازی مجدد'), ('reserve', 'رزرو برای برش'), ('release', 'آزادسازی رزرو'),
-        ('consume', 'مصرف در برش'), ('offcut', 'ایجاد پرت'), ('untouched', 'ورق مصرف‌نشده'), ('scrap', 'اسقاط'),
+        ('consume', 'مصرف در برش'), ('offcut', 'ایجاد پرت'), ('untouched', 'ورق مصرف‌نشده'), ('scrap', 'ضایعات'),
     ]
     stock = models.ForeignKey(SheetStock, null=True, blank=True, on_delete=models.SET_NULL, related_name='events')
     material = models.ForeignKey(Material, on_delete=models.PROTECT, related_name='cut_stock_events')
