@@ -1776,11 +1776,11 @@ def manual_renest(request):
         raise PermissionDenied
     back = _safe_local_next(request, 'cnc_resizer:manual_queue')
     if (issue.details or {}).get('stage') != 'manual_required':
-        messages.error(request, 'این مورد جزو صف دستی نیست؛ بازچینش فقط برای موارد manual_required معنا دارد.')
+        messages.error(request, 'این مورد جزو صف دستی نیست؛ Nesting فقط برای موارد manual_required معنا دارد.')
         return redirect(back)
     task = issue.task
     if task is None or not task.order_id:
-        messages.error(request, 'تسک یا سفارش این مورد حذف شده است؛ بازچینش ممکن نیست.')
+        messages.error(request, 'دستور کار یا سفارش این مورد حذف شده است؛ Nesting ممکن نیست.')
         return redirect(back)
     if issue.status == 'ignored':
         messages.error(request, 'این مورد نادیده گرفته شده است؛ ابتدا آن را بازگشایی کنید.')
@@ -1794,7 +1794,7 @@ def manual_renest(request):
             [task.order_id], request.user, kerf=kerf, use_offcuts=False,
         )
     except (ValueError, OSError) as exc:
-        messages.error(request, f'بازچینش انجام نشد: {exc}')
+        messages.error(request, f'Nesting انجام نشد: {exc}')
         return redirect(back)
 
     row = next((item for item in report if item.get('task_id') == task.pk), None)
@@ -1802,7 +1802,7 @@ def manual_renest(request):
         messages.info(request, 'قطعه‌ای برای چیدن باقی نماند (احتمالاً قبلاً چیده یا کامل شده است).')
         return redirect(back)
     if row.get('status') == 'manual_required':
-        messages.warning(request, f'بازچینش هنوز ممکن نشد: {row.get("message", "")}')
+        messages.warning(request, f'Nesting هنوز ممکن نشد: {row.get("message", "")}')
         return redirect(back)
 
     # Success: resolve this task's open manual_required issues with an audit
@@ -1811,7 +1811,7 @@ def manual_renest(request):
     CncPlanningIssue.objects.filter(
         task=task, status='open', details__stage='manual_required',
     ).update(
-        status='resolved', resolution_note='بازچینش موفق — قطعه در چیدمان ورق CNC قرار گرفت.',
+        status='resolved', resolution_note='Nesting موفق — قطعه در چیدمان ورق CNC قرار گرفت.',
         resolved_by=request.user, resolved_at=now,
     )
     status_labels = {
@@ -1824,11 +1824,11 @@ def manual_renest(request):
     if remaining:
         messages.warning(
             request,
-            f'بازچینش انجام شد و چیدمان ساخته شد ({detail})، اما {remaining} مورد نیازمند بررسی باقی مانده است؛ '
+            f'Nesting انجام شد و چیدمان ساخته شد ({detail})، اما {remaining} مورد نیازمند بررسی باقی مانده است؛ '
             'جزئیات در صفحهٔ برنامه‌های CNC.',
         )
     else:
-        messages.success(request, f'بازچینش انجام شد: چیدمان ساخته شد ({detail}).')
+        messages.success(request, f'Nesting انجام شد: چیدمان ساخته شد ({detail}).')
     return redirect(back)
 
 

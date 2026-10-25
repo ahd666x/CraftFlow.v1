@@ -17,7 +17,7 @@
       <span class="kpi-inline help" aria-label="خلاصهٔ صف دستی">
         <span title="قطعاتی که هنوز فایل CNC معتبری ندارند"><b class="num">{{ waiting_count }}</b> در انتظار اصلاح</span>
         <span aria-hidden="true">·</span>
-        <span title="فایل تأیید شد و فقط باید دوباره چیده شوند"><b class="num">{{ ready_count }}</b> آمادهٔ بازچینش</span>
+        <span title="فایل تأیید شد و فقط باید دوباره چیده شوند"><b class="num">{{ ready_count }}</b> آمادهٔ Nesting</span>
       </span>
     </div>
   </header>
@@ -33,7 +33,6 @@
             <th scope="col">دستور کار / سفارش</th>
             <th scope="col">باقی‌مانده</th>
             <th scope="col">وضعیت</th>
-            <th scope="col">علت</th>
             <th scope="col">سیگنال‌ها</th>
             <th scope="col">اقدامات</th>
           </tr>
@@ -52,18 +51,14 @@
               {% if row.state == 'waiting' %}
               <span class="badge-status is-warn"><i class="dot"></i>در انتظار اصلاح دستی</span>
               {% else %}
-              <span class="badge-status is-ok"><i class="dot"></i>آمادهٔ بازچینش</span>
+              <span class="badge-status is-ok"><i class="dot"></i>آمادهٔ Nesting</span>
               {% endif %}
               <div class="help num mb-0">{{ row.issue.created_at|jalali }}</div>
-            </td>
-            <td style="max-width:26rem">
-              <span class="badge-status is-mute" title="{{ row.reason_text }}">{{ row.reason_label }}</span>
-              <div class="help mb-0 mt-1">{{ row.reason_text }}</div>
               {% if row.resolution_note %}<div class="help mb-0 mt-1">یادداشت: {{ row.resolution_note }}</div>{% endif %}
             </td>
             <td>
               <div class="d-grid gap-1">
-                {% if row.signals.manual_file_ready %}<span class="badge-status is-ok" title="فایل دستی برای همین طول مؤثر ثبت و تأیید شده است؛ بازچینش از آن استفاده می‌کند."><i class="dot"></i>فایل دستی آماده</span>{% endif %}
+                {% if row.signals.manual_file_ready %}<span class="badge-status is-ok" title="فایل دستی برای همین طول مؤثر ثبت و تأیید شده است؛ Nesting از آن استفاده می‌کند."><i class="dot"></i>فایل دستی آماده</span>{% endif %}
                 {% if row.signals.profile_ready %}<span class="badge-status is-info" title="الگوی تأییدشدهٔ تغییر اندازهٔ خودکار برای این قطعه ثبت شده است؛ برنامه‌ریز می‌تواند فایل مشتق بسازد."><i class="dot"></i>الگوی خودکار تأییدشده آماده</span>{% endif %}
                 {% if not row.signals.profile_ready %}<span class="badge-status is-warn" title="هیچ الگوی تغییر اندازهٔ تأییدشده‌ای برای این قطعه ثبت نشده؛ برنامه‌ریز خودکار برای طول جدید فایل نمی‌سازد و مسیر صف دستی می‌رود."><i class="dot"></i>الگوی خودکار تأییدشده ثبت نشده</span>{% endif %}
                 {% if row.reason_code == 'profile_failed' %}<span class="badge-status is-warn" title="الگو ثبت شده اما موتور تغییر اندازه ساخت فایل مشتق را با هندسهٔ فعلی تأیید نمی‌کند؛ فایل دستی لازم است."><i class="dot"></i>الگو با هندسهٔ فعلی ناسازگار</span>{% endif %}
@@ -77,11 +72,11 @@
               <div class="d-flex flex-wrap gap-1 align-items-center">
                 <a class="btn btn-sm btn-outline-primary" href="/cnc/?task_id={{ row.task_id }}&amp;from=manual" title="باز کردن فایل این دستور کار در ابزار CAD سی‌ان‌سی برای اصلاح و ثبت فایل دستی؛ بازگشت به همین صف">رفع در ابزار CNC</a>
                 {% if row.can_renest %}
-                <form method="post" action="{{ manual_renest_url }}" onsubmit="return confirm('بازچینش، برنامه‌ریز CNC را برای کل سفارش این مورد اجرا می‌کند و ممکن است ورق رزرو کند. ادامه می‌دهید؟')">
+                <form method="post" action="{{ manual_renest_url }}" onsubmit="return confirm('Nesting، برنامه‌ریز CNC را برای کل سفارش این مورد اجرا می‌کند و ممکن است ورق رزرو کند. ادامه می‌دهید؟')">
                   {% csrf_token %}
                   <input type="hidden" name="issue_id" value="{{ row.issue.id }}">
                   <input type="hidden" name="next" value="{{ manual_queue_url }}">
-                  <button class="btn btn-sm {% if row.state == 'ready' %}btn-success{% else %}btn-outline-secondary{% endif %}" title="اجرای دوبارهٔ برنامه‌ریز با همان موتور صفحهٔ صف برش (کرف پیش‌فرض کارگاه، بدون پرت)">بازچینش</button>
+                  <button class="btn btn-sm {% if row.state == 'ready' %}btn-success{% else %}btn-outline-secondary{% endif %}" title="اجرای دوبارهٔ برنامه‌ریز با همان موتور صفحهٔ صف برش (کرف پیش‌فرض کارگاه، بدون پرت)">Nesting</button>
                 </form>
                 {% endif %}
                 {% if row.state == 'waiting' %}

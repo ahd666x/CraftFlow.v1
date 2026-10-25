@@ -53,7 +53,7 @@ class FullLoopIntegrationTests(SiteSettingsFixtureMixin, ManualQueueFixtureMixin
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.json()['ok'])
         page = self.client.get(reverse('cnc_resizer:manual_queue'))
-        self.assertContains(page, 'آمادهٔ بازچینش')
+        self.assertContains(page, 'آمادهٔ Nesting')
         rows = page.context['rows']
         self.assertEqual(len(rows), 1)
         issue_id = rows[0]['issue'].pk

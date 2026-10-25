@@ -51,7 +51,7 @@ REASON_LABELS = {
 
 STATE_LABELS = {
     'waiting': 'در انتظار اصلاح دستی',
-    'ready': 'آمادهٔ بازچینش',
+    'ready': 'آمادهٔ Nesting',
 }
 
 

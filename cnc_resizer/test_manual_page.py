@@ -2,7 +2,7 @@
 
 Contract under test:
 - The queue lists open manual_required issues plus recently resolved ones
-  whose pieces are still unplaced («آمادهٔ بازچینش»); rows disappear once the
+  whose pieces are still unplaced («آمادهٔ Nesting»); rows disappear once the
   planner actually places the pieces.
 - Signals are read-only reports of state created by other audited flows:
   a registered manual file on disk, an approved resize profile, a saved
@@ -50,7 +50,9 @@ class ManualQueuePageTests(ManualQueueFixtureMixin, TestCase):
         self.assertContains(page, f'#{self.task.pk}')
         self.assertContains(page, '/cnc/?task_id=')
         self.assertContains(page, 'در انتظار اصلاح دستی')
-        self.assertContains(page, 'بدون الگوی تأییدشده')
+        # ستون «علت» حذف شده است؛ وضعیت الگو فقط با نشانِ سیگنال‌ها دیده می‌شود
+        self.assertNotContains(page, 'بدون الگوی تأییدشده')
+        self.assertContains(page, 'الگوی خودکار تأییدشده ثبت نشده')
         self.assertContains(page, 'رفع در ابزار CNC')
 
     def test_registered_manual_file_flips_row_to_ready(self):
@@ -60,9 +62,9 @@ class ManualQueuePageTests(ManualQueueFixtureMixin, TestCase):
         self.assertEqual(issue.status, 'resolved')
         page = self.client.get(reverse('cnc_resizer:manual_queue'))
         self.assertEqual(page.status_code, 200)
-        self.assertContains(page, 'آمادهٔ بازچینش')
+        self.assertContains(page, 'آمادهٔ Nesting')
         self.assertContains(page, 'فایل دستی آماده')
-        self.assertContains(page, 'بازچینش')
+        self.assertContains(page, 'Nesting')
         self.assertNotContains(page, 'در انتظار اصلاح دستی')
 
     def test_approved_profile_signal_appears_on_open_row(self):
@@ -160,7 +162,7 @@ class RenestTests(SiteSettingsFixtureMixin, ManualQueueFixtureMixin, TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response['Location'], '/cnc/manual/')
         page = self.client.get(response['Location'])
-        self.assertContains(page, 'بازچینش انجام شد')
+        self.assertContains(page, 'Nesting انجام شد')
         self.assertContains(page, 'با فایل دستی ثبت‌شده چیده شد')
         self.assertEqual(CncSheetPlan.objects.count(), 1)
         plan = CncSheetPlan.objects.get()
@@ -184,7 +186,7 @@ class RenestTests(SiteSettingsFixtureMixin, ManualQueueFixtureMixin, TestCase):
         self.assertContains(page, 'با الگوی تأییدشده اصلاح و چیده شد')
         issue.refresh_from_db()
         self.assertEqual(issue.status, 'resolved')
-        self.assertIn('بازچینش موفق', issue.resolution_note)
+        self.assertIn('Nesting موفق', issue.resolution_note)
         self.assertEqual(CncSheetPlan.objects.count(), 1)
 
     def test_blocked_renest_keeps_issue_open_fail_closed(self):
@@ -197,7 +199,7 @@ class RenestTests(SiteSettingsFixtureMixin, ManualQueueFixtureMixin, TestCase):
         response = self.post_renest(issue.pk)
         self.assertEqual(response.status_code, 302)
         page = self.client.get(response['Location'])
-        self.assertContains(page, 'بازچینش هنوز ممکن نشد')
+        self.assertContains(page, 'Nesting هنوز ممکن نشد')
         issue.refresh_from_db()
         self.assertEqual(issue.status, 'open')
         self.assertEqual(CncSheetPlan.objects.count(), 0)

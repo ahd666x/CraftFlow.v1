@@ -77,7 +77,7 @@
           <span class="badge-status is-mute" title="{{ plan.preflight_report.reason|default:'' }}">پیش‌بررسی: —</span>
           {% endif %}
           {% if plan.status == 'planned' and plan.template_stale %}
-          <span class="badge-status is-warn" title="قالب‌های ویرایش هندسی دستی این قطعه پس از چیدمان تغییر کرده‌اند{% if plan.stale_templates %}: {{ plan.stale_templates|join:'، ' }}{% endif %} — بازچینش توصیه می‌شود. فایل‌های فعلی همچنان معتبرند و گته‌های تغییر مشخصات برقرارند."><i class="dot"></i>قالب هندسی دستی تغییر کرده</span>
+          <span class="badge-status is-warn" title="قالب‌های ویرایش هندسی دستی این قطعه پس از چیدمان تغییر کرده‌اند{% if plan.stale_templates %}: {{ plan.stale_templates|join:'، ' }}{% endif %} — Nesting توصیه می‌شود. فایل‌های فعلی همچنان معتبرند و گته‌های تغییر مشخصات برقرارند."><i class="dot"></i>قالب هندسی دستی تغییر کرده</span>
           {% endif %}
           {% if plan.orders %}<span title="شماره سفارش">شماره سفارش: {% for o in plan.orders %}<b class="num">{{ o }}</b>{% if not forloop.last %}، {% endif %}{% endfor %}</span>{% endif %}
         </div>

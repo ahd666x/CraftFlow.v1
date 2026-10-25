@@ -1121,10 +1121,10 @@
         $('tcStatusLine').textContent = res.message || 'فایل دستی ثبت شد.';
         $('tcStatus').hidden = true;
         button.hidden = true;
-        // فاز ۲.۲: حلقه را کامل کن — بازچینش در همان صف دستی در دسترس است
+        // فاز ۲.۲: حلقه را کامل کن — Nesting در همان صف دستی در دسترس است
         const queueLink = CNC.urls.manualQueue || '/cnc/manual/';
         alertBox('info', esc(res.message || 'فایل دستی ثبت و تأیید شد.')
-          + ` برای چیدن دوباره، در <a href="${esc(queueLink)}">صف دستی CNC</a> دکمهٔ «بازچینش» را بزنید.`, 'manual-fix');
+          + ` برای چیدن دوباره، در <a href="${esc(queueLink)}">صف دستی CNC</a> دکمهٔ «Nesting» را بزنید.`, 'manual-fix');
       } catch (err) {
         $('tcStatusLine').textContent = '';
         alertBox('err', 'ثبت فایل دستی رد شد: ' + esc(err.message), 'manual-fix');
