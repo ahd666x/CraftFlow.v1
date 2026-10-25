@@ -89,7 +89,7 @@
     const inPlan = row.planning_state === 'in_plan';
     el.innerHTML = `
       <span class="q-check"><input class="form-check-input ws-order-select" type="checkbox" value="${row.id}" aria-label="انتخاب سفارش ${row.id}"></span>
-      <span class="q-order"><b class="num">#${row.id}</b>${row.number ? ` <span class="num help">· ${esc(row.number)}</span>` : ''}<span class="q-cust" title="نماینده: ${esc(row.rep_name) || '—'}">${esc(row.customer_name)}</span></span>
+      <span class="q-order"><b class="num">#${row.id}</b>${row.number ? ` <span class="num help">· ${esc(row.number)}</span>` : ''}<span class="q-cust" title="مشتری">${esc(row.customer_name)}</span><span class="q-rep help" title="نماینده">نماینده: ${esc(row.rep_name) || '—'}</span></span>
       <span class="q-count num">${fmt(row.remaining_pieces)}<small class="num">${fmt(row.item_count)} آیتم</small></span>
       <span class="q-status"><span class="badge-status ${inPlan ? 'is-warn' : 'is-mute'}">${inPlan ? 'در برنامه' : 'آزاد'}</span></span>
       <span class="q-expand"><button type="button" class="row-expand-toggle" aria-expanded="false" aria-controls="wsd-${row.id}" title="آیتم‌ها، متریال‌ها و جدول قطعات" aria-label="جزئیات سفارش ${row.id}"><i class="bi bi-chevron-down" aria-hidden="true"></i></button></span>`;
@@ -184,7 +184,8 @@
           <th>قطعه</th>
           <th class="ws-sortable" data-sort="length">طول</th><th class="ws-sortable" data-sort="width">عرض</th>
           <th class="ws-sortable" data-sort="quantity">تعداد</th>
-          <th class="ws-sortable" data-sort="material">متریال</th><th title="چرخش ۹۰ درجه">چرخش</th>
+          <th class="ws-sortable" data-sort="material">متریال</th>
+          <th>بارکد</th><th title="نوار لبهٔ چهار لبهٔ قطعه">نوار لبه</th><th title="چرخش ۹۰ درجه">چرخش</th>
           <th class="ws-sortable" data-sort="status">وضعیت</th><th><span class="visually-hidden">جزئیات بیشتر</span></th>
         </tr></thead>
         <tbody class="ws-part-rows"></tbody>
@@ -215,7 +216,8 @@
       state.item = 'all'; state.partsPage = 1; renderChips(); loadParts();
     }));
     state.items.forEach(item => {
-      itemHolder.appendChild(chip(`#${item.id} ${esc(item.product_name)} (${fmt(item.piece_count)})`,
+      const productLabel = `${item.category_name ? esc(item.category_name) + ' ' : ''}${esc(item.product_name)}`;
+      itemHolder.appendChild(chip(`#${item.id} ${productLabel} (${fmt(item.piece_count)})`,
         state.item === String(item.id), () => {
           state.item = state.item === String(item.id) ? 'all' : String(item.id);
           state.partsPage = 1; renderChips(); loadParts();
@@ -241,13 +243,13 @@
     if (state.sort) params.set('sort', state.sort);
     const tbody = root.querySelector('.ws-part-rows');
     if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3">در حال خواندن قطعات…</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-3">در حال خواندن قطعات…</td></tr>';
     try {
       const data = await api(`${pattern(CONFIG.parts_pattern, state.focusId)}?${params}`);
       state.rows = Object.fromEntries(data.rows.map(row => [row.task_id, row]));
       state.partsPages = data.pages;
       tbody.innerHTML = data.rows.length ? '' :
-        '<tr><td colspan="8" class="text-center text-muted py-4">قطعه‌ای با این فیلترها پیدا نشد.</td></tr>';
+        '<tr><td colspan="10" class="text-center text-muted py-4">قطعه‌ای با این فیلترها پیدا نشد.</td></tr>';
       data.rows.forEach(row => tbody.appendChild(partRow(row)));
       const pageLabel = root.querySelector('.ws-parts-page');
       if (pageLabel) pageLabel.textContent = `صفحهٔ ${fmt(data.page)} از ${fmt(data.pages)}`;
@@ -258,14 +260,39 @@
       root.querySelectorAll('.ws-sortable').forEach(th =>
         th.classList.toggle('ws-sorted', th.dataset.sort === state.sort.replace('-', '')));
     } catch (error) {
-      tbody.innerHTML = `<tr><td colspan="8" class="text-center text-danger py-3">${esc(error.message)}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="10" class="text-center text-danger py-3">${esc(error.message)}</td></tr>`;
     }
   }
 
   /* ---------- parts table rows ---------- */
 
+  function materialOptions(row) {
+    /* نام متریال بدون ضخامت؛ ضخامت فقط به‌عنوان سرگروه (جلوگیری از انتخاب اشتباه هم‌نام‌ها) */
+    const thicknesses = [...new Set(MATERIALS.map(m => String(m.thickness)))].sort((a, b) => Number(a) - Number(b));
+    return thicknesses.map(thickness => {
+      const group = MATERIALS.filter(m => String(m.thickness) === thickness);
+      const options = group.map(m =>
+        `<option value="${m.id}" ${String(m.id) === String(row.material_id) ? 'selected' : ''}>${esc(m.name)}</option>`
+      ).join('');
+      return `<optgroup label="ضخامت ${esc(thickness)} mm">${options}</optgroup>`;
+    }).join('');
+  }
+
+  function barcodeCell(row) {
+    return row.barcode ? `<span class="num">${esc(row.barcode)}</span>` : '<span class="help">—</span>';
+  }
+
+  function edgeBandCell(row) {
+    const set = ['f4', 'f5', 'f18', 'f26'].filter(field => (row.edges[field] || '').trim());
+    if (!set.length) return '<span class="help">—</span>';
+    return set.map(field =>
+      `<span class="ws-edge-mini" title="${EDGE_LABELS[field]}">${esc(row.edges[field])}</span>`
+    ).join(' ');
+  }
+
   function partRow(row) {
-    // دو ردیف: اصلی (حداقل: قطعه/طول/عرض/تعداد/متریال + چرخش و وضعیت) و ردیف جزئیات (بارکد، نوار لبه، وضعیت کامل، اقدامات)
+    // ردیف اصلی همهٔ ستون‌ها را مستقیم نشان می‌دهد (بارکد و نوار لبه بدون بازکردن ردیف جزئیات)؛
+    // ردیف جزئیات فقط ویرایش نوار لبه، شمارنده‌ها و اقدامات است.
     const frag = document.createDocumentFragment();
     const tr = document.createElement('tr');
     tr.dataset.taskId = row.task_id;
@@ -277,17 +304,20 @@
     const cncWidthHint = row.is_cnc_first ? ' title="قطعهٔ CNC: تغییر عرض به صف اصلاح دستی می‌رود."' : '';
     const statusTitle = row.excluded ? `علت: ${row.excluded_reason}` : row.status_label;
     const detailsId = `ws-part-details-${row.task_id}`;
+    const productLine = `${row.category_name ? esc(row.category_name) + ' ' : ''}${esc(row.pname)}`;
     tr.innerHTML = `
-      <td class="td-lead"><b>${esc(row.name)}</b><div class="small text-muted">${esc(row.pname)}</div></td>
+      <td class="td-lead"><b>${esc(row.name)}</b><div class="small text-muted">${productLine}</div></td>
       <td data-label="طول"><input class="form-control form-control-sm cell-input cell-dim" data-field="length" type="number" min="0" step="0.1" value="${row.length}" ${editable ? '' : 'disabled'} aria-label="طول ${esc(row.name)}"></td>
       <td data-label="عرض"><input class="form-control form-control-sm cell-input cell-dim" data-field="width" type="number" min="0" step="0.1" value="${row.width}" ${editable ? '' : 'disabled'}${cncWidthHint} aria-label="عرض ${esc(row.name)}"></td>
       <td data-label="تعداد"><input class="form-control form-control-sm cell-input cell-dim" data-field="quantity_total" type="number" min="0" step="1" value="${row.quantity_total}" ${editable ? '' : 'disabled'} aria-label="تعداد ${esc(row.name)}"></td>
       <td data-label="متریال"><select class="form-select form-select-sm cell-input cell-material" ${editable ? '' : 'disabled'} aria-label="متریال ${esc(row.name)}">
-        ${MATERIALS.map(m => `<option value="${m.id}" ${String(m.id) === String(row.material_id) ? 'selected' : ''}>${esc(m.name)} (${m.thickness})</option>`).join('')}
+        ${materialOptions(row)}
       </select></td>
+      <td data-label="بارکد" class="ws-barcode-cell">${barcodeCell(row)}</td>
+      <td data-label="نوار لبه" class="ws-edgeband-cell">${edgeBandCell(row)}</td>
       <td data-label="چرخش"><input class="form-check-input cell-turn" type="checkbox" ${row.turn ? 'checked' : ''} ${editable ? '' : 'disabled'} aria-label="چرخش ${esc(row.name)}" title="چرخش ۹۰ درجه"></td>
       <td data-label="وضعیت"><span class="badge-status ${row.excluded ? 'is-bad' : row.status_code === 'locked_in_plan' ? 'is-warn' : 'is-mute'}" title="${esc(statusTitle)}">${esc(row.status_label)}</span>${row.overridden_fields.length ? ' <span class="text-warning" title="مشخصات از پایه تغییر کرده">●</span>' : ''}</td>
-      <td class="text-nowrap text-end"><button type="button" class="row-expand-toggle" data-row-expand aria-expanded="false" aria-controls="${detailsId}" title="بارکد، نوار لبه، وضعیت و اقدامات" aria-label="جزئیات بیشتر ${esc(row.name)}"><i class="bi bi-chevron-down" aria-hidden="true"></i></button></td>`;
+      <td class="text-nowrap text-end"><button type="button" class="row-expand-toggle" data-row-expand aria-expanded="false" aria-controls="${detailsId}" title="ویرایش نوار لبه، وضعیت و اقدامات" aria-label="جزئیات بیشتر ${esc(row.name)}"><i class="bi bi-chevron-down" aria-hidden="true"></i></button></td>`;
     frag.appendChild(tr);
 
     const lock = row.reserved_plan
@@ -307,10 +337,9 @@
     det.dataset.taskId = row.task_id;
     det.dataset.version = row.version;
     det.innerHTML = `
-      <td colspan="8">
+      <td colspan="10">
         <div class="row g-2 align-items-start">
-          <div class="col-6 col-md-3"><span class="d-block small text-muted">بارکد</span><span class="num">${esc(row.barcode) || '—'}</span></div>
-          <div class="col-6 col-md-4"><span class="d-block small text-muted">تعداد</span><span class="num small">باقی ${fmt(row.quantity_remaining)} · انجام ${fmt(row.quantity_completed)}</span></div>
+          <div class="col-6 col-md-3"><span class="d-block small text-muted">تعداد</span><span class="num small">باقی ${fmt(row.quantity_remaining)} · انجام ${fmt(row.quantity_completed)}</span></div>
           <div class="col-12">${lock}</div>
           <div class="col-12"><span class="d-block small text-muted">نوار لبه — طول۱/طول۲/عرض۱/عرض۲</span><div class="ws-edge-cell d-flex flex-wrap gap-1">${edgeInput('f4')}${edgeInput('f5')}${edgeInput('f18')}${edgeInput('f26')}</div></div>
           <div class="col-12 d-flex flex-wrap align-items-center gap-2">

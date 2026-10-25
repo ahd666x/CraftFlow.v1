@@ -19,7 +19,7 @@
         {% for row in pending_cnc_remnants %}
         <tr>
           <td><a href="{% url 'cnc_resizer:sheet_plans' %}#plan-{{ row.plan.pk }}">برنامهٔ #{{ row.plan.pk }}</a> <span class="help">ورق {{ row.plan.sheet_index }}</span></td>
-          <td>{{ row.plan.material.name }} · <span class="num">{{ row.plan.material.thickness }}</span> mm</td>
+          <td>{{ row.plan.material.name }}</td>
           <td class="td-num num">{{ row.plan.width }} × {{ row.plan.height }}</td>
           <td class="td-num num">{{ row.unused_m2 }} m²</td>
         </tr>

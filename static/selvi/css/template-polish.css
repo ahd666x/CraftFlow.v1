@@ -50,12 +50,25 @@ body.inventory-panel, body.painting-panel { padding: 16px 20px; }
 .admin-panel .form-control, .admin-panel .form-select,
 .inventory-panel .form-control, .inventory-panel .form-select,
 .painting-panel .form-control, .painting-panel .form-select {
-  min-height: 40px;
+  min-height: 35px;
   border-color: #d8dee8;
   border-radius: 8px;
 }
+/* فشرده‌سازی یکپارچهٔ فیلدهای ورودی (هر دو اپ Cutting و CNC): ارتفاع کمتر،
+   پدینگ کمتر، عرض فیلدهای عددی متناسب با داده. خوانایی و ناحیهٔ کلیک حفظ می‌شود. */
+.admin-panel .form-control-sm, .admin-panel .form-select-sm,
+.inventory-panel .form-control-sm, .inventory-panel .form-select-sm,
+.painting-panel .form-control-sm, .painting-panel .form-select-sm {
+  min-height: 29px;
+  padding: .22rem .5rem;
+  font-size: .84rem;
+  border-radius: 7px;
+}
+.admin-panel .form-control[type="number"],
+.inventory-panel .form-control[type="number"],
+.painting-panel .form-control[type="number"] { max-width: 10rem; }
 .admin-panel textarea.form-control, .inventory-panel textarea.form-control,
-.painting-panel textarea.form-control { min-height: 90px; }
+.painting-panel textarea.form-control { min-height: 70px; }
 .admin-panel .form-control:focus, .admin-panel .form-select:focus,
 .inventory-panel .form-control:focus, .inventory-panel .form-select:focus,
 .painting-panel .form-control:focus, .painting-panel .form-select:focus {
@@ -68,7 +81,7 @@ body.inventory-panel, body.painting-panel { padding: 16px 20px; }
   box-shadow: none;
 }
 .admin-panel .btn:not(.btn-sm), .inventory-panel .btn:not(.btn-sm),
-.painting-panel .btn:not(.btn-sm) { min-height: 38px; }
+.painting-panel .btn:not(.btn-sm) { min-height: 34px; }
 .admin-panel .btn:hover, .inventory-panel .btn:hover, .painting-panel .btn:hover { transform: none; }
 .admin-panel .table-responsive, .inventory-panel .table-responsive,
 .painting-panel .table-responsive {

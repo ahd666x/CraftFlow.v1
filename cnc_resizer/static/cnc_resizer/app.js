@@ -296,7 +296,7 @@
     if (summary) {
       const applied = state.appliedResizePattern;
       if (applied) {
-        const modeName = { equal: 'مساوی', proportional: 'متناسب', manual: 'دستی', kerf: 'kerf' }[applied.mode] || applied.mode;
+        const modeName = { equal: 'Equal', proportional: 'Proportional', manual: 'Manual', kerf: 'Kerf' }[applied.mode] || applied.mode;
         const d = Number(applied.delta) || 0;
         summary.hidden = false;
         summary.innerHTML = `الگوی ثبت‌شدهٔ این فایل: روش ${esc(modeName)}، تغییر کل <b dir="ltr">${esc(CNC.sgn(d))} mm</b>، محور ${esc(applied.axis || 'length')}، ابزار ${esc(String(applied.tool_dia ?? '—'))} mm، تقارن ${applied.symmetric ? 'روشن' : 'خاموش'}.`
@@ -319,7 +319,7 @@
     }
     if (mode === 'kerf') {
       table.hidden = true; hint.hidden = false;
-      hint.textContent = 'در حالت kerf توزیع کاملاً خودکار است (گام شیار ثابت می‌ماند)؛ جدول فاصله‌ها فقط برای «مساوی/متناسب/دستی» معنا دارد.';
+      hint.textContent = 'در حالت Kerf توزیع کاملاً خودکار است (گام شیار ثابت می‌ماند)؛ جدول فاصله‌ها فقط برای Equal/Proportional/Manual معنا دارد.';
       return;
     }
     table.hidden = false; hint.hidden = false;
@@ -359,7 +359,7 @@
     return op;
   }
 
-  const RESIZE_MODE_NAMES = { equal: 'مساوی بین گروه‌ها', proportional: 'متناسب با فاصله‌ها', kerf: 'خم‌کاری kerf', manual: 'دستی' };
+  const RESIZE_MODE_NAMES = { equal: 'Equal', proportional: 'Proportional', kerf: 'Kerf', manual: 'Manual' };
   const modeName = (m) => RESIZE_MODE_NAMES[m] || m || '—';
 
   // فرمِ ذخیره‌شدنیِ الگو از تنظیمات محاسبه — delta عمداً حذف می‌شود:
@@ -423,7 +423,7 @@
     }
     const before = res.length_before != null ? CNC.f1(res.length_before) : '—';
     const after = res.length_after != null ? CNC.f1(res.length_after) : '—';
-    const modeName = { equal: 'مساوی بین گروه‌ها', proportional: 'متناسب با فاصله‌ها', kerf: 'خم‌کاری kerf', manual: 'دستی' }[mode] || mode;
+    const modeName = { equal: 'Equal', proportional: 'Proportional', kerf: 'Kerf', manual: 'Manual' }[mode] || mode;
     resizeStatus('ok',
       `تغییر طول با روش «${esc(modeName)}» محاسبه شد: طول <span class="num">${before}</span> → <span class="num">${after}</span> mm`
       + (warnings ? `<br>• ${warnings}` : '')

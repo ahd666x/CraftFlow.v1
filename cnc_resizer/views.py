@@ -1194,7 +1194,7 @@ def sheet_program(request, plan_id):
     return JsonResponse({
         'ok': True,
         'plan_id': plan.pk,
-        'filename': f'craftflow_cnc_sheet_{plan.pk}.nc',
+        'filename': _cnc_output_filename(plan),
         'content': plan.gcode,
         'meta': {
             'width': str(plan.width), 'height': str(plan.height),
@@ -1233,7 +1233,7 @@ def sheet_preview(request, plan_id):
                             status=409, json_dumps_params={'ensure_ascii': False})
     data['ok'] = True
     data['material'] = plan.material.name if plan.material_id else ''
-    data['filename'] = f'craftflow_cnc_sheet_{plan.pk}.nc'
+    data['filename'] = _cnc_output_filename(plan)
     return JsonResponse(data, json_dumps_params={'ensure_ascii': False})
 
 
@@ -1515,9 +1515,9 @@ def complete_sheet_plan(request, plan_id):
             if outcome not in ('used', 'untouched', 'scrapped'):
                 raise ValueError('نتیجهٔ ورق معتبر نیست.')
             if outcome == 'scrapped' and not note:
-                raise ValueError('برای اسقاط ورق، ثبت علت الزامی است.')
+                raise ValueError('برای ثبت ورق به‌عنوان ضایعات، ثبت علت الزامی است.')
             # نبود فایل دستگاه تأییدشده فقط «مصرف شد» را مسدود می‌کند؛
-            # «استفاده نشد» و «اسقاط» دقیقاً برای زمانی طراحی شده‌اند که
+            # «استفاده نشد» و «ضایعات» دقیقاً برای زمانی طراحی شده‌اند که
             # فایل دستگاه تولید نشده یا اجرای آن ممکن نبوده — بستنِ ثبت
             # دفتریِ آن‌ها برنامهٔ planned را برای همیشه قفل می‌کرد.
             if outcome == 'used' and (not plan.output_verified or not plan.gcode.strip()):
@@ -1872,12 +1872,18 @@ def download_sheet_plan(request, plan_id):
         )
     from django.http import HttpResponse
     response = HttpResponse(plan.gcode, content_type='text/plain; charset=utf-8')
-    response['Content-Disposition'] = f'attachment; filename="craftflow_cnc_sheet_{plan.pk}.nc"'
+    response['Content-Disposition'] = 'attachment; filename="%s"' % _cnc_output_filename(plan)
     return response
 
 
 def _may_access_sheet_plan(user, plan):
     return _may_access_owner(user, plan.created_by_id)
+
+
+def _cnc_output_filename(plan):
+    """Unified Selvi download name (one shared logic, see cutting.filenames)."""
+    from cutting.filenames import cnc_program_number, output_filename, sheet_plan_order_numbers
+    return output_filename(sheet_plan_order_numbers(plan), cnc_program_number(plan), 'CNC', 'nc')
 
 
 def _may_access_owner(user, owner_id):

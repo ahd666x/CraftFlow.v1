@@ -839,7 +839,7 @@ class StockMigrationPreservationTests(TransactionTestCase):
 
 
 class PhaseBNestingEngineTests(SimpleTestCase):
-    """فاز B — موتورهای گیلوتین/اسکایلاین، مقایسه، رگه، سربر و ترتیب برش."""
+    """فاز B — موتورهای گیلوتین/اسکایلاین، مقایسه، رگه، Trim و ترتیب برش."""
 
     def test_guillotine_places_all_inside_usable_area(self):
         stock = [{'stock_id': 1, 'width': 1000, 'height': 800, 'is_offcut': False}]
@@ -994,7 +994,7 @@ class PhaseBPlanFlowTests(TestCase):
         detail = self.client.get(reverse('cutting:plan_detail', args=[plan.pk]))
         self.assertContains(detail, 'class="cut-map"')
         self.assertNotContains(detail, 'data-cut-sim')
-        self.assertContains(detail, 'قفسه‌ای FFDH')
+        self.assertContains(detail, 'Shelf (FFDH)')
 
     def test_planner_offers_engine_choices_and_defaults_are_safe(self):
         planner = self.client.get(reverse('cutting:planner'))

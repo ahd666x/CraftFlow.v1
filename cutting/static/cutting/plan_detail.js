@@ -29,7 +29,7 @@
     dots.filter(dot => dot.dataset.sheetPk === String(sheetId)).forEach(dot => {
       dot.classList.remove('outcome-none', 'outcome-reserved', 'outcome-used', 'outcome-untouched', 'outcome-scrapped');
       dot.classList.add(`outcome-${value}`);
-      const labels = { none: 'ثبت‌نشده', used: 'مصرف‌شده', untouched: 'دست‌نخورده', scrapped: 'اسقاط' };
+      const labels = { none: 'ثبت‌نشده', used: 'مصرف‌شده', untouched: 'دست‌نخورده', scrapped: 'ضایعات' };
       dot.title = `ورق ${dot.textContent.trim()} — ${labels[value] || 'ثبت‌نشده'}`;
     });
   }
@@ -177,7 +177,7 @@
     }, 0);
     const pieces = panels.filter(panel => outcomeOf(panel.dataset.sheetPk) === 'used')
       .reduce((sum, panel) => sum + number(panel.dataset.pieceCount), 0);
-    const summary = `${fmt(used + scrapped)} ورق از انبار کسر می‌شود (${fmt(used)} مصرف‌شده، ${fmt(scrapped)} اسقاط) · ${fmt(untouched)} ورق دست‌نخورده برمی‌گردد · ${fmt(offcuts)} پرت واقعی افزوده می‌شود · ${fmt(pieces)} قطعه تکمیل می‌شود`;
+    const summary = `${fmt(used + scrapped)} ورق از انبار کسر می‌شود (${fmt(used)} مصرف‌شده، ${fmt(scrapped)} ضایعات) · ${fmt(untouched)} ورق دست‌نخورده برمی‌گردد · ${fmt(offcuts)} پرت واقعی افزوده می‌شود · ${fmt(pieces)} قطعه تکمیل می‌شود`;
     const result = document.getElementById('result-summary');
     if (result) {
       result.textContent = chosen.length === groups.length
@@ -268,7 +268,7 @@
   function renderSummaryTable(summary) {
     const rows = [
       ['مصرف‌شده', summary.used],
-      ['اسقاط', summary.scrapped],
+      ['ضایعات', summary.scrapped],
       ['برگشت به انبار', summary.untouched],
       ['پرت جدید', summary.offcuts],
       ['قطعه تکمیل‌شده', summary.pieces]

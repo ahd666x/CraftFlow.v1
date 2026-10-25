@@ -51,7 +51,7 @@
       const estimate = item.estimated_sheets === null ? 'نامشخص' : fmt(item.estimated_sheets);
       const basis = item.estimate_is_exact ? 'بر پایه چیدمان الگوریتم' : 'تقریبی';
       const extra = item.estimated_additional_sheets === null ? '—' : fmt(item.estimated_additional_sheets);
-      card.innerHTML = `<div class="preview-material-heading"><b>${esc(item.name)} · ${esc(item.thickness)}</b><span class="num">${fmt(item.piece_count)} قطعه</span>${badge}</div>
+      card.innerHTML = `<div class="preview-material-heading"><b>${esc(item.name)}</b><span class="num">${fmt(item.piece_count)} قطعه</span>${badge}</div>
         <details class="pm-details"><summary>جزئیات</summary>
           <div class="small mt-2">مساحت لازم: ${fmt(item.required_area_m2)} m²</div>
           <div class="small">ورق تخمینی: <b>${estimate}</b> <span class="text-muted">(${basis})</span></div>
@@ -89,7 +89,7 @@
       verdict.className = 'preview-verdict neutral';
       verdict.textContent = 'سفارشی انتخاب نشده';
     } else if (shortages.length) {
-      const names = shortages.map(item => `${item.name} ${item.thickness}mm`).join('، ');
+      const names = shortages.map(item => item.name).join('، ');
       verdict.className = 'preview-verdict bad';
       verdict.innerHTML = `✘ کمبود: ${esc(names)} <a href="${form.dataset.stockUrl}">ثبت موجودی</a>`;
     } else if (issues.length) {

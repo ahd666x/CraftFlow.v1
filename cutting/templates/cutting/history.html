@@ -17,7 +17,7 @@
   {% include 'cutting/_messages.html' %}
   <form method="get" class="kpi-line" aria-label="فیلتر رویدادها">
     <span class="input-search"><i class="bi bi-search" aria-hidden="true"></i><input id="history-search" class="form-control form-control-sm" name="q" value="{{ query }}" placeholder="رویداد، کاربر، برنامه، ابعاد" aria-label="جست‌وجو"></span>
-    <select class="form-select form-select-sm" id="history-material" name="material" aria-label="متریال" style="width:auto"><option value="">همهٔ متریال‌ها</option>{% for m in materials %}<option value="{{ m.id }}" {% if request.GET.material == m.id|stringformat:'s' %}selected{% endif %}>{{ m.name }} — {{ m.thickness }} mm</option>{% endfor %}</select>
+    <select class="form-select form-select-sm" id="history-material" name="material" aria-label="متریال" style="width:auto"><option value="">همهٔ متریال‌ها</option>{% regroup materials by thickness as mat_groups %}{% for group in mat_groups %}<optgroup label="ضخامت {{ group.grouper }} mm">{% for m in group.list %}<option value="{{ m.id }}" {% if request.GET.material == m.id|stringformat:'s' %}selected{% endif %}>{{ m.name }}</option>{% endfor %}</optgroup>{% endfor %}</select>
     <select class="form-select form-select-sm" id="history-event" name="event_type" aria-label="نوع رویداد" style="width:auto"><option value="">همهٔ رویدادها</option>{% for value,label in event_types %}<option value="{{ value }}" {% if event_type_filter == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
     <input class="form-control form-control-sm" type="text" inputmode="numeric" id="date-from" name="date_from" value="{{ request.GET.date_from }}" placeholder="از 1405/07/25" aria-label="از تاریخ" title="تاریخ شمسی 1405/07/25 یا میلادی YYYY-MM-DD" style="width:8.5rem">
     <input class="form-control form-control-sm" type="text" inputmode="numeric" id="date-to" name="date_to" value="{{ request.GET.date_to }}" placeholder="تا 1405/07/25" aria-label="تا تاریخ" title="تاریخ شمسی 1405/07/25 یا میلادی YYYY-MM-DD" style="width:8.5rem">
@@ -28,7 +28,7 @@
       {% for e in page %}
         {% capture row_cells %}
           <td class="num text-nowrap" data-label="زمان">{{ e.created_at_jalali }}</td>
-          <td data-label="رویداد">{% if e.event_type == 'consume' %}<span class="badge-status is-ok">مصرف</span>{% elif e.event_type == 'offcut' %}<span class="badge-status is-warn">پرت</span>{% elif e.event_type == 'receive' %}<span class="badge-status is-info">ورود</span>{% elif e.event_type == 'scrap' %}<span class="badge-status is-bad">اسقاط</span>{% else %}{{ e.get_event_type_display }}{% endif %}</td>
+          <td data-label="رویداد">{% if e.event_type == 'consume' %}<span class="badge-status is-ok">مصرف</span>{% elif e.event_type == 'offcut' %}<span class="badge-status is-warn">پرت</span>{% elif e.event_type == 'receive' %}<span class="badge-status is-info">ورود</span>{% elif e.event_type == 'scrap' %}<span class="badge-status is-bad">ضایعات</span>{% else %}{{ e.get_event_type_display }}{% endif %}</td>
           <td data-label="متریال">{{ e.material.name }} — <span class="num">{{ e.width }}×{{ e.height }}</span> mm</td>
           <td class="td-num num" data-label="تغییر">{{ e.quantity_delta }}</td>
         {% endcapture %}

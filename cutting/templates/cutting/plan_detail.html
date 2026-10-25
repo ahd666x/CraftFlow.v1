@@ -9,7 +9,8 @@
   {# ── سربرگ تک‌خطی: نوار ایستگاه + شناسه + وضعیت + KPI + اقدامات ── #}
   <header class="page-head">
     {% include 'cutting/_station_bar.html' %}
-    <span class="head-id num">برنامه #{{ plan.pk }}</span>
+    <span class="head-id num">شماره برنامه: {{ plan.pk }}</span>
+    {% if plan.orders.all %}<span class="head-id num help" title="شماره سفارش">شماره سفارش: {% for o in plan.orders.all %}{{ o.number|default:o.pk }}{% if not forloop.last %}، {% endif %}{% endfor %}</span>{% endif %}
     <span class="badge-status {% if plan.status == 'planned' %}is-info{% elif plan.status == 'cut' %}is-ok{% elif plan.status == 'partial' %}is-warn{% else %}is-mute{% endif %}"><i class="dot"></i>{{ plan.get_status_display }}</span>
     <div class="kpi-line border-0" aria-label="خلاصهٔ برنامه">
       <div class="kpi"><b class="num">{{ plan_metrics.sheet_count }}</b><span>ورق</span></div>
@@ -24,7 +25,7 @@
       <details class="detail-pop">
         <summary title="سفارش‌ها، تیغه، سیاست، الگوریتم، مقایسه و راهنما"><i class="bi bi-info-circle" aria-hidden="true"></i><span class="visually-hidden">جزئیات برنامه</span></summary>
         <div class="detail-pop-panel plan-pop">
-          {% if plan.orders.all %}<div><b>سفارش‌ها:</b> {% for o in plan.orders.all %}<span class="num">#{{ o.pk }}{% if o.number %} · {{ o.number }}{% endif %}</span>{% if not forloop.last %}، {% endif %}{% endfor %}</div>{% endif %}
+          {% if plan.orders.all %}<div><b>شماره سفارش:</b> {% for o in plan.orders.all %}<span class="num">{{ o.number|default:o.pk }}{% if o.number %} · #{{ o.pk }}{% endif %}</span>{% if not forloop.last %}، {% endif %}{% endfor %}</div>{% endif %}
           <div><b>تیغه:</b> <span class="num">{{ plan.plan_data.kerf|default:'4' }} mm</span></div>
           <div><b>سیاست مصرف:</b> {{ plan.get_stock_policy_display }}</div>
           <div><b>الگوریتم:</b> {{ plan.get_algorithm_display }}</div>
@@ -104,7 +105,7 @@
             <div class="map-fit">
               <svg class="cut-map" viewBox="0 0 {{ s.sheet.width }} {{ s.sheet.height }}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="نقشه برش ورق {{ s.sheet.width }} در {{ s.sheet.height }} میلی‌متر">
                 <rect class="sheet-bg" x="0" y="0" width="{{ s.sheet.width }}" height="{{ s.sheet.height }}" rx="6"/>
-                {% if s.trim_mm %}<rect class="trim-strip" x="0" y="0" width="{{ s.sheet.width }}" height="{{ s.trim_mm }}"/><text class="trim-label" x="24" y="{{ s.trim_mm }}" font-size="{{ s.trim_label_font }}" dominant-baseline="hanging">سربر {{ s.trim_mm }}</text>{% endif %}
+                {% if s.trim_mm %}<rect class="trim-strip" x="0" y="0" width="{{ s.sheet.width }}" height="{{ s.trim_mm }}"/><text class="trim-label" x="24" y="{{ s.trim_mm }}" font-size="{{ s.trim_label_font }}" dominant-baseline="hanging">Trim {{ s.trim_mm }}</text>{% endif %}
                 <g>{% for part in s.parts %}<g class="cut-piece {% if part.used %}used{% elif part.scrapped %}scrapped{% endif %}"><title>{{ part.label }} — {{ part.width }}×{{ part.height }} mm</title><rect class="piece-rect" x="{{ part.x }}" y="{{ part.y }}" width="{{ part.width }}" height="{{ part.height }}"/>{% if part.vtext %}<g transform="rotate(90 {{ part.cx }} {{ part.cy }})"><text class="piece-no num" x="{{ part.cx }}" y="{{ part.cy }}" dy="{{ part.dy1 }}" font-size="{{ part.font }}" dominant-baseline="central">{{ part.no }}</text>{% if part.show_dims %}<text class="piece-dims num" x="{{ part.cx }}" y="{{ part.cy }}" dy="{{ part.dy2 }}" font-size="{{ part.dim_font }}" dominant-baseline="central">{{ part.dims }}</text>{% endif %}</g>{% else %}<text class="piece-no num" x="{{ part.cx }}" y="{{ part.cy }}" dy="{{ part.dy1 }}" font-size="{{ part.font }}" dominant-baseline="central">{{ part.no }}</text>{% if part.show_dims %}<text class="piece-dims num" x="{{ part.cx }}" y="{{ part.cy }}" dy="{{ part.dy2 }}" font-size="{{ part.dim_font }}" dominant-baseline="central">{{ part.dims }}</text>{% endif %}{% endif %}</g>{% endfor %}
                 {% for rem in s.expected_offcuts %}{% if rem.x is not None %}<rect class="offcut-box" x="{{ rem.x }}" y="{{ rem.y }}" width="{{ rem.width }}" height="{{ rem.height }}"><title>پرت تخمینی {{ rem.width }}×{{ rem.height }}</title></rect>{% endif %}{% endfor %}</g>
               </svg>
@@ -127,7 +128,7 @@
       <div class="outcome-radios" role="radiogroup" aria-label="نتیجهٔ واقعی ورق">
         <label class="out-opt opt-used"><input type="radio" class="cut-outcome" name="outcome_{{ rec.pk }}" value="used" data-sheet="{{ rec.pk }}" required>مصرف</label>
         <label class="out-opt opt-untouched"><input type="radio" class="cut-outcome" name="outcome_{{ rec.pk }}" value="untouched" data-sheet="{{ rec.pk }}">دست‌نخورده</label>
-        <label class="out-opt opt-scrapped"><input type="radio" class="cut-outcome" name="outcome_{{ rec.pk }}" value="scrapped" data-sheet="{{ rec.pk }}">اسقاط</label>
+        <label class="out-opt opt-scrapped"><input type="radio" class="cut-outcome" name="outcome_{{ rec.pk }}" value="scrapped" data-sheet="{{ rec.pk }}">ضایعات</label>
       </div>
     </fieldset>
     {% endif %}{% endwith %}{% endfor %}{% endfor %}
@@ -136,7 +137,7 @@
       <span title="ثبت‌نشده"><i class="bi bi-circle" aria-hidden="true"></i><b data-count="reserved" class="num">{{ sheet_progress.reserved }}</b></span>
       <span title="مصرف‌شده"><i class="bi bi-check-lg" aria-hidden="true"></i><b data-count="used" class="num">{{ sheet_progress.used }}</b></span>
       <span title="دست‌نخورده"><i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i><b data-count="untouched" class="num">{{ sheet_progress.untouched }}</b></span>
-      <span title="اسقاط"><i class="bi bi-x-lg" aria-hidden="true"></i><b data-count="scrapped" class="num">{{ sheet_progress.scrapped }}</b></span>
+      <span title="ضایعات"><i class="bi bi-x-lg" aria-hidden="true"></i><b data-count="scrapped" class="num">{{ sheet_progress.scrapped }}</b></span>
     </span>
     <span class="rb-progress">
       <span id="sheet-progress-label">{{ sheet_progress.completed }} از {{ sheet_progress.total }} ورق ثبت شده</span>
@@ -157,7 +158,7 @@
     {% for r in summaries %}{% for s in r.sheets %}{% with rec=s.sheet_record %}{% if rec %}
     <div class="remnant-fields {% if not forloop.parentloop.first or not forloop.first %}d-none{% endif %}" id="remnants-{{ rec.pk }}" data-bar-group="{{ rec.pk }}" data-sheet="{{ rec.pk }}" data-width="{{ rec.width }}" data-height="{{ rec.height }}" data-expected="{{ s.expected_offcuts_json }}">
       <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2"><b class="small">ورق <span class="remnant-sheet-no num"></span></b><span class="badge-status remnant-area-total">0 m²</span></div>
-      <input class="form-control form-control-sm mb-2" id="note-{{ rec.pk }}" name="note_{{ rec.pk }}" maxlength="255" placeholder="یادداشت (برای اسقاط الزامی)" aria-label="یادداشت نتیجه — برای اسقاط الزامی">
+      <input class="form-control form-control-sm mb-2" id="note-{{ rec.pk }}" name="note_{{ rec.pk }}" maxlength="255" placeholder="یادداشت (برای ضایعات الزامی)" aria-label="یادداشت نتیجه — برای ضایعات الزامی">
       <div class="remnant-rows"><div class="remnant-row" data-remnant-row><span class="remnant-number">پرت 1</span><div><input class="form-control form-control-sm" type="number" inputmode="decimal" step="0.1" min="0.1" name="rem_{{ rec.pk }}_1_width" data-dimension="width" placeholder="اندازه‌گیری شود" aria-label="عرض پرت ۱ (mm)"></div><div><input class="form-control form-control-sm" type="number" inputmode="decimal" step="0.1" min="0.1" name="rem_{{ rec.pk }}_1_height" data-dimension="height" placeholder="اندازه‌گیری شود" aria-label="طول پرت ۱ (mm)"></div><button type="button" class="btn btn-outline-danger icon-btn remove-remnant" aria-label="حذف پرت" style="width:32px;height:32px;min-height:32px"><i class="bi bi-x-lg" aria-hidden="true"></i></button></div></div>
       <div class="d-flex flex-wrap gap-2 mt-2"><button type="button" class="btn btn-sm btn-outline-primary add-remnant" data-target="remnants-{{ rec.pk }}">افزودن پرت</button><button type="button" class="btn btn-sm btn-outline-secondary fill-predicted-offcuts" data-target="remnants-{{ rec.pk }}" title="ورود خودکار پرت‌های تخمینی نقشه — پیش از ثبت اندازه‌گیری کنید">از پیش‌بینی</button></div>
       <div class="small text-danger remnant-validation mt-1" aria-live="polite"></div>

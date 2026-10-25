@@ -63,6 +63,25 @@ def _rep_name(order):
     return user.get_full_name() or user.username
 
 
+def _category_names(item_ids):
+    """{item_id: real product category name} for display ordering (category first)."""
+    from product.models import OrderItem
+    ids = {int(item_id) for item_id in item_ids if item_id}
+    if not ids:
+        return {}
+    rows = OrderItem.objects.filter(pk__in=ids).select_related('product__category')
+    return {
+        row.pk: (row.product.category.name if row.product_id and row.product.category_id else '')
+        for row in rows
+    }
+
+
+def _attach_category(row, category_by_item):
+    """Attach ``category_name`` so the UI can render «دسته محصول» before the name."""
+    row['category_name'] = category_by_item.get(row.get('item_id'), '')
+    return row
+
+
 def _workspace_task_filter(prefix=''):
     """Tasks the workspace cares about: pending cut tasks with work left
     (raw or overridden quantity) plus anything an operator already touched.
@@ -162,14 +181,16 @@ def workspace_order(request, order_id):
     order = get_object_or_404(Order.objects.select_related('customer', 'user'), pk=order_id)
     tasks = list(workspace_task_queryset([order.pk]))
     specs = effective_specs(tasks)
-    items = {item.pk: item for item in order.items.select_related('product').prefetch_related('ordercolor')}
+    items = {item.pk: item for item in order.items.select_related('product__category').prefetch_related('ordercolor')}
     item_rows = {}
     for spec in specs:
         item_id = spec.item_id
         if item_id not in items:
             continue
+        product = items[item_id].product
         row = item_rows.setdefault(item_id, {
             'id': item_id,
+            'category_name': (product.category.name if product and product.category_id else ''),
             'product_name': items[item_id].product.name,
             'colors': items[item_id].color_summary,
             'size': items[item_id].size_display or '',
@@ -297,8 +318,12 @@ def workspace_parts(request, order_id):
     except (TypeError, ValueError):
         page_size = 50
     page = Paginator(specs, page_size).get_page(request.GET.get('page'))
+    rows = [_spec_row(spec) for spec in page.object_list]
+    category_by_item = _category_names(spec.item_id for spec in page.object_list)
+    for row in rows:
+        _attach_category(row, category_by_item)
     return _ok({
-        'rows': [_spec_row(spec) for spec in page.object_list],
+        'rows': rows,
         'count': len(specs),
         'page': page.number,
         'pages': Paginator(specs, page_size).num_pages,
@@ -308,7 +333,9 @@ def workspace_parts(request, order_id):
 
 def _locked_task_response(task):
     spec = effective_spec(task)
-    return _spec_row(spec)
+    row = _spec_row(spec)
+    _attach_category(row, _category_names([spec.item_id]))
+    return row
 
 
 def _version_guard(request, task, data):

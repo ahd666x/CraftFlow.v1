@@ -111,9 +111,11 @@ body.cutting-station .main-content{padding:0}
 .station .icon-btn .bi{font-size:1.05rem}
 .station .btn.icon-btn{--bs-btn-padding-x:0;--bs-btn-padding-y:0}
 
-/* ---------- فرم‌ها ---------- */
+/* ---------- فرم‌ها (فشرده و یکپارچه: ارتفاع ۳۳px، فیلد عددی کوتاه) ---------- */
 .station .form-label{color:var(--st-muted);font-size:12.5px;font-weight:700;margin-bottom:.25rem}
-.station .form-control,.station .form-select{border-color:#dbe3ec;border-radius:var(--st-radius);min-height:38px;font-size:13.5px;color:var(--st-ink);background:var(--st-panel)}
+.station .form-control,.station .form-select{border-color:#dbe3ec;border-radius:var(--st-radius);min-height:33px;font-size:13.5px;color:var(--st-ink);background:var(--st-panel)}
+.station .form-control-sm,.station .form-select-sm{min-height:28px;padding:.18rem .45rem;font-size:12.5px;border-radius:calc(var(--st-radius) - 2px)}
+.station .form-control[type="number"]{max-width:10rem}
 .station .form-control::placeholder{color:#a8b3c1}
 .station .form-control:focus,.station .form-select:focus{border-color:var(--st-accent);box-shadow:0 0 0 3px rgba(37,99,235,.12)}
 .station .form-check-input{border-color:#cbd5e1;width:2.75rem;height:1.4rem;flex:none}
@@ -188,6 +190,7 @@ tr.row-expand-details>td{background:var(--st-sunken);border-bottom:1px solid var
 .queue-row.is-selected .q-check input{background-color:var(--st-accent);border-color:var(--st-accent)}
 .queue-row .q-order b{font-weight:800}
 .queue-row .q-order .q-cust{display:block;font-size:12px;color:var(--st-muted);max-width:16rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.queue-row .q-order .q-rep{display:block;font-size:11px;color:var(--st-faint);max-width:16rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .queue-row .q-count{text-align:left;font-variant-numeric:tabular-nums;font-weight:700}
 .queue-row .q-count small{display:block;font-size:11.5px;color:var(--st-faint);font-weight:400}
 .queue-row .q-status{text-align:left}
@@ -202,6 +205,10 @@ tr.row-expand-details>td{background:var(--st-sunken);border-bottom:1px solid var
 .ws-part-table td{border:0;border-bottom:1px solid var(--st-line-soft);height:48px;padding:.35rem .55rem;background:transparent!important}
 .ws-part-table .cell-input{min-height:34px;font-size:13px;padding:.15rem .45rem;text-align:left;direction:ltr;font-variant-numeric:tabular-nums}
 .ws-part-table .cell-material{min-width:9rem}
+/* بارکد و نوار لبه — ستون مستقیم جدول قطعات (بدون نیاز به بازکردن ردیف) */
+.ws-part-table .ws-barcode-cell{font-size:12px;max-width:9rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ws-part-table .ws-edgeband-cell{max-width:11rem}
+.ws-edge-mini{display:inline-block;font-size:11px;border:1px solid var(--st-line);border-radius:999px;padding:0 .4rem;line-height:1.6;background:var(--st-panel);color:var(--st-muted);max-width:6.5rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle}
 .ws-part-table tr.ws-row-locked td{color:var(--st-muted)}
 .ws-part-table tr.ws-row-locked .cell-input{opacity:.6;background:var(--st-sunken)}
 .ws-chips{display:flex;flex-wrap:wrap;gap:var(--sp-1)}

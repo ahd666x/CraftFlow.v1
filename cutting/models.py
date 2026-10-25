@@ -80,9 +80,9 @@ class CutPlan(models.Model):
         ('priority', 'اولویت دستی موجودی (عدد کمتر = زودتر مصرف)'),
     ]
     ALGORITHMS = [
-        ('shelf', 'قفسه‌ای FFDH (پایه)'),
-        ('guillotine', 'گیلوتین SAS'),
-        ('skyline', 'اسکایلاین Bottom-Left'),
+        ('shelf', 'Shelf (FFDH)'),
+        ('guillotine', 'Guillotine (SAS)'),
+        ('skyline', 'Skyline (Bottom-Left)'),
     ]
     stock_policy = models.CharField(max_length=20, choices=STOCK_POLICIES, default='offcuts_first', verbose_name='سیاست مصرف موجودی')
     algorithm = models.CharField(max_length=20, choices=ALGORITHMS, default='shelf', verbose_name='الگوریتم چیدمان منتخب')

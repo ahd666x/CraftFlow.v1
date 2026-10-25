@@ -95,7 +95,7 @@ def expected_offcuts(layout, kerf=4, minimum=200, trim=0):
 def make_autocut(plan_id, material_rows, kerf=4):
     root = ET.Element(f'{{{NS}}}AutoCUT', {'ver': '500'})
     project = ET.SubElement(root, f'{{{NS}}}Project', {
-        'Name': f'CraftFlow-{plan_id}', 'Selected': '0', 'Update': '0', 'DefaultLevel': '0',
+        'Name': f'Selvi-{plan_id}', 'Selected': '0', 'Update': '0', 'DefaultLevel': '0',
         'UserFields': 'F2,F3,F4,F5,F26,F18,F19,F20,',
         'FieldLabels': 'TLGrain=دسته محصول,TLOrder=نام محصول,TLType=fcfffff,F2=نام قطعه,F3=بارکد,F4=نوار طول 1,F5=نوار طول 2,F26=نوار عرض 1,F18=نوار عرض 2,F19=تحویل به,F20=نام مشتری,',
     })

@@ -218,9 +218,9 @@
     }
     const name = prompt('نام الگو (مثلاً «کشش قطعهٔ t.16»):');
     if (!name || !name.trim()) return;
-    const RESIZE_MODE_FA = { equal: 'مساوی', proportional: 'متناسب', kerf: 'kerf', manual: 'دستی' };
+    const RESIZE_MODE_NAMES = { equal: 'Equal', proportional: 'Proportional', kerf: 'Kerf', manual: 'Manual' };
     const noteExtra = state.resizeOp
-      ? ` + تغییر طول ${CNC.sgn(state.resizeOp.delta)} (${RESIZE_MODE_FA[state.resizeOp.mode] || state.resizeOp.mode})`
+      ? ` + تغییر طول ${CNC.sgn(state.resizeOp.delta)} (${RESIZE_MODE_NAMES[state.resizeOp.mode] || state.resizeOp.mode})`
       : '';
     try {
       const res = await CNC.api.saveEditTemplate(name.trim(), edits,

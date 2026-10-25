@@ -144,9 +144,9 @@ def planner(request):
         try:
             trim = Decimal(request.POST.get('trim', '0') or '0')
             if not trim.is_finite() or trim < 0 or trim > 500 or trim.quantize(MM) != trim:
-                raise ValueError('سربر باید بین صفر تا ۵۰۰ میلی‌متر با حداکثر یک رقم اعشار باشد.')
+                raise ValueError('Trim باید بین صفر تا ۵۰۰ میلی‌متر با حداکثر یک رقم اعشار باشد.')
         except (InvalidOperation, ValueError) as exc:
-            messages.error(request, str(exc) if str(exc).startswith('سربر') else 'مقدار سربر معتبر نیست.')
+            messages.error(request, str(exc) if str(exc).startswith('Trim') else 'مقدار Trim معتبر نیست.')
             return redirect('cutting:planner')
         if not order_ids:
             messages.error(request, 'برای برنامه‌ریزی دست‌کم یک سفارش انتخاب کنید.'); return redirect('cutting:planner')
@@ -664,7 +664,7 @@ def plan_detail(request, plan_id):
     color_legend = [
         {'color': '#16a34a', 'label': 'قطعهٔ مصرف‌شده'},
         {'color': '#6666c8', 'label': 'در انتظار برش'},
-        {'color': '#e11d48', 'label': 'ورق اسقاطی'},
+        {'color': '#e11d48', 'label': 'ورق ضایعات'},
     ]
     total_sheet_area = Decimal('0')
     total_piece_area = Decimal('0')
@@ -804,8 +804,11 @@ def download_cut(request, plan_id):
                 status=409, content_type='text/plain; charset=utf-8',
             )
     payload = make_autocut(plan.pk, plan.plan_data.get('rows', []), Decimal(plan.plan_data.get('kerf', '4')))
+    from .filenames import cut_program_number, output_filename, plan_order_numbers
     response = HttpResponse(payload, content_type='application/xml; charset=utf-16')
-    response['Content-Disposition'] = f'attachment; filename="craftflow_cut_plan_{plan.pk}.CUT"'
+    response['Content-Disposition'] = 'attachment; filename="%s"' % output_filename(
+        plan_order_numbers(plan), cut_program_number(plan), 'CUT', 'CUT',
+    )
     return response
 
 
@@ -814,11 +817,11 @@ def _parse_sheet_result(request, sheet):
     # دست‌ساز بدون فیلد، ورق را مصرف‌شده و موجودی را کسر می‌کرد.
     outcome = request.POST.get(f'outcome_{sheet.pk}')
     if outcome is None:
-        raise ValueError('نتیجهٔ همهٔ ورق‌ها را مشخص کنید (مصرف شد / دست‌نخورده / اسقاط).')
+        raise ValueError('نتیجهٔ همهٔ ورق‌ها را مشخص کنید (مصرف شد / دست‌نخورده / ضایعات).')
     if outcome not in ('used', 'untouched', 'scrapped'):
         raise ValueError('نتیجه یکی از ورق‌ها معتبر نیست.')
     if outcome == 'scrapped' and not request.POST.get(f'note_{sheet.pk}', '').strip():
-        raise ValueError('برای اسقاط ورق، علت را در یادداشت همان ورق ثبت کنید.')
+        raise ValueError('برای ثبت ورق به‌عنوان ضایعات، علت را در یادداشت همان ورق ثبت کنید.')
     if outcome != 'used':
         return outcome, []
     remnants = []
@@ -1357,7 +1360,11 @@ def stock_history(request):
     params.pop('page', None)
     return render(request, 'cutting/history.html', {
         'page': page, 'materials': Material.objects.all().order_by('name'),
-        'event_types': SheetStockEvent.TYPES, 'event_type_filter': event_type,
+        # برچسب نمایشی «ضایعات» در UI؛ مقادیر ذخیره‌شدهٔ enum دست‌نخورده می‌مانند.
+        'event_types': [
+            (value, 'ضایعات' if value == 'scrap' else label)
+            for value, label in SheetStockEvent.TYPES
+        ], 'event_type_filter': event_type,
         'query': query, 'pagination_query': params.urlencode(),
     })
 

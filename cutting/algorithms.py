@@ -21,9 +21,9 @@ from .optimizer import stock_sort_key
 NOT_ENOUGH_SHEET = "برای قطعه «{label}» ({width}×{height}) ورق قابل استفاده/موجودی کافی نیست."
 
 ENGINE_LABELS = {
-    'shelf': 'قفسه‌ای FFDH (پایه)',
-    'guillotine': 'گیلوتین SAS',
-    'skyline': 'اسکایلاین Bottom-Left',
+    'shelf': 'Shelf (FFDH)',
+    'guillotine': 'Guillotine (SAS)',
+    'skyline': 'Skyline (Bottom-Left)',
 }
 ENGINE_ORDER = ('shelf', 'guillotine', 'skyline')
 

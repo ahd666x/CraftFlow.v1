@@ -16,13 +16,13 @@
     <form method="get" class="input-search ms-auto"><i class="bi bi-search" aria-hidden="true"></i><input type="hidden" name="status" value="{{ status_filter }}"><input class="form-control form-control-sm" id="plan-search" name="q" value="{{ query }}" placeholder="جست‌وجو" aria-label="جست‌وجوی برنامه‌ها"></form>
   </div>
   <div class="px-3 py-3">
-    <div class="card"><div class="table-responsive"><table class="table table-hover align-middle table-min table-cards mb-0"><thead><tr><th>برنامه</th><th>وضعیت</th><th>سفارش‌ها</th><th class="td-num">ورق · قطعه</th><th><span class="visually-hidden">اقدام</span></th></tr></thead><tbody>
+    <div class="card"><div class="table-responsive"><table class="table table-hover align-middle table-min table-cards mb-0"><thead><tr><th>شماره برنامه</th><th>وضعیت</th><th>شماره سفارش</th><th class="td-num">ورق · قطعه</th><th><span class="visually-hidden">اقدام</span></th></tr></thead><tbody>
     {% for p in page %}
     {% url 'cutting:plan_detail' p.pk as plan_detail_url %}
       {% capture row_cells %}
-        <td class="td-lead num" data-label="برنامه">#{{ p.pk }}</td>
+        <td class="td-lead num" data-label="شماره برنامه">#{{ p.pk }}</td>
         <td data-label="وضعیت"><span class="badge-status {% if p.status == 'planned' %}is-info{% elif p.status == 'cut' %}is-ok{% elif p.status == 'partial' %}is-warn{% else %}is-mute{% endif %}">{{ p.get_status_display }}</span></td>
-        <td data-label="سفارش‌ها">{% for order in p.orders.all|slice:':2' %}<span class="badge-status num" title="{{ order.customer.name }}">#{{ order.pk }}</span> {% endfor %}{% if p.orders.all|length > 2 %}<span class="badge-status">+{{ p.orders.all|length|add:'-2' }}</span>{% endif %}{% if not p.orders.all %}—{% endif %}</td>
+        <td data-label="شماره سفارش">{% for order in p.orders.all|slice:':2' %}<span class="badge-status num" title="مشتری: {{ order.customer.name }}">{{ order.number|default:order.pk }}</span> {% endfor %}{% if p.orders.all|length > 2 %}<span class="badge-status">+{{ p.orders.all|length|add:'-2' }}</span>{% endif %}{% if not p.orders.all %}—{% endif %}</td>
         <td class="td-num num" data-label="ورق · قطعه">{{ p.sheet_count }} · {{ p.part_count }}</td>
       {% endcapture %}
       {% capture row_details %}
