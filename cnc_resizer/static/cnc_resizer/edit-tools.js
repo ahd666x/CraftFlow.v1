@@ -1093,9 +1093,9 @@
     const hint = document.getElementById('chainStretchSelection');
     if (!hint) return;
     const parts = selectedChainParts();
-    hint.textContent = parts.length >= 2
-      ? `انتخاب شده: ${parts.map((part) => CNC.partName(part)).join(' ← ')}؛ ترتیب نهایی با محور و مختصات قطعات تعیین می‌شود.`
-      : 'حداقل دو قطعه را با Shift+کلیک انتخاب کنید.';
+    if (parts.length < 2) { hint.hidden = true; hint.textContent = ''; return; }
+    hint.hidden = false;
+    hint.textContent = `انتخاب: ${parts.map((part) => CNC.partName(part)).join(' ← ')}`;
   }
   document.getElementById('chainStretchApply')?.addEventListener('click', () => {
     if (partEditBlocked()) return;

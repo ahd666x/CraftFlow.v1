@@ -4,9 +4,8 @@
 {% block body_class %}admin-panel cutting-station{% endblock %}
 {% block content %}
 <div class="station" dir="rtl">
-  {% include 'cutting/_station_bar.html' %}
   <header class="page-head">
-    <h1>اندازه‌های استاندارد</h1>
+    {% include 'cutting/_station_bar.html' %}
     <nav class="seg" aria-label="بخش‌های تنظیمات">
       <a class="seg-opt" aria-current="page" href="{% url 'cutting:size_specs' %}">اندازه‌ها</a>
       {% if can_manage %}<a class="seg-opt" href="{% url 'cutting:policy' %}">تیغه</a>{% endif %}

@@ -40,8 +40,7 @@
 
 <div id="emptyState">
   <div class="in">
-    <b>فایل CNC را باز کنید</b>
-    <div class="toolbtns" style="justify-content:center;margin-top:10px">
+    <div class="toolbtns" style="justify-content:center;margin:0">
       <button type="button" id="emptyOpenFile" class="primary">📂 بازکردن فایل</button>
     </div>
   </div>
@@ -86,22 +85,19 @@
   </button>
 </nav>
 
-<aside id="inspector" class="fpanel" aria-live="polite" aria-label="بازرس شیء انتخاب‌شده"></aside>
+<aside id="inspector" class="fpanel" hidden aria-live="polite" aria-label="بازرس شیء انتخاب‌شده"></aside>
 
 <section id="filePanel" class="fpanel" hidden aria-label="فایل CNC">
-  <h2>فایل CNC</h2>
   <div class="drop" id="drop" tabindex="0" role="button" aria-label="انتخاب فایل cnc">
     <b id="dropTitle">انتخاب فایل .cnc</b>
     <div class="fname" id="fname"></div>
   </div>
   <input type="file" id="file" accept=".cnc,.nc,.tap,.txt,.gcode,text/plain" hidden>
-  <b style="display:block;font-size:11.5px;color:var(--muted);margin:10px 0 4px">یا از آرشیو</b>
-  <ul class="mlist" id="archiveList"></ul>
+  <ul class="mlist" id="archiveList" style="margin-top:10px;border-top:1px solid var(--line);padding-top:8px"></ul>
   <a href="{{ sheet_plans_url }}" style="font-size:12px">برنامه‌های ورق CNC ←</a>
 </section>
 
 <section id="toolsPanel" class="fpanel" hidden aria-label="میز ابزار">
-  <h2>میز ابزار (پارکینگ T)</h2>
   <table>
     <thead><tr><th>T</th><th>نام ابزار</th><th>قطر (mm)</th></tr></thead>
     <tbody id="toolTableBody"></tbody>
@@ -110,14 +106,12 @@
     <button type="button" id="saveToolsBtn" class="primary">💾 ذخیرهٔ میز</button>
     <button type="button" id="saveToolSetBtn">ذخیره به‌عنوان ست…</button>
   </div>
-  <b style="display:block;font-size:11.5px;color:var(--muted);margin:10px 0 4px">ست‌های آماده</b>
-  <ul class="mlist" id="toolSetList"></ul>
-  <b style="display:block;font-size:11.5px;color:var(--muted);margin:12px 0 4px">قیدهای دستگاه</b>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
-    <label style="font-size:11.5px;color:var(--muted)">X min <input type="number" id="machineXMin" step="1"></label>
-    <label style="font-size:11.5px;color:var(--muted)">X max <input type="number" id="machineXMax" step="1"></label>
-    <label style="font-size:11.5px;color:var(--muted)">Y min <input type="number" id="machineYMin" step="1"></label>
-    <label style="font-size:11.5px;color:var(--muted)">Y max <input type="number" id="machineYMax" step="1"></label>
+  <ul class="mlist" id="toolSetList" style="margin-top:10px;border-top:1px solid var(--line);padding-top:8px"></ul>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px;border-top:1px solid var(--line);padding-top:8px">
+    <input type="number" id="machineXMin" step="1" placeholder="X min" aria-label="X min">
+    <input type="number" id="machineXMax" step="1" placeholder="X max" aria-label="X max">
+    <input type="number" id="machineYMin" step="1" placeholder="Y min" aria-label="Y min">
+    <input type="number" id="machineYMax" step="1" placeholder="Y max" aria-label="Y max">
   </div>
   <p class="statusline" id="toolStatus"></p>
 </section>
@@ -127,7 +121,7 @@
 
 <section id="comparePanel" class="fpanel" hidden aria-label="مقایسهٔ قبل/بعد">
   <div class="cmp-head">
-    <h2>مقایسهٔ قبل/بعد</h2>
+    <span></span>
     <button type="button" id="cmpClose" class="cmp-close" title="بستن" aria-label="بستن مقایسه">✕</button>
   </div>
   <div class="cmp-grid">
@@ -144,14 +138,11 @@
 </section>
 
 <section id="resizePanel" class="fpanel" hidden aria-label="تغییر طول فایل">
-  <h2>تغییر طول فایل (خودکار)</h2>
-  <hr>
-  <h3>کشش پارامتریک زنجیرهٔ قطعات</h3>
   <div class="resgrid">
-    <label>محور <select id="chainStretchAxis"><option value="y" selected>Y — ارتفاع</option><option value="x">X — عرض</option></select></label>
-    <label>دلتا برای هر قطعه (mm) <input type="number" id="chainStretchDelta" value="100" step="1"></label>
+    <select id="chainStretchAxis" aria-label="محور کشش"><option value="y" selected>Y — ارتفاع</option><option value="x">X — عرض</option></select>
+    <input type="number" id="chainStretchDelta" value="100" step="1" placeholder="دلتا (mm)" aria-label="دلتا برای هر قطعه (mm)">
   </div>
-  <p class="statusline" id="chainStretchSelection">حداقل دو قطعه را با Shift+کلیک انتخاب کنید.</p>
+  <p class="statusline" id="chainStretchSelection" hidden></p>
   <div class="toolbtns"><button type="button" id="chainStretchApply" class="primary">اعمال کشش زنجیره‌ای</button></div>
   <hr>
   <div class="resradios" id="resizeModes">
@@ -165,8 +156,8 @@
       <span>خم‌کاری kerf (شیار پیوسته)</span></label>
   </div>
   <div class="resgrid">
-    <label>تغییر کل (mm) <input type="number" id="resizeDelta" value="0" step="1"></label>
-    <label>طول نهایی (mm) <input type="number" id="resizeTarget" step="1" placeholder="—"></label>
+    <input type="number" id="resizeDelta" value="0" step="1" placeholder="تغییر کل (mm)" aria-label="تغییر کل (mm)">
+    <input type="number" id="resizeTarget" step="1" placeholder="طول نهایی (mm)" aria-label="طول نهایی (mm)">
   </div>
   <div class="reschips" id="resizeChips">
     <button type="button" data-d="-100">−۱۰۰</button>
@@ -179,7 +170,6 @@
   </div>
   <label class="laycheck"><input type="checkbox" id="resizeSym" checked> تقارن آینه‌ای</label>
   <p class="statusline" id="resizePatternSummary" hidden></p>
-  <b style="display:block;font-size:11.5px;color:var(--muted);margin:10px 0 2px">تقسیم فاصله بین گروه‌های سوراخ</b>
   <table class="gaptab" id="gapTable" hidden>
     <thead><tr><th></th><th>گروه</th><th class="n">بازه Y (mm)</th><th class="n">طول</th><th class="n">تغییر</th><th class="n">جدید</th></tr></thead>
     <tbody id="gapTableBody"></tbody>
@@ -198,7 +188,6 @@
 
 <div id="codeDrawer" hidden>
   <div class="code-head">
-    <b style="font-size:13px">کد CNC</b>
     <label class="laycheck" style="min-height:0"><input type="checkbox" id="onlyChanged"> فقط خطوط تغییرکرده</label>
     <span class="hint" id="codeHint"></span>
     <span style="flex:1"></span>

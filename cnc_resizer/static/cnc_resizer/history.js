@@ -109,24 +109,21 @@
     const partOptions = (state._partOptions || []).map((opt) => `
       <option value="${Number(opt.id)}" ${ctxPart && opt.id === ctxPart ? 'selected' : ''}>${CNC.esc(opt.label)}</option>`).join('');
     panel.innerHTML = `
-      <h2>تاریخچهٔ ویرایش</h2>
-      <ol>${items || '<li style="cursor:default">هنوز ویرایشی ثبت نشده است.</li>'}</ol>
+      <ol>${items}</ol>
       <div class="toolbtns">
         <button type="button" id="saveTplBtn">💾 ذخیره به‌عنوان الگو…</button>
         <button type="button" id="refreshTplBtn">↻ الگوها</button>
       </div>
-      <b style="display:block;font-size:11.5px;color:var(--muted);margin:10px 0 4px">الگوهای ویرایش (کارگاه مشترک)</b>
-      <ul class="mlist">${templates || '<li style="cursor:default">الگویی ثبت نشده است.</li>'}</ul>
-      <b style="display:block;font-size:11.5px;color:var(--muted);margin:12px 0 4px">قالب‌های قطعه (پارامتریک — نقش‌های هندسی)</b>
-      <ul class="mlist" id="partTplList">${ptplItems || '<li style="cursor:default">قالب قطعه‌ای ثبت نشده است.</li>'}</ul>
+      <ul class="mlist" style="border-top:1px solid var(--line);padding-top:8px">${templates}</ul>
+      <ul class="mlist" id="partTplList" style="margin-top:8px">${ptplItems}</ul>
       <div class="toolbtns">
         <button type="button" id="savePartTplBtn">📐 ذخیره به‌عنوان قالب قطعه…</button>
         <button type="button" id="refreshPartTplBtn">↻ قالب‌های قطعه</button>
       </div>
       <div class="ptpl-form" id="ptplForm" ${keepForm ? '' : 'hidden'}>
-        <label>نام قالب <input id="ptplName" maxlength="80" placeholder="مثلاً آرایهٔ پیچ گوشه"></label>
-        <label>قطعهٔ مقصد <select id="ptplPart"><option value="">— انتخاب قطعه —</option>${partOptions}</select></label>
-        <label>یادداشت <input id="ptplNote" maxlength="200" placeholder="اختیاری"></label>
+        <input id="ptplName" maxlength="80" placeholder="نام قالب" aria-label="نام قالب">
+        <select id="ptplPart" aria-label="قطعهٔ مقصد"><option value="">— قطعهٔ مقصد —</option>${partOptions}</select>
+        <input id="ptplNote" maxlength="200" placeholder="یادداشت (اختیاری)" aria-label="یادداشت">
         <div class="toolbtns">
           <button type="button" id="ptplSave" class="primary">ذخیرهٔ قالب قطعه</button>
           <button type="button" id="ptplCancel">انصراف</button>

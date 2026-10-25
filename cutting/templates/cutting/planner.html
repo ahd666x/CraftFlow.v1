@@ -5,10 +5,8 @@
 {% block body_class %}admin-panel cutting-station{% endblock %}
 {% block content %}
 <div class="station planner-page" dir="rtl">
-  {% include 'cutting/_station_bar.html' %}
-
   <header class="page-head">
-    <h1>صف برش</h1>
+    {% include 'cutting/_station_bar.html' %}
     <div class="seg" role="radiogroup" aria-label="روش برنامه‌ریزی">
       <label class="seg-opt"><input type="radio" name="planning_mode" value="standard" form="planning-form" checked><span>برش معمولی</span></label>
       <label class="seg-opt"><input type="radio" name="planning_mode" value="cnc_sheets" form="planning-form"><span>CNC</span></label>

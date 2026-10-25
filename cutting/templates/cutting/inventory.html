@@ -5,9 +5,8 @@
 {% block body_class %}admin-panel cutting-station{% endblock %}
 {% block content %}
 <div class="station" dir="rtl">
-  {% include 'cutting/_station_bar.html' %}
   <header class="page-head">
-    <h1>انبار ورق</h1>
+    {% include 'cutting/_station_bar.html' %}
     <nav class="seg" aria-label="بخش‌های انبار">
       <a class="seg-opt" {% if cut_url_name == 'inventory' %}aria-current="page"{% endif %} href="{% url 'cutting:inventory' %}">خلاصه</a>
       <a class="seg-opt" {% if cut_url_name == 'full_sheets' %}aria-current="page"{% endif %} href="{% url 'cutting:full_sheets' %}">ورق کامل</a>

@@ -15,7 +15,7 @@
   --st-canvas:#eef1f6;
   --st-radius:8px;
   --sp-1:4px; --sp-2:8px; --sp-3:16px; --sp-4:24px;
-  --bar-h:40px; --head-h:42px; --dock-h:46px;
+  --bar-h:38px; --head-h:38px; --dock-h:34px;
   --st-shadow:0 8px 28px rgba(16,24,40,.14);
 }
 
@@ -34,33 +34,35 @@ body.cutting-station .main-content{padding:0}
   .station *,.station *::before,.station *::after{transition:none!important;animation:none!important}
 }
 
-/* ---------- نوار ایستگاه — تنها لایهٔ ناوبری (خیلی جمع‌وجور) ---------- */
+/* ---------- نوار ایستگاه — تکهٔ درون‌خطی سربرگ تک‌خطی ---------- */
 .cutting-nav{
-  position:sticky;top:0;z-index:40;height:var(--bar-h);
   display:flex;align-items:center;gap:var(--sp-1);
-  padding:0 var(--sp-2);background:var(--st-panel);
-  border-bottom:1px solid var(--st-line);
+  padding:0;background:none;border:0;
 }
 .cutting-nav .nav-item{
-  display:inline-flex;align-items:center;min-height:26px;
-  padding:.1rem .6rem;border-radius:999px;border:0;background:transparent;
-  color:var(--st-muted);font-size:12.5px;font-weight:700;text-decoration:none;white-space:nowrap;
+  display:inline-flex;align-items:center;min-height:24px;
+  padding:.1rem .55rem;border-radius:999px;border:0;background:transparent;
+  color:var(--st-muted);font-size:12px;font-weight:700;text-decoration:none;white-space:nowrap;
 }
 .cutting-nav .nav-item:hover{color:var(--st-ink);background:var(--st-sunken)}
 .cutting-nav .nav-item[aria-current="page"]{color:var(--st-accent);background:var(--st-accent-soft)}
 .cutting-nav .nav-user{
   margin-inline-start:auto;display:inline-flex;align-items:center;gap:.35rem;
-  color:var(--st-faint);font-size:11.5px;text-decoration:none;min-height:26px;padding:0 .4rem;border-radius:6px;
+  color:var(--st-faint);font-size:11px;text-decoration:none;min-height:24px;padding:0 .4rem;border-radius:6px;
 }
 .cutting-nav .nav-user:hover{color:var(--st-muted)}
-.cutting-nav .nav-user .bi{font-size:1rem}
+.cutting-nav .nav-user .bi{font-size:.95rem}
 
-/* ---------- سربرگ صفحه — یک خط فشرده ---------- */
+/* ---------- سربرگ صفحه — تنها نوار بالای صفحه (یک خط، همیشه) ---------- */
 .page-head{
-  display:flex;align-items:center;flex-wrap:wrap;gap:var(--sp-1) var(--sp-2);
-  min-height:var(--head-h);padding:var(--sp-1) var(--sp-2);
+  position:sticky;top:0;z-index:40;
+  display:flex;align-items:center;flex-wrap:nowrap;gap:var(--sp-2);
+  min-height:var(--head-h);padding:0 var(--sp-2);
   background:var(--st-panel);border-bottom:1px solid var(--st-line);
+  overflow-x:auto;scrollbar-width:none;
 }
+.page-head::-webkit-scrollbar{display:none}
+.page-head .head-id{font-size:12px;font-weight:800;color:var(--st-ink);white-space:nowrap}
 .page-head .head-actions{display:flex;align-items:center;gap:var(--sp-1);margin-inline-start:auto}
 .page-head .h1-sub{font-size:12px;color:var(--st-muted);font-weight:600}
 
@@ -217,10 +219,10 @@ tr.row-expand-details>td{background:var(--st-sunken);border-bottom:1px solid var
 .bottom-bar{
   position:fixed;inset-inline:0;bottom:0;z-index:45;height:var(--dock-h);
   display:flex;align-items:center;flex-wrap:nowrap;gap:var(--sp-1) var(--sp-3);
-  padding:var(--sp-1) var(--sp-3);background:var(--st-panel);
+  padding:0 var(--sp-3);background:var(--st-panel);
   border-top:1px solid var(--st-line);overflow:hidden;
 }
-.bottom-bar .dock-summary{font-weight:800;font-size:12.5px;white-space:nowrap}
+.bottom-bar .dock-summary{font-weight:800;font-size:11.5px;white-space:nowrap}
 .bottom-bar .dock-spacer{flex:1 1 auto}
 .bottom-bar .form-check-input:checked{background-color:var(--st-green)}
 .preview-verdict{display:inline-flex;align-items:center;gap:.35rem;font-size:12.5px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
@@ -228,7 +230,7 @@ tr.row-expand-details>td{background:var(--st-sunken);border-bottom:1px solid var
 .preview-verdict.bad{color:var(--st-red)}
 .preview-verdict.neutral{color:var(--st-muted)}
 .preview-verdict a{font-size:12px;font-weight:700}
-.dock-trigger{width:32px;height:32px;border:1px solid var(--st-line);background:var(--st-panel);border-radius:var(--st-radius);color:var(--st-muted);display:inline-flex;align-items:center;justify-content:center;flex:none}
+.dock-trigger{width:26px;height:26px;border:1px solid var(--st-line);background:var(--st-panel);border-radius:var(--st-radius);color:var(--st-muted);display:inline-flex;align-items:center;justify-content:center;flex:none}
 .dock-trigger[aria-expanded="true"]{background:var(--st-accent-soft);color:var(--st-accent);border-color:#bfd3fa}
 
 /* پنل بالاآمدهٔ جزئیات متریال */
@@ -269,8 +271,8 @@ tr.row-expand-details>td{background:var(--st-sunken);border-bottom:1px solid var
 .rail-dot.outcome-scrapped{border-color:var(--st-red);color:var(--st-red);background:var(--st-red-soft);text-decoration:line-through}
 .rail-dot .rail-flag{position:absolute;inset-block-end:-2px;inset-inline-start:-2px;width:14px;height:14px;border-radius:50%;background:var(--st-amber);color:#fff;font-size:9px;display:flex;align-items:center;justify-content:center}
 .plan-stage{grid-column:2;min-width:0;display:flex;flex-direction:column}
-.station-plan .plan-layout{height:calc(100dvh - var(--bar-h) - var(--head-h));grid-template-rows:minmax(0,1fr)}
-.station-plan.has-result .plan-layout{height:calc(100dvh - var(--bar-h) - var(--head-h) - var(--dock-h) - var(--sp-2))}
+.station-plan .plan-layout{height:calc(100dvh - var(--head-h));grid-template-rows:minmax(0,1fr)}
+.station-plan.has-result .plan-layout{height:calc(100dvh - var(--head-h) - var(--dock-h) - var(--sp-2))}
 .station-plan .plan-stage>[data-material-section]{flex:1;min-height:0;display:flex;flex-direction:column}
 .station-plan .sheet-panel{flex:1;min-height:0;display:flex;flex-direction:column}
 .station-plan .sheet-panel .map-meta{flex:none}
@@ -371,8 +373,8 @@ tr.row-expand-details>td{background:var(--st-sunken);border-bottom:1px solid var
 .inventory-sheet-visual.offcut{background:var(--st-amber-soft);border-color:#f4dcbb}
 .rail-mat.is-ok{color:var(--st-green)}
 .d-contents{display:contents}
-.cnc-layout{display:grid;grid-template-columns:264px minmax(0,1fr);align-items:stretch;min-height:calc(100vh - var(--bar-h) - var(--head-h))}
-.cnc-list{background:var(--st-panel);border-inline-end:1px solid var(--st-line);overflow-y:auto;max-height:calc(100vh - var(--bar-h) - var(--head-h))}
+.cnc-layout{display:grid;grid-template-columns:264px minmax(0,1fr);align-items:stretch;min-height:calc(100vh - var(--head-h))}
+.cnc-list{background:var(--st-panel);border-inline-end:1px solid var(--st-line);overflow-y:auto;max-height:calc(100vh - var(--head-h))}
 .cnc-plan-row{display:block;width:100%;text-align:start;border:0;background:transparent;border-bottom:1px solid var(--st-line-soft);padding:var(--sp-2) var(--sp-3);min-height:52px;cursor:pointer}
 .cnc-plan-row:hover{background:var(--st-sunken)}
 .cnc-plan-row.active{background:var(--st-accent-soft);box-shadow:inset 3px 0 0 var(--st-accent)}
@@ -382,7 +384,7 @@ tr.row-expand-details>td{background:var(--st-sunken);border-bottom:1px solid var
 .cnc-stage{display:flex;flex-direction:column;min-width:0;padding:var(--sp-3);background:var(--st-canvas)}
 .cnc-stage-head{display:flex;align-items:center;gap:var(--sp-3);margin-bottom:var(--sp-2)}
 .cnc-stage-head h2{font-size:15px;font-weight:800;margin:0}
-.cnc-canvas{position:relative;background:var(--st-panel);border:1px solid var(--st-line);border-radius:var(--st-radius);aspect-ratio:1/var(--sheet-ratio);width:min(100%,calc((100vh - 230px)/max(var(--sheet-ratio,1),1)));margin-inline:auto;overflow:hidden;flex:none}
+.cnc-canvas{position:relative;background:var(--st-panel);border:1px solid var(--st-line);border-radius:var(--st-radius);aspect-ratio:1/var(--sheet-ratio);width:min(100%,calc((100vh - 185px)/max(var(--sheet-ratio,1),1)));margin-inline:auto;overflow:hidden;flex:none}
 .cnc-canvas-grid{position:absolute;inset:0;background-image:linear-gradient(var(--st-line-soft) 1px,transparent 1px),linear-gradient(90deg,var(--st-line-soft) 1px,transparent 1px);background-size:24px 24px}
 .cnc-sheet-label{position:absolute;top:6px;inset-inline-start:8px;font-size:11.5px;color:var(--st-faint)}
 .cnc-part-box{position:absolute;border:2px solid #111827;background:rgba(115,120,214,.32);color:#101828;font-size:10.5px;font-weight:700;display:flex;align-items:center;justify-content:center;overflow:hidden;border-radius:2px}
@@ -413,7 +415,7 @@ tr.row-expand-details>td{background:var(--st-sunken);border-bottom:1px solid var
   .cnc-plan-row{flex:0 0 auto;width:auto;border-bottom:0;border-inline-end:1px solid var(--st-line-soft);min-width:11rem}
   .cnc-plan-row.active{box-shadow:inset 0 -3px 0 var(--st-accent)}
   .plan-layout{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr)}
-  .station-plan .plan-layout,.station-plan.has-result .plan-layout{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);height:auto;min-height:calc(100dvh - var(--bar-h) - var(--head-h) - var(--dock-h))}
+  .station-plan .plan-layout,.station-plan.has-result .plan-layout{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);height:auto;min-height:calc(100dvh - var(--head-h) - var(--dock-h))}
   .sheet-rail,.station-plan .sheet-rail{grid-column:1;flex-direction:row;align-items:center;overflow-x:auto;overflow-y:hidden;border-inline-end:0;border-bottom:1px solid var(--st-line);padding:var(--sp-1) var(--sp-2)}
   .rail-group,.station-plan .rail-group{flex-direction:row;border-bottom:0;width:auto;padding-bottom:0;margin-bottom:0;padding-inline-end:var(--sp-2);margin-inline-end:var(--sp-2);border-inline-end:1px solid var(--st-line-soft)}
   .rail-mat{max-width:none}

@@ -5,11 +5,9 @@
 {% block body_class %}admin-panel cutting-station{% endblock %}
 {% block content %}
 <div class="station station-cnc pb-0" dir="rtl">
-  {% include 'cutting/_station_bar.html' %}
-
-  {# ── سربرگ: سگمنت + KPI یک‌خطی ── #}
+  {# ── سربرگ تک‌خطی: نوار ایستگاه + سگمنت + KPI یک‌خطی ── #}
   <header class="page-head">
-    <h1>صف دستی CNC</h1>
+    {% include 'cutting/_station_bar.html' %}
     <nav class="seg" aria-label="بخش برش">
       <a class="seg-opt" href="{% url 'cutting:planner' %}">صف برش</a>
       <a class="seg-opt" href="{% url 'cnc_resizer:sheet_plans' %}">خروجی ورق CNC</a>
@@ -115,7 +113,7 @@
       </table>
     </div>
     {% else %}
-    <div class="cnc-empty card"><i class="bi bi-shield-check" aria-hidden="true"></i><h3 class="h6 mb-1">صف دستی خالی است</h3></div>
+    <div class="cnc-empty card"><i class="bi bi-shield-check" aria-hidden="true"></i></div>
     {% endif %}
   </main>
 </div>

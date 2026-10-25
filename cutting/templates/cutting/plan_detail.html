@@ -5,11 +5,11 @@
 {% block body_class %}admin-panel cutting-station{% endblock %}
 {% block content %}
 <div class="station station-plan {% if plan.status == 'planned' %}has-result{% endif %}" dir="rtl">
-  {% include 'cutting/_station_bar.html' %}
 
-  {# ── سربرگ: شناسه + وضعیت + KPI یک‌خطی + اقدامات ── #}
+  {# ── سربرگ تک‌خطی: نوار ایستگاه + شناسه + وضعیت + KPI + اقدامات ── #}
   <header class="page-head">
-    <h1>برنامه <span class="num">#{{ plan.pk }}</span></h1>
+    {% include 'cutting/_station_bar.html' %}
+    <span class="head-id num">برنامه #{{ plan.pk }}</span>
     <span class="badge-status {% if plan.status == 'planned' %}is-info{% elif plan.status == 'cut' %}is-ok{% elif plan.status == 'partial' %}is-warn{% else %}is-mute{% endif %}"><i class="dot"></i>{{ plan.get_status_display }}</span>
     <div class="kpi-line border-0" aria-label="خلاصهٔ برنامه">
       <div class="kpi"><b class="num">{{ plan_metrics.sheet_count }}</b><span>ورق</span></div>
@@ -55,7 +55,7 @@
 
   {% include 'cutting/_messages.html' %}
   {% if plan.status == 'cancelled' %}<div class="mx-3 mt-2 alert alert-secondary">این برنامه لغو شده و رزروها آزاد شدند.</div>{% endif %}
-  {% if plan.status == 'partial' %}<div class="mx-3 mt-2 alert alert-warning d-flex flex-wrap align-items-center gap-2"><span>ثبت جزئی — باقی‌مانده‌ها در برنامهٔ بعدی.</span><details class="d-inline-block"><summary class="small">باقی‌مانده‌ها ({{ unfinished_tasks|length }})</summary><ul class="mb-0 mt-1 small">{% for row in unfinished_tasks %}<li>{{ row.task }} — {{ row.task.completed_quantity }} از {{ row.task.quantity }}</li>{% endfor %}</ul></details><a class="btn btn-sm btn-warning ms-auto" href="{% url 'cutting:planner' %}">برنامه‌ریزی باقی‌مانده‌ها</a></div>{% endif %}
+  {% if plan.status == 'partial' %}<div class="mx-3 mt-2 alert alert-warning d-flex flex-wrap align-items-center gap-2"><details class="d-inline-block"><summary class="small">باقی‌مانده‌ها ({{ unfinished_tasks|length }})</summary><ul class="mb-0 mt-1 small">{% for row in unfinished_tasks %}<li>{{ row.task }} — {{ row.task.completed_quantity }} از {{ row.task.quantity }}</li>{% endfor %}</ul></details><a class="btn btn-sm btn-warning ms-auto" href="{% url 'cutting:planner' %}">برنامه‌ریزی باقی‌مانده‌ها</a></div>{% endif %}
 
   {% if plan.status == 'planned' %}<form id="cut-results-form" method="post" action="{% url 'cutting:mark_cut' plan.id %}" novalidate>{% csrf_token %}{% endif %}
 

@@ -5,11 +5,9 @@
 {% block body_class %}admin-panel cutting-station{% endblock %}
 {% block content %}
 <div class="station station-cnc pb-0" dir="rtl">
-  {% include 'cutting/_station_bar.html' %}
-
-  {# ── سربرگ: سگمنت + KPI یک‌خطی + برنامهٔ جدید ── #}
+  {# ── سربرگ تک‌خطی: نوار ایستگاه + سگمنت + KPI + برنامهٔ جدید ── #}
   <header class="page-head">
-    <h1>CNC</h1>
+    {% include 'cutting/_station_bar.html' %}
     <nav class="seg" aria-label="بخش برش">
       <a class="seg-opt" href="{% url 'cutting:planner' %}">صف برش</a>
       <a class="seg-opt" aria-current="page" href="{% url 'cnc_resizer:sheet_plans' %}">خروجی ورق CNC</a>
@@ -39,7 +37,7 @@
         <span class="row-meta"><span>بهره‌وری <b class="num">{{ plan.utilization|floatformat:1 }}%</b></span></span>
       </button>
       {% empty %}
-      <div class="cnc-empty"><i class="bi bi-layers" aria-hidden="true"></i><div class="help">برنامه‌ای نیست.</div></div>
+      <div class="cnc-empty"><i class="bi bi-layers" aria-hidden="true"></i></div>
       {% endfor %}
     </aside>
 
@@ -93,12 +91,10 @@
           {% if plan.status == 'planned' %}<form method="post" action="{% url 'cnc_resizer:cancel_sheet_plan' plan.id %}" onsubmit="return confirm('این برنامه لغو و ورق و قطعات آن آزاد شوند؟')" class="ms-auto">{% csrf_token %}<button class="btn btn-outline-danger btn-sm" title="لغو برنامه و آزادسازی ورق و قطعات"><i class="bi bi-x-lg" aria-hidden="true"></i> لغو برنامه</button></form>{% endif %}
         </div>
         {% endif %}
-        {% if plan.status == 'done' %}<div class="cnc-muted-note">نتیجه: <b>{{ plan.get_result_outcome_display }}</b>{% if plan.result_note %} — {{ plan.result_note }}{% endif %}{% if plan.actual_offcuts %} · پرت واقعی: {% for offcut in plan.actual_offcuts %}<span class="num">{{ offcut.width }} × {{ offcut.height }}</span>{% if not forloop.last %}، {% endif %}{% endfor %}{% endif %}</div>
-        {% elif plan.status == 'cancelled' %}<div class="cnc-muted-note">این برنامه لغو شده است.</div>
-        {% elif not plan.output_verified %}<div class="cnc-muted-note">تا تأیید خروجی دستگاه، ثبت مصرف مجاز نیست.</div>{% endif %}
+        {% if plan.status == 'done' %}<div class="cnc-muted-note">نتیجه: <b>{{ plan.get_result_outcome_display }}</b>{% if plan.result_note %} — {{ plan.result_note }}{% endif %}{% if plan.actual_offcuts %} · پرت واقعی: {% for offcut in plan.actual_offcuts %}<span class="num">{{ offcut.width }} × {{ offcut.height }}</span>{% if not forloop.last %}، {% endif %}{% endfor %}{% endif %}</div>{% endif %}
       </article>
       {% empty %}
-      <div class="cnc-empty"><i class="bi bi-layers" aria-hidden="true"></i><h3 class="h6">هنوز برنامه‌ای ساخته نشده است</h3><a class="btn btn-primary" href="{% url 'cutting:planner' %}">رفتن به برنامه‌ریزی</a></div>
+      <div class="cnc-empty"><i class="bi bi-layers" aria-hidden="true"></i><a class="btn btn-primary" href="{% url 'cutting:planner' %}">رفتن به برنامه‌ریزی</a></div>
       {% endfor %}
     </section>
   </main>
@@ -141,7 +137,7 @@
         {% endif %}
         {% if issue.resolution_note %}<p class="help mt-1 mb-0">{{ issue.resolution_note }}</p>{% endif %}
       </div>
-      {% empty %}<div class="cnc-empty"><i class="bi bi-shield-check" aria-hidden="true"></i><span class="help">موردی ثبت نشده است.</span></div>{% endfor %}
+      {% empty %}<div class="cnc-empty"><i class="bi bi-shield-check" aria-hidden="true"></i></div>{% endfor %}
     </div>
   </div>
 

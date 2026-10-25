@@ -70,11 +70,11 @@
     if (state.queueQuery) params.set('q', state.queueQuery);
     if (state.queueStatus) params.set('status', state.queueStatus);
     state.focusId = null;
-    queueEl.innerHTML = '<div class="ws-empty">در حال خواندن…</div>';
+    queueEl.innerHTML = '<div class="ws-empty"><span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span></div>';
     try {
       const data = await api(`${CONFIG.orders}?${params}`);
       queueEl.innerHTML = data.rows.length ? '' :
-        '<div class="ws-empty">سفارشی برای برش پیدا نشد؛ ممکن است در برنامه‌های فعال رزرو باشند.</div>';
+        '<div class="ws-empty"><i class="bi bi-inbox" aria-hidden="true"></i></div>';
       data.rows.forEach(row => queueEl.appendChild(queueRow(row)));
       state.queuePages = data.pages;
     } catch (error) {

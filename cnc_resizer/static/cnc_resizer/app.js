@@ -55,66 +55,15 @@
   CNC.ariaLive = ariaLive;
 
   // ------------------------------------------------_بازرس
-  function inspectorFile() {
-    const det = state.detection;
-    const parts = (det && det.parts) || [];
-    const ops = (det && det.operations) || [];
-    const meta = state.fileMeta || {};
-    const rows = [
-      ['فایل', `<span class="num">${esc(state.filename || '—')}</span>`],
-      ['قطعه‌ها', `<b class="num">${parts.length}</b>`],
-      ['عملیات باز', `<b class="num">${ops.length}</b>`],
-      ['ورق', meta.sheet_bbox
-        ? `<span class="num">${CNC.f1(meta.sheet_bbox.width)}×${CNC.f1(meta.sheet_bbox.height)}</span> mm` : '—'],
-      ['ضخامت', meta.sheet_thickness != null ? `<span class="num">${CNC.f1(meta.sheet_thickness)}</span> mm` : 'نامشخص'],
-    ];
-    return `
-      <h2>نقشهٔ CNC</h2>
-      <dl class="kv">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>
-      ${(det && det.infos || []).length
-        ? `<div class="insp-info">ℹ ${det.infos.map(esc).join('<br>ℹ ')}</div>` : ''}
-      ${(det && det.warnings || []).length
-        ? `<div class="insp-warn">⚠ ${det.warnings.map(esc).join('<br>⚠ ')}</div>` : ''}
-      ${!det || (!parts.length && !ops.length)
-        ? `<div class="insp-warn">${state.text
-            ? 'هندسهٔ برش قابل‌تشخیصی در این فایل پیدا نشد؛ هیچ قطعه یا عملیاتی ثبت نشد.'
-            : 'فایلی بارگذاری نشده است.'}</div>` : ''}
-      ${det && !parts.length && ops.length
-        ? `<div class="insp-warn">قطعه‌ای شناسایی نشد — فقط عملیات برش باز دیده می‌شود. این فایل برای ویرایش «قطعه‌ای» مناسب نیست؛ عملیات‌ها فقط نمایش داده می‌شوند و دلیلش همین است.</div>` : ''}
-    `;
-  }
-
-  function capRow(ok, label, reason) {
-    return `<li><span class="${ok ? 'yes' : 'no'}">${ok ? '✓' : '✗'}</span>
-            <span><b>${label}</b>${reason ? ` — ${esc(reason)}` : ''}</span></li>`;
-  }
-
-  function stretchReason(part, axis) {
-    if (part.locked) return 'کانتورهای قطعه روی هم افتاده‌اند و کل ویرایشش قفل است.';
-    if (!part[`stretch_band_${axis}`]) {
-      return 'نوار صاف به‌اندازهٔ کافی بلند در این محور وجود ندارد (قوس یا لبهٔ مایل کشیده می‌شود و خراب می‌شود).';
-    }
-    return null;
-  }
+  // بازرس فقط اطلاعات شیء انتخاب‌شده (قطعه/عملیات) را نشان می‌دهد؛
+  // حالت «فایل بارگذاری نشده» پنلی ندارد تا نقشه بیشترین فضا را بگیرد.
 
   function inspectorPart(part) {
     const b = part.bbox;
     const after = state._afterPairs && state._afterPairs.get(part.id);
     const dims = after ? after.bbox : b;
-    const caps = part.capabilities || {};
     const fixed = state.fixedParts.has(part.id);
     const excluded = state.outputsExcluded.has(part.id);
-    const capHtml = [
-      capRow(caps.can_translate && !part.locked, 'جابه‌جایی (درگ)',
-             part.locked ? 'کانتورهای قطعه واقعاً روی هم افتاده‌اند؛ ویرایش قفل است.' : ''),
-      capRow(!!caps.can_stretch_x && !fixed, 'کشش عرض (X)', stretchReason(part, 'x')
-             || (fixed ? 'این قطعه «ثابت» علامت خورده؛ از منوی راست‌کلیک کشیدنی کنید.' : '')),
-      capRow(!!caps.can_stretch_y && !fixed, 'کشش ارتفاع (Y)', stretchReason(part, 'y')
-             || (fixed ? 'این قطعه «ثابت» علامت خورده؛ از منوی راست‌کلیک کشیدنی کنید.' : '')),
-      capRow(!!caps.can_rotate90 && !part.locked, 'چرخش ۹۰°',
-             part.locked ? 'قفل هم‌پوشانی.' : ''),
-      capRow(!!caps.can_mirror && !part.locked, 'آینه', part.locked ? 'قفل هم‌پوشانی.' : ''),
-    ].join('');
     const children = (part.children || []).map((c) => `
       <li data-child="${esc(c.id)}" role="button" tabindex="0">
         <span>${esc(CNC.KIND_FA[c.kind] || c.kind)}</span>
@@ -133,17 +82,14 @@
         <dt>مساحت</dt><dd class="num">${CNC.f1(part.area_path)} mm²</dd>
       </dl>
       ${opText ? `<div class="insp-warn" style="background:var(--accent-soft);color:var(--accent);border-color:var(--accent)">
-        ویرایش ثبت‌شده: ${opText}</div>` : ''}
-      <ul class="caps">${capHtml}</ul>
-      ${children ? `<b style="font-size:12px;color:var(--muted)">فرزندها / عملیات داخل قطعه</b>
-        <ul class="children">${children}</ul>` : ''}
+        ${opText}</div>` : ''}
+      ${children ? `<ul class="children">${children}</ul>` : ''}
       ${(part.warnings || []).length ? `<div class="insp-warn">⚠ ${part.warnings.map(esc).join('<br>⚠ ')}</div>` : ''}
-      ${excluded ? `<div class="insp-warn">این قطعه از خروجی حذف شده است. «حذف از خروجی» با وصلهٔ مختصاتیِ امن قابل بیان نیست؛
-        تا وقتی فعال است دانلود مسدود می‌شود تا فایل ناقص تحویل دستگاه نشود.</div>` : ''}
+      ${excluded ? `<div class="insp-warn">از خروجی حذف شده — دانلود مسدود است.</div>` : ''}
       <div class="actions">
         <button type="button" data-act="zoom">🔍 زوم</button>
-        <button type="button" data-act="toggle-fixed">${fixed ? '🔓 کشیدنی کن' : '🔒 ثابت کن'}</button>
-        <button type="button" data-act="toggle-exclude" class="danger">${excluded ? '↩ برگرداندن به خروجی' : '🚫 حذف از خروجی'}</button>
+        <button type="button" data-act="toggle-fixed" title="قطعهٔ ثابت با ویرایش کشش جابه‌جا نمی‌شود">${fixed ? '🔓 کشیدنی کن' : '🔒 ثابت کن'}</button>
+        <button type="button" data-act="toggle-exclude" class="danger" title="حذف از خروجی دانلود را مسدود می‌کند">${excluded ? '↩ برگرداندن به خروجی' : '🚫 حذف از خروجی'}</button>
         ${op ? '<button type="button" data-act="reset-op">↩ بازگردانی ویرایش این قطعه</button>' : ''}
       </div>
     `;
@@ -177,26 +123,27 @@
         <dt>عمق‌ها</dt><dd class="num">${(op.passes || []).map((p) => CNC.f1(p.z)).join('، ') || '—'} mm</dd>
         <dt>قطعهٔ مالک</dt><dd>${owner ? esc(CNC.partName(owner)) : 'ندارد — عملیات مستقل'}</dd>
       </dl>
-      ${owner ? '' : `<div class="insp-warn">این عملیات به هیچ قطعه‌ای تعلق ندارد؛ با ویرایش قطعه‌ای جابه‌جا نمی‌شود
-        و دلیلش این است که حذف/جابه‌جایی مسیر مستقل باید از فایل منبع انجام شود.</div>`}
+      ${owner ? '' : `<div class="insp-warn">عملیات مستقل — با ویرایش قطعه‌ای جابه‌جا نمی‌شود.</div>`}
       <div class="actions"><button type="button" data-act="zoom">🔍 زوم</button></div>
     `;
   }
 
   function renderInspector() {
     const box = $('inspector');
-    box.hidden = false;
     const sel = state.selection;
     const part = sel.find((s) => s.type === 'part');
     const op = sel.find((s) => s.type === 'op');
+    // بازرس فقط برای شیء انتخاب‌شده باز می‌شود؛ بدون انتخاب، نقشه پاک می‌ماند
+    if (!part && !op) { box.hidden = true; box.innerHTML = ''; return; }
+    box.hidden = false;
     if (part) {
       const p = ((state.detection && state.detection.parts) || []).find((x) => x.id === part.id);
-      box.innerHTML = p ? inspectorPart(p) : inspectorFile();
-    } else if (op) {
-      const o = ((state.detection && state.detection.operations) || []).find((x) => x.id === op.id);
-      box.innerHTML = o ? inspectorOp(o) : inspectorFile();
+      box.innerHTML = p ? inspectorPart(p) : '';
+      if (!p) { box.hidden = true; return; }
     } else {
-      box.innerHTML = inspectorFile();
+      const o = ((state.detection && state.detection.operations) || []).find((x) => x.id === op.id);
+      box.innerHTML = o ? inspectorOp(o) : '';
+      if (!o) { box.hidden = true; return; }
     }
     const zoomBtn = box.querySelector('[data-act="zoom"]');
     if (zoomBtn) zoomBtn.onclick = () => {
@@ -599,7 +546,7 @@
     const model = CNC.model;
     const det = state.detection;
     const box = $('layersPanel');
-    if (!model || !model.blocks.size) { box.innerHTML = '<h2>لایه‌ها</h2><p class="insp-empty">فایلی باز نیست.</p>'; return; }
+    if (!model || !model.blocks.size) { box.innerHTML = ''; return; }
     const depthChips = model.depthLevels.map((z, i) => {
       const key = String(z); const on = state.layers.depth.get(key) !== false;
       return `<button type="button" class="chip ${on ? '' : 'off'}" data-lay="depth" data-key="${key}">
@@ -616,11 +563,9 @@
     const kindChips = Object.entries(kindCount).map(([kind, n]) => `
       <span class="num">${n}× ${esc(CNC.KIND_FA[kind] || kind)}</span>`).join(' · ');
     box.innerHTML = `
-      <h2>لایه‌ها</h2>
-      <div class="layrow"><b>عمق (Z) — رنگ هر عمق ثابت است و راهنمای کنار نقشه همین chips هستند</b>
-        <div class="chips">${depthChips || '<span class="insp-empty">عمقی ثبت نشده</span>'}</div></div>
-      <div class="layrow"><b>ابزار</b><div class="chips">${toolChips || '<span class="insp-empty">—</span>'}</div></div>
-      <div class="layrow"><b>انواع عملیات باز</b><div class="laylegend">${kindChips || '—'}</div></div>
+      <div class="layrow"><div class="chips">${depthChips}</div></div>
+      <div class="layrow"><div class="chips">${toolChips}</div></div>
+      <div class="layrow"><div class="laylegend">${kindChips}</div></div>
       <label class="laycheck"><input type="checkbox" id="layGhost" ${state.layers.showGhost ? 'checked' : ''}> شبح «قبل»</label>
       <label class="laycheck"><input type="checkbox" id="layOps" ${state.layers.showOps ? 'checked' : ''}> عملیات باز</label>
       <label class="laycheck"><input type="checkbox" id="layGrid" ${state.layers.showGrid ? 'checked' : ''}> شبکه</label>
