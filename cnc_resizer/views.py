@@ -1758,8 +1758,13 @@ def manual_queue(request):
     """
     from .manual_queue import queue_rows
     rows = queue_rows(request.user)
+    # بازبینی دور ۳ (عملکرد): صف دستی صفحه‌بندی می‌شود (۲۵ در صفحه)؛ شمارنده‌های
+    # نوار بالای صفحه روی کل صف می‌مانند، نه فقط صفحهٔ جاری.
+    from django.core.paginator import Paginator
+    page = Paginator(rows, 25).get_page(request.GET.get('page'))
     return render(request, 'cnc_resizer/manual_queue.html', {
-        'rows': rows,
+        'rows': page.object_list,
+        'page': page,
         'waiting_count': sum(1 for row in rows if row['state'] == 'waiting'),
         'ready_count': sum(1 for row in rows if row['state'] == 'ready'),
         'manual_queue_url': reverse('cnc_resizer:manual_queue'),

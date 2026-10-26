@@ -3,6 +3,7 @@
 {% block title %}ایستگاه CNC — خروجی ورق{% endblock %}
 {% block nav %}{% endblock %}
 {% block body_class %}admin-panel cutting-station{% endblock %}
+{% block extra_css %}{{ block.super }}<link rel="stylesheet" href="{% static 'cutting/cutting.css' %}">{% endblock %}
 {% block content %}
 <div class="station station-cnc pb-0" dir="rtl">
   {# ── سربرگ تک‌خطی: نوار ایستگاه + KPI + برنامهٔ جدید (بازبینی UI/UX بند ۲:
@@ -108,7 +109,7 @@
         <span class="badge-status is-warn" title="{{ issue.reason }}">{{ issue.reason_label }}</span>
         {% if issue.status == 'open' %}
           <div class="cnc-issue-actions">
-            {% if issue.details.stage == 'manual_required' %}<a class="btn btn-sm btn-outline-primary" href="/cnc/?task_id={{ issue.task_id }}">رفع در ابزار CNC</a>{% endif %}
+            {% if issue.details.stage == 'manual_required' %}<a class="btn btn-sm btn-outline-primary" href="{% url 'cnc_resizer:index' %}?task_id={{ issue.task_id }}">رفع در ابزار CNC</a>{% endif %}
             {# بازبینی UI/UX بند ۲۹: فرم‌های کامل داخل dropdown-item مشکل کیبورد و screen reader دارند — details/summary بومی جایگزین شد #}
             <details class="detail-pop">
               <summary aria-label="اقدامات بیشتر" title="اقدامات بیشتر">⋯</summary>
@@ -194,9 +195,12 @@
     if (digit < 0) digit = AR_DIGITS.indexOf(e.key);
     if (digit < 0) return;
     e.preventDefault();
-    const start = target.selectionStart ?? target.value.length;
-    const end = target.selectionEnd ?? target.value.length;
-    target.setRangeText(String(digit), start, end, 'end');
+    /* ورودی type=number از setRangeText پشتیبانی نمی‌کند (InvalidStateError) — درج با چسباندن رشته */
+    let start = null, end = null;
+    try { start = target.selectionStart; end = target.selectionEnd; } catch (_) { /* برخی موتورها پرتاب می‌کنند */ }
+    start = start ?? target.value.length;
+    end = end ?? target.value.length;
+    target.value = target.value.slice(0, start) + String(digit) + target.value.slice(end);
     target.dispatchEvent(new Event('input', { bubbles: true }));
   });
   const rows = [...document.querySelectorAll('[data-cnc-select]')];
@@ -241,5 +245,6 @@
   });
 })();
 </script>
+<script src="{% static 'cutting/popfix.js' %}" defer></script>
 <script src="{% static 'cnc_resizer/sheet_preview.js' %}" defer></script>
 {% endblock %}

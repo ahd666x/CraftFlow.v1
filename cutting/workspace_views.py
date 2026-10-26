@@ -11,7 +11,8 @@ import json
 import jdatetime
 from django.core.paginator import Paginator
 from django.db import transaction
-from django.db.models import Count, F, Q, Sum
+from django.db.models import Case, Count, F, IntegerField, Q, Sum, Value, When
+from django.db.models.functions import Greatest
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
@@ -102,6 +103,33 @@ def _workspace_task_filter(prefix=''):
     return pending | touched
 
 
+def _workspace_remaining_expr(prefix='tasks'):
+    """بازبینی دور ۳: باقی‌ماندهٔ صف کارگاه همان دلالت specs را می‌شمارد.
+
+    effective_spec (specs.py:187-198): override.quantity اگر ذکر شده جایگزین
+    quantity است، excluded ⇒ صفر، و منفی با max(0,…) گیره می‌خورد. فرمول قبلی
+    ‎Sum(quantity − completed)‎ روی همین فیلتر، اورراید را نادیده می‌گرفت و
+    تسک‌های «خارج از برنامه» را هم با باقی‌ماندهٔ خام می‌شمرد — شمارهٔ کارت با
+    جدول قطعات یکی در نمی‌ماند."""
+    p = f'{prefix}__'
+    base = Greatest(
+        F(f'{p}quantity') - F(f'{p}completed_quantity'), Value(0),
+        output_field=IntegerField(),
+    )
+    overridden = Greatest(
+        F(f'{p}spec_override__quantity') - F(f'{p}completed_quantity'), Value(0),
+        output_field=IntegerField(),
+    )
+    return Case(
+        When(**{f'{p}spec_override__excluded': True}, then=Value(0)),
+        When(**{f'{p}spec_override__isnull': False,
+                f'{p}spec_override__quantity__isnull': True}, then=base),
+        When(**{f'{p}spec_override__isnull': False}, then=overridden),
+        default=base,
+        output_field=IntegerField(),
+    )
+
+
 def _planned_order_ids(order_ids):
     """Orders with at least one task locked in a planned cut/CNC program."""
     from .models import CutPlanTask
@@ -142,7 +170,7 @@ def workspace_orders(request):
                                   tasks__order_item_id__isnull=False),
                          distinct=True),
         remaining_pieces=Sum(
-            F('tasks__quantity') - F('tasks__completed_quantity'),
+            _workspace_remaining_expr(),
             filter=_workspace_task_filter('tasks'),
         ),
     ).order_by('priority', F('due_date').asc(nulls_last=True), '-id'))

@@ -48,7 +48,9 @@ class ManualQueuePageTests(ManualQueueFixtureMixin, TestCase):
         page = self.client.get(reverse('cnc_resizer:manual_queue'))
         self.assertEqual(page.status_code, 200)
         self.assertContains(page, f'#{self.task.pk}')
-        self.assertContains(page, '/cnc/?task_id=')
+        self.assertContains(page, '?task_id=')
+        # بازبینی دور ۳: لینک عمیق با {% url %} ساخته می‌شود (index روی /cnc/ سوار
+        # است، پس خروجی رندر همان است) — هاردکد در «منبع» قالب حذف شده.
         self.assertContains(page, 'در انتظار اصلاح دستی')
         # ستون «علت» حذف شده است؛ وضعیت الگو فقط با نشانِ سیگنال‌ها دیده می‌شود
         self.assertNotContains(page, 'بدون الگوی تأییدشده')

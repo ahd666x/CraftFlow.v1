@@ -369,11 +369,9 @@ class InventoryAndCutFlowTests(TestCase):
         for param in ('q=MDF', f'material={self.material.pk}', 'thickness=16.0', 'sort=date'):
             self.assertIn(param, response.context['pagination_query'])
 
-    def test_planner_checkbox_queue_shows_available_task_and_remaining_piece_count(self):
-        response = self.client.get(reverse('cutting:planner'), {'q': str(self.order.pk), 'status': 'planned'})
+    def test_planner_page_mounts_workspace_queue_and_reports_remaining_pieces(self):
+        response = self.client.get(reverse('cutting:planner'))
         self.assertEqual(response.status_code, 200)
-        order = response.context['orders'][0]
-        self.assertEqual((order.cut_task_count, order.remaining_pieces), (1, 1))
         # The queue is rendered client-side by workspace.js from the workspace
         # API; the planner page mounts it and exposes the JSON config, while
         # the planning POST form contract (order_ids) stays on the form.
@@ -382,6 +380,24 @@ class InventoryAndCutFlowTests(TestCase):
         self.assertContains(response, '/cutting/workspace/orders/')
         self.assertContains(response, 'id="planning-form"')
         self.assertContains(response, 'پیش‌نمایش نیاز مواد')
+
+    def test_workspace_remaining_pieces_follows_override_and_excluded(self):
+        # بازبینی دور ۳: شمارندهٔ «باقی‌مانده» صف کارگاه همان دلالت specs را دارد —
+        # override.quantity جایگزین quantity است و تسک «خارج از برنامه» صفر می‌دهد.
+        from .models import TaskSpecOverride
+        self.task.quantity = 5
+        self.task.save(update_fields=['quantity'])
+        row = self.client.get(reverse('cutting:ws_orders')).json()['rows'][0]
+        self.assertEqual(row['remaining_pieces'], 5)
+        TaskSpecOverride.objects.create(task=self.task, quantity=2)
+        row = self.client.get(reverse('cutting:ws_orders')).json()['rows'][0]
+        self.assertEqual(row['remaining_pieces'], 2)
+        self.task.spec_override.excluded = True
+        self.task.spec_override.save(update_fields=['excluded'])
+        row = self.client.get(reverse('cutting:ws_orders')).json()['rows'][0]
+        self.assertEqual(row['remaining_pieces'], 0)
+        # تسک touched (اوررایددار) سفارش را در صف نگه می‌دارد، حتی با باقی‌ماندهٔ صفر
+        self.assertEqual(self.client.get(reverse('cutting:ws_orders')).json()['count'], 1)
 
     def test_live_material_preview_uses_optimizer_without_reserving_or_consuming_stock(self):
         stock = self.add_stock(quantity=2)

@@ -501,12 +501,10 @@
       const b = model.blocks.get(blockId);
       if (!b) return true;
       if (L.tool.size && b.tool != null && L.tool.get(String(b.tool)) === false) return false;
-      for (const d of b.depths) {
-        const v = L.depth.get(String(d));
-        if (v === false) return false;
-        if (v === true) return true;
-      }
-      return true;
+      // بازبینی دور ۳: بلاک چندعمقی اگر «هر یک» از عمق‌هایش در لایهٔ روشن باشد
+      // دیده می‌شود — حلقهٔ قبلی روی اولین عمق صریح کوتاه می‌شد و خاموش‌کردن
+      // عمق دوم، بلاکی را که هنوز عمق روشن داشت قایم می‌کرد (یا برعکس).
+      return !b.depths.length || b.depths.some((d) => L.depth.get(String(d)) !== false);
     };
     svg.querySelectorAll('path[data-block]').forEach((p) => {
       p.style.display = blockVisible(p.dataset.block) ? '' : 'none';

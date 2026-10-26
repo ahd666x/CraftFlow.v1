@@ -81,6 +81,8 @@ button.on { background: var(--accent); border-color: var(--accent); color: #fff;
 /* بازبینی UI/UX بند ۱۵: اسکرول مخفی نمی‌شود و روی نمایشگر عریض برچسب‌ها دیده می‌شوند */
 #toolbar .tb-lbl { display: none; }
 @media (min-width: 1440px) { #toolbar .tb-lbl { display: inline; font-size: 12px; } }
+/* بازبینی دور ۳: روی لمس tooltip نیست — از تبلت به بالا برچسب هر دکمه دیده می‌شود */
+@media (hover: none) and (pointer: coarse) and (min-width: 1024px) { #toolbar .tb-lbl { display: inline; font-size: 12px; } }
 /* نشان وضعیت پست‌پروسسور کنار دکمهٔ دانلود — همیشه دیده می‌شود */
 #gateChip {
   display: inline-flex; align-items: center; gap: 5px; border-radius: 20px; flex: none;
@@ -162,7 +164,7 @@ button.on { background: var(--accent); border-color: var(--accent); color: #fff;
 #toolsPanel table { width: 100%; border-collapse: collapse; font-size: 12px; }
 #toolsPanel th { color: var(--muted); font-weight: 600; text-align: start; padding: 3px 5px; border-bottom: 1px solid var(--line); }
 #toolsPanel td { padding: 3px 5px; border-bottom: 1px solid var(--surface-2); }
-#toolsPanel input { width: 100%; padding: 4px 7px; border: 1px solid var(--line); border-radius: 6px; font: inherit; }
+#toolsPanel input { width: 100%; padding: 4px 7px; min-height: 28px; border: 1px solid var(--line); border-radius: 6px; font: inherit; }
 .toolbtns { display: flex; gap: 6px; margin-top: 9px; flex-wrap: wrap; }
 .toolbtns button { font-size: 12px; padding: 4px 10px; min-height: 40px; }
 .statusline { font-size: 12px; color: var(--muted); margin-top: 6px; min-height: 18px; }
@@ -254,9 +256,9 @@ button.on { background: var(--accent); border-color: var(--accent); color: #fff;
   background: var(--surface); border: 1.5px solid var(--accent); border-radius: 9px;
   padding: 5px 7px; box-shadow: 0 5px 18px rgba(23,34,46,.2);
 }
-.dim-editor input { width: 92px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; font: inherit; text-align: left; direction: ltr; }
+.dim-editor input { width: 92px; padding: 4px 8px; min-height: 30px; border: 1px solid var(--line); border-radius: 6px; font: inherit; text-align: left; direction: ltr; }
 .dim-editor .unit { color: var(--muted); font-size: 11.5px; }
-.dim-editor .ok { padding: 3px 9px; min-height: 30px; }
+.dim-editor .ok { padding: 3px 9px; min-height: 32px; }
 
 /* بنر خطا/هشدار — هیچ‌وقت صفحهٔ خالی خطا نمی‌دهد */
 #alertBox {
@@ -270,7 +272,7 @@ button.on { background: var(--accent); border-color: var(--accent); color: #fff;
 #alertBox .banner.err { background: var(--bad-soft); color: var(--bad); border: 1px solid var(--bad); }
 #alertBox .banner.warn { background: var(--warn-soft); color: var(--warn); border: 1px solid var(--warn); }
 #alertBox .banner.info { background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent); }
-#alertBox .banner .x { border: 0; background: none; color: inherit; font-weight: 800; float: left; min-height: 22px; padding: 0 4px; }
+#alertBox .banner .x { border: 0; background: none; color: inherit; font-weight: 800; float: left; min-height: 28px; min-width: 28px; padding: 0 4px; }
 
 /* ---------- کشوی کد (نقشه ↔ کد) ---------- */
 #codeDrawer {
@@ -367,8 +369,8 @@ table.gaptab th { color: var(--muted); font-weight: 600; text-align: start; padd
 table.gaptab td { padding: 3px 4px; border-bottom: 1px solid var(--surface-2); vertical-align: middle; }
 table.gaptab tr:hover td { background: var(--accent-soft); }
 table.gaptab td.n, table.gaptab th.n { text-align: left; direction: ltr; }
-table.gaptab input[type=number] { padding: 2px 5px; width: 74px; min-height: 0; }
-table.gaptab input[type=checkbox] { min-height: 0; accent-color: var(--accent); }
+table.gaptab input[type=number] { padding: 3px 6px; width: 74px; min-height: 28px; }
+table.gaptab input[type=checkbox] { min-height: 16px; width: 16px; height: 16px; accent-color: var(--accent); }
 .gap-hl { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1; stroke-dasharray: 4 3; }
 .chain-ext { stroke: var(--line); stroke-dasharray: 3 4; stroke-width: 1; }
 .chain-dim { font-weight: 600; }
@@ -412,7 +414,7 @@ table.gaptab input[type=checkbox] { min-height: 0; accent-color: var(--accent); 
 .cmp-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
 .cmp-head h2 { margin: 0; }
 .cmp-close {
-  width: 26px; height: 26px; line-height: 1; cursor: pointer; flex: none;
+  width: 32px; height: 32px; line-height: 1; cursor: pointer; flex: none;
   border: 1px solid var(--line); background: var(--surface); border-radius: 7px; color: var(--muted);
 }
 .cmp-close:hover { border-color: var(--accent); color: var(--accent); }

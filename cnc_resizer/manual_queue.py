@@ -72,16 +72,24 @@ def _issue_query(user):
     return query
 
 
-def _pending_pieces(task, already_planned):
-    """Planner's own pending formula, read-only: quantity - completed - placed."""
+def _pending_specs(tasks):
+    """بستهٔ specs برای همهٔ تسک‌ها در یک فراخوانی (۳ کوئری برای کل صف، نه برای هر ردیف).
+
+    بازبینی دور ۳ (عملکرد): فراخوانی per-row با effective_specs([task]) روی صف
+    بزرگ ~۷–۹ کوئری به‌ازای هر ردیف می‌زد و layout برنامه‌های برش را برای هر
+    ردیف از نو می‌خواند. اگر کل بسته به‌خاطر یک تسک خراب پرتاب شد، فقط همان
+    تسک حذف می‌شود (fail-soft قبلی حفظ شده)."""
+    from cutting.specs import effective_specs
     try:
-        from cutting.specs import effective_specs
-        spec = effective_specs([task])[0]
+        return {spec.task_id: spec for spec in effective_specs(tasks)}
     except Exception:
-        return None, None
-    pending = max(0, int(spec.quantity_total) - int(task.completed_quantity)
-                  - already_planned.get(task.pk, 0))
-    return pending, spec
+        by_task = {}
+        for task in tasks:
+            try:
+                by_task[task.pk] = effective_specs([task])[0]
+            except Exception:
+                continue
+        return by_task
 
 
 def _base_record_readonly(part):
@@ -159,6 +167,10 @@ def queue_rows(user):
         rows.append(issue)
 
     already_planned = _planned_piece_counts()
+    # بازبینی دور ۳: specs همهٔ تسک‌ها یک‌جا حل می‌شود (حذف N+1 هر ردیف)
+    specs_by_task = _pending_specs(
+        [task_issues[0].task for task_issues in by_task.values()
+         if task_issues[0].task is not None and task_issues[0].task.part_id])
     rows_out = []
     for task_id, task_issues in by_task.items():
         task = task_issues[0].task
@@ -166,7 +178,14 @@ def queue_rows(user):
             continue
         open_issue = next((item for item in task_issues if item.status == 'open'), None)
         representative = open_issue or task_issues[0]
-        pending, spec = _pending_pieces(task, already_planned)
+        spec = specs_by_task.get(task.pk)
+        pending = None
+        if spec is not None:
+            try:
+                pending = max(0, int(spec.quantity_total) - int(task.completed_quantity)
+                              - already_planned.get(task.pk, 0))
+            except Exception:
+                pending = None
         if not pending:
             continue  # nothing left to place → re-nest is meaningless
         part = task.part

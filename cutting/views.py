@@ -409,45 +409,15 @@ def planner(request):
             return redirect('cutting:plan_detail', plan_id=plan.pk)
         except ValueError as exc:
             messages.error(request, str(exc)); return redirect('cutting:planner')
-    # Keep an order selectable while it still has unreserved tasks. A mixed
-    # order may have its standard parts reserved and its CNC-first parts free.
-    reserved_task_ids = CutPlanTask.objects.filter(plan__status='planned').values('task_id')
-    available_tasks = ProductionTask.objects.filter(
-        station_name='cut', status='pending', part__isnull=False,
-        quantity__gt=F('completed_quantity'), order__isnull=False,
-    ).exclude(pk__in=reserved_task_ids)
-    order_qs = Order.objects.filter(pk__in=available_tasks.values('order_id')).select_related('customer')
-    status_filter = request.GET.get('status', '')
-    valid_statuses = dict(Order.ORDER_STATUS)
-    if status_filter in valid_statuses:
-        order_qs = order_qs.filter(status=status_filter)
-    query = request.GET.get('q', '').strip()
-    if query:
-        search = Q(customer__name__icontains=query) | Q(number__icontains=query)
-        if query.isdigit():
-            search |= Q(pk=int(query))
-        order_qs = order_qs.filter(search)
-    orders = list(order_qs.annotate(
-        cut_task_count=Count('tasks', filter=Q(tasks__pk__in=available_tasks), distinct=True),
-        remaining_pieces=Sum(
-            F('tasks__quantity') - F('tasks__completed_quantity'),
-            filter=Q(tasks__pk__in=available_tasks),
-        ),
-    ).order_by('priority', F('due_date').asc(nulls_last=True), '-id'))
-    material_names = defaultdict(list)
-    if orders:
-        material_rows = available_tasks.filter(order_id__in=[order.pk for order in orders]).values(
-            'order_id', 'part__material__name',
-        ).distinct().order_by('part__material__name')
-        for material_row in material_rows:
-            material_names[material_row['order_id']].append(material_row['part__material__name'])
-        for order in orders:
-            order.cut_material_names = material_names[order.pk]
-            today_jalali = jdatetime.date.fromgregorian(date=timezone.localdate())
-            order.cut_is_overdue = bool(order.due_date and order.due_date < today_jalali)
+    # بازبینی دور ۳ (عملکرد): محاسبهٔ سنگین «orders» (annotate کامل روی همهٔ سفارش‌ها
+    # + حلقهٔ jdatetime) از GET حذف شد — planner.html هرگز آن را رندر نمی‌کرد؛ ردیف‌های
+    # کارگاه از JSON API (ws_orders) با صفحه‌بندی می‌آیند. شاخهٔ POST بالا همان
+    # منطق را با اورراید/خارج‌شده‌ها درست انجام می‌دهد.
     active_plans = CutPlan.objects.filter(status='planned').annotate(
         reserved_sheet_count=Count('planned_sheets', distinct=True),
     ).prefetch_related('orders').order_by('-created_at')[:10]
+    # جست‌وجوی کشوی «برنامه‌ها» (plan_list روی همین q/status فیلتر می‌کند)
+    query = request.GET.get('q', '').strip()
     setting = CuttingSettings.current()
     workspace_urls = {
         'orders': reverse('cutting:ws_orders'),
@@ -469,10 +439,10 @@ def planner(request):
         for material in materials
     ]
     return render(request, 'cutting/planner.html', {
-        'materials': materials, 'orders': orders, 'setting': setting,
-        'order_statuses': Order.ORDER_STATUS, 'status_filter': status_filter, 'query': query,
-        'active_plans': active_plans, 'engine_choices': CutPlan.ALGORITHMS,
-        'plan_statuses': CutPlan.STATUS,  # display-only: چیپ‌های وضعیت کشوی «برنامه‌ها»
+        'materials': materials, 'setting': setting,
+        'active_plans': active_plans, 'query': query,
+        'plan_statuses': CutPlan.STATUS,  # چیپ‌های وضعیت کشوی «برنامه‌ها»
+        'engine_choices': CutPlan.ALGORITHMS,  # بدنهٔ کشوی «تنظیمات برش»
         'stock_policy_choices': CutPlan.STOCK_POLICIES,
         'default_stock_policy': {
             'offcuts_first': 'offcuts_first', 'full_only': 'full_first', 'priority': 'priority',

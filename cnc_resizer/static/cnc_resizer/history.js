@@ -33,10 +33,26 @@
     CNC.requestPreview();
   }
 
-  function push(label) {
+  function push(label, meta) {
     // هر commit جدید، شاخهٔ redo را حذف می‌کند
     stack.splice(cursor + 1);
-    stack.push(snapshot(label));
+    const now = Date.now();
+    // بازبینی دور ۳: رگبار جهت‌نما (نگه‌داشتن کلید) ۱۰۰ گام تاریخچه را در چند
+    // ثانیه دور می‌ریزد — گام‌های پیوستهٔ همان قطعه (کلید coalesceKey) در همان
+    // خانهٔ تاریخچه بازنویسی می‌شوند؛ undo به قبل از کل رگبار برمی‌گردد.
+    const key = meta && meta.coalesceKey;
+    if (key && cursor >= 0 && stack[cursor].coalesceKey === key && now - (stack[cursor].ts || 0) < 1200) {
+      const merged = snapshot(label);
+      merged.coalesceKey = stack[cursor].coalesceKey;
+      merged.ts = now;
+      stack[cursor] = merged;
+      renderPanel();
+      syncButtons();
+      return;
+    }
+    const snap = snapshot(label);
+    if (key) { snap.coalesceKey = key; snap.ts = now; }
+    stack.push(snap);
     if (stack.length > 100) stack.shift();   // سقف معقول حافظه
     cursor = stack.length - 1;
     renderPanel();
@@ -427,7 +443,7 @@
 
   // ------------------------------------------------_رویدادها
   CNC.on('ops-changed', (detail) => {
-    push((detail && detail.label) || 'ویرایش');
+    push((detail && detail.label) || 'ویرایش', detail);
   });
   CNC.on('undo-request', undo);
   CNC.on('redo-request', redo);
@@ -443,6 +459,9 @@
 
   document.addEventListener('keydown', (e) => {
     if (!(e.ctrlKey || e.metaKey)) return;
+    // بازبینی دور ۳: واگردِ متن در فیلدها (نام قالب/یادداشت/نام ابزار/...) به
+    // خود فیلد می‌رسد؛ فقط ویرایش نقشه با Ctrl+Z واگرد می‌شود.
+    if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName) || e.target.isContentEditable) return;
     // e.code مستقل از چیدمان است؛ روی کیبورد فارسی e.key به‌جای z «ظ» می‌شود
     // (بازبینی UI/UX بند ۱) — از هر دو برای سازگاری استفاده می‌کنیم.
     const isZ = e.code === 'KeyZ' || e.key.toLowerCase() === 'z';

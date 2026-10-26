@@ -117,9 +117,9 @@
   }
   CNC.partEditBlocked = partEditBlocked;
 
-  function commitOp(partId, op, label) {
+  function commitOp(partId, op, label, opts) {
     state.partOp.set(partId, op);
-    CNC.emit('ops-changed', { partId, op, label });
+    CNC.emit('ops-changed', { partId, op, label, ...(opts || {}) });
     requestPreview();
   }
   CNC.commitOp = commitOp;
@@ -1341,7 +1341,8 @@
     const dx = Math.round((base.dx + ax * step) * 1000) / 1000;
     const dy = Math.round((base.dy + ay * step) * 1000) / 1000;
     commitOp(sel.id, { op: 'move_part', part_id: sel.id, dx, dy },
-             `جابه‌جایی ${CNC.partName(part)} (${CNC.sgn(dx)},${CNC.sgn(dy)})`);
+             `جابه‌جایی ${CNC.partName(part)} (${CNC.sgn(dx)},${CNC.sgn(dy)})`,
+             { coalesceKey: 'nudge:' + sel.id });   // رگبار جهت‌نما یک گام تاریخچه
   });
 
   // ================================================================_اتصال به چرخهٔ رندر

@@ -3,6 +3,7 @@
 {% block title %}ایستگاه برش — برنامه {{ plan.id }}{% endblock %}
 {% block nav %}{% endblock %}
 {% block body_class %}admin-panel cutting-station{% endblock %}
+{% block extra_css %}{{ block.super }}<link rel="stylesheet" href="{% static 'cutting/cutting.css' %}">{% endblock %}
 {% block content %}
 <div class="station station-plan {% if plan.status == 'planned' %}has-result{% endif %}" dir="rtl">
 
@@ -84,10 +85,10 @@
             <span class="badge-status {% if s.sheet.is_offcut %}is-warn{% else %}is-info{% endif %}">{% if s.sheet.is_offcut %}پرت انبار{% else %}ورق کامل{% endif %}</span>
             {% if rec and rec.outcome != 'reserved' %}<span class="badge-status {% if rec.outcome == 'used' %}is-ok{% elif rec.outcome == 'untouched' %}is-mute{% else %}is-bad{% endif %}">{{ rec.get_outcome_display }}</span>{% endif %}
             <span class="ms-end" title="بهره‌وری و شمار قطعات این ورق"><b class="num">{{ s.utilization_percent|floatformat:1 }}%</b> · <span class="num">{{ s.planned_piece_count }}</span> قطعه
-            <button type="button" class="btn btn-outline-secondary btn-sm dock-toggle" data-dock-toggle="verlist" aria-expanded="false" aria-controls="verlist-{{ r.material|slugify }}-{{ forloop.counter }}" title="فهرست قطعات این متریال و وضعیت برش"><i class="bi bi-list-check" aria-hidden="true"></i> فهرست قطعات</button></span>
+            <button type="button" class="btn btn-outline-secondary btn-sm dock-toggle" data-dock-toggle="verlist" aria-expanded="false" aria-controls="verlist-m{{ forloop.parentloop.counter0 }}-{{ forloop.counter }}" title="فهرست قطعات این متریال و وضعیت برش"><i class="bi bi-list-check" aria-hidden="true"></i> فهرست قطعات</button></span>
           </div>
           <div class="map-stage">
-            <aside class="detail-pop-panel verlist-pop" id="verlist-{{ r.material|slugify }}-{{ forloop.counter }}" data-verlist-dock hidden aria-label="فهرست قطعات {{ r.material }}">
+            <aside class="detail-pop-panel verlist-pop" id="verlist-m{{ forloop.parentloop.counter0 }}-{{ forloop.counter }}" data-verlist-dock hidden aria-label="فهرست قطعات {{ r.material }}">
               <div class="fw-bold mb-2">فهرست قطعات — {{ r.material }}</div>
               <div class="verlist">
                 {% for item in r.verlist %}
@@ -201,4 +202,4 @@
 
 </div>
 {% endblock %}
-{% block extra_js %}<script src="{% static 'cutting/plan_detail.js' %}"></script>{% endblock %}
+{% block extra_js %}<script src="{% static 'cutting/popfix.js' %}"></script><script src="{% static 'cutting/plan_detail.js' %}"></script>{% endblock %}

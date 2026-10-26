@@ -39,16 +39,17 @@ body.cutting-station .main-content{padding:0}
   display:flex;align-items:center;gap:var(--sp-1);
   padding:0;background:none;border:0;
 }
+/* بازبینی دور ۳: کف هدف لمسی ≥۲۸px — بدون شکستن کروم تک‌خطی نوار ایستگاه */
 .cutting-nav .nav-item{
-  display:inline-flex;align-items:center;min-height:24px;
-  padding:.1rem .55rem;border-radius:999px;border:0;background:transparent;
+  display:inline-flex;align-items:center;min-height:28px;
+  padding:.15rem .55rem;border-radius:999px;border:0;background:transparent;
   color:var(--st-muted);font-size:12px;font-weight:700;text-decoration:none;white-space:nowrap;
 }
 .cutting-nav .nav-item:hover{color:var(--st-ink);background:var(--st-sunken)}
 .cutting-nav .nav-item[aria-current="page"]{color:var(--st-accent);background:var(--st-accent-soft)}
 .cutting-nav .nav-user{
   margin-inline-start:auto;display:inline-flex;align-items:center;gap:.35rem;
-  color:var(--st-faint);font-size:11px;text-decoration:none;min-height:24px;padding:0 .4rem;border-radius:6px;
+  color:var(--st-faint);font-size:11px;text-decoration:none;min-height:28px;padding:0 .4rem;border-radius:6px;
 }
 .cutting-nav .nav-user:hover{color:var(--st-muted)}
 .cutting-nav .nav-user .bi{font-size:.95rem}
@@ -69,7 +70,7 @@ body.cutting-station .main-content{padding:0}
 /* ---------- سگمنت (زیربخش درون صفحه) ---------- */
 .seg{display:inline-flex;align-items:center;gap:2px;background:var(--st-sunken);border:1px solid var(--st-line);border-radius:999px;padding:2px;max-width:100%;overflow-x:auto;scrollbar-width:none}
 .seg::-webkit-scrollbar{display:none}
-.seg .seg-opt{position:relative;display:inline-flex;align-items:center;gap:.3rem;border:0;background:transparent;color:var(--st-muted);font-size:12px;font-weight:700;padding:.22rem .65rem;border-radius:999px;text-decoration:none;white-space:nowrap;min-height:28px;cursor:pointer}
+.seg .seg-opt{position:relative;display:inline-flex;align-items:center;gap:.3rem;border:0;background:transparent;color:var(--st-muted);font-size:12px;font-weight:700;padding:.22rem .65rem;border-radius:999px;text-decoration:none;white-space:nowrap;min-height:30px;cursor:pointer}
 .seg .seg-opt:hover{color:var(--st-ink)}
 .seg input[type="radio"],.seg input[type="checkbox"]{position:absolute;inset:0;opacity:0;margin:0;cursor:pointer}
 .seg .seg-opt:has(input:checked),.seg a[aria-current="page"]{background:var(--st-panel);color:var(--st-accent);box-shadow:0 1px 2px rgba(16,24,40,.12)}
@@ -168,6 +169,8 @@ tr.row-expand-details>td{background:var(--st-sunken);border-bottom:1px solid var
 .detail-pop>summary:hover{color:var(--st-ink)}
 .detail-pop[open]>summary{color:var(--st-accent);border-color:#bfd3fa;background:var(--st-accent-soft)}
 .detail-pop-panel{position:absolute;z-index:30;top:calc(100% + .4rem);inset-inline-start:0;min-width:15rem;max-width:min(26rem,92vw);background:var(--st-panel);border:1px solid var(--st-line);border-radius:var(--st-radius);box-shadow:var(--st-shadow);padding:var(--sp-2) var(--sp-3);font-size:12.5px;line-height:1.9}
+/* بازبینی دور ۳: پنل در ظرف کلیپ‌کننده (‎.page-head/.table-responsive/‎.offcanvas-body) به position:fixed می‌رود — popfix.js مختصات را ست می‌کند */
+.detail-pop-panel.pop-escaped{position:fixed;z-index:1080;inset-inline-start:auto;top:auto}
 
 /* ---------- کشوی کناری (offcanvas) ---------- */
 .offcanvas.cut-drawer{background:var(--st-panel);color:var(--st-ink);border-inline-start:1px solid var(--st-line);width:min(22rem,94vw)}
@@ -224,7 +227,7 @@ tr.row-expand-details>td{background:var(--st-sunken);border-bottom:1px solid var
 .ws-part-table tr.ws-row-excluded td{color:var(--st-muted)}
 .ws-part-table tr.ws-row-excluded .td-lead b{text-decoration:line-through;text-decoration-color:var(--st-red)}
 .ws-chips{display:flex;flex-wrap:wrap;gap:var(--sp-1)}
-.ws-chip{border:1px solid var(--st-line);background:var(--st-panel);color:var(--st-muted);border-radius:999px;font-size:12px;font-weight:700;padding:.22rem .65rem;min-height:30px;white-space:nowrap}
+.ws-chip{border:1px solid var(--st-line);background:var(--st-panel);color:var(--st-muted);border-radius:999px;font-size:12px;font-weight:700;padding:.22rem .65rem;min-height:32px;white-space:nowrap}
 .ws-chip.active{background:var(--st-accent);border-color:var(--st-accent);color:#fff}
 .ws-cell-state{font-size:11.5px;margin-top:2px}
 .ws-lock-note{font-size:12px;color:var(--st-amber)}
@@ -280,7 +283,7 @@ tr.row-expand-details>td{background:var(--st-sunken);border-bottom:1px solid var
 }
 .rail-group{display:flex;flex-direction:column;align-items:center;gap:var(--sp-1);padding-bottom:var(--sp-2);margin-bottom:var(--sp-1);border-bottom:1px solid var(--st-line-soft);width:100%}
 .rail-group:last-child{border-bottom:0}
-.rail-mat{border:0;background:transparent;color:var(--st-muted);font-size:10.5px;font-weight:800;padding:.2rem .1rem;max-width:52px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-radius:6px;min-height:28px}
+.rail-mat{border:0;background:transparent;color:var(--st-muted);font-size:10.5px;font-weight:800;padding:.2rem .1rem;max-width:52px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-radius:6px;min-height:30px}
 .rail-mat[aria-current="true"],.rail-mat:hover{color:var(--st-accent)}
 .rail-dot{
   position:relative;width:40px;height:40px;border-radius:50%;border:2px solid var(--st-line);

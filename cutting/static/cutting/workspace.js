@@ -77,7 +77,12 @@
 
   /* ---------- order queue ---------- */
 
+  /* بازبینی دور ۳: گارد نسل برای فراخوانی‌های ناهم‌زمان — پاسخ کهنه هرگز
+     DOM تازه را بازنویسی نمی‌کند (جست‌وجوی debounced/تغییر صفحه/فوکوس سریع) */
+  let queueSeq = 0, focusSeq = 0, partsSeq = 0;
+
   async function loadQueue() {
+    const seq = ++queueSeq;
     const params = new URLSearchParams({ page: state.queuePage });
     if (state.queueQuery) params.set('q', state.queueQuery);
     if (state.queueStatus) params.set('status', state.queueStatus);
@@ -87,12 +92,14 @@
     if (selectAll) selectAll.checked = false;
     try {
       const data = await api(`${CONFIG.orders}?${params}`);
+      if (seq !== queueSeq) return;   // پاسخ کهنه — صفحه/جست‌وجو عوض شده
       queueEl.innerHTML = data.rows.length ? '' :
         '<div class="ws-empty"><i class="bi bi-inbox" aria-hidden="true"></i><p>سفارشی برای برنامه‌ریزی در این صفحه نیست — جست‌وجو یا فیلتر وضعیت را تغییر دهید.</p></div>';
       data.rows.forEach(row => queueEl.appendChild(queueRow(row)));
       state.queuePages = data.pages;
       renderQueuePager();
     } catch (error) {
+      if (seq !== queueSeq) return;
       queueEl.innerHTML = `<div class="ws-empty text-danger">${esc(error.message)}</div>`;
     }
   }
@@ -192,8 +199,11 @@
     details.id = `wsd-${orderId}`;
     details.innerHTML = '<div class="help">در حال خواندن…</div>';
     rowEl.insertAdjacentElement('afterend', details);
+    const seq = ++focusSeq;
+    partsSeq = seq;   // لود قطعات قدیمی هم بی‌اثر شود
     try {
       const data = await api(pattern(CONFIG.order_pattern, orderId));
+      if (seq !== focusSeq || String(state.focusId) !== String(orderId)) return;   // کاربر سفارش دیگری را باز کرد
       state.orderInfo = data.order;
       state.items = data.items;
       state.materials = data.materials;
@@ -201,6 +211,7 @@
       renderChips();
       await loadParts();
     } catch (error) {
+      if (seq !== focusSeq) return;
       details.innerHTML = `<div class="ws-empty text-danger">${esc(error.message)}</div>`;
       announce(error.message);
     }
@@ -282,6 +293,7 @@
 
   async function loadParts() {
     if (!state.focusId) return;
+    const seq = ++partsSeq;
     const params = new URLSearchParams({
       item: state.item, material: state.material, page: state.partsPage,
     });
@@ -292,6 +304,7 @@
     tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-3">در حال خواندن قطعات…</td></tr>';
     try {
       const data = await api(`${pattern(CONFIG.parts_pattern, state.focusId)}?${params}`);
+      if (seq !== partsSeq) return;   // پاسخ کهنه — فیلتر/صفحه/سفارش عوض شده
       state.rows = Object.fromEntries(data.rows.map(row => [row.task_id, row]));
       state.partsPages = data.pages;
       tbody.innerHTML = data.rows.length ? '' :
@@ -311,6 +324,7 @@
         else th.removeAttribute('aria-sort');
       });
     } catch (error) {
+      if (seq !== partsSeq) return;
       tbody.innerHTML = `<tr><td colspan="10" class="text-center text-danger py-3">${esc(error.message)}</td></tr>`;
     }
   }

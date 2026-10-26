@@ -1,5 +1,3 @@
-{% load static %}
-<link rel="stylesheet" href="{% static 'cutting/cutting.css' %}">
 <nav class="cutting-nav" aria-label="ایستگاه برش">
   {% if can_operate %}<a class="nav-item" {% if cut_section == 'cut' %}aria-current="page"{% endif %} href="{% url 'cutting:planner' %}">برش</a>{% endif %}
   {% if can_inventory %}

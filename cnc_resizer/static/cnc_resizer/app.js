@@ -1082,7 +1082,9 @@
     span.addEventListener('animationend', () => span.remove());
   }, { passive: true });
 
+  const IS_FIELD = (el) => !el || ['INPUT', 'SELECT', 'TEXTAREA'].includes(el.tagName) || el.isContentEditable;
   document.addEventListener('keydown', (e) => {
+    if (e.repeat) return;   // نگه‌داشتن کلید نباید ابزار را تیک‌تاک بزند
     if (e.key === 'Escape') {
       // فاز ۳.۲: اول پنل باز بسته می‌شود (با بازگشت فوکوس)، بعد رفتار قبلی.
       if (openPanel) {
@@ -1091,15 +1093,25 @@
         if (current.btn) current.btn.focus();
         return;
       }
-      if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
+      if (IS_FIELD(e.target)) return;
       setTool('select'); state._measureA = null; state._measureLive = null;
       CNC.drawMeasures(); clearAlert('measure');
       CNC.emit('edit-cancel', {});
-    } else if (e.code === 'KeyM' || e.key === 'm' || e.key === 'M' || e.key === 'م') {
+      return;
+    }
+    // بازبینی دور ۳: تایپ در هر فیلد (نام قالب/نام ابزار/ابعاد/...) هیچ میانبر
+    // نقشه‌ای را روشن نمی‌کند؛ ترکیب‌های Ctrl/Alt/Cmd هم به مرورگر می‌رسند.
+    if (IS_FIELD(e.target)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.isComposing) return;
+    // فقط e.key (نه e.code) تا کلید فیزیکی روی چیدمان فارسی ناخواسته فعال نشود؛
+    // حروف هم‌مکان فارسی (ب روی F، ل روی G، م اندازه‌گیری) هم پذیرفته می‌شود.
+    const k = e.key;
+    if (k === 'm' || k === 'M' || k === 'م') {
       setTool(state.tool === 'measure' ? 'select' : 'measure');
-    } else if (e.code === 'KeyF' || e.key === 'f' || e.key === 'F') {
+    } else if (k === 'f' || k === 'F' || k === 'ب') {
       CNC.viewport.fit();
-    } else if (e.code === 'KeyG' || e.key === 'g' || e.key === 'G') {
+    } else if (k === 'g' || k === 'G' || k === 'ل') {
       state.layers.showGrid = !state.layers.showGrid; CNC.emit('rerender', {});
     }
   });
@@ -1280,9 +1292,13 @@
     if (digit < 0) digit = AR_DIGITS.indexOf(e.key);
     if (digit < 0) return;
     e.preventDefault();
-    const start = target.selectionStart ?? target.value.length;
-    const end = target.selectionEnd ?? target.value.length;
-    target.setRangeText(String(digit), start, end, 'end');
+    // ورودی type=number از API انتخاب (setRangeText/setSelectionRange) پشتیبانی
+    // نمی‌کند و InvalidStateError می‌دهد — درج با چسباندن رشته انجام می‌شود.
+    let start = null, end = null;
+    try { start = target.selectionStart; end = target.selectionEnd; } catch (_) { /* برخی موتورها پرتاب می‌کنند */ }
+    start = start ?? target.value.length;
+    end = end ?? target.value.length;
+    target.value = target.value.slice(0, start) + String(digit) + target.value.slice(end);
     target.dispatchEvent(new Event('input', { bubbles: true }));
   });
 })();
