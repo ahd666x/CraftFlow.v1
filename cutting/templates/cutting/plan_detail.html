@@ -111,8 +111,7 @@
                 {% for rem in s.expected_offcuts %}{% if rem.x is not None %}<rect class="offcut-box" x="{{ rem.x }}" y="{{ rem.y }}" width="{{ rem.width }}" height="{{ rem.height }}"><title>پرت تخمینی {{ rem.width }}×{{ rem.height }}</title></rect>{% endif %}{% endfor %}</g>
               </svg>
             </div>
-            {# بازبینی UI/UX بند ۲۵: زوم/پن نقشهٔ برش — دکمه‌ها + اسکرول + درگ + پینچ؛
-               هر ورق حالت خودش را دارد و با «نمایش کامل» یا کلیک روی درصد برمی‌گردد #}
+            {# بازبینی UI/UX بند ۲۵: زوم/پن نقشهٔ برش — دکمه‌ها + اسکرول + درگ + پینچ؛ هر ورق حالت خودش را دارد و با «نمایش کامل» یا کلیک روی درصد برمی‌گردد #}
             <div class="map-zoom" role="group" aria-label="بزرگ‌نمایی و جابه‌جایی نقشه">
               <button type="button" data-map-zin title="بزرگ‌نمایی" aria-label="بزرگ‌نمایی نقشه">+</button>
               <button type="button" data-map-zout title="کوچک‌نمایی" aria-label="کوچک‌نمایی نقشه">−</button>
