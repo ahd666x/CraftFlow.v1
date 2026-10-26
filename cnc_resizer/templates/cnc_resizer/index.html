@@ -64,7 +64,7 @@
 <div id="emptyState">
   <div class="in">
     <div class="toolbtns" style="justify-content:center;margin:0">
-      <button type="button" id="emptyOpenFile" class="primary">📂 بازکردن فایل</button>
+      <button type="button" id="emptyOpenFile" class="primary"><i class="bi bi-folder2-open" aria-hidden="true"></i> بازکردن فایل</button>
     </div>
   </div>
 </div>
@@ -85,26 +85,26 @@
 </section>
 
 <nav id="toolbar" aria-label="نوار ابزار نقشه">
-  <button type="button" id="btnSelect" class="on" title="انتخاب (کلیک، Shift+کلیک، کادر)"><span class="tb-ico">⬚</span><span class="tb-lbl">انتخاب</span></button>
-  <button type="button" id="btnMeasure" title="اندازه‌گیری دو نقطه‌ای (M)"><span class="tb-ico">📏</span><span class="tb-lbl">اندازه‌گیری</span></button>
+  <button type="button" id="btnSelect" class="on" title="انتخاب (کلیک، Shift+کلیک، کادر)"><span class="tb-ico"><i class="bi bi-cursor-fill" aria-hidden="true"></i></span><span class="tb-lbl">انتخاب</span></button>
+  <button type="button" id="btnMeasure" title="اندازه‌گیری دو نقطه‌ای (M)"><span class="tb-ico"><i class="bi bi-rulers" aria-hidden="true"></i></span><span class="tb-lbl">اندازه‌گیری</span></button>
   <span class="sep"></span>
-  <button type="button" id="btnUndo" title="واگرد (Ctrl+Z)" disabled><span class="tb-ico">↶</span><span class="tb-lbl">واگرد</span></button>
-  <button type="button" id="btnRedo" title="ازنو (Ctrl+Shift+Z)" disabled><span class="tb-ico">↷</span><span class="tb-lbl">ازنو</span></button>
+  <button type="button" id="btnUndo" title="واگرد (Ctrl+Z)" disabled><span class="tb-ico"><i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i></span><span class="tb-lbl">واگرد</span></button>
+  <button type="button" id="btnRedo" title="ازنو (Ctrl+Shift+Z)" disabled><span class="tb-ico"><i class="bi bi-arrow-clockwise" aria-hidden="true"></i></span><span class="tb-lbl">ازنو</span></button>
   <span class="sep"></span>
-  <button type="button" id="btnLayers" title="لایه‌های عمق/ابزار/نوع"><span class="tb-ico">◫</span><span class="tb-lbl">لایه‌ها</span></button>
-  <button type="button" id="btnHistory" title="تاریخچهٔ ویرایش و الگوها"><span class="tb-ico">🕘</span><span class="tb-lbl">تاریخچه</span></button>
-  <button type="button" id="btnCompare" title="مقایسهٔ کنارهم فایل اصلی و نتیجهٔ ویرایش‌ها (وقتی پیش‌نمایش فعالی هست)" disabled><span class="tb-ico">⇔</span><span class="tb-lbl">مقایسه</span></button>
+  <button type="button" id="btnLayers" title="لایه‌های عمق/ابزار/نوع"><span class="tb-ico"><i class="bi bi-layers" aria-hidden="true"></i></span><span class="tb-lbl">لایه‌ها</span></button>
+  <button type="button" id="btnHistory" title="تاریخچهٔ ویرایش و الگوها"><span class="tb-ico"><i class="bi bi-clock-history" aria-hidden="true"></i></span><span class="tb-lbl">تاریخچه</span></button>
+  <button type="button" id="btnCompare" title="مقایسهٔ کنارهم فایل اصلی و نتیجهٔ ویرایش‌ها (وقتی پیش‌نمایش فعالی هست)" disabled><span class="tb-ico"><i class="bi bi-arrow-left-right" aria-hidden="true"></i></span><span class="tb-lbl">مقایسه</span></button>
   <span class="sep"></span>
-  <button type="button" id="btnFile" title="بازکردن فایل (بارگذاری یا آرشیو)"><span class="tb-ico">📂</span><span class="tb-lbl">فایل</span></button>
-  <button type="button" id="btnTools" title="میز ابزار (قطر پارکینگ T)"><span class="tb-ico">🧰</span><span class="tb-lbl">ابزار</span></button>
-  <button type="button" id="btnCode" title="نمای کد و همگامی با نقشه"><span class="tb-ico">⌨</span><span class="tb-lbl">کد</span></button>
-  <button type="button" id="btnResize" title="تغییر طول خودکار فایل"><span class="tb-ico">↔</span><span class="tb-lbl">طول</span></button>
+  <button type="button" id="btnFile" title="بازکردن فایل (بارگذاری یا آرشیو)"><span class="tb-ico"><i class="bi bi-folder2-open" aria-hidden="true"></i></span><span class="tb-lbl">فایل</span></button>
+  <button type="button" id="btnTools" title="میز ابزار (قطر پارکینگ T)"><span class="tb-ico"><i class="bi bi-toolbox" aria-hidden="true"></i></span><span class="tb-lbl">ابزار</span></button>
+  <button type="button" id="btnCode" title="نمای کد و همگامی با نقشه"><span class="tb-ico"><i class="bi bi-keyboard" aria-hidden="true"></i></span><span class="tb-lbl">کد</span></button>
+  <button type="button" id="btnResize" title="تغییر طول خودکار فایل"><span class="tb-ico"><i class="bi bi-arrows-expand" aria-hidden="true"></i></span><span class="tb-lbl">طول</span></button>
   <span class="sep"></span>
   <span id="gateChip" role="status" title="وضعیت پست‌پروسسور">
     <span class="dot"></span><span class="txt">بدون فایل</span>
   </span>
   <button type="button" id="btnDownload" class="primary" title="دانلود G-code کنترلر (فقط وقتی گته پاس شود)" disabled>
-    <span class="tb-ico">⬇</span><span class="tb-lbl">دانلود G-code</span>
+    <span class="tb-ico"><i class="bi bi-download" aria-hidden="true"></i></span><span class="tb-lbl">دانلود G-code</span>
   </button>
 </nav>
 
@@ -127,7 +127,7 @@
     <tbody id="toolTableBody"></tbody>
   </table>
   <div class="toolbtns">
-    <button type="button" id="saveToolsBtn" class="primary">💾 ذخیرهٔ میز</button>
+    <button type="button" id="saveToolsBtn" class="primary"><i class="bi bi-save" aria-hidden="true"></i> ذخیرهٔ میز</button>
     <button type="button" id="saveToolSetBtn">ذخیره به‌عنوان ست…</button>
   </div>
   <ul class="mlist" id="toolSetList" style="margin-top:10px;border-top:1px solid var(--line);padding-top:8px"></ul>

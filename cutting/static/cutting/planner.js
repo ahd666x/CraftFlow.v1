@@ -144,7 +144,8 @@
         document.getElementById('preview-state').textContent = 'خطا';
         // علتِ غیرفعال‌بودن دکمه باید بیرونِ پنلِ بسته هم دیده شود (بازبینی UI/UX بند ۸)
         verdict.className = 'preview-verdict bad';
-        verdict.textContent = `✘ ${error.message}`;
+        // بازبینی UI/UX بند ۱۳: با خطای پیش‌نمایش، راه «تلاش دوباره» باید باشد
+        verdict.innerHTML = `✘ ${esc(error.message)} — <a href="#" id="preview-retry">تلاش دوباره</a>`;
       }
     }, 600);
   }
@@ -179,6 +180,25 @@
   kerf.addEventListener('input', updatePreview);
   planningModes.forEach(input => input.addEventListener('change', updatePreview));
   cncUseOffcuts?.addEventListener('change', updatePreview);
+
+  /* بازبینی UI/UX بند ۱۳: کلیک روی «تلاش دوباره» = اجرای دوبارهٔ پیش‌نمایش */
+  verdict.addEventListener('click', event => {
+    if (event.target.id === 'preview-retry') {
+      event.preventDefault();
+      updatePreview();
+    }
+  });
+
+  /* بازبینی UI/UX بند ۴: فالبک مرورگرهای بدون :has() برای نمایش چک‌باکس «پرت»
+     در حالت CNC — کلاس روی page-head همان کار :has() را می‌کند. */
+  const pageHead = document.querySelector('.planner-page .page-head');
+  function syncCncModeClass() {
+    if (!pageHead) return;
+    const isCnc = planningModes.find(input => input.checked)?.value === 'cnc_sheets';
+    pageHead.classList.toggle('is-cnc-mode', Boolean(isCnc));
+  }
+  planningModes.forEach(input => input.addEventListener('change', syncCncModeClass));
+  syncCncModeClass();
   form.addEventListener('submit', () => {
     submit.disabled = true;
     submit.querySelector('.spinner-border').hidden = false;

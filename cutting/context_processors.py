@@ -17,8 +17,10 @@ def cutting_nav(request):
         return {}
     user = request.user
     if match.app_name == 'cnc_resizer':
+        # بازبینی UI/UX بند ۱: صفحه‌های CNC تب خودشان را فعال کنند، نه «برش».
+        section = 'cnc-manual' if match.url_name == 'manual_queue' else 'cnc'
         return {
-            'cut_section': 'cut',
+            'cut_section': section,
             'cut_url_name': match.url_name,
             'can_operate': True,
             'can_inventory': can_inventory(user),

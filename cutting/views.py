@@ -663,10 +663,11 @@ def plan_detail(request, plan_id):
     ), pk=plan_id)
     summaries = []
     planned_by_id = {s.pk: s for s in plan.planned_sheets.all()}
-    # AutoSAW semantics: green = consumed, periwinkle = waiting, red = scrapped.
+    # AutoSAW semantics: green = consumed, indigo = waiting, red = scrapped.
+    # رنگ‌ها هم‌راستا با cutting.css و با کنتراست ≥4.5:1 روی متن سفید (بازبینی UI/UX بند ۲۴).
     color_legend = [
-        {'color': '#16a34a', 'label': 'قطعهٔ مصرف‌شده'},
-        {'color': '#6666c8', 'label': 'در انتظار برش'},
+        {'color': '#15803d', 'label': 'قطعهٔ مصرف‌شده'},
+        {'color': '#4e54c4', 'label': 'در انتظار برش'},
         {'color': '#e11d48', 'label': 'ورق ضایعات'},
     ]
     total_sheet_area = Decimal('0')
@@ -740,7 +741,7 @@ def plan_detail(request, plan_id):
                 part['dims'] = dims_text
                 part['used'] = sheet_state == 'used'
                 part['scrapped'] = sheet_state == 'scrapped'
-                part['color'] = '#16a34a' if part['used'] else ('#e11d48' if part['scrapped'] else '#6666c8')
+                part['color'] = '#15803d' if part['used'] else ('#e11d48' if part['scrapped'] else '#4e54c4')
             row_piece_area += piece_area
             total_sheet_area += sheet_area
             total_piece_area += piece_area

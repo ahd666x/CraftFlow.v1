@@ -12,4 +12,10 @@
   if (search && form) {
     form.addEventListener('submit', () => search.blur());
   }
+
+  // بازبینی UI/UX بند ۳۲: «غیرفعال‌ها» دکمه است نه badge — رفتن به URL معکوس
+  document.querySelectorAll('[data-inactive-toggle]').forEach(button => button.addEventListener('click', () => {
+    const url = button.dataset.toggleUrl;
+    if (url) window.location.assign(url);
+  }));
 })();

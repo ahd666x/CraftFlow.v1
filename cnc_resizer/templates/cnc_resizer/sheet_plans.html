@@ -5,14 +5,10 @@
 {% block body_class %}admin-panel cutting-station{% endblock %}
 {% block content %}
 <div class="station station-cnc pb-0" dir="rtl">
-  {# ── سربرگ تک‌خطی: نوار ایستگاه + سگمنت + KPI + برنامهٔ جدید ── #}
+  {# ── سربرگ تک‌خطی: نوار ایستگاه + KPI + برنامهٔ جدید (بازبینی UI/UX بند ۲:
+     سگمنت تکراری حذف شد — نوار ایستگاه تنها ناوبری است و تب فعال را نشان می‌دهد) ── #}
   <header class="page-head">
     {% include 'cutting/_station_bar.html' %}
-    <nav class="seg" aria-label="بخش برش">
-      <a class="seg-opt" href="{% url 'cutting:planner' %}">صف برش</a>
-      <a class="seg-opt" aria-current="page" href="{% url 'cnc_resizer:sheet_plans' %}">خروجی ورق CNC</a>
-      <a class="seg-opt" href="{% url 'cnc_resizer:manual_queue' %}" title="قطعات در انتظار اصلاح دستی CNC">صف دستی{% if manual_open_count %} <span class="num">({{ manual_open_count }})</span>{% endif %}</a>
-    </nav>
     <div class="head-actions">
       <span class="kpi-inline help" aria-label="خلاصهٔ برنامه‌های CNC">
         <span><b class="num">{{ total_count }}</b> برنامه</span>
@@ -113,25 +109,23 @@
         {% if issue.status == 'open' %}
           <div class="cnc-issue-actions">
             {% if issue.details.stage == 'manual_required' %}<a class="btn btn-sm btn-outline-primary" href="/cnc/?task_id={{ issue.task_id }}">رفع در ابزار CNC</a>{% endif %}
-            <div class="dropdown">
-              <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="اقدامات بیشتر">⋯</button>
-              <ul class="dropdown-menu">
-                <li>
-                  <form method="post" action="{% url 'cnc_resizer:update_planning_issue' issue.id %}" class="dropdown-item p-2 d-grid gap-2">{% csrf_token %}
-                    <input type="hidden" name="status" value="resolved">
-                    <input name="note" maxlength="255" class="form-control form-control-sm" placeholder="یادداشت رفع (اختیاری)" aria-label="یادداشت رفع">
-                    <button class="btn btn-sm btn-success">رفع شد</button>
-                  </form>
-                </li>
-                <li>
-                  <form method="post" action="{% url 'cnc_resizer:update_planning_issue' issue.id %}" class="dropdown-item p-2 d-grid gap-2">{% csrf_token %}
-                    <input type="hidden" name="status" value="ignored">
-                    <input name="note" maxlength="255" class="form-control form-control-sm" placeholder="علت نادیده‌گرفتن" aria-label="علت نادیده‌گرفتن">
-                    <button class="btn btn-sm btn-outline-secondary">نادیده‌گرفتن</button>
-                  </form>
-                </li>
-              </ul>
-            </div>
+            {# بازبینی UI/UX بند ۲۹: فرم‌های کامل داخل dropdown-item مشکل کیبورد و screen reader دارند — details/summary بومی جایگزین شد #}
+            <details class="detail-pop">
+              <summary aria-label="اقدامات بیشتر" title="اقدامات بیشتر">⋯</summary>
+              <div class="detail-pop-panel d-grid gap-2">
+                <form method="post" action="{% url 'cnc_resizer:update_planning_issue' issue.id %}">{% csrf_token %}
+                  <input type="hidden" name="status" value="resolved">
+                  <input name="note" maxlength="255" class="form-control form-control-sm" placeholder="یادداشت رفع (اختیاری)" aria-label="یادداشت رفع">
+                  <button class="btn btn-sm btn-success mt-1">رفع شد</button>
+                </form>
+                <hr class="divider my-1">
+                <form method="post" action="{% url 'cnc_resizer:update_planning_issue' issue.id %}">{% csrf_token %}
+                  <input type="hidden" name="status" value="ignored">
+                  <input name="note" maxlength="255" class="form-control form-control-sm" placeholder="علت نادیده‌گرفتن" aria-label="علت نادیده‌گرفتن">
+                  <button class="btn btn-sm btn-outline-secondary mt-1">نادیده‌گرفتن</button>
+                </form>
+              </div>
+            </details>
           </div>
         {% else %}
           <div class="cnc-issue-actions"><form method="post" action="{% url 'cnc_resizer:update_planning_issue' issue.id %}">{% csrf_token %}<input type="hidden" name="status" value="open"><button class="btn btn-sm btn-outline-secondary">بازگشایی</button></form></div>

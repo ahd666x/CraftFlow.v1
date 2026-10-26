@@ -12,8 +12,13 @@
   const remnantContainers = [...document.querySelectorAll('.remnant-fields')];
   const remPop = document.getElementById('remnants-pop');
   const remToggle = document.querySelector('[data-dock-toggle="result"]');
+  const sheetsPop = document.getElementById('sheets-pop');
+  const sheetsToggle = document.querySelector('[data-dock-toggle="sheets"]');
   const number = value => Number(String(value || '').replace(',', '.')) || 0;
   const fmt = value => Number(value || 0).toLocaleString('en-US');
+  const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[char]));
   const outcomeOf = id => document.querySelector(`input[name="outcome_${id}"]:checked`)?.value || '';
 
   function storedOutcome(panel) {
@@ -93,6 +98,10 @@
     document.querySelectorAll('[data-dock-toggle="verlist"]').forEach(btn => {
       btn.classList.remove('active');
       btn.setAttribute('aria-expanded', 'false');
+    });
+    // بازبینی UI/UX بند ۸: ردیف جاری در نمای خلاصه هم علامت‌گذاری شود
+    document.querySelectorAll('[data-summary-row]').forEach(row => {
+      row.classList.toggle('active', row.dataset.sheetJump === pk);
     });
   }
 
@@ -205,6 +214,7 @@
     updateDot(sheet);
     updateProgress();
     updateSummary();
+    syncSheetsSummary();
   }
 
   /* ---------- validation focus ---------- */
@@ -213,7 +223,59 @@
     if (!remPop || !remToggle) return;
     remPop.hidden = !open;
     remToggle.setAttribute('aria-expanded', String(open));
-    if (open) remPop.querySelector('.remnant-fields:not(.d-none) [data-dimension="width"]')?.focus();
+    if (open) {
+      const visible = remPop.querySelector('.remnant-fields:not(.d-none)');
+      // بازبینی UI/UX بند ۷: برای «ضایعات» فوکوس روی یادداشتِ الزامی، وگرنه اولین پرت
+      const target = outcomeOf(visible?.dataset.sheet) === 'scrapped'
+        ? visible?.querySelector('input[name^="note_"]')
+        : visible?.querySelector('[data-dimension="width"]');
+      target?.focus();
+    }
+  }
+
+  /* ---------- خلاصهٔ همهٔ ورق‌ها (بازبینی UI/UX بند ۸) ---------- */
+
+  const OUTCOME_LABELS = { none: 'ثبت‌نشده', used: 'مصرف', untouched: 'دست‌نخورده', scrapped: 'ضایعات' };
+  const OUTCOME_BADGE = { used: 'is-ok', untouched: 'is-mute', scrapped: 'is-bad', none: '' };
+
+  function remnantCountOf(pk) {
+    const container = document.getElementById(`remnants-${pk}`);
+    if (!container) return 0;
+    return [...container.querySelectorAll('[data-remnant-row]')]
+      .filter(row => [...row.querySelectorAll('[data-dimension]')].some(input => input.value)).length;
+  }
+
+  function syncSheetsSummary() {
+    if (!sheetsPop) return;
+    document.querySelectorAll('[data-summary-row]').forEach(row => {
+      const pk = row.dataset.sheetJump;
+      const value = storedOutcome(panels.find(panel => panel.dataset.sheetPk === String(pk)) || {});
+      const badge = row.querySelector('[data-summary-outcome]');
+      if (badge) {
+        badge.textContent = OUTCOME_LABELS[value] || 'ثبت‌نشده';
+        badge.className = `badge-status ${OUTCOME_BADGE[value] || ''}`;
+      }
+      const note = row.querySelector('[data-summary-note]');
+      if (note) {
+        if (value === 'used') {
+          const count = remnantCountOf(pk);
+          note.textContent = count ? `${fmt(count)} پرت واقعی ثبت شده` : 'پرت واقعی ثبت نشده';
+        } else if (value === 'scrapped') {
+          const noteInput = document.getElementById(`note-${pk}`);
+          note.textContent = noteInput && noteInput.value.trim() ? '✓ یادداشت ثبت شده' : 'یادداشت الزامی است';
+        } else {
+          note.textContent = '';
+        }
+      }
+    });
+  }
+
+  function setSheetsPop(open) {
+    if (!sheetsPop || !sheetsToggle) return;
+    if (open && remPop && !remPop.hidden) setRemPanel(false); // دو پنل هم‌مکان‌اند
+    sheetsPop.hidden = !open;
+    sheetsToggle.setAttribute('aria-expanded', String(open));
+    if (open) syncSheetsSummary();
   }
 
   function markInvalidPanel(field) {
@@ -276,6 +338,29 @@
     return `<table class="table table-sm mb-0"><tbody>${rows.map(([label, value]) => `<tr><th scope="row">${label}</th><td class="text-end">${fmt(value)}</td></tr>`).join('')}</tbody></table>`;
   }
 
+  /* بازبینی UI/UX بند ۱۴: مودال تأیید باید نام/شمارهٔ ورق‌ها را هم نشان دهد */
+  function renderSheetLines() {
+    const lines = groups.map(group => {
+      const pk = group.dataset.sheet;
+      const value = outcomeOf(pk) || 'none';
+      const dot = dots.find(item => item.dataset.sheetPk === String(pk));
+      const no = dot ? dot.textContent.trim() : '?';
+      const panel = panels.find(item => item.dataset.sheetPk === String(pk));
+      const pieces = panel ? number(panel.dataset.pieceCount) : 0;
+      let extra = '';
+      if (value === 'used') {
+        const count = remnantCountOf(pk);
+        if (count) extra = ` — ${fmt(count)} پرت واقعی`;
+      } else if (value === 'scrapped') {
+        const noteInput = document.getElementById(`note-${pk}`);
+        const text = noteInput?.value.trim();
+        if (text) extra = ` — یادداشت: ${esc(text)}`;
+      }
+      return `<li>ورق <b class="num">${esc(no)}</b> — ${OUTCOME_LABELS[value] || 'ثبت‌نشده'} <span class="text-muted">· ${fmt(pieces)} قطعه</span>${extra}</li>`;
+    }).join('');
+    return `<ul class="small mt-2 mb-0 ps-3">${lines}</ul>`;
+  }
+
   /* ---------- events ---------- */
 
   remnantContainers.forEach(container => renumber(container));
@@ -297,6 +382,9 @@
       radio.closest('.outcome-radios')?.querySelectorAll('.out-opt').forEach(label => {
         label.classList.toggle('is-checked', label.contains(radio) && radio.checked);
       });
+      // بازبینی UI/UX بند ۷: یادداشتِ الزامی «ضایعات» باید همان‌جا که نتیجه انتخاب می‌شود
+      // باز و فوکوس شود — نه فقط بعد از خطای اعتبارسنجی.
+      if (radio.checked && radio.value === 'scrapped') setRemPanel(true);
     });
   });
   dots.forEach(dot => dot.addEventListener('click', () => {
@@ -315,6 +403,7 @@
 
   document.querySelectorAll('[data-dock-toggle]').forEach(btn => btn.addEventListener('click', () => {
     if (btn.dataset.dockToggle === 'result') { setRemPanel(remPop?.hidden ?? true); return; }
+    if (btn.dataset.dockToggle === 'sheets') { setSheetsPop(sheetsPop?.hidden ?? true); return; }
     const dock = document.getElementById(btn.getAttribute('aria-controls') || '');
     if (!dock) return;
     const open = dock.hidden;
@@ -328,8 +417,16 @@
     btn.classList.toggle('active', open);
   }));
   document.querySelector('[data-rem-close]')?.addEventListener('click', () => setRemPanel(false));
+  document.querySelector('[data-sheets-close]')?.addEventListener('click', () => setSheetsPop(false));
+  document.querySelectorAll('[data-sheet-jump]').forEach(row => row.addEventListener('click', () => {
+    showPanel(panels.find(item => item.dataset.sheetPk === row.dataset.sheetJump));
+    setSheetsPop(false);
+  }));
   document.addEventListener('keydown', event => {
-    if (event.key === 'Escape' && remPop && !remPop.hidden) setRemPanel(false);
+    if (event.key === 'Escape') {
+      if (remPop && !remPop.hidden) setRemPanel(false);
+      if (sheetsPop && !sheetsPop.hidden) setSheetsPop(false);
+    }
   });
 
   document.querySelectorAll('.add-remnant').forEach(button => button.addEventListener('click', () => {
@@ -409,7 +506,7 @@
   document.getElementById('open-confirm')?.addEventListener('click', () => {
     if (!allInputsValid()) return;
     const summary = updateSummary();
-    document.getElementById('confirm-cut-summary').innerHTML = renderSummaryTable(summary);
+    document.getElementById('confirm-cut-summary').innerHTML = renderSummaryTable(summary) + renderSheetLines();
     bootstrap.Modal.getOrCreateInstance(document.getElementById('confirm-cut-modal')).show();
   });
   document.getElementById('cut-results-form')?.addEventListener('submit', event => {

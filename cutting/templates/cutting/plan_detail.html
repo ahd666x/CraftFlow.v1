@@ -133,6 +133,8 @@
     </fieldset>
     {% endif %}{% endwith %}{% endfor %}{% endfor %}
     <button type="button" class="dock-trigger" data-dock-toggle="result" aria-expanded="false" aria-controls="remnants-pop" title="پرت واقعی (mm) — پس از اندازه‌گیری"><i class="bi bi-chevron-up" aria-hidden="true"></i><span class="dock-trigger-label">پرت واقعی</span></button>
+    {# بازبینی UI/UX بند ۸: نمای خلاصهٔ همهٔ ورق‌ها — بدون جابه‌جایی ورق‌به‌ورق #}
+    <button type="button" class="dock-trigger" data-dock-toggle="sheets" aria-expanded="false" aria-controls="sheets-pop" title="خلاصهٔ همهٔ ورق‌ها — یک خط برای هر ورق، با پرش مستقیم"><i class="bi bi-list-ul" aria-hidden="true"></i><span class="dock-trigger-label">خلاصهٔ ورق‌ها</span></button>
     <span class="rb-counts" aria-label="شمار ورق‌ها بر اساس وضعیت">
       <span title="ثبت‌نشده"><i class="bi bi-circle" aria-hidden="true"></i><b data-count="reserved" class="num">{{ sheet_progress.reserved }}</b></span>
       <span title="مصرف‌شده"><i class="bi bi-check-lg" aria-hidden="true"></i><b data-count="used" class="num">{{ sheet_progress.used }}</b></span>
@@ -163,6 +165,23 @@
       <div class="d-flex flex-wrap gap-2 mt-2"><button type="button" class="btn btn-sm btn-outline-primary add-remnant" data-target="remnants-{{ rec.pk }}">افزودن پرت</button><button type="button" class="btn btn-sm btn-outline-secondary fill-predicted-offcuts" data-target="remnants-{{ rec.pk }}" title="ورود خودکار پرت‌های تخمینی نقشه — پیش از ثبت اندازه‌گیری کنید">از پیش‌بینی</button></div>
       <div class="small text-danger remnant-validation mt-1" aria-live="polite"></div>
     </div>
+    {% endif %}{% endwith %}{% endfor %}{% endfor %}
+  </div>
+
+  {# ── پنل خلاصهٔ همهٔ ورق‌ها (بازبینی UI/UX بند ۸: یک خط برای هر ورق + پرش مستقیم) ── #}
+  <div class="rem-panel" id="sheets-pop" hidden>
+    <div class="d-flex align-items-center gap-2 mb-2">
+      <h2>خلاصهٔ همهٔ ورق‌ها</h2>
+      <button type="button" class="btn btn-outline-secondary icon-btn btn-sm ms-auto" data-sheets-close aria-label="بستن خلاصهٔ ورق‌ها" style="width:32px;height:32px;min-height:32px"><i class="bi bi-x-lg" aria-hidden="true"></i></button>
+    </div>
+    {% for r in summaries %}{% for s in r.sheets %}{% with rec=s.sheet_record %}{% if rec %}
+    <button type="button" class="sheet-summary-row" data-sheet-jump="{{ rec.pk }}" data-summary-row="{{ rec.pk }}" aria-label="رفتن به ورق {{ forloop.counter }}">
+      <span class="num" title="شماره ورق">{{ forloop.counter }}</span>
+      <span class="ss-dims num">{{ s.sheet.width|floatformat:"-1" }} × {{ s.sheet.height|floatformat:"-1" }} mm{% if s.sheet.is_offcut %} · پرت انبار{% endif %}{% if summaries|length > 1 %} · {{ r.material }}{% endif %}</span>
+      <span class="badge-status" data-summary-outcome="{{ rec.pk }}">ثبت‌نشده</span>
+      <i class="bi bi-chevron-left" aria-hidden="true"></i>
+      <span class="ss-note" data-summary-note="{{ rec.pk }}"></span>
+    </button>
     {% endif %}{% endwith %}{% endfor %}{% endfor %}
   </div>
   {% endif %}

@@ -15,7 +15,7 @@
   --st-canvas:#eef1f6;
   --st-radius:8px;
   --sp-1:4px; --sp-2:8px; --sp-3:16px; --sp-4:24px;
-  --bar-h:38px; --head-h:38px; --dock-h:34px;
+  --bar-h:38px; --head-h:38px; --dock-h:38px;
   --st-shadow:0 8px 28px rgba(16,24,40,.14);
 }
 
@@ -76,7 +76,7 @@ body.cutting-station .main-content{padding:0}
 .seg .seg-opt:has(input:focus-visible){outline:2px solid var(--st-accent);outline-offset:1px}
 /* چک‌باکس «پرت» فقط در حالت CNC دیده می‌شود (رفتار فرم ثابت) */
 .cnc-offcut-toggle{display:none!important}
-.page-head:has(input[name="planning_mode"][value="cnc_sheets"]:checked) .cnc-offcut-toggle{display:inline-flex!important;align-items:center;gap:.35rem;margin:0}
+.page-head:has(input[name="planning_mode"][value="cnc_sheets"]:checked) .cnc-offcut-toggle,.page-head.is-cnc-mode .cnc-offcut-toggle{display:inline-flex!important;align-items:center;gap:.35rem;margin:0}
 .cnc-offcut-toggle .form-check-input{width:2.75rem;height:1.4rem}
 
 /* ---------- badge وضعیت — رنگ فقط معنایی ---------- */
@@ -186,7 +186,9 @@ tr.row-expand-details>td{background:var(--st-sunken);border-bottom:1px solid var
 .queue-row:hover{background:var(--st-sunken)}
 .queue-row.is-selected{background:var(--st-accent-soft)}
 .queue-row .q-check{display:flex;align-items:center;justify-content:center}
-.queue-row .q-check input{width:1.15rem;height:1.15rem;border-radius:6px}
+.queue-row .q-check input{width:1.35rem;height:1.35rem;border-radius:6px}
+.queue-head .q-check-all{display:flex;align-items:center;justify-content:center}
+.queue-head .q-check-all input{width:1.35rem;height:1.35rem;border-radius:6px;cursor:pointer}
 .queue-row.is-selected .q-check input{background-color:var(--st-accent);border-color:var(--st-accent)}
 .queue-row .q-order b{font-weight:800}
 .queue-row .q-order .q-cust{display:block;font-size:12px;color:var(--st-muted);max-width:16rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -211,6 +213,16 @@ tr.row-expand-details>td{background:var(--st-sunken);border-bottom:1px solid var
 .ws-edge-mini{display:inline-block;font-size:11px;border:1px solid var(--st-line);border-radius:999px;padding:0 .4rem;line-height:1.6;background:var(--st-panel);color:var(--st-muted);max-width:6.5rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle}
 .ws-part-table tr.ws-row-locked td{color:var(--st-muted)}
 .ws-part-table tr.ws-row-locked .cell-input{opacity:.6;background:var(--st-sunken)}
+/* بازبینی UI/UX بند ۵: کلاس‌هایی که JS می‌سازد باید در CSS هم نشانی داشته باشند */
+.ws-sortable{cursor:pointer;user-select:none}
+.ws-sortable:hover{color:var(--st-ink)}
+.ws-sortable::after{content:"↕";font-size:10px;opacity:.45;margin-inline-start:.25rem}
+.ws-sortable[aria-sort="ascending"]::after{content:"↑";opacity:1}
+.ws-sortable[aria-sort="descending"]::after{content:"↓";opacity:1}
+.ws-sortable.ws-sorted{color:var(--st-accent)}
+.ws-part-table tr.ws-row-changed td{background:rgba(217,119,6,.06)!important}
+.ws-part-table tr.ws-row-excluded td{color:var(--st-muted)}
+.ws-part-table tr.ws-row-excluded .td-lead b{text-decoration:line-through;text-decoration-color:var(--st-red)}
 .ws-chips{display:flex;flex-wrap:wrap;gap:var(--sp-1)}
 .ws-chip{border:1px solid var(--st-line);background:var(--st-panel);color:var(--st-muted);border-radius:999px;font-size:12px;font-weight:700;padding:.22rem .65rem;min-height:30px;white-space:nowrap}
 .ws-chip.active{background:var(--st-accent);border-color:var(--st-accent);color:#fff}
@@ -230,6 +242,9 @@ tr.row-expand-details>td{background:var(--st-sunken);border-bottom:1px solid var
   border-top:1px solid var(--st-line);overflow:hidden;
 }
 .bottom-bar .dock-summary{font-weight:800;font-size:11.5px;white-space:nowrap}
+/* بازبینی UI/UX بند ۱۱: خلاصهٔ تنظیمات نباید دکمهٔ «محاسبه و رزرو» را ببرد */
+#settings-summary{min-width:0;flex:0 1 auto;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:991.98px){#settings-summary{display:none}}
 .bottom-bar .dock-spacer{flex:1 1 auto}
 .bottom-bar .form-check-input:checked{background-color:var(--st-green)}
 .preview-verdict{display:inline-flex;align-items:center;gap:.35rem;font-size:12.5px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
@@ -237,7 +252,7 @@ tr.row-expand-details>td{background:var(--st-sunken);border-bottom:1px solid var
 .preview-verdict.bad{color:var(--st-red)}
 .preview-verdict.neutral{color:var(--st-muted)}
 .preview-verdict a{font-size:12px;font-weight:700}
-.dock-trigger{min-width:26px;height:26px;border:1px solid var(--st-line);background:var(--st-panel);border-radius:var(--st-radius);color:var(--st-muted);display:inline-flex;align-items:center;justify-content:center;gap:3px;padding:0 6px;flex:none}
+.dock-trigger{min-width:32px;height:32px;border:1px solid var(--st-line);background:var(--st-panel);border-radius:var(--st-radius);color:var(--st-muted);display:inline-flex;align-items:center;justify-content:center;gap:3px;padding:0 7px;flex:none}
 .dock-trigger .dock-trigger-label{font-size:11px;white-space:nowrap}
 .dock-trigger[aria-expanded="true"]{background:var(--st-accent-soft);color:var(--st-accent);border-color:#bfd3fa}
 
@@ -275,8 +290,10 @@ tr.row-expand-details>td{background:var(--st-sunken);border-bottom:1px solid var
 .rail-dot:hover{border-color:var(--st-faint)}
 .rail-dot.active{border-color:var(--st-accent);color:var(--st-accent);box-shadow:0 0 0 2px var(--st-accent-soft)}
 .rail-dot.outcome-used{border-color:var(--st-green);color:var(--st-green);background:var(--st-green-soft)}
-.rail-dot.outcome-untouched{border-color:var(--st-faint);color:var(--st-muted);background:var(--st-sunken)}
+.rail-dot.outcome-untouched{border-color:var(--st-faint);border-style:dashed;color:var(--st-muted);background:var(--st-sunken)}
 .rail-dot.outcome-scrapped{border-color:var(--st-red);color:var(--st-red);background:var(--st-red-soft);text-decoration:line-through}
+/* بازبینی UI/UX بند ۲۶: وضعیت ورق فقط با رنگ نباشد — مصرف‌شده تیک دارد، دست‌نخورده خط‌چین است */
+.rail-dot.outcome-used::after{content:"✓";position:absolute;inset-block-end:-4px;inset-inline-end:-4px;width:15px;height:15px;border-radius:50%;background:var(--st-green);color:#fff;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;line-height:1}
 .rail-dot .rail-flag{position:absolute;inset-block-end:-2px;inset-inline-start:-2px;width:14px;height:14px;border-radius:50%;background:var(--st-amber);color:#fff;font-size:9px;display:flex;align-items:center;justify-content:center}
 .plan-stage{grid-column:2;min-width:0;display:flex;flex-direction:column}
 .station-plan .plan-layout{height:calc(100dvh - var(--head-h));grid-template-rows:minmax(0,1fr)}
@@ -302,8 +319,8 @@ tr.row-expand-details>td{background:var(--st-sunken);border-bottom:1px solid var
 .sheet-bg{fill:#fff;stroke:#94a3b8;stroke-width:3}
 .trim-strip{fill:#f1f5f9;stroke:#cbd5e1;stroke-width:2;stroke-dasharray:14 8}
 .trim-label{fill:#94a3b8;font-weight:700;text-anchor:start}
-.cut-piece .piece-rect{fill:#7378d6;stroke:#111827;stroke-width:4}
-.cut-piece.used .piece-rect{fill:var(--st-green)}
+.cut-piece .piece-rect{fill:#4e54c4;stroke:#111827;stroke-width:4}
+.cut-piece.used .piece-rect{fill:#15803d}
 .cut-piece.scrapped .piece-rect{fill:var(--st-red)}
 .cut-piece text{fill:#fff}
 .cut-piece .piece-no{font-weight:800}
@@ -347,6 +364,12 @@ tr.row-expand-details>td{background:var(--st-sunken);border-bottom:1px solid var
   box-shadow:var(--st-shadow);padding:var(--sp-3);max-height:min(58vh,28rem);overflow:auto;
 }
 .rem-panel h2{font-size:13.5px;font-weight:800;margin:0}
+/* بازبینی UI/UX بند ۸: نمای خلاصهٔ همهٔ ورق‌ها — یک خط برای هر ورق */
+.sheet-summary-row{display:grid;grid-template-columns:44px minmax(0,1fr) auto auto;gap:var(--sp-2);align-items:center;width:100%;text-align:start;border:1px solid var(--st-line);border-radius:var(--st-radius);background:var(--st-panel);padding:.4rem .6rem;margin-bottom:var(--sp-1);min-height:40px;cursor:pointer}
+.sheet-summary-row:hover{background:var(--st-sunken)}
+.sheet-summary-row.active{border-color:var(--st-accent);background:var(--st-accent-soft)}
+.sheet-summary-row .ss-dims{font-size:12px;color:var(--st-muted)}
+.sheet-summary-row .ss-note{font-size:11.5px;color:var(--st-faint);grid-column:2/4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .remnant-row{display:grid;grid-template-columns:auto 1fr 1fr 40px;gap:var(--sp-2);align-items:center;margin-bottom:var(--sp-2)}
 .remnant-number{font-size:12.5px;font-weight:800;color:var(--st-muted);white-space:nowrap}
 .remnant-rows .cell-note{font-size:11px;color:var(--st-faint)}

@@ -20,7 +20,9 @@
     if (!mode || !spec || !width || !height) return;
     const isOffcut = selectedType() === 'offcut';
     if (isOffcut) mode.value = 'custom';
-    if (modeWrap) modeWrap.hidden = isOffcut;
+    // بازبینی UI/UX بند ۳۱: انتخابگر «روش تعیین اندازه» حذف می‌شود — برای ورق کامل
+    // مستقیم اندازهٔ استاندارد می‌آید و «ابعاد سفارشی» یک لینک ثانویه است.
+    if (modeWrap) modeWrap.hidden = true;
     if (quickRepeatWrap) quickRepeatWrap.hidden = !isOffcut;
 
     const isStandard = !isOffcut && mode.value === 'standard';
@@ -65,6 +67,15 @@
   if (material) material.addEventListener('change', syncStockTypeAndDimensions);
   typeInputs.forEach(input => input.addEventListener('change', syncStockTypeAndDimensions));
   if (mode) mode.addEventListener('change', syncStockTypeAndDimensions);
+  // بازبینی UI/UX بند ۳۱: لینک ثانویه «ابعاد سفارشی» و مسیر بازگشت به استاندارد
+  document.getElementById('use-custom-size')?.addEventListener('click', () => {
+    if (mode) { mode.value = 'custom'; syncStockTypeAndDimensions(); }
+    width?.focus();
+  });
+  document.getElementById('use-standard-size')?.addEventListener('click', () => {
+    if (mode) { mode.value = 'standard'; syncStockTypeAndDimensions(); }
+    spec?.focus();
+  });
   if (spec) spec.addEventListener('change', () => {
     const selected = spec.selectedOptions[0];
     if (selected && selected.value) {

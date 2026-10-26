@@ -56,12 +56,24 @@
   /* ---------- skeleton ---------- */
 
   root.innerHTML = `
-    <div class="queue-head" aria-hidden="true"><span></span><span>سفارش / مشتری</span><span class="text-start">قطعه</span><span class="text-start">وضعیت</span><span></span></div>
+    <div class="queue-head"><span class="q-check-all"><input class="form-check-input" type="checkbox" id="ws-select-all" aria-label="انتخاب یا لغو انتخاب همهٔ سفارش‌های این صفحه" title="انتخاب همهٔ سفارش‌های این صفحه"></span><span>سفارش / مشتری</span><span class="text-start">قطعه</span><span class="text-start">وضعیت</span><span></span></div>
     <div class="queue" id="ws-order-rows"></div>
     <div id="ws-modal-holder"></div>
     <p id="ws-live" class="visually-hidden" aria-live="polite"></p>
   `;
   const queueEl = document.getElementById('ws-order-rows');
+
+  /* بازبینی UI/UX بند ۱۲: «انتخاب همه» برای سفارش‌های همین صفحه */
+  document.getElementById('ws-select-all').addEventListener('change', event => {
+    const checked = event.target.checked;
+    queueEl.querySelectorAll('.ws-order-select').forEach(box => {
+      box.checked = checked;
+      const id = box.value;
+      if (checked) state.selection.add(id); else state.selection.delete(id);
+      box.closest('.queue-row')?.classList.toggle('is-selected', checked);
+    });
+    syncSelection();
+  });
 
   /* ---------- order queue ---------- */
 
@@ -71,6 +83,8 @@
     if (state.queueStatus) params.set('status', state.queueStatus);
     state.focusId = null;
     queueEl.innerHTML = '<div class="ws-empty"><span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span></div>';
+    const selectAll = document.getElementById('ws-select-all');
+    if (selectAll) selectAll.checked = false;
     try {
       const data = await api(`${CONFIG.orders}?${params}`);
       queueEl.innerHTML = data.rows.length ? '' :
@@ -141,6 +155,14 @@
       input.type = 'hidden'; input.name = 'order_ids'; input.value = id;
       form.appendChild(input);
     });
+    // حالت سه‌وضعیتی «انتخاب همه» (بازبینی UI/UX بند ۱۲)
+    const selectAll = document.getElementById('ws-select-all');
+    if (selectAll) {
+      const boxes = [...queueEl.querySelectorAll('.ws-order-select')];
+      const selectedCount = boxes.filter(box => state.selection.has(box.value)).length;
+      selectAll.checked = boxes.length > 0 && selectedCount === boxes.length;
+      selectAll.indeterminate = selectedCount > 0 && selectedCount < boxes.length;
+    }
     document.dispatchEvent(new CustomEvent('ws:selection-changed', { detail: { ids: [...state.selection] } }));
   }
 
@@ -203,14 +225,14 @@
         <span class="help">متریال‌ها:</span><div class="ws-chips" data-ws-material-chips></div>
         <span class="input-search ms-auto"><i class="bi bi-search" aria-hidden="true"></i><input class="form-control form-control-sm ws-parts-search" type="search" placeholder="قطعه یا بارکد" aria-label="جست‌وجوی قطعه" autocomplete="off"></span>
       </div>
-      <div class="table-responsive"><table class="table table-min ws-part-table mb-0">
+      <div class="table-responsive"><table class="table table-min ws-part-table table-cards mb-0">
         <thead><tr>
           <th>قطعه</th>
-          <th class="ws-sortable" data-sort="length">طول</th><th class="ws-sortable" data-sort="width">عرض</th>
-          <th class="ws-sortable" data-sort="quantity">تعداد</th>
-          <th class="ws-sortable" data-sort="material">متریال</th>
+          <th class="ws-sortable" tabindex="0" role="button" aria-label="مرتب‌سازی بر اساس طول" data-sort="length">طول</th><th class="ws-sortable" tabindex="0" role="button" aria-label="مرتب‌سازی بر اساس عرض" data-sort="width">عرض</th>
+          <th class="ws-sortable" tabindex="0" role="button" aria-label="مرتب‌سازی بر اساس تعداد" data-sort="quantity">تعداد</th>
+          <th class="ws-sortable" tabindex="0" role="button" aria-label="مرتب‌سازی بر اساس متریال" data-sort="material">متریال</th>
           <th>بارکد</th><th title="نوار لبهٔ چهار لبهٔ قطعه">نوار لبه</th><th title="چرخش ۹۰ درجه">چرخش</th>
-          <th class="ws-sortable" data-sort="status">وضعیت</th><th><span class="visually-hidden">جزئیات بیشتر</span></th>
+          <th class="ws-sortable" tabindex="0" role="button" aria-label="مرتب‌سازی بر اساس وضعیت" data-sort="status">وضعیت</th><th><span class="visually-hidden">جزئیات بیشتر</span></th>
         </tr></thead>
         <tbody class="ws-part-rows"></tbody>
       </table></div>
@@ -281,8 +303,13 @@
       if (summary) summary.innerHTML = `جمع ${fmt(data.count)} قطعه — نیاز هر متریال: ` + data.summary.map(entry =>
         `<span class="badge-status">${esc(entry.name)}: <b class="num">${fmt(entry.piece_need)}</b></span>`
       ).join(' ');
-      root.querySelectorAll('.ws-sortable').forEach(th =>
-        th.classList.toggle('ws-sorted', th.dataset.sort === state.sort.replace('-', '')));
+      root.querySelectorAll('.ws-sortable').forEach(th => {
+        const isSorted = th.dataset.sort === state.sort.replace('-', '');
+        th.classList.toggle('ws-sorted', isSorted);
+        // بازبینی UI/UX بند ۲۸: وضعیت مرتب‌سازی برای screen reader
+        if (isSorted) th.setAttribute('aria-sort', state.sort.startsWith('-') ? 'descending' : 'ascending');
+        else th.removeAttribute('aria-sort');
+      });
     } catch (error) {
       tbody.innerHTML = `<tr><td colspan="10" class="text-center text-danger py-3">${esc(error.message)}</td></tr>`;
     }
@@ -495,6 +522,28 @@
       event.preventDefault();
       event.target.dispatchEvent(new Event('focusout'));
       event.target.blur();
+    }
+    // بازبینی UI/UX بند ۱۰: Esc = انصراف از ویرایش و بازگرداندن مقدار قبلی
+    if (event.key === 'Escape' && event.target.matches('.cell-input')) {
+      const tr = event.target.closest('tr');
+      const row = state.rows[tr?.dataset.taskId];
+      const input = event.target;
+      if (row) {
+        if (input.classList.contains('cell-dim')) {
+          input.value = input.dataset.field === 'quantity_total' ? row.quantity_total : row[input.dataset.field];
+        } else if (input.classList.contains('cell-material')) {
+          input.value = row.material_id;
+        } else if (input.classList.contains('cell-edge')) {
+          input.value = row.edges[input.dataset.field] || '';
+        }
+      }
+      cellState(input, 'انصراف — مقدار قبلی برقرار است', 'text-muted');
+      input.blur();
+    }
+    // بازبینی UI/UX بند ۲۸: مرتب‌سازی با کیبورد (Enter/Space روی سرستون)
+    if ((event.key === 'Enter' || event.key === ' ') && event.target.closest?.('.ws-sortable')) {
+      event.preventDefault();
+      event.target.closest('.ws-sortable').click();
     }
   });
   root.addEventListener('focusout', event => {

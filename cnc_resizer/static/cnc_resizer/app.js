@@ -24,6 +24,12 @@
     if (key) alerts.delete(key);
   }
   function alertBox(kind, html, key, ttl) {
+    // بازبینی UI/UX بند ۲۲: هشدارهای بدون کلید (err/warn) نباید بی‌نهایت روی هم
+    // انباشته شوند — ttl پیش‌فرض می‌گیرند؛ هشدارهای کلیددار (مثل گته) ماندگارند.
+    if (!Number.isFinite(ttl) && !key) {
+      if (kind === 'warn') ttl = 10000;
+      else if (kind === 'err') ttl = 15000;
+    }
     const box = $('alertBox');
     const prev = key ? alerts.get(key) : null;
     if (prev) { clearTimeout(prev.timer); prev.el.remove(); alerts.delete(key); }
@@ -32,6 +38,13 @@
     el.innerHTML = html + ' <button type="button" class="x" aria-label="بستن">×</button>';
     el.querySelector('.x').onclick = () => dismissAlert(el, key);
     box.appendChild(el);
+    // سقف انباشت: حداکثر ۵ بنر — قدیمی‌تر حذف می‌شود
+    while (box.children.length > 5) {
+      const oldest = box.firstElementChild;
+      const entry = [...alerts.entries()].find(([, v]) => v.el === oldest);
+      if (entry) { clearTimeout(entry[1].timer); alerts.delete(entry[0]); }
+      oldest.remove();
+    }
     let timer = null;
     if (Number.isFinite(ttl) && ttl > 0) timer = setTimeout(() => dismissAlert(el, key), ttl);
     if (key) alerts.set(key, { el, timer });
@@ -784,10 +797,20 @@
     else if (!g.edits && !passthrough) { text = 'بدون ویرایش'; title = 'ویرایشی ثبت نشده؛ خروجی همان فایل ورودی می‌شد.'; }
     else if (passthrough) { text = 'فایل تغییر-طول‌یافته ✓'; title = 'این فایل حاصل «تغییر طول» پنل طول است؛ دانلود از همان گتهٔ دیالکت عبور می‌کند.'; chip.classList.add('ok'); }
     else if (excluded) { text = `دانلود قفل — ${state.outputsExcluded.size} قطعه از خروجی حذف شده`; title = 'حذف قطعه از خروجی با وصلهٔ مختصاتی امن قابل بیان نیست؛ برای دانلود، حذف را برگردانید.'; }
-    else if (g.allowed === true) { text = 'safe_for_execution ✓'; title = 'گتهٔ دیالکت کنترلر پاس شد؛ G-code دستگاه آماده است.'; chip.classList.add('ok'); }
-    else { text = 'safe_for_execution ✗'; title = (g.blockers || []).join('\n') || 'خروجی مسدود است.'; chip.classList.add('blocked'); }
+    else if (g.allowed === true) { text = 'آمادهٔ اجرا ✓'; title = 'گتهٔ دیالکت کنترلر پاس شد؛ G-code دستگاه آماده است.'; chip.classList.add('ok'); }
+    else { text = 'مسدود ✗'; title = (g.blockers || []).join('\n') || 'خروجی مسدود است.'; chip.classList.add('blocked'); }
     chip.querySelector('.txt').textContent = text;
     chip.title = title;
+    // بازبینی UI/UX بند ۶: متن فنی safe_for_execution به اپراتور نشان داده نمی‌شد
+    // و دلیل مسدودی فقط در title بود (روی لمس دیده نمی‌شود) — متن فارسی + کلیک چیپ.
+    chip.style.cursor = 'pointer';
+    chip.onclick = () => {
+      if (chip.classList.contains('blocked')) {
+        alertBox('err', 'دلایل مسدودبودن خروجی: <br>• ' + (g.blockers || []).map(esc).join('<br>• '), 'gate');
+      } else {
+        alertBox('info', esc(title), 'gate', 5000);
+      }
+    };
     btn.disabled = !(state.text && (g.edits || passthrough)
                      && (passthrough || g.allowed === true) && !excluded);
     btn.title = title;

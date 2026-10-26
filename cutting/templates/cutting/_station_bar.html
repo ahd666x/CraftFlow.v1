@@ -8,7 +8,7 @@
   {% endif %}
   {% if can_operate or can_manage %}
     <a class="nav-item" {% if cut_section == 'cnc' %}aria-current="page"{% endif %} href="{% url 'cnc_resizer:sheet_plans' %}">خروجی ورق CNC</a>
-    <a class="nav-item" {% if cut_section == 'cnc-manual' %}aria-current="page"{% endif %} href="{% url 'cnc_resizer:manual_queue' %}">صف دستی</a>
+    <a class="nav-item" {% if cut_section == 'cnc-manual' %}aria-current="page"{% endif %} href="{% url 'cnc_resizer:manual_queue' %}" title="قطعاتی که اصلاح دستی CNC می‌خواهند">صف دستی{% if manual_open_count %} <span class="num">({{ manual_open_count }})</span>{% endif %}</a>
   {% endif %}
   <a class="nav-user" href="{% url 'dashboard' %}" title="داشبورد"><i class="bi bi-person-circle" aria-hidden="true"></i><span>{{ user.get_username }}</span></a>
 </nav>
