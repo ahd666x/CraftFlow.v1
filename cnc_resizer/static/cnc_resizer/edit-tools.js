@@ -1184,7 +1184,7 @@
       b.type = 'button';
       b.innerHTML = label;
       if (opts && opts.disabled) { b.disabled = true; if (opts.why) b.title = opts.why; }
-      else b.onclick = () => { closeCtx(); fn(); };
+      else b.onclick = () => { if (!(opts && opts.keepOpen)) closeCtx(); fn(); };
       ctxMenu.appendChild(b);
     };
     ctxMenu = document.createElement('div');
@@ -1200,19 +1200,9 @@
       CNC.applyPartStates(); CNC.renderGate(); CNC.renderInspector();
     }, { disabled: !excluded && !part.capabilities?.can_translate,
          why: 'قطعهٔ قفل را نمی‌توان علامت زد.' });
-    item('⧉ تکرار آرایه…', async () => {
-      const count = Number(await SelviDialog.prompt({ title: 'تکرار آرایه', message: 'چند کپی اضافه شود؟ (۱ تا ۶۴)', inputType: 'number', ltr: true, okLabel: 'ادامه' }));
-      if (!Number.isInteger(count) || count < 1 || count > 64) return;
-      const axis = await SelviDialog.prompt({ title: 'تکرار آرایه', message: 'محور آرایه: x یا y؟', value: 'x', ltr: true, okLabel: 'ادامه' });
-      if (axis !== 'x' && axis !== 'y') return;
-      const pitch = Number(await SelviDialog.prompt({ title: 'تکرار آرایه', message: 'گام آرایه (mm — علامت‌دار):', value: '120', inputType: 'decimal', ltr: true, okLabel: 'اعمال' }));
-      if (!Number.isFinite(pitch) || Math.abs(pitch) < 1e-6) return;
-      state.featureOps = state.featureOps.filter((o) => o.feature_id !== contourFeature);
-      state.featureOps.push({ op: 'array', feature_id: contourFeature, axis, count, pitch });
-      CNC.emit('ops-changed', { label: `آرایهٔ ${CNC.partName(part)}` });
-      requestPreview();
-    }, { disabled: mixed,
-         why: 'با ویرایش‌های قطعه‌ای فعلی قابل ترکیب نیست؛ ویرایش‌های قطعه‌ای را واگرد کنید یا آرایه را پیش از آن‌ها بزنید.' });
+    item('⧉ تکرار آرایه…', () => openArrayForm(part, contourFeature),
+         { disabled: mixed, keepOpen: true,
+           why: 'با ویرایش‌های قطعه‌ای فعلی قابل ترکیب نیست؛ ویرایش‌های قطعه‌ای را واگرد کنید یا آرایه را پیش از آن‌ها بزنید.' });
     item('⇋ آینه افقی (X)', () => {
       state.featureOps = state.featureOps.filter((o) => o.feature_id !== contourFeature);
       state.featureOps.push({ op: 'mirror', feature_id: contourFeature, axis: 'x' });
@@ -1245,6 +1235,81 @@
     ctxMenu.style.top = Math.min(info.client.y, window.innerHeight - 340) + 'px';
     document.body.appendChild(ctxMenu);
   });
+
+  // بازبینی UI/UX بند ۱۸: آرایه با سه پرامپت متوالی روی لمس طاقت‌فرسا بود —
+  // فرم درون‌منویی با دکمه‌های درشت (استپر تعداد، سوییچ محور، گام) جایگزین شد؛
+  // منو باز می‌ماند و اعتبارسنجی همان‌جا و بدون کیبورد هم ممکن است.
+  function openArrayForm(part, contourFeature) {
+    if (!ctxMenu) return;
+    ctxMenu.innerHTML = `
+      <div class="ctx-form" role="group" aria-label="تکرار آرایه">
+        <b>تکرار آرایه — ${esc(CNC.partName(part))}</b>
+        <label class="ctx-row"><span>تعداد کپی (۱ تا ۶۴)</span>
+          <span class="ctx-stepper">
+            <button type="button" data-step="-1" aria-label="یک کپی کمتر">−</button>
+            <input type="number" inputmode="numeric" min="1" max="64" step="1" value="3"
+                   aria-label="تعداد کپی آرایه">
+            <button type="button" data-step="1" aria-label="یک کپی بیشتر">+</button>
+          </span>
+        </label>
+        <div class="ctx-row"><span>محور</span>
+          <span class="ctx-axis" role="radiogroup" aria-label="محور آرایه">
+            <button type="button" data-axis="x" class="on" aria-pressed="true">X</button>
+            <button type="button" data-axis="y" aria-pressed="false">Y</button>
+          </span>
+        </div>
+        <label class="ctx-row"><span>گام (mm — علامت‌دار)</span>
+          <input type="number" inputmode="decimal" step="1" value="120" class="num"
+                 aria-label="گام آرایه به میلی‌متر">
+        </label>
+        <div class="ctx-err" role="alert" hidden></div>
+        <div class="ctx-btns">
+          <button type="button" class="primary">اعمال</button>
+          <button type="button">انصراف</button>
+        </div>
+      </div>`;
+    const form = ctxMenu.querySelector('.ctx-form');
+    const errEl = form.querySelector('.ctx-err');
+    const countIn = form.querySelector('input[aria-label="تعداد کپی آرایه"]');
+    const pitchIn = form.querySelector('input[aria-label="گام آرایه به میلی‌متر"]');
+    let axis = 'x';
+    form.querySelectorAll('.ctx-axis button').forEach((b) => {
+      b.onclick = () => {
+        axis = b.dataset.axis;
+        form.querySelectorAll('.ctx-axis button').forEach((x) => {
+          x.classList.toggle('on', x === b);
+          x.setAttribute('aria-pressed', String(x === b));
+        });
+      };
+    });
+    form.querySelectorAll('.ctx-stepper button').forEach((b) => {
+      b.onclick = () => {
+        const v = (Number.parseInt(countIn.value, 10) || 0) + Number(b.dataset.step);
+        countIn.value = String(Math.min(64, Math.max(1, v)));
+      };
+    });
+    const fail = (msg) => { errEl.hidden = false; errEl.textContent = msg; };
+    form.querySelector('.ctx-btns .primary').onclick = () => {
+      const count = Number(countIn.value);
+      const pitch = Number(String(pitchIn.value).replace(',', '.'));
+      if (!Number.isInteger(count) || count < 1 || count > 64) {
+        fail('تعداد کپی باید عددی صحیح بین ۱ تا ۶۴ باشد.');
+        return;
+      }
+      if (!Number.isFinite(pitch) || Math.abs(pitch) < 1e-6) {
+        fail('گام آرایه باید عددی غیرصفر باشد؛ علامت مثبت/منفی جهت گام را تعیین می‌کند.');
+        return;
+      }
+      state.featureOps = state.featureOps.filter((o) => o.feature_id !== contourFeature);
+      state.featureOps.push({ op: 'array', feature_id: contourFeature, axis, count, pitch });
+      CNC.emit('ops-changed', { label: `آرایهٔ ${CNC.partName(part)}` });
+      closeCtx();
+      requestPreview();
+    };
+    form.querySelector('.ctx-btns button:not(.primary)').onclick = () => closeCtx();
+    countIn.focus();
+    countIn.select();
+  }
 
   // ================================================================_میانبرها: جهت‌نما = جابه‌جایی ۱mm (Shift=۱۰mm)
   // Enter روی قطعهٔ انتخاب‌شده = بازکردن ورودی اندازهٔ ارتفاع همان‌جا

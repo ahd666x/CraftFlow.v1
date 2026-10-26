@@ -213,7 +213,7 @@
   function togglePanel(id, btn) {
     const panel = $(id);
     const show = panel.hidden;
-    ['filePanel', 'toolsPanel', 'layersPanel', 'historyPanel', 'comparePanel', 'resizePanel'].forEach((pid) => {
+    ['filePanel', 'toolsPanel', 'layersPanel', 'historyPanel', 'comparePanel', 'resizePanel', 'helpPanel'].forEach((pid) => {
       const p = $(pid);
       if (p && pid !== id) p.hidden = true;
     });
@@ -987,6 +987,8 @@
       togglePanel('resizePanel', e.currentTarget);
       syncResizeTarget();
     };
+    // بازبینی UI/UX بند ۱۹: راهنمای تعاملات و میانبرها — قابل کشف از نوار ابزار
+    $('btnHelp').onclick = (e) => togglePanel('helpPanel', e.currentTarget);
     const emptyOpen = $('emptyOpenFile');
     if (emptyOpen) emptyOpen.onclick = () => togglePanel('filePanel', $('btnFile'));
     bindResizePanel();

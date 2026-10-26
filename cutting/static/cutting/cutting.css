@@ -314,6 +314,18 @@ tr.row-expand-details>td{background:var(--st-sunken);border-bottom:1px solid var
 .cut-map{display:block;width:100%;height:100%}
 .verlist-pop{position:absolute;top:var(--sp-2);inset-inline-end:var(--sp-2);z-index:20;min-width:19rem;max-height:min(60%,24rem);overflow:auto}
 
+/* بازبینی UI/UX بند ۲۵: زوم/پن نقشهٔ برش — خوشهٔ دکمه در گوشهٔ پایین،
+   دور از فهرست قطعات (بالا-انتها). در حالت عادی لمس عمودی اسکرول صفحه
+   می‌ماند؛ فقط وقتی زوم>۱ است درگ روی نقشه پن می‌شود. */
+.map-fit{touch-action:pan-y}
+.is-zoomed .map-fit{touch-action:none;cursor:grab}
+.is-zoomed.is-panning .map-fit{cursor:grabbing}
+.cut-map{transform-origin:0 0}
+.map-zoom{position:absolute;bottom:var(--sp-2);inset-inline-start:var(--sp-2);display:flex;gap:4px;z-index:6}
+.map-zoom button{width:32px;height:32px;min-height:32px;padding:0;display:inline-flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;line-height:1;border:1px solid var(--st-line);background:var(--st-panel);color:var(--st-ink);border-radius:var(--st-radius);box-shadow:0 2px 8px rgba(16,24,40,.1)}
+.map-zoom button:hover{border-color:var(--st-accent);color:var(--st-accent)}
+.map-zoom .map-zoom-badge{width:auto;min-width:44px;padding:0 8px;font-size:11.5px;color:var(--st-accent);background:var(--st-accent-soft);border-color:var(--st-accent)}
+
 /* SVG نقشهٔ برش */
 .cut-map text{font-family:system-ui,sans-serif;font-weight:600;text-anchor:middle}
 .sheet-bg{fill:#fff;stroke:#94a3b8;stroke-width:3}
@@ -481,7 +493,8 @@ tr.row-expand-details>td{background:var(--st-sunken);border-bottom:1px solid var
   .station{padding:0}
   .plan-layout{display:block}
   .map-stage{padding:0;background:#fff}
-  .cut-map{max-height:24cm}
+  .map-zoom{display:none!important}
+  .cut-map{max-height:24cm;transform:none!important}
   .canvas-frame{background:#fff!important;border-color:#999!important}
   .map-meta{border:0}
 }

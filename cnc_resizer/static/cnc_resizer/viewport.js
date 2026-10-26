@@ -685,6 +685,12 @@
 
     const pointers = new Map();     // پشتیبانی پینچ دو-انگشتی
     let moved = false, downInfo = null, pinchDist = 0;
+    // بازبینی UI/UX بند ۱۸: راست‌کلیک روی لمس وجود ندارد — نگه‌داشتن انگشت روی
+    // قطعه (۵۵۰ms بدون جابه‌جایی) همان منوی عملیات (آرایه/آینه/چرخش/پین) را
+    // باز می‌کند. اگر گِست درگ زودتر ادعا شود مشکلی نیست: انگشتِ بی‌حرکت هیچ
+    // جابه‌جایی ثبت نمی‌کند و بعد از بازشدن منو، کلیک با moved=true می‌خوابد.
+    let lpTimer = 0;
+    const cancelLongPress = () => { if (lpTimer) { clearTimeout(lpTimer); lpTimer = 0; } };
     svg.addEventListener('pointerdown', (e) => {
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       try { svg.setPointerCapture(e.pointerId); } catch (_) { /* pointer نامعتبر */ }
@@ -705,7 +711,20 @@
         // می‌کند؛ هدف اصلی کلیک باید همین‌جا ذخیره شود.
         downInfo = { ...info, tgt, panMode: panMode && !claimed, claimed: !!claimed };
         CNC.emit('map-down', { ...info, panMode: panMode && !claimed, claimed: !!claimed });
+        cancelLongPress();
+        if (e.pointerType !== 'mouse' && e.button === 0 && CNC.state.tool === 'select'
+            && (tgt.partId || tgt.opId) && !tgt.dimId && !tgt.bar && !tgt.handle) {
+          const lpInfo = { client: { x: e.clientX, y: e.clientY }, world: w, ...tgt };
+          lpTimer = setTimeout(() => {
+            lpTimer = 0;
+            if (moved || pointers.size !== 1) return;
+            try { if (navigator.vibrate) navigator.vibrate(15); } catch (_) { /* بدون لرزش */ }
+            moved = true;              // بعد از برداشتن انگشت، کلیک محسوب نشود
+            CNC.emit('map-context', lpInfo);
+          }, 550);
+        }
       } else if (pointers.size === 2) {
+        cancelLongPress();
         const [a, b] = [...pointers.values()];
         pinchDist = Math.hypot(a.x - b.x, a.y - b.y);
         CNC.emit('map-gesture', { kind: 'pinch-start' });
@@ -726,6 +745,7 @@
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (Math.abs(e.clientX - (downInfo?.client.x ?? e.clientX)) > 4
           || Math.abs(e.clientY - (downInfo?.client.y ?? e.clientY)) > 4) moved = true;
+      if (moved) cancelLongPress();
       if (pointers.size === 2) {
         const [a, b] = [...pointers.values()];
         const d = Math.hypot(a.x - b.x, a.y - b.y);
@@ -754,6 +774,7 @@
     });
     const finish = (e, kind) => {
       pointers.delete(e.pointerId);
+      cancelLongPress();
       svg.classList.remove('dragging');
       if (pointers.size < 2) pinchDist = 0;
       if (pointers.size === 0 && downInfo) {

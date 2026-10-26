@@ -460,3 +460,49 @@ body.code-open .scalebar { bottom: calc(38vh + 10px); }
 
 /* هدف لمسی بزرگ‌تر برای زوم روی تبلت (بند ۱۶-الف، گام محافظه‌کارانه) */
 .zoombtns button { min-width: 32px; min-height: 32px; font-size: 13px; }
+
+/* ---------- بازبینی UI/UX دور دوم ---------- */
+
+/* بند ۲۰: کارت‌های مجزای پنل «طول» — کشش زنجیره‌ای ↔ تغییر طول کل؛
+   مرز کارها روشن می‌شود و هر دکمه/جدول زیر بخش خودش می‌نشیند */
+.res-sec {
+  border: 1px solid var(--line); border-radius: 10px; background: var(--surface);
+  padding: 9px 10px 10px; margin: 0 0 12px;
+}
+.res-sec .resgrid { margin-top: 6px; }
+.res-sec .toolbtns { margin-top: 8px; }
+.res-sec .toolbtns + .toolbtns { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--line); }
+
+/* بند ۱۹: راهنمای تعاملات و میانبرها */
+#helpPanel { top: calc(38px + var(--cnc-top)); inset-inline-end: 10px; width: 320px; }
+.helpgrid { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 7px 12px; font-size: 12px; }
+.helpgrid dt { color: var(--muted); font-weight: 700; white-space: nowrap; }
+.helpgrid dd { margin: 0; }
+.helpgrid kbd {
+  font: inherit; display: inline-block; padding: 0 5px; min-height: 20px;
+  border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px;
+  background: var(--surface-2); direction: ltr; unicode-bidi: isolate;
+}
+.helpnote {
+  font-size: 11.5px; color: var(--muted); margin: 10px 0 0; padding-top: 8px;
+  border-top: 1px dashed var(--line);
+}
+
+/* بند ۱۸: فرم آرایه درون منوی عملیات — دکمه‌های درشت لمسی، بدون پرامپت متوالی */
+.ctxmenu { max-height: calc(100vh - 16px); overflow: auto; }
+.ctx-form { display: grid; gap: 8px; min-width: 216px; padding: 4px 6px 6px; }
+.ctx-form > b { font-size: 12.5px; }
+.ctx-row { display: grid; gap: 4px; font-size: 11.5px; color: var(--muted); }
+.ctx-row input { width: 100%; padding: 5px 8px; border: 1px solid var(--line); border-radius: 7px; font: inherit; text-align: left; }
+.ctx-stepper { display: flex; gap: 4px; }
+.ctx-stepper button { width: 40px; min-width: 40px; min-height: 40px; padding: 0; font-size: 15px; font-weight: 700; flex: none; }
+.ctx-stepper input { flex: 1; min-width: 0; text-align: center; }
+.ctx-axis { display: flex; gap: 4px; }
+.ctx-axis button { flex: 1; min-height: 40px; font-weight: 700; }
+.ctx-axis button.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.ctx-err {
+  font-size: 11.5px; color: var(--bad); background: var(--bad-soft);
+  border: 1px solid var(--bad); border-radius: 7px; padding: 5px 8px;
+}
+.ctx-btns { display: flex; gap: 6px; }
+.ctx-btns button { flex: 1; min-height: 40px; }

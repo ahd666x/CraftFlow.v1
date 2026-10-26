@@ -112,6 +112,108 @@
     showPanel(panels[index]);
   }
 
+  /* ---------- بازبینی UI/UX بند ۲۵: زوم/پن نقشهٔ برش ----------
+   * هر ورق حالت زوم خودش را دارد (state جدا برای هر .map-stage). دکمه‌های
+   * +/−/نمایش کامل، اسکرول به‌سوی مکان‌نما، درگ برای پن و پینچ دو-انگشتی.
+   * تا وقتی زوم ۱ است لمس عمودی مثل قبل صفحه را اسکرول می‌کند؛ فقط در
+   * حالت زوم‌شده کشیدن روی نقشه پن می‌شود (touch-action مشروط). */
+  const zoomAppliers = [];
+  document.querySelectorAll('.map-stage').forEach((stage) => {
+    const fit = stage.querySelector('.map-fit');
+    const svg = stage.querySelector('.cut-map');
+    if (!fit || !svg) return;
+    const badge = stage.querySelector('[data-map-badge]');
+    const st = { k: 1, tx: 0, ty: 0 };
+
+    const apply = () => {
+      st.k = Math.min(10, Math.max(1, st.k));
+      const w = fit.clientWidth, h = fit.clientHeight;
+      st.tx = Math.min(0, Math.max(w * (1 - st.k), st.tx));
+      st.ty = Math.min(0, Math.max(h * (1 - st.k), st.ty));
+      if (st.k === 1) { st.tx = 0; st.ty = 0; }
+      svg.style.transform = `translate(${st.tx}px, ${st.ty}px) scale(${st.k})`;
+      stage.classList.toggle('is-zoomed', st.k > 1);
+      if (badge) {
+        badge.hidden = st.k === 1;
+        badge.textContent = `${Math.round(st.k * 100)}%`;
+      }
+    };
+    const zoomAt = (factor, cx, cy) => {   // cx/cy نسبت به .map-fit
+      const k0 = st.k;
+      const k1 = Math.min(10, Math.max(1, k0 * factor));
+      if (k1 === k0) return;
+      st.tx = cx - ((cx - st.tx) * k1) / k0;
+      st.ty = cy - ((cy - st.ty) * k1) / k0;
+      st.k = k1;
+      apply();
+    };
+    const localPoint = (clientX, clientY) => {
+      const r = fit.getBoundingClientRect();
+      return { x: clientX - r.left, y: clientY - r.top };
+    };
+
+    stage.querySelector('[data-map-zin]')?.addEventListener('click', () => {
+      zoomAt(1.35, fit.clientWidth / 2, fit.clientHeight / 2);
+    });
+    stage.querySelector('[data-map-zout]')?.addEventListener('click', () => {
+      zoomAt(1 / 1.35, fit.clientWidth / 2, fit.clientHeight / 2);
+    });
+    stage.querySelector('[data-map-fit]')?.addEventListener('click', () => { st.k = 1; apply(); });
+    badge?.addEventListener('click', () => { st.k = 1; apply(); });
+
+    fit.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const p = localPoint(e.clientX, e.clientY);
+      zoomAt(Math.exp(-e.deltaY * 0.0015), p.x, p.y);
+    }, { passive: false });
+
+    // درگ پن + پینچ دو-انگشتی با pointer events
+    const pointers = new Map();
+    let pinchDist = 0, last = null;
+    fit.addEventListener('pointerdown', (e) => {
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pointers.size === 2) {
+        const [a, b] = [...pointers.values()];
+        pinchDist = Math.hypot(a.x - b.x, a.y - b.y);
+        last = null;
+      } else if (pointers.size === 1) {
+        last = { x: e.clientX, y: e.clientY };
+        try { fit.setPointerCapture(e.pointerId); } catch (_) { /* pointer نامعتبر */ }
+      }
+    });
+    fit.addEventListener('pointermove', (e) => {
+      if (!pointers.has(e.pointerId)) return;
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pointers.size === 2 && pinchDist > 0) {
+        const [a, b] = [...pointers.values()];
+        const d = Math.hypot(a.x - b.x, a.y - b.y);
+        if (Math.abs(d - pinchDist) > 1) {
+          const mid = localPoint((a.x + b.x) / 2, (a.y + b.y) / 2);
+          zoomAt(pinchDist / d, mid.x, mid.y);
+          pinchDist = d;
+        }
+        return;
+      }
+      if (pointers.size === 1 && st.k > 1 && last) {
+        st.tx += e.clientX - last.x;
+        st.ty += e.clientY - last.y;
+        last = { x: e.clientX, y: e.clientY };
+        stage.classList.add('is-panning');
+        apply();
+      }
+    });
+    const endPointer = (e) => {
+      pointers.delete(e.pointerId);
+      if (pointers.size < 2) pinchDist = 0;
+      if (!pointers.size) { last = null; stage.classList.remove('is-panning'); }
+    };
+    fit.addEventListener('pointerup', endPointer);
+    fit.addEventListener('pointercancel', endPointer);
+    zoomAppliers.push(apply);
+    apply();
+  });
+  window.addEventListener('resize', () => zoomAppliers.forEach((fn) => fn()));
+
   /* ---------- remnants ---------- */
 
   function validateRemnants(container) {
