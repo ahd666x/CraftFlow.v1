@@ -158,6 +158,8 @@
       <button type="button" id="mark-all-used" class="btn btn-sm btn-outline-primary">همه مصرف شدند</button>
       <button type="button" id="open-confirm" class="btn btn-sm btn-success">مرور و تأیید</button>
     </span>
+    {# بازبینی دور ۳ (بند ۱ cutting): شکست بی‌پیام «مرور و تأیید» — پیام همین‌جا aria-live می‌گیرد #}
+    <span class="rb-error text-danger small" id="rb-error" role="alert" hidden></span>
   </div>
 
   {# ── پنل پرت واقعی (بازشونده از نوار نتیجه) ── #}
@@ -196,6 +198,9 @@
   {% endif %}
 
   {% if plan.status == 'planned' %}</form>{% endif %}
+
+  {# بازبینی دور ۳ (بند ۱۱ cutting): ورودی‌های ثبت ناموفق قبلی (رادیوها، یادداشت، پرت‌ها) از سشن برمی‌گردد #}
+  {{ cut_prefill|json_script:"cutFormPrefill" }}
 
   <div class="modal fade" id="confirm-cut-modal" tabindex="-1" aria-labelledby="confirm-cut-title" aria-hidden="true"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h2 class="modal-title fs-5" id="confirm-cut-title">خلاصه ثبت نتیجه</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="بستن"></button></div><div class="modal-body"><span id="result-summary" class="sb-summary d-block mb-2" aria-live="polite"></span><div id="confirm-cut-summary"></div><div class="alert alert-warning mt-3 mb-0">پس از تأیید، موجودی به‌روز و پرت‌ها به انبار اضافه می‌شود.</div></div><div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">بازگشت و اصلاح</button><button type="submit" form="cut-results-form" id="confirm-cut-submit" class="btn btn-success"><span>تأیید و ثبت نتیجه</span><span class="spinner-border spinner-border-sm ms-2" role="status" aria-hidden="true" hidden></span></button></div></div></div></div>
   <div class="modal fade" id="cut-warning-modal" tabindex="-1" aria-labelledby="cut-warning-title" aria-hidden="true"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h2 class="modal-title fs-5" id="cut-warning-title">بررسی فایل برش</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="بستن"></button></div><div class="modal-body"><p>پذیرش این فایل روی کنترلر دستگاه تأیید نشده؛ ابتدا در حالت آزمایشی بررسی کنید.</p><div class="form-check"><input class="form-check-input" type="checkbox" id="cut-warning-ack"><label class="form-check-label" for="cut-warning-ack">متوجه شدم</label></div></div><div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">بازگشت</button><button type="button" class="btn btn-primary" id="cut-warning-download" disabled>دانلود فایل .CUT</button></div></div></div></div>

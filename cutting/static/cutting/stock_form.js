@@ -13,13 +13,19 @@
   const height = document.getElementById('height');
   const quickRepeatWrap = document.getElementById('quick-repeat-wrap');
   let wasStandard = null;
+  let autoCustom = false;   // «سفارشی» فقط به‌خاطر انتخاب «پرت» ست شده — نه انتخاب کاربر
 
   const selectedType = () => document.querySelector('input[name="stock_type"]:checked')?.value || 'full';
 
   function syncStockTypeAndDimensions() {
     if (!mode || !spec || !width || !height) return;
     const isOffcut = selectedType() === 'offcut';
-    if (isOffcut) mode.value = 'custom';
+    // بازبینی دور ۳ (بند ۱۱ cutting): حالت «سفارشی» می‌چسبید — با انتخاب «پرت»
+    // mode=custom ست می‌شد، ولی برگشت به «ورق کامل» دوباره استاندارد نمی‌شد و
+    // کاربر باید دستی «بازگشت به استاندارد» را می‌زد. سفارشیِ خودکار برگردانده
+    // می‌شود؛ سفارشیِ انتخاب‌صریح کاربر حفظ.
+    if (isOffcut && mode.value !== 'custom') { mode.value = 'custom'; autoCustom = true; }
+    if (!isOffcut && autoCustom) { mode.value = 'standard'; autoCustom = false; }
     // بازبینی UI/UX بند ۳۱: انتخابگر «روش تعیین اندازه» حذف می‌شود — برای ورق کامل
     // مستقیم اندازهٔ استاندارد می‌آید و «ابعاد سفارشی» یک لینک ثانویه است.
     if (modeWrap) modeWrap.hidden = true;

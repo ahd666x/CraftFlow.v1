@@ -52,8 +52,9 @@ class ManualQueuePageTests(ManualQueueFixtureMixin, TestCase):
         # بازبینی دور ۳: لینک عمیق با {% url %} ساخته می‌شود (index روی /cnc/ سوار
         # است، پس خروجی رندر همان است) — هاردکد در «منبع» قالب حذف شده.
         self.assertContains(page, 'در انتظار اصلاح دستی')
-        # ستون «علت» حذف شده است؛ وضعیت الگو فقط با نشانِ سیگنال‌ها دیده می‌شود
-        self.assertNotContains(page, 'بدون الگوی تأییدشده')
+        # ستون «علت» حذف شده است؛ اما بازبینی دور ۳ (بند ۸): دلیل ورود به صف
+        # حالا در سلول وضعیت صریح رندر می‌شود تا اپراتور بداند چرا اینجاست.
+        self.assertContains(page, 'دلیل ورود:')
         self.assertContains(page, 'الگوی خودکار تأییدشده ثبت نشده')
         self.assertContains(page, 'رفع در ابزار CNC')
 

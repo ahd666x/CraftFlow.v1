@@ -224,20 +224,5 @@
   }
   updateSettingsSummary();
   planningForm?.addEventListener('change', updateSettingsSummary);
-
-  /* پذیرش ارقام فارسی/عربی در فیلدهای عددی (بازبینی UI/UX بند ۱۸) —
-     کلید رقم فارسی معادل رقم لاتین در همان محل درج می‌شود. */
-  const FA_DIGITS = '۰۱۲۳۴۵۶۷۸۹', AR_DIGITS = '٠١٢٣٤٥٦٧٨٩';
-  document.addEventListener('keydown', (e) => {
-    const target = e.target;
-    if (!target || target.type !== 'number' || e.ctrlKey || e.metaKey) return;
-    let digit = FA_DIGITS.indexOf(e.key);
-    if (digit < 0) digit = AR_DIGITS.indexOf(e.key);
-    if (digit < 0) return;
-    e.preventDefault();
-    const start = target.selectionStart ?? target.value.length;
-    const end = target.selectionEnd ?? target.value.length;
-    target.setRangeText(String(digit), start, end, 'end');
-    target.dispatchEvent(new Event('input', { bubbles: true }));
-  });
+  /* پذیرش ارقام فارسی/عربی از fa-digits.js (ماژول مشترک) می‌آید — بازبینی دور ۳ */
 })();

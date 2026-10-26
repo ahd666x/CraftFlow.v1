@@ -162,9 +162,13 @@
     badge?.addEventListener('click', () => { st.k = 1; apply(); });
 
     fit.addEventListener('wheel', (e) => {
+      // بازبینی دور ۳ (بند ۱۲ cutting): در زوم ۱ چرخ ماوس اسکرول صفحه است —
+      // فقط زوم‌به‌داخل چرخ را می‌رباید؛ در حالت زوم‌شده مثل قبل زوم/پن می‌شود.
+      const factor = Math.exp(-e.deltaY * 0.0015);
+      if (st.k === 1 && factor <= 1) return;
       e.preventDefault();
       const p = localPoint(e.clientX, e.clientY);
-      zoomAt(Math.exp(-e.deltaY * 0.0015), p.x, p.y);
+      zoomAt(factor, p.x, p.y);
     }, { passive: false });
 
     // درگ پن + پینچ دو-انگشتی با pointer events
@@ -395,19 +399,39 @@
   function allInputsValid() {
     let valid = true;
     let focusTarget = null;
+    const rbError = document.getElementById('rb-error');
+    const rbFail = (sheet, why) => {
+      // بازبینی دور ۳ (بند ۱ cutting): شکست بی‌پیام — پیام روی نوار نتیجه + پرش
+      // به همان ورق و فوکوس مستقیم روی رادیوها (که در result-bar اند، نه پنل ورق).
+      if (rbError) {
+        const dot = dots.find(item => item.dataset.sheetPk === String(sheet));
+        const no = dot ? dot.textContent.trim() : '';
+        rbError.textContent = why + (no ? ` — ورق شمارهٔ ${no}` : '');
+        rbError.hidden = false;
+        setTimeout(() => { rbError.hidden = true; }, 6000);
+      }
+    };
     for (const group of groups) {
       const sheet = group.dataset.sheet;
       const outcome = outcomeOf(sheet);
       if (!outcome) {
         const panel = panels.find(item => item.dataset.sheetPk === sheet);
         showPanel(panel);
-        panel?.querySelector('input.cut-outcome')?.closest('.out-opt')?.focus();
+        // رادیوهای نتیجه داخل [data-sheet-panel] نیستند (در result-bar اند) —
+        // فوکوسِ قبلی روی querySelector پنل بی‌اثر و شکست کاملاً بی‌صدا بود.
+        const radio = document.querySelector(`input.cut-outcome[name="outcome_${sheet}"]`);
+        if (radio) {
+          radio.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          radio.focus();
+        }
+        rbFail(sheet, 'اول نتیجهٔ واقعی همهٔ ورق‌ها را انتخاب کنید');
         return false;
       }
       const note = document.getElementById(`note-${sheet}`);
       if (outcome === 'scrapped' && !note.value.trim()) {
         valid = false;
         focusTarget = note;
+        rbFail(sheet, 'برای ورقِ ضایعات، ثبت علت در یادداشت الزامی است');
         break;
       }
       const container = document.getElementById(`remnants-${sheet}`);
@@ -649,6 +673,37 @@
       window.location.assign(downloadTrigger.href);
     });
   }
+
+  /* بازبینی دور ۳ (بند ۱۱ cutting): ثبت نتیجهٔ ناموفق قبلی — مقادیر رادیوها،
+     یادداشت‌ها و پرت‌ها از سشن (cutFormPrefill) برمی‌گردد تا اپراتور همه‌چیز را
+     دوباره وارد نکند. ردیف‌های پرتِ اضافه هم بازسازی می‌شوند. */
+  (() => {
+    const box = document.getElementById('cutFormPrefill');
+    let prefill = null;
+    try { prefill = box ? JSON.parse(box.textContent) : null; } catch (_) { prefill = null; }
+    if (!prefill || typeof prefill !== 'object') return;
+    // ردیف‌های پرت بیشتر از ردیف استاتیک اول: تا اندیس بزرگ‌تر ردیف اضافه شود
+    Object.keys(prefill).forEach((name) => {
+      const match = name.match(/^rem_(\d+)_(\d+)_/);
+      if (!match) return;
+      const container = document.getElementById(`remnants-${match[1]}`);
+      const addBtn = container?.querySelector('.add-remnant');
+      if (!container || !addBtn) return;
+      const needed = Number(match[2]);
+      let guard = 0;
+      while (container.querySelectorAll('[data-remnant-row]').length < needed && guard++ < 60) addBtn.click();
+    });
+    Object.entries(prefill).forEach(([name, value]) => {
+      const el = document.querySelector(`[name="${CSS.escape(name)}"]`);
+      if (!el) return;
+      if (el.type === 'radio') el.checked = el.value === value;
+      else el.value = value;
+    });
+    // همگام‌سازی نشان‌ها/خلاصه بعد از بازگردانی رادیوها
+    document.querySelectorAll('input.cut-outcome:checked').forEach(radio => {
+      radio.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+  })();
 
   const firstUnresolved = panels.find(panel => !outcomeOf(panel.dataset.sheetPk));
   showPanel(firstUnresolved || panels[0]);

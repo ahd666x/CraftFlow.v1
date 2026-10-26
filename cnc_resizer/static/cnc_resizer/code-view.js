@@ -20,6 +20,12 @@
     $('btnCode').classList.toggle('on', open);
     // عناصر ثابت پایین صفحه (زوم، نوار زمینه، خط‌کش) بالای کشو بروند (بازبینی UI/UX بند ۳)
     document.body.classList.toggle('code-open', open);
+    // بازبینی دور ۳ (بند ۱۷): نمای نقشه با باز/بستن کشو کوتاه می‌شود (CSS) —
+    // fit تازه تا پایین نقشه زیر کشو نرود و صحنه در ناحیهٔ دیدنی متمرکز شود.
+    if (CNC.viewport && CNC.viewport.fit) {
+      window.dispatchEvent(new Event('resize'));
+      CNC.viewport.fit();
+    }
     if (open) render();
     else clearMapHl();
   }
@@ -104,8 +110,10 @@
     }
     tbody.appendChild(frag);
     const total = lines.length;
+    // بازبینی دور ۳ (بند ۱۷): سقف ۶۰۰۰ سطر قبلاً بی‌صدا بریده می‌شد — حالا صریح گفته می‌شود.
     hint.textContent = `${total} سطر · ${changed.size} سطر تغییر می‌کند`
-      + (anchors.size ? ` · ${anchors.size} لنگر درج` : '');
+      + (anchors.size ? ` · ${anchors.size} لنگر درج` : '')
+      + (shown < total ? ` · فقط ${shown.toLocaleString('fa-IR')} سطر اول نمایش داده می‌شود` : '');
   }
   CNC.renderCodeView = render;
 

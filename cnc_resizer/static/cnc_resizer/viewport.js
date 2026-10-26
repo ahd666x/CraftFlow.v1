@@ -803,7 +803,13 @@
         ...((downInfo && downInfo.tgt) || targetInfo(e.target)),
       });
     });
-    svg.addEventListener('dblclick', () => computeFit());
+    svg.addEventListener('dblclick', (e) => {
+      // بازبینی دور ۳ (بند ۱۸): دابل‌کلیک روی خط اندازه یعنی کار با ویرایشگر
+      // عددی همان خط، نه fit — و تا ویرایشگر اندازه باز است هم fit نکن.
+      if (document.querySelector('.dim-editor')) return;
+      if (e.target && e.target.closest && e.target.closest('[data-dim]')) return;
+      computeFit();
+    });
     window.addEventListener('resize', applyVB);
   }
 })();

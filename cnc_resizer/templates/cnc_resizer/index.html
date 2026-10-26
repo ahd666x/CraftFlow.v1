@@ -132,11 +132,21 @@
     <button type="button" id="saveToolSetBtn">ذخیره به‌عنوان ست…</button>
   </div>
   <ul class="mlist" id="toolSetList" style="margin-top:10px;border-top:1px solid var(--line);padding-top:8px"></ul>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px;border-top:1px solid var(--line);padding-top:8px">
-    <input type="number" id="machineXMin" step="1" placeholder="X min" aria-label="X min">
-    <input type="number" id="machineXMax" step="1" placeholder="X max" aria-label="X max">
-    <input type="number" id="machineYMin" step="1" placeholder="Y min" aria-label="Y min">
-    <input type="number" id="machineYMax" step="1" placeholder="Y max" aria-label="Y max">
+  {# بازبینی دور ۳ (بند ۲۱): قیدهای دستگاه برچسب پیدا دارند و به‌ازای هر ایستگاه
+     جدا ذخیره می‌شوند — قبلاً فقط placeholder بودند، در پنل ابزار گم می‌شدند و
+     همهٔ ایستگاه‌های یک مرورگر روی هم رونویسی می‌کردند. #}
+  <div class="ml-box">
+    <label class="ml-station" for="machineStation">ایستگاه دستگاه (پاکت برش mm)
+      <input id="machineStation" list="machineStationList" maxlength="40" placeholder="مثلاً Router-1" autocomplete="off">
+    </label>
+    <datalist id="machineStationList"></datalist>
+    <div class="ml-grid">
+      <label class="ml-field">X min<input type="number" id="machineXMin" step="1"></label>
+      <label class="ml-field">X max<input type="number" id="machineXMax" step="1"></label>
+      <label class="ml-field">Y min<input type="number" id="machineYMin" step="1"></label>
+      <label class="ml-field">Y max<input type="number" id="machineYMax" step="1"></label>
+    </div>
+    <p class="ml-help">قیدها به‌ازای هر ایستگاه روی همین مرورگر ذخیره می‌شود و گتهٔ خروجی به آن متکی است؛ با تغییر نام ایستگاه، پاکت دستگاه دیگر بارگذاری می‌شود.</p>
   </div>
   <p class="statusline" id="toolStatus"></p>
 </section>

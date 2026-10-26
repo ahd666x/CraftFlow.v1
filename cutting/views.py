@@ -448,6 +448,10 @@ def planner(request):
             'offcuts_first': 'offcuts_first', 'full_only': 'full_first', 'priority': 'priority',
         }.get(setting.strategy, 'offcuts_first'),
         'workspace_urls': workspace_urls, 'workspace_materials': workspace_materials,
+        # بازبینی دور ۳ (بند ۳ cutting): لینک «ثبت موجودی» در پیش‌نمایش کمبود
+        # همیشه خالی بود — مقدار فقط داخل workspace_urls بود و planner.html
+        # از context بالا می‌خواند.
+        'stock_create_url': workspace_urls['stock_create_url'],
     })
 
 
@@ -756,10 +760,14 @@ def plan_detail(request, plan_id):
         if sheet_progress['total'] else 0
     )
     unfinished_tasks = [row for row in plan.planned_tasks.select_related('task', 'task__part') if row.task.status != 'done']
+    # بازبینی دور ۳ (بند ۱۱ cutting): ورودی‌های فرم «نتیجهٔ واقعی» که پس از خطا
+    # از بین می‌رفتند — اگر ثبت قبلی ناموفق بوده، مقادیر از سشن برمی‌گردد.
+    stored = request.session.pop('mark_cut_prefill', None)
+    cut_prefill = stored.get('data') if (isinstance(stored, dict) and stored.get('plan') == plan.pk) else None
     return render(request, 'cutting/plan_detail.html', {
         'plan': plan, 'summaries': summaries, 'unfinished_tasks': unfinished_tasks,
         'plan_metrics': plan_metrics, 'sheet_progress': sheet_progress,
-        'color_legend': color_legend,
+        'color_legend': color_legend, 'cut_prefill': cut_prefill,
     })
 
 
@@ -931,7 +939,14 @@ def mark_cut(request, plan_id):
             messages.warning(request, 'نتیجه این برنامه جزئی بود؛ تسک‌های ناتمام با تعداد باقی‌مانده در فهرست برنامه‌ریزی می‌مانند.')
         return redirect('cutting:plan_detail', plan_id=plan.pk)
     except ValueError as exc:
-        messages.error(request, str(exc)); return redirect('cutting:plan_detail', plan_id=plan_id)
+        messages.error(request, str(exc))
+        # بازبینی دور ۳ (بند ۱۱ cutting): redirect همهٔ ورودی‌ها را پاک می‌کرد —
+        # پرت‌ها و یادداشت‌ها در سشن نگه داشته می‌شود و plan_detail دوباره پُرشان می‌کند.
+        try:
+            request.session['mark_cut_prefill'] = {'plan': int(plan_id), 'data': request.POST.dict()}
+        except Exception:
+            pass
+        return redirect('cutting:plan_detail', plan_id=plan_id)
 
 
 @cutting_operator

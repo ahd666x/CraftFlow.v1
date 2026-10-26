@@ -443,6 +443,10 @@
       const inside = active && old.contains(active) ? active : null;
       const detailsOld = tbody.querySelector(`tr[data-details-for="${row.task_id}"]`);
       const insideDetails = active && detailsOld && detailsOld.contains(active) ? active : null;
+      // بازبینی دور ۳ (بند ۶ cutting): ردیف جزئیات باز پس از ویرایش جمع می‌شد —
+      // جزئیاتِ باز باید بعد از جایگزینی هم باز بماند (ویرایش نوار لبه پنل را
+      // نمی‌بندد و restoreCaret روی عنصر مخفی بی‌اثر نمی‌شود).
+      const detailsWasOpen = detailsOld ? !detailsOld.hidden : false;
       const target = inside || insideDetails;
       let selector = null;
       if (target) {
@@ -452,8 +456,17 @@
       }
       tbody.querySelector(`tr[data-details-for="${row.task_id}"]`)?.remove();
       old.replaceWith(partRow(row));
+      if (detailsWasOpen) {
+        const freshDetails = tbody.querySelector(`tr[data-details-for="${row.task_id}"]`);
+        if (freshDetails) {
+          freshDetails.hidden = false;
+          const toggle = tbody.querySelector(`tr[data-task-id="${row.task_id}"] .row-expand-toggle[data-row-expand]`);
+          if (toggle) toggle.setAttribute('aria-expanded', 'true');
+        }
+      }
       if (selector) {
-        const fresh = tbody.querySelector(`tr[data-task-id="${row.task_id}"] ${selector}`);
+        const fresh = tbody.querySelector(`tr[data-task-id="${row.task_id}"] ${selector}`)
+          || tbody.querySelector(`tr[data-details-for="${row.task_id}"] ${selector}`);
         restoreCaret(fresh);
       }
     }

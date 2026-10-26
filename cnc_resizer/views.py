@@ -1460,10 +1460,16 @@ def sheet_plans(request):
     total_count = plan_query.count()
     active_count = plan_query.filter(status='planned').count()
     used_count = plan_query.filter(status='done', result_outcome='used').count()
+    # بازبینی دور ۳ (بند ۱۱ CNC): ثبت ناموفق نتیجه، ورودی‌ها (پرت‌ها و یادداشت)
+    # را با redirect پاک می‌کرد — مقادیر از سشن برمی‌گردد و فرم همان برنامه
+    # پُر و باز می‌شود.
+    stored = request.session.pop('cnc_result_prefill', None)
+    result_prefill = (stored.get('data') if isinstance(stored, dict) else None) or None
     return render(request, 'cnc_resizer/sheet_plans.html', {
         'plans': plans, 'issues': issues, 'total_count': total_count, 'issue_count': issue_count,
         'active_count': active_count, 'used_count': used_count,
         'manual_open_count': manual_open_count,
+        'result_prefill': result_prefill,
     })
 
 
@@ -1662,6 +1668,14 @@ def complete_sheet_plan(request, plan_id):
         messages.success(request, f'نتیجه برنامه CNC #{plan.pk} ثبت شد؛ موجودی و تسک‌ها به‌روزرسانی شدند.')
     except ValueError as exc:
         messages.error(request, str(exc))
+        # بازبینی دور ۳ (بند ۱۱ CNC): redirect پرت‌ها و یادداشت را پاک می‌کرد —
+        # در سشن نگه داشته می‌شود و sheet_plans فرم را دوباره پُر می‌کند.
+        try:
+            keep = {'outcome': request.POST.get('outcome', ''), 'note': request.POST.get('note', '')}
+            keep.update({key: value for key, value in request.POST.items() if key.startswith('rem_')})
+            request.session['cnc_result_prefill'] = {'plan': int(plan_id), 'data': keep}
+        except Exception:
+            pass
     return redirect('cnc_resizer:sheet_plans')
 
 

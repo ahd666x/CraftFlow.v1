@@ -91,6 +91,15 @@
   function renderPanel() {
     const panel = document.getElementById('historyPanel');
     if (!panel || panel.hidden) return;
+    // بازبینی دور ۳ (بند ۱۵): پنل با هر preview بازسازی innerHTML می‌شود و
+    // حین تایپ نام قالب، فوکوس/مکان‌نما از دست می‌رفت — عنصر فعال و جای
+    // مکان‌نما قبل از رندر ثبت و بعد از رندر برمی‌گردد.
+    const ae = document.activeElement;
+    const focusId = (ae && panel.contains(ae) && ae.id) ? ae.id : null;
+    let caret = null;
+    if (focusId && typeof ae.selectionStart === 'number') {
+      try { caret = [ae.selectionStart, ae.selectionEnd]; } catch (_) { caret = null; }
+    }
     const items = stack.map((snap, i) => `
       <li data-idx="${i}" class="${i === cursor ? 'cur' : ''}" role="button" tabindex="0">
         <span class="idx num">${i + 1}</span><span>${CNC.esc(snap.label)}</span>
@@ -205,6 +214,15 @@
         } catch (err) { CNC.alert('err', CNC.esc(err.message)); }
       };
     });
+    if (focusId) {
+      const el = panel.querySelector(`#${CSS.escape(focusId)}`);
+      if (el) {
+        el.focus({ preventScroll: true });
+        if (caret && typeof el.setSelectionRange === 'function') {
+          try { el.setSelectionRange(caret[0], caret[1]); } catch (_) { /* برخی موتورها */ }
+        }
+      }
+    }
   }
   CNC.renderHistoryPanel = renderPanel;
 
@@ -234,6 +252,13 @@
     }
     const name = await SelviDialog.prompt({ title: 'ذخیره به‌عنوان الگو', message: 'نام الگو:', placeholder: 'مثلاً «کشش قطعهٔ t.16»', ltr: false, okLabel: 'ذخیره' });
     if (!name || !name.trim()) return;
+    // بازبینی دور ۳ (بند ۱۶): قالب‌ها بین همهٔ اپراتورها مشترک‌اند و ذخیرهٔ
+    // نام تکراری قبلاً بی‌صدا رونویسی می‌کرد — تأیید صریح گرفته می‌شود.
+    const dup = (state._editTemplates || []).some((t) => String(t.name || '').trim() === name.trim());
+    if (dup && !(await SelviDialog.confirm({
+      title: 'رونویسی الگو', danger: true,
+      message: `الگویی با نام «${name.trim()}» از قبل هست (الگوها بین همهٔ اپراتورها مشترک‌اند). رونویسی شود؟`,
+    }))) return;
     const RESIZE_MODE_NAMES = { equal: 'Equal', proportional: 'Proportional', kerf: 'Kerf', manual: 'Manual' };
     const noteExtra = state.resizeOp
       ? ` + تغییر طول ${CNC.sgn(state.resizeOp.delta)} (${RESIZE_MODE_NAMES[state.resizeOp.mode] || state.resizeOp.mode})`
@@ -396,6 +421,12 @@
     if (!name) { CNC.alert('warn', 'نام قالب قطعه لازم است.'); return; }
     const partId = partEl ? Number(partEl.value || 0) : 0;
     if (!partId) { CNC.alert('warn', 'قطعهٔ مقصد قالب را انتخاب کنید.'); return; }
+    // بازبینی دور ۳ (بند ۱۶): رونویسی بی‌صدای نام تکراری — تأیید صریح
+    if ((state._partTemplates || []).some((t) => String(t.name || '').trim() === name)
+        && !(await SelviDialog.confirm({
+          title: 'رونویسی قالب قطعه', danger: true,
+          message: `قالبی با نام «${name}» برای همین یا قطعهٔ دیگر از قبل هست (قالب‌ها مشترک‌اند). رونویسی شود؟`,
+        }))) return;
     try {
       const res = await CNC.api.savePartTemplate({
         name,

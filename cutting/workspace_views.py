@@ -138,8 +138,9 @@ def _planned_order_ids(order_ids):
     ).values_list('task__order_id', flat=True))
     from cnc_resizer.models import CncSheetPlan
     task_ids = set()
-    for plan in CncSheetPlan.objects.filter(status='planned').only('layout'):
-        for piece in (plan.layout or {}).get('parts', []):
+    # بازبینی دور ۳ (عملکرد): values_list به‌جای نمونهٔ مدل — فقط layout لازم است
+    for _plan_id, layout in CncSheetPlan.objects.filter(status='planned').values_list('pk', 'layout'):
+        for piece in (layout or {}).get('parts', []):
             if piece.get('task_id') is not None:
                 task_ids.add(int(piece['task_id']))
     if task_ids:

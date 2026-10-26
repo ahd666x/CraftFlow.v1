@@ -71,15 +71,17 @@ def _planned_cnc_rows(task_ids):
         return rows
     from cnc_resizer.models import CncSheetPlan
     wanted = set(task_ids)
-    for plan in CncSheetPlan.objects.filter(status='planned').only('pk', 'layout'):
-        for piece in (plan.layout or {}).get('parts', []):
+    # بازبینی دور ۳ (عملکرد): values_list به‌جای نمونهٔ مدل — JSON از قبل
+    # لازم است و ساخت نمونهٔ کامل CncSheetPlan به‌ازای هر برنامه فقط هزینه است.
+    for plan_id, layout in CncSheetPlan.objects.filter(status='planned').values_list('pk', 'layout'):
+        for piece in (layout or {}).get('parts', []):
             task_id = piece.get('task_id')
             if task_id is None:
                 continue
             task_id = int(task_id)
             if task_id not in wanted:
                 continue
-            entry = rows.setdefault(task_id, {'pieces': 0, 'plan_id': plan.pk})
+            entry = rows.setdefault(task_id, {'pieces': 0, 'plan_id': plan_id})
             entry['pieces'] += 1
     return rows
 

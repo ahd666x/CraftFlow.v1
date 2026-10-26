@@ -141,10 +141,14 @@
 
   // ------------------------------------------------_APIها
   CNC.machineLimits = function machineLimits() {
-    // قیدهای پاکت دستگاه از پنل ابزار (ذخیرهٔ محلی) — نقدنقص صادقانه:
-    // بدون پیکربندی، preflight خودش مسدود می‌کند.
-    try { return JSON.parse(localStorage.getItem('cncMachineLimits') || 'null') || {}; }
-    catch (_) { return {}; }
+    // قیدهای پاکت دستگاه — بازبینی دور ۳ (بند ۲۱): هر ایستگاه پاکت خودش را دارد
+    // (کلید cncMachineLimits::<نام ایستگاه>)؛ انتخاب فعال در cncMachineActive است.
+    // نقدنقص صادقانه: بدون پیکربندی، preflight خودش مسدود می‌کند.
+    try {
+      const active = localStorage.getItem('cncMachineActive') || '';
+      const key = active.trim() ? `cncMachineLimits::${active.trim()}` : 'cncMachineLimits';
+      return JSON.parse(localStorage.getItem(key) || 'null') || {};
+    } catch (_) { return {}; }
   };
   CNC.api = {
     detectParts(content, filename) {

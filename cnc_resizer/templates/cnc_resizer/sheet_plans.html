@@ -6,6 +6,8 @@
 {% block extra_css %}{{ block.super }}<link rel="stylesheet" href="{% static 'cutting/cutting.css' %}">{% endblock %}
 {% block content %}
 <div class="station station-cnc pb-0" dir="rtl">
+  {# بازبینی دور ۳ (بند ۱۱ CNC): مقادیر فرم ثبت نتیجه پس از خطا از سشن برمی‌گردد #}
+  {{ result_prefill|json_script:"cncResultPrefill" }}
   {# ── سربرگ تک‌خطی: نوار ایستگاه + KPI + برنامهٔ جدید (بازبینی UI/UX بند ۲:
      سگمنت تکراری حذف شد — نوار ایستگاه تنها ناوبری است و تب فعال را نشان می‌دهد) ── #}
   <header class="page-head">
@@ -186,23 +188,6 @@
   </div>
 <script>
 (() => {
-  /* پذیرش ارقام فارسی/عربی در فیلدهای عددی پرت‌ها (بازبینی UI/UX بند ۱۸) */
-  const FA_DIGITS = '۰۱۲۳۴۵۶۷۸۹', AR_DIGITS = '٠١٢٣٤٥٦٧٨٩';
-  document.addEventListener('keydown', (e) => {
-    const target = e.target;
-    if (!target || target.type !== 'number' || e.ctrlKey || e.metaKey) return;
-    let digit = FA_DIGITS.indexOf(e.key);
-    if (digit < 0) digit = AR_DIGITS.indexOf(e.key);
-    if (digit < 0) return;
-    e.preventDefault();
-    /* ورودی type=number از setRangeText پشتیبانی نمی‌کند (InvalidStateError) — درج با چسباندن رشته */
-    let start = null, end = null;
-    try { start = target.selectionStart; end = target.selectionEnd; } catch (_) { /* برخی موتورها پرتاب می‌کنند */ }
-    start = start ?? target.value.length;
-    end = end ?? target.value.length;
-    target.value = target.value.slice(0, start) + String(digit) + target.value.slice(end);
-    target.dispatchEvent(new Event('input', { bubbles: true }));
-  });
   const rows = [...document.querySelectorAll('[data-cnc-select]')];
   const panels = [...document.querySelectorAll('[data-cnc-panel]')];
   const resultForms = [...document.querySelectorAll('[data-cnc-result]')];
@@ -243,6 +228,41 @@
       if (ok) { form.dataset.resultArmed = '1'; form.submit(); }
     });
   });
+
+  /* بازبینی دور ۳ (بند ۱۱ CNC): ثبت ناموفق قبلی — فرم همان برنامه با همان
+     نتیجه/یادداشت/پرت‌ها پُر و باز می‌شود تا اپراتور همه‌چیز را دوباره ننویسد. */
+  const prefillBox = document.getElementById('cncResultPrefill');
+  let prefill = null;
+  try { prefill = prefillBox ? JSON.parse(prefillBox.textContent) : null; } catch (_) { prefill = null; }
+  if (prefill && prefill.plan != null) {
+    select(prefill.plan);
+    const form = resultForms.find((f) => f.dataset.planId === String(prefill.plan));
+    const data = prefill.data || {};
+    if (form) {
+      const outcome = form.querySelector('[name="outcome"]');
+      const note = form.querySelector('[name="note"]');
+      if (outcome && data.outcome) { outcome.value = data.outcome; outcome.dispatchEvent(new Event('change', { bubbles: true })); }
+      if (note) note.value = data.note || '';
+      const rows2 = form.querySelector('[data-remnant-rows]');
+      const addBtn = form.querySelector('[data-add-remnant]');
+      const planId = form.dataset.planId;
+      const idxs = Object.keys(data)
+        .map((n) => (n.match(new RegExp(`^rem_${planId}_(\\d+)_width$`)) || [])[1])
+        .filter(Boolean).map(Number);
+      if (idxs.length && addBtn && rows2) {
+        const maxIdx = Math.max(...idxs);
+        let guard = 0;
+        while (rows2.querySelectorAll('.cnc-remnant-row').length < maxIdx && guard++ < 60) addBtn.click();
+      }
+      Object.entries(data).forEach(([name, value]) => {
+        const el = form.querySelector(`[name="${CSS.escape(name)}"]`);
+        if (el && el.type !== 'select-one') el.value = value;
+      });
+      if (window.bootstrap && bootstrap.Offcanvas) {
+        bootstrap.Offcanvas.getOrCreateInstance(document.getElementById('result-drawer')).show();
+      }
+    }
+  }
 })();
 </script>
 <script src="{% static 'cutting/popfix.js' %}" defer></script>

@@ -78,7 +78,7 @@ body.cutting-station .main-content{padding:0}
 /* چک‌باکس «پرت» فقط در حالت CNC دیده می‌شود (رفتار فرم ثابت) */
 .cnc-offcut-toggle{display:none!important}
 .page-head:has(input[name="planning_mode"][value="cnc_sheets"]:checked) .cnc-offcut-toggle,.page-head.is-cnc-mode .cnc-offcut-toggle{display:inline-flex!important;align-items:center;gap:.35rem;margin:0}
-.cnc-offcut-toggle .form-check-input{width:2.75rem;height:1.4rem}
+.cnc-offcut-toggle .form-check-input{width:2.75rem;height:1.4rem;border-radius:999px}
 
 /* ---------- badge وضعیت — رنگ فقط معنایی ---------- */
 .badge-status{display:inline-flex;align-items:center;gap:.3rem;font-size:11.5px;font-weight:700;border-radius:999px;padding:.14rem .55rem;background:var(--st-sunken);border:1px solid var(--st-line);color:var(--st-muted);white-space:nowrap;line-height:1.6}
@@ -119,8 +119,13 @@ body.cutting-station .main-content{padding:0}
 .station .form-control[type="number"]{max-width:10rem}
 .station .form-control::placeholder{color:#a8b3c1}
 .station .form-control:focus,.station .form-select:focus{border-color:var(--st-accent);box-shadow:0 0 0 3px rgba(37,99,235,.12)}
-.station .form-check-input{border-color:#cbd5e1;width:2.75rem;height:1.4rem;flex:none}
-.station .form-check-input[type="checkbox"]:not(.cell-turn){border-radius:999px}
+/* بازبینی دور ۳ (بند ۹ cutting): چک‌باکس‌ها قبلاً همه ۲٫۷۵rem می‌گرفتند (و
+   به‌جز cell-turn گوشهٔ گرد کامل) بدون ظاهر سوییچ — «چرخش» مستطیل پهن،
+   «انتخاب همه» گرد بی‌کره، و تأییدیهٔ مودال شکل غیرمعمول داشتند. حالا چک‌باکس
+   عادی اندازهٔ استاندارد دارد و فقط سوییچ واقعی پهن و گرد می‌ماند. */
+.station .form-check-input{border-color:#cbd5e1;width:1.15rem;height:1.15rem;flex:none;border-radius:.25rem}
+.station .cnc-offcut-toggle .form-check-input,
+.station .form-check-input[role="switch"]{width:2.75rem;height:1.4rem;border-radius:999px}
 .station .form-check-input:checked{background-color:var(--st-accent);border-color:var(--st-accent)}
 .station .form-check-input[type="radio"]{width:1.15rem;height:1.15rem;border-radius:50%}
 .station .input-search{position:relative;display:inline-flex;align-items:center}
@@ -430,6 +435,9 @@ tr.row-expand-details>td{background:var(--st-sunken);border-bottom:1px solid var
 .cnc-stage{display:flex;flex-direction:column;min-width:0;padding:var(--sp-3);background:var(--st-canvas)}
 .cnc-stage-head{display:flex;align-items:center;gap:var(--sp-3);margin-bottom:var(--sp-2)}
 .cnc-stage-head h2{font-size:15px;font-weight:800;margin:0}
+/* بازبینی دور ۳ (بند ۱۳ CNC): .ms-end فقط زیر .map-meta تعریف شده بود و در
+   .cnc-stage-head بی‌اثر بود — دکمهٔ «ثبت نتیجه» به انتها نمی‌رفت. */
+.cnc-stage-head .ms-end{margin-inline-start:auto;display:flex;align-items:center;gap:var(--sp-2)}
 .cnc-canvas{position:relative;background:var(--st-panel);border:1px solid var(--st-line);border-radius:var(--st-radius);aspect-ratio:1/var(--sheet-ratio);width:min(100%,calc((100vh - 185px)/max(var(--sheet-ratio,1),1)));margin-inline:auto;overflow:hidden;flex:none}
 .cnc-canvas-grid{position:absolute;inset:0;background-image:linear-gradient(var(--st-line-soft) 1px,transparent 1px),linear-gradient(90deg,var(--st-line-soft) 1px,transparent 1px);background-size:24px 24px}
 .cnc-sheet-label{position:absolute;top:6px;inset-inline-start:8px;font-size:11.5px;color:var(--st-faint)}

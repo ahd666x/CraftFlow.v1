@@ -10,7 +10,10 @@
     {% include 'cutting/_station_bar.html' %}
     <div class="seg" role="radiogroup" aria-label="روش برنامه‌ریزی">
       <label class="seg-opt"><input type="radio" name="planning_mode" value="standard" form="planning-form" checked><span>برش معمولی</span></label>
-      <label class="seg-opt"><input type="radio" name="planning_mode" value="cnc_sheets" form="planning-form"><span>CNC</span></label>
+      {# بازبینی دور ۳ (بند ۱۰ cutting): برچسب «CNC» بی‌توضیح گمراه‌کننده بود —
+         بخش غیر-CNC سفارش در همان درخواست برای برش معمولی برنامه‌ریزی می‌شود و
+         مقصد بعدی plan_detail است؛ حالا در title صریح گفته شده. #}
+      <label class="seg-opt" title="سفارش‌های نیازمند CNC به‌صورت ورق‌به‌ورق چیده می‌شوند (مقصد: خروجی ورق CNC)؛ بقیهٔ قطعات همان سفارش در همین درخواست برای برش معمولی برنامه‌ریزی می‌شوند."><input type="radio" name="planning_mode" value="cnc_sheets" form="planning-form"><span>CNC</span></label>
     </div>
     <label class="form-check cnc-offcut-toggle m-0" title="اول پرت، بعد ورق کامل">
       <input class="form-check-input" type="checkbox" name="cnc_use_offcuts" value="1" form="planning-form">

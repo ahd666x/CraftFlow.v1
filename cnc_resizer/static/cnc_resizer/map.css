@@ -131,6 +131,15 @@ button.on { background: var(--accent); border-color: var(--accent); color: #fff;
 #inspector .children li:hover { border-color: var(--accent); background: var(--accent-soft); }
 #inspector .actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 #inspector .actions button { font-size: 12px; padding: 4px 10px; min-height: 40px; }
+
+/* بازبینی دور ۳ (بند ۲۱): قیدهای دستگاه — برچسب پیدا + انتخاب ایستگاه */
+.ml-box { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; }
+.ml-box .ml-station { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
+.ml-box .ml-station input { font: inherit; padding: 5px 8px; min-height: 32px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-2); color: var(--ink); }
+.ml-box .ml-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; }
+.ml-box .ml-field { display: grid; gap: 3px; font-size: 11.5px; color: var(--muted); }
+.ml-box .ml-field input { font: inherit; width: 100%; padding: 5px 8px; min-height: 32px; border: 1px solid var(--line); border-radius: 6px; text-align: left; direction: ltr; }
+.ml-box .ml-help { color: var(--muted); font-size: 11px; margin: 6px 0 0; }
 .insp-empty { color: var(--muted); font-size: 12.5px; }
 .insp-info { margin: 8px 0 0; padding: 7px 10px; border-radius: 8px; font-size: 12px;
   background: var(--accent-soft); color: var(--accent); border: 1px solid rgba(29, 108, 224, .35); }
@@ -224,6 +233,9 @@ button.on { background: var(--accent); border-color: var(--accent); color: #fff;
 
 /* ---------- HUD نقشه ---------- */
 .view { position: fixed; inset: var(--cnc-top) 0 0 0; background: var(--canvas); }
+/* بازبینی دور ۳ (بند ۱۷): با باز بودن کشوی کد، نقشه زیر کشو نمی‌رود —
+   پایین نمای نقشه تا لبهٔ کشو کوتاه می‌شود (code-view.js هم fit تازه می‌گیرد). */
+body.code-open .view { inset: var(--cnc-top) 0 max(38vh, 220px) 0; }
 .view svg { width: 100%; height: 100%; display: block; touch-action: none; user-select: none; overflow: visible; }
 .view svg.tool-measure { cursor: crosshair; }
 .view svg.dragging { cursor: grabbing; }
@@ -247,6 +259,9 @@ button.on { background: var(--accent); border-color: var(--accent); color: #fff;
   background: var(--surface); border: 1px solid var(--accent); border-radius: 8px;
   padding: 5px 10px; box-shadow: 0 3px 12px rgba(23,34,46,.16); max-width: 320px;
 }
+/* بازبینی دور ۳ (بند ۲۰): #liveHud جای پیش‌فرض دارد — ΔX/ΔY درگ/کشش در
+   گوشهٔ پایین‌چپ ناحیهٔ نقشه ظاهر می‌شود، نه در موقعیت نامشخص انتهای بدنه. */
+#liveHud { bottom: 46px; inset-inline-start: 12px; }
 .maphud .num { font-weight: 700; }
 .maphud.dim-hint { border-color: var(--feat-groove); }
 

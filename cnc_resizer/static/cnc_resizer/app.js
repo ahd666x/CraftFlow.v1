@@ -141,8 +141,19 @@
     `;
   }
 
+  // بازبینی دور ۳ (بند ۵): بازرس و پنل‌های شناور هر دو در inset-inline-end:10px
+  // با z-index یکسان بودند و روی هم می‌افتادند — قاعدهٔ انباشت: تا وقتی یک
+  // پنل شناور باز است بازرس مخفی می‌ماند؛ با بستن پنل دوباره رندر می‌شود.
+  const FLOATING_PANELS = ['filePanel', 'toolsPanel', 'layersPanel', 'historyPanel', 'comparePanel', 'resizePanel', 'helpPanel'];
+  const PANEL_BTNS = { filePanel: 'btnFile', toolsPanel: 'btnTools', layersPanel: 'btnLayers',
+                       historyPanel: 'btnHistory', comparePanel: 'btnCompare', resizePanel: 'btnResize', helpPanel: 'btnHelp' };
+  function anyPanelOpen() {
+    return FLOATING_PANELS.some((pid) => { const p = $(pid); return p && !p.hidden; });
+  }
+
   function renderInspector() {
     const box = $('inspector');
+    if (anyPanelOpen()) { box.hidden = true; box.innerHTML = ''; return; }
     const sel = state.selection;
     const part = sel.find((s) => s.type === 'part');
     const op = sel.find((s) => s.type === 'op');
@@ -213,9 +224,16 @@
   function togglePanel(id, btn) {
     const panel = $(id);
     const show = panel.hidden;
-    ['filePanel', 'toolsPanel', 'layersPanel', 'historyPanel', 'comparePanel', 'resizePanel', 'helpPanel'].forEach((pid) => {
+    // بازبینی دور ۳ (بند ۴): پنل قبلی که بسته می‌شود، دکمه‌اش هم خاموش شود —
+    // قبلاً فقط پنل مخفی می‌شد و دکمهٔ آن با کلاس .on روشن می‌ماند؛ چند دکمه
+    // هم‌زمان فعال به نظر می‌رسید.
+    FLOATING_PANELS.forEach((pid) => {
       const p = $(pid);
-      if (p && pid !== id) p.hidden = true;
+      if (p && pid !== id) {
+        p.hidden = true;
+        const other = $(PANEL_BTNS[pid] || '');
+        if (other) other.classList.remove('on');
+      }
     });
     panel.hidden = !show;
     if (btn) btn.classList.toggle('on', show);
@@ -226,6 +244,9 @@
     } else if (openPanel && openPanel.id === id) {
       openPanel = null;
     }
+    // بازرس با پنل هم‌زمان باز نمی‌ماند (بند ۵) — با بستن پنل اگر هنوز
+    // انتخابی هست، بازرس برمی‌گردد.
+    if (!show && !anyPanelOpen()) renderInspector();
     if (show && id === 'toolsPanel') renderToolsPanel();
     if (show && id === 'layersPanel') renderLayersPanel();
     if (show && id === 'resizePanel') { syncResizeTarget(); if (CNC.fetchResizeGaps) CNC.fetchResizeGaps(); }
@@ -238,8 +259,14 @@
   // فاصله‌های بین گروه‌های سوراخ با تیکِ ثابت‌ماندن و مقدار دستی + زنجیرهٔ
   // اندازهٔ بین سوراخ‌ها روی خود نقشه، مثل رابط کاربری قبلی.
   function currentFileLength() {
-    // محور طول فایل CNC همان Y است (قرارداد پروفایل قطعه) — ارتفاع کادر ورق.
-    const bbox = (state.fileMeta && state.fileMeta.sheet_bbox) || {};
+    // بازبینی دور ۳ (بند ۱۴): مبنای پنل «طول» باید همان «طول نهایی» (finished =
+    // مسیر مرکز ابزار + قطر ابزار برش) باشد که هشدار سرور می‌گوید هدف را با آن
+    // وارد کنید — نه مسیر مرکز ابزار؛ وگرنه هدفِ پیش‌پرشده به‌اندازهٔ قطر ابزار
+    // با طول واقعی قطعه اختلاف داشت. sheet_bbox_finished از detectParts می‌آید.
+    const meta = state.fileMeta || {};
+    const finished = meta.sheet_bbox_finished || {};
+    if (finished.height != null) return Number(finished.height);
+    const bbox = meta.sheet_bbox || {};
     return bbox.height != null ? Number(bbox.height) : null;
   }
   function syncResizeTarget() {
@@ -1040,22 +1067,66 @@
     };
 
     // قیدهای دستگاه (پاکت) — ذخیرهٔ محلی + بازبینی گته
+    // بازبینی دور ۳ (بند ۲۱): قیدها به‌ازای هر ایستگاه جدا ذخیره می‌شود
+    // (کلید cncMachineLimits::<نام ایستگاه>) — قبلاً همهٔ ایستگاه‌های یک
+    // مرورگر روی هم رونویسی می‌کردند و گتهٔ خروجی به مقدار دستگاه اشتباه
+    // متکی می‌شد. انتخاب ایستگاه + برچسب‌های پیدا (به‌جای placeholder خالی).
     const ML_FIELDS = [['machineXMin', 'x_min'], ['machineXMax', 'x_max'],
                        ['machineYMin', 'y_min'], ['machineYMax', 'y_max']];
+    const ML_ACTIVE = 'cncMachineActive';
+    const mlKey = (name) => (name && name.trim() ? `cncMachineLimits::${name.trim()}` : 'cncMachineLimits');
+    const mlRead = (name) => {
+      try { return JSON.parse(localStorage.getItem(mlKey(name)) || 'null') || {}; }
+      catch (_) { return {}; }
+    };
     try {
-      const saved = JSON.parse(localStorage.getItem('cncMachineLimits') || '{}');
-      ML_FIELDS.forEach(([id, key]) => {
+      const station = $('machineStation');
+      const list = $('machineStationList');
+      if (list) {
+        list.replaceChildren();
+        Object.keys(localStorage)
+          .filter((k) => k.startsWith('cncMachineLimits::'))
+          .map((k) => k.slice('cncMachineLimits::'.length))
+          .sort()
+          .forEach((name) => {
+            const opt = document.createElement('option');
+            opt.value = name;
+            list.appendChild(opt);
+          });
+      }
+      const mlFill = (saved) => ML_FIELDS.forEach(([id, key]) => {
         const inp = $(id);
         if (inp && saved[key] != null) inp.value = saved[key];
-        inp.onchange = () => {
-          const limits = {};
-          ML_FIELDS.forEach(([fid, fkey]) => {
-            const v = Number($(fid).value);
-            if ($(fid).value !== '' && Number.isFinite(v)) limits[fkey] = v;
-          });
-          localStorage.setItem('cncMachineLimits', JSON.stringify(limits));
-          CNC.refreshGate();
-        };
+      });
+      const mlActive = () => (station ? station.value : '');
+      const mlSave = () => {
+        const limits = {};
+        ML_FIELDS.forEach(([fid, fkey]) => {
+          const v = Number($(fid).value);
+          if ($(fid).value !== '' && Number.isFinite(v)) limits[fkey] = v;
+        });
+        try {
+          localStorage.setItem(mlKey(mlActive()), JSON.stringify(limits));
+          localStorage.setItem(ML_ACTIVE, mlActive());
+        } catch (_) { /* بدون localStorage قیدها دستی می‌مانند */ }
+        CNC.refreshGate();
+      };
+      const mlLoad = (name) => {
+        // ایستگاه تازه از پاکت «پیش‌فرض/قدیم» شروع می‌کند تا از صفر شروع نکند
+        const saved = Object.keys(mlRead(name)).length ? mlRead(name) : mlRead('');
+        ML_FIELDS.forEach(([id]) => { const inp = $(id); if (inp) inp.value = ''; });
+        mlFill(saved);
+      };
+      if (station) {
+        station.value = localStorage.getItem(ML_ACTIVE) || '';
+        mlLoad(station.value);
+        station.onchange = () => { mlLoad(mlActive()); mlSave(); };
+      } else {
+        mlFill(mlRead(''));
+      }
+      ML_FIELDS.forEach(([id]) => {
+        const inp = $(id);
+        if (inp) inp.onchange = mlSave;
       });
     } catch (_) { /* localStorage در دسترس نیست — قیدها دستی می‌مانند */ }
 
@@ -1086,12 +1157,14 @@
   document.addEventListener('keydown', (e) => {
     if (e.repeat) return;   // نگه‌داشتن کلید نباید ابزار را تیک‌تاک بزند
     if (e.key === 'Escape') {
-      // فاز ۳.۲: اول پنل باز بسته می‌شود (با بازگشت فوکوس)، بعد رفتار قبلی.
+      // فاز ۳.۲: پنل باز بسته می‌شود (با بازگشت فوکوس).
+      // بازبینی دور ۳ (بند ۶): بعد از بستن پنل return نمی‌زنیم — لغو درگ/
+      // اندازه‌گیری/ویرایش هم باید همین کلید را ببلعد، وگرنه Esc با پنل باز
+      // هیچ‌وقت edit-cancel را نمی‌فرستاد و درگ معلق می‌ماند.
       if (openPanel) {
         const current = openPanel;
         togglePanel(current.id, current.btn);
         if (current.btn) current.btn.focus();
-        return;
       }
       if (IS_FIELD(e.target)) return;
       setTool('select'); state._measureA = null; state._measureLive = null;
