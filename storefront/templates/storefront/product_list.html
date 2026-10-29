@@ -54,20 +54,20 @@
         {% if q %}
         <span class="inline-flex items-center gap-1 px-3 py-1 text-sm bg-primary-100 text-primary-800 rounded-full">
             جستجو: {{ q }}
-            <a href="?{% if selected_category %}category={{ selected_category }}&{% endif %}{% if sort %}sort={{ sort }}&{% endif %}{% if min_price %}min_price={{ min_price }}&{% endif %}{% if max_price %}max_price={{ max_price }}&{% endif %}" class="text-primary-600 hover:text-primary-800" aria-label="حذف فیلتر جستجو">×</a>
+            <a href="{% querystring q=None page=None %}" class="text-primary-600 hover:text-primary-800" aria-label="حذف فیلتر جستجو">×</a>
         </span>
         {% endif %}
         {% if selected_category %}
         <span class="inline-flex items-center gap-1 px-3 py-1 text-sm bg-primary-100 text-primary-800 rounded-full">
             دسته: {{ current_category.name }}
-            <a href="?{% if q %}q={{ q }}&{% endif %}{% if sort %}sort={{ sort }}&{% endif %}{% if min_price %}min_price={{ min_price }}&{% endif %}{% if max_price %}max_price={{ max_price }}&{% endif %}" class="text-primary-600 hover:text-primary-800" aria-label="حذف فیلتر دسته‌بندی">×</a>
+            <a href="{% querystring category=None page=None %}" class="text-primary-600 hover:text-primary-800" aria-label="حذف فیلتر دسته‌بندی">×</a>
         </span>
         {% endif %}
         {% if can_see_prices %}
         {% if min_price or max_price %}
         <span class="inline-flex items-center gap-1 px-3 py-1 text-sm bg-primary-100 text-primary-800 rounded-full">
             قیمت: {% if min_price %}{{ min_price|fa_price }}{% else %}۰{% endif %} - {% if max_price %}{{ max_price|fa_price }}{% else %}∞{% endif %} تومان
-            <a href="?{% if q %}q={{ q }}&{% endif %}{% if selected_category %}category={{ selected_category }}&{% endif %}{% if sort %}sort={{ sort }}&{% endif %}" class="text-primary-600 hover:text-primary-800" aria-label="حذف فیلتر قیمت">×</a>
+            <a href="{% querystring min_price=None max_price=None page=None %}" class="text-primary-600 hover:text-primary-800" aria-label="حذف فیلتر قیمت">×</a>
         </span>
         {% endif %}
         {% endif %}
@@ -91,7 +91,7 @@
                     </li>
                     {% for category in categories %}
                     <li>
-                        <a href="{% url 'storefront:category_detail' category.slug %}"
+                        <a href="{% url 'storefront:category_detail' category.slug %}{% querystring category=None page=None %}"
                            class="block rounded px-2 py-1.5 hover:bg-stone-100
                                   {% if selected_category == category.slug %}bg-stone-100 font-medium{% endif %}">
                             {{ category.name }}
@@ -112,17 +112,17 @@
                         <div>
                             <label for="min_price" class="label">حداقل</label>
                             <input type="number" name="min_price" id="min_price" value="{{ min_price|default:'' }}"
-                                   placeholder="۰" class="input" min="0" step="100000">
+                                   placeholder="۰" class="input" min="0" step="1">
                         </div>
                         <div>
                             <label for="max_price" class="label">حداکثر</label>
                             <input type="number" name="max_price" id="max_price" value="{{ max_price|default:'' }}"
-                                   placeholder="۰" class="input" min="0" step="100000">
+                                   placeholder="۰" class="input" min="0" step="1">
                         </div>
                     </div>
                     <button type="submit" class="btn-primary w-full py-2 text-sm">اعمال</button>
                     {% if min_price or max_price %}
-                    <a href="?{% if q %}q={{ q }}&{% endif %}{% if selected_category %}category={{ selected_category }}&{% endif %}{% if sort %}sort={{ sort }}&{% endif %}"
+                    <a href="{% querystring min_price=None max_price=None page=None %}"
                        class="btn-outline w-full py-2 text-sm text-center">پاک کردن</a>
                     {% endif %}
                 </form>
@@ -144,6 +144,7 @@
             </button>
 
             <div x-show="filterOpen"
+                 x-cloak
                  x-transition:enter="transition-opacity ease-linear duration-300"
                  x-transition:enter-start="opacity-0"
                  x-transition:enter-end="opacity-100"
@@ -151,7 +152,7 @@
                  x-transition:leave-start="opacity-100"
                  x-transition:leave-end="opacity-0"
                  class="fixed inset-0 z-overlay bg-black/50"
-                 @click.outside="filterOpen = false"
+                 @click="filterOpen = false"
                  @keydown.escape.window="filterOpen = false"
                  aria-hidden="true"></div>
 
@@ -179,13 +180,13 @@
                         <h3 class="font-semibold mb-3">دسته‌بندی</h3>
                         <ul class="space-y-2">
                             <li>
-                                <a href="{% url 'storefront:product_list' %}{% if q %}?q={{ q }}{% endif %}" class="block px-4 py-2 rounded-lg {% if not selected_category %}bg-primary-100 text-primary-800{% else %}hover:bg-stone-100{% endif %}">
+                                <a href="{% url 'storefront:product_list' %}{% querystring category=None page=None %}" class="block px-4 py-2 rounded-lg {% if not selected_category %}bg-primary-100 text-primary-800{% else %}hover:bg-stone-100{% endif %}">
                                     همه دسته‌ها
                                 </a>
                             </li>
                             {% for category in categories %}
                             <li>
-                                <a href="{% url 'storefront:category_detail' category.slug %}{% if q %}?q={{ q }}{% endif %}" class="block px-4 py-2 rounded-lg {% if selected_category == category.slug %}bg-primary-100 text-primary-800{% else %}hover:bg-stone-100{% endif %}">
+                                <a href="{% url 'storefront:category_detail' category.slug %}{% querystring category=None page=None %}" class="block px-4 py-2 rounded-lg {% if selected_category == category.slug %}bg-primary-100 text-primary-800{% else %}hover:bg-stone-100{% endif %}">
                                     {{ category.name }} <span class="text-xs text-stone-400 ml-2">({{ category.product_count }})</span>
                                 </a>
                             </li>
@@ -203,18 +204,18 @@
                                 <div>
                                     <label for="mobile_min_price" class="label">حداقل</label>
                                     <input type="number" name="min_price" id="mobile_min_price" value="{{ min_price|default:'' }}"
-                                           placeholder="۰" class="input" min="0" step="100000">
+                                           placeholder="۰" class="input" min="0" step="1">
                                 </div>
                                 <div>
                                     <label for="mobile_max_price" class="label">حداکثر</label>
                                     <input type="number" name="max_price" id="mobile_max_price" value="{{ max_price|default:'' }}"
-                                           placeholder="۰" class="input" min="0" step="100000">
+                                           placeholder="۰" class="input" min="0" step="1">
                                 </div>
                             </div>
                             <div class="flex gap-2">
                                 <button type="submit" class="btn-primary flex-1 py-2">اعمال</button>
                                 {% if min_price or max_price %}
-                                <a href="?{% if q %}q={{ q }}&{% endif %}{% if selected_category %}category={{ selected_category }}&{% endif %}{% if sort %}sort={{ sort }}&{% endif %}" class="btn-outline flex-1 py-2 text-center">پاک کردن</a>
+                                <a href="{% querystring min_price=None max_price=None page=None %}" class="btn-outline flex-1 py-2 text-center">پاک کردن</a>
                                 {% endif %}
                             </div>
                         </form>
@@ -222,7 +223,10 @@
                     {% endif %}
                 </div>
                 <div class="p-4 border-t border-stone-100 sticky bottom-0 bg-white rounded-b-2xl">
-                    <button type="button" @click="filterOpen = false; document.getElementById('mobile-price-form').dispatchEvent(new Event('submit'))" class="btn-primary w-full py-3">اعمال و بستن</button>
+                    {# requestSubmit جای dispatchEvent(new Event('submit')) — رویداد دستی
+                       فرم را واقعاً ارسال نمی‌کرد؛ گارد ? هم برای کاربر بی‌قیمت که
+                       فرم قیمت ندارد لازم است #}
+                    <button type="button" @click="filterOpen = false; document.getElementById('mobile-price-form')?.requestSubmit()" class="btn-primary w-full py-3">اعمال و بستن</button>
                 </div>
             </div>
     </div>
@@ -238,21 +242,21 @@
             {% if page_obj.paginator.num_pages > 1 %}
             <nav class="mt-8 flex items-center justify-center gap-2" aria-label="صفحه‌بندی">
                 {% if page_obj.has_previous %}
-                <a href="?{% if q %}q={{ q }}&{% endif %}{% if selected_category %}category={{ selected_category }}&{% endif %}{% if sort %}sort={{ sort }}&{% endif %}{% if min_price %}min_price={{ min_price }}&{% endif %}{% if max_price %}max_price={{ max_price }}&{% endif %}page={{ page_obj.previous_page_number }}"
+                <a href="{% querystring page=page_obj.previous_page_number %}"
                    class="btn-outline px-4 py-2">قبلی</a>
                 {% endif %}
 
                 {% for num in page_obj.paginator.page_range %}
                     {% if page_obj.number == num %}
-                    <span class="btn-primary px-4 py-2" aria-current="page">{{ num }}</span>
+                    <span class="btn-primary px-4 py-2" aria-current="page">{{ num|fa_number }}</span>
                     {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
-                    <a href="?{% if q %}q={{ q }}&{% endif %}{% if selected_category %}category={{ selected_category }}&{% endif %}{% if sort %}sort={{ sort }}&{% endif %}{% if min_price %}min_price={{ min_price }}&{% endif %}{% if max_price %}max_price={{ max_price }}&{% endif %}page={{ num }}"
-                       class="btn-outline px-4 py-2">{{ num }}</a>
+                    <a href="{% querystring page=num %}"
+                       class="btn-outline px-4 py-2">{{ num|fa_number }}</a>
                     {% endif %}
                 {% endfor %}
 
                 {% if page_obj.has_next %}
-                <a href="?{% if q %}q={{ q }}&{% endif %}{% if selected_category %}category={{ selected_category }}&{% endif %}{% if sort %}sort={{ sort }}&{% endif %}{% if min_price %}min_price={{ min_price }}&{% endif %}{% if max_price %}max_price={{ max_price }}&{% endif %}page={{ page_obj.next_page_number }}"
+                <a href="{% querystring page=page_obj.next_page_number %}"
                    class="btn-outline px-4 py-2">بعدی</a>
                 {% endif %}
             </nav>

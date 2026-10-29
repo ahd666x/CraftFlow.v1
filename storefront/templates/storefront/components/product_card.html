@@ -16,28 +16,29 @@
 <div class="group block relative">
     <a href="{% url 'storefront:product_detail' product.slug %}" class="block">
         <div class="aspect-[4/5] overflow-hidden rounded-xl bg-stone-100 relative">
+            {% with gallery_images=product.gallery_images.all %}
             {% if product.image %}
+            {# تعویض تصویر روی hover فقط دسکتاپ (md+)؛ روی لمسی opacity-0 هرگز دیده نمی‌شد #}
             <img src="{{ product.image.url }}" alt="{{ product.name }}" loading="lazy"
                  width="400" height="500"
-                 class="h-full w-full object-cover transition-all duration-300 group-hover:opacity-0 group-hover:scale-105">
-            {% elif product.gallery_images.first %}
-            <img src="{{ product.gallery_images.first.image.url }}" alt="{{ product.name }}" loading="lazy"
+                 class="h-full w-full object-cover transition-all duration-300 md:group-hover:opacity-0 md:group-hover:scale-105">
+            {% elif gallery_images %}
+            <img src="{{ gallery_images.0.image.url }}" alt="{{ product.name }}" loading="lazy"
                  width="400" height="500"
-                 class="h-full w-full object-cover transition-all duration-300 group-hover:opacity-0 group-hover:scale-105">
+                 class="h-full w-full object-cover transition-all duration-300 md:group-hover:opacity-0 md:group-hover:scale-105">
             {% else %}
             <div class="grid h-full w-full place-items-center text-xs text-stone-500">بدون تصویر</div>
             {% endif %}
 
-            {# Second image on hover #}
-            {% with gallery_images=product.gallery_images.all %}
+            {# Second image on hover (desktop only) #}
             {% if gallery_images|length > 1 %}
             <img src="{{ gallery_images.1.image.url }}" alt="{{ product.name }}" loading="lazy"
                  width="400" height="500"
-                 class="absolute inset-0 h-full w-full object-cover opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                 class="absolute inset-0 h-full w-full object-cover opacity-0 md:group-hover:opacity-100 transition-opacity duration-300">
             {% elif gallery_images|length == 1 and not product.image %}
             <img src="{{ gallery_images.0.image.url }}" alt="{{ product.name }}" loading="lazy"
                  width="400" height="500"
-                 class="absolute inset-0 h-full w-full object-cover opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                 class="absolute inset-0 h-full w-full object-cover opacity-0 md:group-hover:opacity-100 transition-opacity duration-300">
             {% endif %}
             {% endwith %}
 
@@ -64,7 +65,7 @@
               window.dispatchEvent(new Event('open-mini-cart'));
             }
           "
-          class="absolute bottom-3 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 md:translate-y-2 md:group-hover:translate-y-0 transition-all duration-200 inline md:opacity-0">
+          class="absolute bottom-3 left-1/2 -translate-x-1/2 opacity-100 md:opacity-0 md:translate-y-2 md:group-hover:opacity-100 md:group-hover:translate-y-0 transition-all duration-200">
         {% csrf_token %}
         <input type="hidden" name="quantity" value="1">
         <button type="submit" class="btn-primary px-4 py-2 text-sm shadow-lg" aria-label="افزودن سریع {{ product.name }} به سبد">
@@ -79,18 +80,36 @@
             <h3 class="line-clamp-1 text-sm font-medium text-stone-900">{{ product.name }}</h3>
             {% if product.review_count %}
             <p class="mt-1 flex items-center gap-1 text-xs text-primary-600"
-               aria-label="امتیاز {{ product.average_rating }} از ۵">
+               aria-label="امتیاز {{ product.average_rating|fa_number }} از ۵">
                 <span aria-hidden="true">★</span>
-                <span>{{ product.average_rating }}</span>
-                <span class="text-stone-400">({{ product.review_count }})</span>
+                <span>{{ product.average_rating|fa_number }}</span>
+                <span class="text-stone-400">({{ product.review_count|fa_number }})</span>
             </p>
             {% endif %}
             {% if can_see_prices %}
             <p class="text-sm text-stone-600">
-                <span class="font-semibold text-stone-900">از {{ product.base_price|fa_price }}</span> تومان
+                {# «از X» فقط برای محصولِ ابعاد-قابل-تغییر معنا دارد؛ در غیر این صورت قیمت ثابت است #}
+                <span class="font-semibold text-stone-900">{% if product.length_editable or product.width_editable or product.height_editable %}از {% endif %}{{ product.base_price|fa_price }}</span> تومان
             </p>
             {% else %}
-            <p class="text-sm text-stone-500">برای اطلاع از قیمت تماس بگیرید</p>
+            {# کارت تماس واقعی به‌جای متن بن‌بست #}
+            <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                {% if site_settings.contact_phone %}
+                <a href="tel:{{ site_settings.contact_phone }}"
+                   class="inline-flex items-center gap-1 font-medium text-primary-700 hover:text-primary-800"
+                   aria-label="تماس برای استعلام قیمت {{ product.name }}">
+                    <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/></svg>
+                    تماس برای قیمت
+                </a>
+                {% else %}
+                <span class="text-stone-500">برای اطلاع از قیمت تماس بگیرید</span>
+                {% endif %}
+                {% if not user.is_authenticated %}
+                <a href="{% url 'accounts:login' %}?next={{ request.path|urlencode }}"
+                   class="font-medium text-stone-600 underline underline-offset-2 hover:text-stone-900"
+                   title="قیمت‌ها برای حساب‌های تأییدشده پس از ورود نمایش داده می‌شود">ورود</a>
+                {% endif %}
+            </div>
             {% endif %}
         </a>
     </div>

@@ -1,6 +1,9 @@
+import json
+
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.core.exceptions import PermissionDenied
-from django.shortcuts import redirect
+from django.http import HttpResponse
+from django.shortcuts import redirect, render
 from django.views.generic import ListView, CreateView, UpdateView, View
 from django.urls import reverse_lazy
 from django.contrib import messages
@@ -43,29 +46,61 @@ class DiscountUpdateView(StaffRequiredMixin, UpdateView):
     success_url = reverse_lazy('discounts:discount_list')
 
 
+def _hx_cart_response(request, cart, message):
+    """پاسخ جزئی HTMX بعد از اعمال/حذف کد تخفیف.
+
+    پیام با HX-Trigger (cartMessage) به toast می‌رود؛ سشن آلوده نمی‌شود
+    تا پیام‌های کهنه روی صفحات بعدی ظاهر نشوند.
+    """
+    items = cart.items.select_related(
+        'product', 'product__category',
+    ).prefetch_related('product__gallery_images')
+    if request.headers.get('HX-Target') == 'cart-rows':
+        response = render(request, 'cart/_cart_page.html', {'cart': cart, 'items': items})
+    else:
+        response = render(request, 'cart/_mini_cart.html', {'cart': cart, 'items': items})
+    response['HX-Trigger'] = json.dumps(
+        {
+            'cartMessage': message,
+            'cartUpdated': {'count': cart.total_items, 'silent': True},
+        },
+        ensure_ascii=False,
+    )
+    return response
+
+
 class ApplyDiscountView(LoginRequiredMixin, View):
     http_method_names = ['post']
 
     def post(self, request, *args, **kwargs):
         cart = get_or_create_cart(request)
         form = ApplyDiscountForm(request.POST)
+        message = None
+        ok = False
         if form.is_valid():
             code = form.cleaned_data['code']
             try:
                 discount = Discount.objects.get(code=code)
             except Discount.DoesNotExist:
-                messages.error(request, 'کد تخفیف نامعتبر است.')
-                return redirect('cart:cart_detail')
-
-            if not discount.is_valid:
-                messages.error(request, 'کد تخفیف منقضی شده یا به حد نصاب رسیده است.')
-                return redirect('cart:cart_detail')
-
-            cart.discount = discount
-            cart.save()
-            messages.success(request, f'کد تخفیف {discount.code} با موفقیت اعمال شد.')
+                message = 'کد تخفیف نامعتبر است.'
+            else:
+                if not discount.is_valid:
+                    message = 'کد تخفیف منقضی شده یا به حد نصاب رسیده است.'
+                else:
+                    cart.discount = discount
+                    cart.save()
+                    message = f'کد تخفیف {discount.code} با موفقیت اعمال شد.'
+                    ok = True
         else:
-            messages.error(request, 'کد تخفیف را وارد کنید.')
+            message = 'کد تخفیف را وارد کنید.'
+
+        if request.headers.get('HX-Request'):
+            return _hx_cart_response(request, cart, message)
+
+        if ok:
+            messages.success(request, message)
+        else:
+            messages.error(request, message)
         return redirect('cart:cart_detail')
 
 
@@ -76,5 +111,10 @@ class RemoveDiscountView(LoginRequiredMixin, View):
         cart = get_or_create_cart(request)
         cart.discount = None
         cart.save()
-        messages.success(request, 'کد تخفیف حذف شد.')
+        message = 'کد تخفیف حذف شد.'
+
+        if request.headers.get('HX-Request'):
+            return _hx_cart_response(request, cart, message)
+
+        messages.success(request, message)
         return redirect('cart:cart_detail')

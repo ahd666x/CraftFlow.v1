@@ -269,12 +269,20 @@ def review_create(request, slug):
     )
 
     messages.success(request, 'نظر شما با موفقیت ثبت شد و پس از تایید نمایش داده می‌شود.')
-    
+
     if request.headers.get('HX-Request'):
-        # Return updated reviews list for HTMX
-        reviews = product.reviews.filter(is_active=True).select_related('user')
-        return render(request, 'storefront/partials/reviews_list.html', {'reviews': reviews, 'product': product})
-    
+        # Return updated reviews list for HTMX.
+        # نظر جدید is_active=False است؛ پیام موفقیت در سشن نمی‌ماند (روی صفحه‌های
+        # بعدی ظاهر نمی‌شود) و با HX-Trigger به toast می‌رود.
+        from django.http import HttpResponse
+        import json as _json
+        response = HttpResponse('')
+        response['HX-Trigger'] = _json.dumps(
+            {'cartMessage': 'نظر شما ثبت شد و پس از تایید نمایش داده می‌شود.'},
+            ensure_ascii=False,
+        )
+        return response
+
     return redirect('storefront:product_detail', slug=slug)
 
 
@@ -316,6 +324,15 @@ def category_detail(request, slug):
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
 
+    # Popular products for empty state (most reviewed) — تا حالت خالی دسته تهی نباشد
+    popular_products = _with_rating(
+        Product.active_objects
+        .filter(reviews__is_active=True)
+        .exclude(category=category)
+        .select_related('category')
+        .prefetch_related('gallery_images')
+    ).order_by('-rev_count').distinct()[:6]
+
     return render(request, 'storefront/product_list.html', {
         'page_obj': page_obj,
         'categories': ProductCategory.objects.filter(is_active=True),
@@ -325,6 +342,7 @@ def category_detail(request, slug):
         'sort': sort,
         'min_price': min_price,
         'max_price': max_price,
+        'popular_products': popular_products,
     })
 
 
@@ -348,9 +366,16 @@ def checkout(request):
         'items': items,
         'customer': customer,
         'addresses': addresses,
-        # متن آدرس‌ها برای پر کردن خودکار textarea در تسویه
+        # متن آدرس‌ها + گیرنده و شهر برای پر کردن خودکار فرم در تسویه
         # (json_script در قالب آن را به‌صورت امن تولید می‌کند)
-        'addresses_data': {str(address.pk): address.address for address in addresses},
+        'addresses_data': {
+            str(address.pk): {
+                'address': address.address,
+                'recipient': address.recipient,
+                'city': address.city,
+            }
+            for address in addresses
+        },
     })
 
 
@@ -482,7 +507,7 @@ def order_list(request):
 def _status_timeline(order):
     """مراحل نمایشی سفارش برای timeline صفحه‌ی جزئیات.
 
-    وضعیت‌های مالی/تولیدی سفارش را به پنج مرحه‌ی
+    وضعیت‌های مالی/تولیدی سفارش را به پنج مرحله‌ی
     «ثبت ← پرداخت ← تولید ← ارسال ← تحویل» نگاشت می‌کنیم."""
     paid = order.status in ('paid', 'shipped', 'delivered') or order.paid_at is not None
     producing = order.status in ('producing', 'completed', 'shipped', 'delivered')

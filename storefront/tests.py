@@ -448,5 +448,12 @@ class CheckoutViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn('addresses_data', response.context)
         data = response.context['addresses_data']
-        self.assertTrue(any('خیابان نمونه' in v for v in data.values()))
+        # ساختار جدید: هر آدرس یک دیکشنری {address, recipient, city} است تا
+        # انتخاب آدرس ذخیره‌شده، گیرنده و شهر را هم پر کند.
+        self.assertTrue(any('خیابان نمونه' in v['address'] for v in data.values()))
+        for v in data.values():
+            self.assertIn('recipient', v)
+            self.assertIn('city', v)
+        self.assertEqual(list(data.values())[0]['city'], 'تهران')
+        self.assertEqual(list(data.values())[0]['recipient'], 'خریدار')
         self.assertContains(response, 'id="saved-addresses"')

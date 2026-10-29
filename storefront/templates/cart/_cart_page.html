@@ -1,0 +1,9 @@
+{% load storefront_filters %}
+{# پاسخ جزئی HTMX برای عملیات صفحهٔ سبد خرید (تغییر تعداد/حذف/خالی کردن/تخفیف).
+   سطرها داخل #cart-rows جایگزین می‌شوند و جمع‌ها به‌صورت OOB با #cart-totals #}
+<div class="space-y-4" data-cart-total="{{ cart.total_items }}">
+    {% for item in items %}
+    {% include 'cart/_row.html' with item=item use_htmx=True cart_page=True %}
+    {% endfor %}
+</div>
+{% include 'cart/_cart_totals.html' with oob=True %}

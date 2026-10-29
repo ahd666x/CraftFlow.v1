@@ -1,0 +1,95 @@
+{% load storefront_filters %}
+{# ناحیهٔ جمع‌های سبد — هم در رندر اولیه صفحهٔ سبد و هم به‌صورت OOB در پاسخ‌های
+   HTMX (با پارامتر oob=True) استفاده می‌شود #}
+<div id="cart-totals" {% if oob %}hx-swap-oob="true"{% endif %}>
+    <div class="flex items-center justify-between text-sm text-stone-600">
+        <span>جمع اقلام ({{ cart.total_items|fa_number }})</span>
+        {% if can_see_prices %}
+        <span>{{ cart.total_price|fa_price }}</span>
+        {% else %}
+        <span>—</span>
+        {% endif %}
+    </div>
+
+    {% if cart.discount %}
+    <div class="mt-2 flex items-center justify-between text-emerald-700 text-sm">
+        <span>تخفیف ({{ cart.discount.code }})</span>
+        {% if can_see_prices %}
+        <span>-{{ cart.discount_amount|fa_price }}</span>
+        {% else %}
+        <span>—</span>
+        {% endif %}
+    </div>
+    {# در صفحهٔ سبد هدف #cart-rows است تا سطرها و جمع‌ها با هم به‌روز شوند #}
+    <form method="post" action="{% url 'discounts:remove_discount' %}"
+          hx-post="{% url 'discounts:remove_discount' %}"
+          hx-target="#cart-rows" hx-swap="innerHTML" class="mt-2">
+        {% csrf_token %}
+        <button type="submit" class="text-xs text-red-600 hover:underline">حذف تخفیف</button>
+    </form>
+    {% endif %}
+
+    {# Shipping #}
+    <div class="mt-2 flex items-center justify-between text-sm text-stone-600">
+        <span>هزینه ارسال</span>
+        <span>{% if cart.shipping_cost == 0 %}رایگان{% else %}{{ cart.shipping_cost|fa_price }} تومان{% endif %}</span>
+    </div>
+
+    {# Tax #}
+    {% if cart.tax_amount > 0 %}
+    <div class="mt-1 flex items-center justify-between text-sm text-stone-600">
+        <span>مالیات ({{ site_settings.tax_percent }}٪)</span>
+        <span>{{ cart.tax_amount|fa_price }} تومان</span>
+    </div>
+    {% endif %}
+
+    <div class="mt-3 flex items-center justify-between border-t border-stone-200 pt-3">
+        <span class="font-semibold">مبلغ قابل پرداخت</span>
+        {% if can_see_prices %}
+        <span class="text-lg font-bold text-primary-800">{{ cart.final_price|fa_price }}</span>
+        {% else %}
+        <span class="text-lg font-bold text-primary-800">—</span>
+        {% endif %}
+    </div>
+    <p class="mt-1 text-xs text-stone-500">تومان</p>
+
+    {# Estimated delivery #}
+    <div class="mt-4 p-3 rounded-lg bg-primary-50 border border-primary-100">
+        <div class="flex items-center gap-2 text-sm text-primary-800">
+            <svg class="h-5 w-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <span>زمان تحویل تقریبی: {{ cart.estimated_delivery_min|fa_number }} تا {{ cart.estimated_delivery_max|fa_number }} روز کاری</span>
+        </div>
+        {% if can_see_prices and cart.shipping_cost > 0 %}
+        <p class="mt-1 text-xs text-primary-700">سفارش‌های بالای {{ site_settings.free_shipping_threshold|fa_price }} تومان، ارسال رایگان دارند.</p>
+        {% endif %}
+    </div>
+
+    {% if not cart.discount %}
+    <form method="post" action="{% url 'discounts:apply_discount' %}"
+          hx-post="{% url 'discounts:apply_discount' %}"
+          hx-target="#cart-rows" hx-swap="innerHTML"
+          class="mt-4 space-y-2">
+        {% csrf_token %}
+        <label class="label" for="code">کد تخفیف</label>
+        <div class="flex gap-2">
+            <input id="code" name="code" type="text" class="input" placeholder="کد تخفیف" required>
+            <button type="submit" class="btn-primary whitespace-nowrap">اعمال</button>
+        </div>
+    </form>
+    {% endif %}
+
+    <a href="{% if user.is_authenticated %}{% url 'storefront:checkout' %}{% else %}{% url 'accounts:login' %}?next={% url 'storefront:checkout' %}{% endif %}"
+       class="btn-primary mt-5 w-full text-center"
+       {% if not user.is_authenticated %}title="برای تسویه، ابتدا وارد حساب خود شوید"{% endif %}>
+        ادامه‌ی فرایند خرید
+    </a>
+
+    <form method="post" action="{% url 'cart:cart_clear' %}"
+          hx-post="{% url 'cart:cart_clear' %}"
+          hx-target="#cart-rows" hx-swap="innerHTML" class="mt-3">
+        {% csrf_token %}
+        <button type="submit" class="btn-outline w-full">خالی کردن سبد</button>
+    </form>
+</div>

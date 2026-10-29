@@ -87,7 +87,6 @@
                         <span>تصویری موجود نیست</span>
                     </div>
                     {% endif %}
-                    
                     {# Navigation arrows #}
                     {% if gallery|length > 1 %}
                     <button type="button" 
@@ -121,71 +120,93 @@
                 {% endif %}
 
                 {# Lightbox Modal - inside productGallery scope #}
-                {% if gallery %}
+                {# z-modal بالاتر از هدر (z-sticky=1020) — قبلاً z-[100] بود و زیر هدر می‌رفت #}
+                {% if gallery or product.image %}
                 <div x-show="lightboxOpen"
                      x-cloak
                      @keydown.escape.window="closeLightbox()"
-                     class="fixed inset-0 z-[100] flex items-center justify-center bg-black/90"
+                     @keydown.arrow-left.window="if (lightboxOpen && thumbnails > 1) lightboxNext()"
+                     @keydown.arrow-right.window="if (lightboxOpen && thumbnails > 1) lightboxPrev()"
+                     class="fixed inset-0 z-modal flex items-center justify-center bg-black/90"
                      @click.self="closeLightbox()"
                      role="dialog"
                      aria-modal="true"
                      aria-label="نمایش بزرگ تصویر">
                     <button type="button" @click="closeLightbox()" class="absolute top-4 right-4 text-white/70 hover:text-white text-3xl" aria-label="بستن">×</button>
-                    <button type="button" @click="lightboxNext()" class="absolute left-4 text-white/70 hover:text-white text-4xl" aria-label="بعدی">›</button>
-                    <button type="button" @click="lightboxPrev()" class="absolute right-4 text-white/70 hover:text-white text-4xl" aria-label="قبلی">‹</button>
+                    {# در RTL «بعدی» سمت چپ است؛ گلیف‌ها هم مطابق جهت #}
+                    {% if gallery|length > 1 %}
+                    <button type="button" @click="lightboxNext()" class="absolute left-4 text-white/70 hover:text-white text-4xl" aria-label="بعدی">‹</button>
+                    <button type="button" @click="lightboxPrev()" class="absolute right-4 text-white/70 hover:text-white text-4xl" aria-label="قبلی">›</button>
+                    {% endif %}
                     {% for img in gallery %}
                     <img x-show="lightboxIndex === {{ forloop.counter0 }}"
                          x-cloak
                          src="{{ img.image.url }}" alt="{{ img.alt_text|default:product.name }}"
                          class="max-h-[85vh] max-w-[90vw] object-contain">
                     {% endfor %}
+                    {% if not gallery and product.image %}
+                    <img x-show="lightboxOpen"
+                         src="{{ product.image.url }}" alt="{{ product.name }}"
+                         class="max-h-[85vh] max-w-[90vw] object-contain">
+                    {% endif %}
                 </div>
                 {% endif %}
             </div>
 
             {# ---------- Tabs: Description, Specs, Reviews ---------- #}
-            <div x-data="{ activeTab: 'description' }" class="border-t border-stone-100 pt-6">
+            {# ناوبری کیبورد: در RTL فلش چپ = تب بعدی #}
+            <div x-data="{ activeTab: 'description', tabs: ['description', 'specs', 'reviews'],
+                          move(dir) { var i = this.tabs.indexOf(this.activeTab);
+                                      i = (i + dir + this.tabs.length) % this.tabs.length;
+                                      this.activeTab = this.tabs[i];
+                                      this.$refs['tab-' + this.activeTab].focus(); } }"
+                 class="border-t border-stone-100 pt-6"
+                 @keydown.arrow-left.prevent="move(1)"
+                 @keydown.arrow-right.prevent="move(-1)">
                 <div class="flex border-b border-stone-100 mb-6" role="tablist">
-                    <button type="button" 
+                    <button type="button" id="tab-btn-description" x-ref="tab-description"
                             @click="activeTab = 'description'"
                             :class="activeTab === 'description' ? 'border-primary-600 text-primary-700' : 'border-transparent text-stone-500 hover:text-stone-700'"
-                            class="flex-1 py-3 px-4 text-sm font-medium border-b-2 transition-colors"
+                            class="flex-1 py-3 px-4 text-sm font-medium border-b-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-600"
                             role="tab"
+                            :tabindex="activeTab === 'description' ? 0 : -1"
                             :aria-selected="activeTab === 'description'"
                             aria-controls="tab-description">
                         توضیحات
                     </button>
-                    <button type="button" 
+                    <button type="button" id="tab-btn-specs" x-ref="tab-specs"
                             @click="activeTab = 'specs'"
                             :class="activeTab === 'specs' ? 'border-primary-600 text-primary-700' : 'border-transparent text-stone-500 hover:text-stone-700'"
-                            class="flex-1 py-3 px-4 text-sm font-medium border-b-2 transition-colors"
+                            class="flex-1 py-3 px-4 text-sm font-medium border-b-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-600"
                             role="tab"
+                            :tabindex="activeTab === 'specs' ? 0 : -1"
                             :aria-selected="activeTab === 'specs'"
                             aria-controls="tab-specs">
                         مشخصات
                     </button>
-                    <button type="button" 
+                    <button type="button" id="tab-btn-reviews" x-ref="tab-reviews"
                             @click="activeTab = 'reviews'"
                             :class="activeTab === 'reviews' ? 'border-primary-600 text-primary-700' : 'border-transparent text-stone-500 hover:text-stone-700'"
-                            class="flex-1 py-3 px-4 text-sm font-medium border-b-2 transition-colors"
+                            class="flex-1 py-3 px-4 text-sm font-medium border-b-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-600"
                             role="tab"
+                            :tabindex="activeTab === 'reviews' ? 0 : -1"
                             :aria-selected="activeTab === 'reviews'"
                             aria-controls="tab-reviews">
-                        نظرات ({{ product.review_count|default:0 }})
+                        نظرات ({{ product.review_count|default:0|fa_number }})
                     </button>
                 </div>
 
                 {# Tab: Description #}
-                <div x-show="activeTab === 'description'" x-transition class="prose prose-stone max-w-none" role="tabpanel" id="tab-description">
+                <div x-show="activeTab === 'description'" x-transition class="prose prose-stone max-w-none" role="tabpanel" id="tab-description" aria-labelledby="tab-btn-description">
                     {% if product.description %}
                     <p class="whitespace-pre-line text-stone-600">{{ product.description }}</p>
                     {% else %}
-                    <p class="text-stone-500">توضیحات‌ای برای این محصول ثبت نشده است.</p>
+                    <p class="text-stone-500">توضیحی برای این محصول ثبت نشده است.</p>
                     {% endif %}
                 </div>
 
                 {# Tab: Specs #}
-                <div x-show="activeTab === 'specs'" x-transition class="mt-4" role="tabpanel" id="tab-specs">
+                <div x-show="activeTab === 'specs'" x-transition class="mt-4" role="tabpanel" id="tab-specs" aria-labelledby="tab-btn-specs">
                     <dl class="grid grid-cols-2 gap-4 text-sm">
                         <div class="font-medium text-stone-500">دسته‌بندی</div>
                         <div class="text-stone-900">{{ product.category.name }}</div>
@@ -250,7 +271,7 @@
                 </div>
 
                 {# Tab: Reviews #}
-                <div x-show="activeTab === 'reviews'" x-transition class="mt-4" role="tabpanel" id="tab-reviews">
+                <div x-show="activeTab === 'reviews'" x-transition class="mt-4" role="tabpanel" id="tab-reviews" aria-labelledby="tab-btn-reviews">
                     <div id="reviews-list">
                         {% if reviews %}
                         <div class="space-y-4">
@@ -290,16 +311,24 @@
                               hx-encoding="multipart/form-data"
                               class="space-y-4"
                               @htmx:after-request="if (event.detail.successful) { $el.reset(); }"
-                              @htmx:responseError="alert(event.detail.xhr.responseText)">
+                              @htmx:responseError="document.dispatchEvent(new CustomEvent('cartError', { detail: event.detail.xhr.responseText }))">
                             {% csrf_token %}
                             <input type="hidden" name="product_slug" value="{{ product.slug }}">
                             <div>
-                                <label class="label">امتیاز</label>
-                                <div class="flex gap-2" role="radiogroup" aria-label="انتخاب امتیاز">
-                                    {% for i in "54321"|make_list %}
-                                    <label class="cursor-pointer">
-                                        <input type="radio" name="rating" value="{{ i }}" required class="sr-only peer">
-                                        <span class="text-2xl text-stone-300 peer-checked:text-amber-500 transition-colors">★</span>
+                                <label class="label" id="rating-label">امتیاز</label>
+                                {# در RTL ترفند peer-checked برای «پرشدن تا انتخاب» نامطمئن بود؛
+                                   با x-model تا ستارهٔ انتخاب‌شده پر می‌شود + focus ring #}
+                                <div class="flex gap-2" role="radiogroup" aria-labelledby="rating-label"
+                                     x-data="{ rating: 0 }">
+                                    {% for i in "12345"|make_list %}
+                                    <label class="cursor-pointer rounded has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-primary-600 has-[:focus-visible]:ring-offset-2">
+                                        <input type="radio" name="rating" value="{{ i }}" required class="sr-only"
+                                               x-model.number="rating"
+                                               @change="rating = {{ i }}">
+                                        <span class="text-2xl transition-colors"
+                                              :class="rating >= {{ i }} ? 'text-amber-500' : 'text-stone-300'"
+                                              aria-hidden="true">★</span>
+                                        <span class="sr-only">{{ i }} از ۵</span>
                                     </label>
                                     {% endfor %}
                                 </div>
@@ -325,12 +354,13 @@
         </div>
 
         {# ---------- Right Column: Sticky Price Card + Add to Cart ---------- #}
+        {% if can_see_prices %}
         <div x-data="dimensionPrice({
-                basePrice: {% if can_see_prices %}{{ product.base_price|js_number }}{% else %}0{% endif %},
+                basePrice: {{ product.base_price|js_number }},
                 dims: {
-                    length: {def: {% if can_see_prices %}{{ product.length|js_number }}{% else %}0{% endif %}, editable: {{ product.length_editable|yesno:'true,false' }}, percent: {% if can_see_prices %}{{ product.length_price_percent|js_number }}{% else %}0{% endif %} },
-                    width:  {def: {% if can_see_prices %}{{ product.width|js_number }}{% else %}0{% endif %},  editable: {{ product.width_editable|yesno:'true,false' }},  percent: {% if can_see_prices %}{{ product.width_price_percent|js_number }}{% else %}0{% endif %} },
-                    height: {def: {% if can_see_prices %}{{ product.height|js_number }}{% else %}0{% endif %}, editable: {{ product.height_editable|yesno:'true,false' }}, percent: {% if can_see_prices %}{{ product.height_price_percent|js_number }}{% else %}0{% endif %} }
+                    length: {def: {{ product.length|js_number }}, editable: {{ product.length_editable|yesno:'true,false' }}, percent: {{ product.length_price_percent|js_number }} },
+                    width:  {def: {{ product.width|js_number }},  editable: {{ product.width_editable|yesno:'true,false' }},  percent: {{ product.width_price_percent|js_number }} },
+                    height: {def: {{ product.height|js_number }}, editable: {{ product.height_editable|yesno:'true,false' }}, percent: {{ product.height_price_percent|js_number }} }
                 }
             })"
             class="lg:order-2 lg:sticky lg:top-20 lg:self-start">
@@ -358,7 +388,7 @@
                       hx-target="#cart-count" hx-swap="innerHTML"
                       @submit="adding = true"
                       @htmx:after-request="adding = false; if (event.detail.successful && event.detail.xhr.status !== 204) { window.dispatchEvent(new Event('open-mini-cart')); }"
-                      @htmx:responseError="adding = false; alert(event.detail.xhr.responseText)"
+                      @htmx:responseError="adding = false; document.dispatchEvent(new CustomEvent('cartError', { detail: event.detail.xhr.responseText }))"
                       class="space-y-4 border-t border-stone-100 pt-4">
                     {% csrf_token %}
 
@@ -432,28 +462,49 @@
                             <label class="label" for="qty">تعداد</label>
                             <input id="qty" name="quantity" type="number" min="1" x-model.number="quantity" class="input w-20 text-center">
                         </div>
-                        {% if can_see_prices %}
                         <div class="text-left">
                             <span class="block text-xs text-stone-500">قیمت کل</span>
                             <span class="text-xl font-bold" x-text="total().toLocaleString('fa-IR') + ' تومان'"></span>
                         </div>
-                        {% endif %}
                     </div>
 
-                    {% if can_see_prices %}
                     <button type="submit" class="btn-primary w-full py-3"
                             :disabled="adding || !isValid()" :class="{'opacity-50 cursor-not-allowed': adding || !isValid()}">
                         <span x-show="!adding">افزودن به سبد خرید</span>
                         <span x-show="adding" x-cloak>در حال افزودن...</span>
                     </button>
-                    {% else %}
-                    <div class="text-center text-sm text-stone-500 py-2">
-                        برای ثبت سفارش با ما تماس بگیرید.
-                    </div>
-                    {% endif %}
                 </form>
             </div>
         </div>
+        {% else %}
+        {# کاربر بی‌قیمت: فرم ابعاد بن‌بست بود (basePrice صفر و نتیجه بدون معنی)؛
+           به‌جای آن کارت تماس واقعی + راه ورود #}
+        <div class="lg:order-2 lg:sticky lg:top-20 lg:self-start">
+            <div class="card p-5 space-y-4">
+                <div class="flex items-center gap-3">
+                    <span class="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-primary-100 text-primary-700" aria-hidden="true">
+                        <svg class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-.282.376-.769.542-1.21.38a12.035 12.035 0 01-7.143-7.143c-.162-.441.004-.928.38-1.21l1.293-.97c.363-.271.527-.734.417-1.173L6.963 3.102a1.125 1.125 0 00-1.091-.852H4.5A2.25 2.25 0 002.25 4.5v2.25z"/></svg>
+                    </span>
+                    <div>
+                        <h2 class="font-semibold">ثبت سفارش تلفنی</h2>
+                        <p class="text-xs text-stone-500">قیمت‌ها برای حساب‌های تأییدشده نمایش داده می‌شود.</p>
+                    </div>
+                </div>
+                {% if site_settings.contact_phone %}
+                <a href="tel:{{ site_settings.contact_phone }}" class="btn-primary w-full py-3 text-center" dir="ltr">
+                    {{ site_settings.contact_phone }}
+                </a>
+                {% else %}
+                <p class="text-center text-sm text-stone-500">برای ثبت سفارش با ما تماس بگیرید.</p>
+                {% endif %}
+                {% if not user.is_authenticated %}
+                <a href="{% url 'accounts:login' %}?next={{ request.path|urlencode }}" class="btn-outline w-full py-3 text-center">
+                    ورود / ثبت‌نام برای دیدن قیمت
+                </a>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
     </div>
 </div>
 

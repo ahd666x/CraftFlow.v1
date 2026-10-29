@@ -69,6 +69,7 @@
                     current: 0,
                     timer: null,
                     paused: false,
+                    swipeX: 0,
                     init: function () {
                         if (reduce || count < 2) return;
                         var self = this;
@@ -91,7 +92,9 @@
             });
 
             Alpine.data('testimonialSlider', function () {
-                var items = {{ testimonials|length|default:0 }};
+                {# شمارش از DOM (همیشه موجود) با فالبک به context؛ روی صفحات غیر از خانه
+                   متغیر پایه وجود ندارد و قبلاً صفر می‌شد #}
+                var items = document.querySelectorAll('.testimonial-item').length || {{ testimonials|length|default:0 }};
                 return {
                     current: 0,
                     timer: null,
@@ -253,12 +256,15 @@ Alpine.data('miniCart', function () {
                     },
                     close: function () {
                         this.cartOpen = false;
+                        // رویداد جدا برای همگام‌سازی aria-expanded دکمهٔ سبد در هدر
+                        // (نباید close-mini-cart باشد وگرنه حلقهٔ بی‌نهایت می‌سازد)
+                        window.dispatchEvent(new CustomEvent('mini-cart-closed'));
                     },
                     loadContent: function () {
                         var drawerContent = document.getElementById('mini-cart-content');
                         if (!drawerContent) return;
-                        if (this.loading) return;
-
+                        {# گارد loading حذف شد: باز/بستن سریع کشو محتوای کهنه نمی‌گذارد؛
+                           درخواست قبلی با abortController قطع می‌شود #}
                         if (this.abortController) {
                             this.abortController.abort();
                         }
@@ -365,7 +371,7 @@ Alpine.data('miniCart', function () {
                 {% if message.tags == 'error' %}border-red-200 bg-red-50 text-red-800
                 {% elif message.tags == 'warning' %}border-amber-200 bg-amber-50 text-amber-800
                 {% else %}border-emerald-200 bg-emerald-50 text-emerald-800{% endif %}"
-         role="alert">{{ message }}</div>
+         {% if message.tags == 'error' %}role="alert"{% else %}role="status"{% endif %}>{{ message }}</div>
     {% endfor %}
 </div>
 {% endif %}
@@ -398,7 +404,9 @@ Alpine.data('miniCart', function () {
            aria-label="سبد خرید">
             <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
             <span>سبد</span>
-            <span id="cart-count"
+            {# data-cart-count: هدر id="cart-count" دارد؛ id تکراری باعث می‌شد
+               HTMX فقط شمارندهٔ هدر را به‌روز کند و این یکی کهنه بماند #}
+            <span data-cart-count
                   class="absolute -top-1 -right-1 h-4 min-w-[1rem] grid place-items-center rounded-full bg-primary-600 px-1 text-[10px] text-white"
                   x-bind:class="{'hidden': !parseInt($el.textContent || '0')}">
                 {{ cart_total_items|default:0 }}

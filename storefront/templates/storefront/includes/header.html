@@ -1,11 +1,12 @@
 {% load static %}
 <header class="sticky top-0 z-sticky"
-        x-data="{ open: false, scrolled: false, isHome: {{ is_home|yesno:'true,false' }}, openMiniCart: function() { window.miniCart?.open(); } }"
+        x-data="{ open: false, scrolled: false, isHome: {{ is_home|yesno:'true,false' }}, cartOpen: false, openMiniCart() { this.cartOpen = true; window.miniCart?.open(); } }"
          x-init="
            scrolled = window.scrollY > 80;
            window.addEventListener('scroll', function () {
              scrolled = window.scrollY > 80;
            }, { passive: true });
+           window.addEventListener('mini-cart-closed', function () { cartOpen = false; });
          "
          :class="isHome && !scrolled
            ? 'border-b-0 bg-transparent'
@@ -46,14 +47,22 @@
               <span class="absolute bottom-[-4px] left-0 right-0 h-1 bg-primary-600 rounded-full"></span>
               {% endif %}
             </a>
-            {% comment %} <a href="{% url 'storefront:return_policy' %}"
+            <a href="{% url 'storefront:return_policy' %}"
                class="link-muted relative {% if request.resolver_match.url_name == 'return_policy' %}text-primary-700 font-medium{% endif %}"
                :class="isHome && !scrolled ? 'text-white hover:text-primary-100' : 'text-stone-600 hover:text-stone-900'">
                مرجوعی
                {% if request.resolver_match.url_name == 'return_policy' %}
                <span class="absolute bottom-[-4px] left-0 right-0 h-1 bg-primary-600 rounded-full"></span>
                {% endif %}
-            </a> {% endcomment %}
+            </a>
+            <a href="{% url 'storefront:terms_of_service' %}"
+               class="link-muted relative {% if request.resolver_match.url_name == 'terms_of_service' %}text-primary-700 font-medium{% endif %}"
+               :class="isHome && !scrolled ? 'text-white hover:text-primary-100' : 'text-stone-600 hover:text-stone-900'">
+               قوانین
+               {% if request.resolver_match.url_name == 'terms_of_service' %}
+               <span class="absolute bottom-[-4px] left-0 right-0 h-1 bg-primary-600 rounded-full"></span>
+               {% endif %}
+            </a>
             {% if user.is_authenticated %}
             <a href="{% url 'storefront:order_list' %}"
                class="link-muted relative {% if request.resolver_match.url_name == 'order_list' or request.resolver_match.url_name == 'order_detail' %}text-primary-700 font-medium{% endif %}"
@@ -67,7 +76,7 @@
         </nav>
 
         <form action="{% url 'storefront:product_list' %}" method="get"
-              role="search" class="mr-auto hidden w-64 sm:block">
+              role="search" class="mr-auto hidden sm:block sm:w-48 lg:w-64">
             <label for="site-search" class="sr-only">جستجوی محصول</label>
             <input id="site-search" type="search" name="q" value="{{ q }}" placeholder="جستجو…"
                    class="input border-transparent py-2 focus:bg-white"
@@ -89,14 +98,12 @@
                 </a>
             {% endif %}
 
-<div role="button" tabindex="0"
+            <button type="button"
                      class="relative btn-sm cursor-pointer"
                      aria-label="سبد خرید"
-                     aria-expanded="false"
+                     :aria-expanded="cartOpen ? 'true' : 'false'"
                      aria-controls="mini-cart-drawer"
-                     @click="openMiniCart"
-                     @keydown.enter="openMiniCart"
-                     @keydown.space.prevent="openMiniCart"
+                     @click="openMiniCart()"
                      :class="isHome && !scrolled ? 'bg-white/20 text-white hover:bg-white/30' : 'text-stone-900 hover:bg-stone-100'">
                     <svg class="h-5 w-5 pointer-events-none" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true">
                         <path stroke-linecap="round" stroke-linejoin="round"
@@ -104,20 +111,25 @@
                     </svg>
                     <span id="cart-count"
                           class="absolute -top-1 -left-1 grid h-4 min-w-[1rem] place-items-center rounded-full bg-primary-700 px-1 text-[10px] text-white pointer-events-none">{{ cart_total_items|default:0 }}</span>
-                </div>
+            </button>
 
-            <button type="button" @click="open = !open" class="btn-sm md:hidden relative z-10"
+            <button type="button" @click="open = !open" data-mobile-menu-toggle class="btn-sm md:hidden relative z-10"
                     :class="isHome && !scrolled ? 'bg-white/20 text-white hover:bg-white/30' : 'text-stone-600 hover:bg-stone-100'"
+                    :aria-expanded="open ? 'true' : 'false'"
+                    aria-controls="mobile-menu"
                     aria-label="منو">
-                <svg class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                <svg class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true">
                     <path stroke-linecap="round" d="M4 6h16M4 12h16M4 18h16"/>
                 </svg>
             </button>
         </div>
     </div>
 
-    <div x-show="open" x-cloak x-transition.opacity class="border-t border-stone-100 bg-white md:hidden relative z-10"
-         :class="isHome && !scrolled ? 'border-t-white/20 bg-transparent' : ''">
+    <div id="mobile-menu" x-show="open" x-cloak x-transition.opacity
+         class="border-t border-stone-100 bg-white md:hidden relative z-10"
+         @keydown.escape.window="open = false"
+         @click.outside="if (!$event.target.closest('[data-mobile-menu-toggle]')) open = false">
+        {# زمینهٔ همیشه روشن: روی هیروی خانه متن سفیدِ منو روی زمینهٔ شفاف ناخوانا بود #}
         <div class="space-y-1 px-4 py-3 text-sm">
             <form action="{% url 'storefront:product_list' %}" method="get"
                   role="search" class="mb-3 sm:hidden">
@@ -127,40 +139,35 @@
                        :class="isHome && !scrolled ? 'bg-white/20 placeholder-white/60 text-white focus:bg-white/30' : 'bg-white/80 placeholder-stone-400 text-stone-900'">
             </form>
             <a href="{% url 'storefront:product_list' %}"
-               class="block py-2 relative {% if request.resolver_match.url_name == 'product_list' or request.resolver_match.url_name == 'product_detail' or request.resolver_match.url_name == 'category_detail' or request.resolver_match.url_name == 'category_list' %}font-medium{% endif %}"
-               :class="isHome && !scrolled ? 'text-white hover:text-primary-100' : 'text-stone-700 hover:text-stone-900'">
+               class="block py-2 relative text-stone-700 hover:text-stone-900 {% if request.resolver_match.url_name == 'product_list' or request.resolver_match.url_name == 'product_detail' or request.resolver_match.url_name == 'category_detail' or request.resolver_match.url_name == 'category_list' %}font-medium{% endif %}">
                محصولات
                {% if request.resolver_match.url_name == 'product_list' or request.resolver_match.url_name == 'product_detail' or request.resolver_match.url_name == 'category_detail' or request.resolver_match.url_name == 'category_list' %}
                <span class="absolute bottom-[-4px] left-0 right-0 h-1 bg-primary-600 rounded-full"></span>
                {% endif %}
             </a>
             <a href="{% url 'storefront:category_list' %}"
-               class="block py-2 relative {% if request.resolver_match.url_name == 'category_list' %}font-medium{% endif %}"
-               :class="isHome && !scrolled ? 'text-white hover:text-primary-100' : 'text-stone-700 hover:text-stone-900'">
+               class="block py-2 relative text-stone-700 hover:text-stone-900 {% if request.resolver_match.url_name == 'category_list' %}font-medium{% endif %}">
                دسته‌بندی‌ها
                {% if request.resolver_match.url_name == 'category_list' %}
                <span class="absolute bottom-[-4px] left-0 right-0 h-1 bg-primary-600 rounded-full"></span>
                {% endif %}
             </a>
             <a href="{% url 'storefront:about' %}"
-               class="block py-2 relative {% if request.resolver_match.url_name == 'about' %}font-medium{% endif %}"
-               :class="isHome && !scrolled ? 'text-white hover:text-primary-100' : 'text-stone-700 hover:text-stone-900'">
+               class="block py-2 relative text-stone-700 hover:text-stone-900 {% if request.resolver_match.url_name == 'about' %}font-medium{% endif %}">
                درباره ما
                {% if request.resolver_match.url_name == 'about' %}
                <span class="absolute bottom-[-4px] left-0 right-0 h-1 bg-primary-600 rounded-full"></span>
                {% endif %}
             </a>
             <a href="{% url 'storefront:return_policy' %}"
-               class="block py-2 relative {% if request.resolver_match.url_name == 'return_policy' %}font-medium{% endif %}"
-               :class="isHome && !scrolled ? 'text-white hover:text-primary-100' : 'text-stone-700 hover:text-stone-900'">
+               class="block py-2 relative text-stone-700 hover:text-stone-900 {% if request.resolver_match.url_name == 'return_policy' %}font-medium{% endif %}">
                قوانین مرجوعی
                {% if request.resolver_match.url_name == 'return_policy' %}
                <span class="absolute bottom-[-4px] left-0 right-0 h-1 bg-primary-600 rounded-full"></span>
                {% endif %}
             </a>
             <a href="{% url 'storefront:terms_of_service' %}"
-               class="block py-2 relative {% if request.resolver_match.url_name == 'terms_of_service' %}font-medium{% endif %}"
-               :class="isHome && !scrolled ? 'text-white hover:text-primary-100' : 'text-stone-700 hover:text-stone-900'">
+               class="block py-2 relative text-stone-700 hover:text-stone-900 {% if request.resolver_match.url_name == 'terms_of_service' %}font-medium{% endif %}">
                شرایط استفاده
                {% if request.resolver_match.url_name == 'terms_of_service' %}
                <span class="absolute bottom-[-4px] left-0 right-0 h-1 bg-primary-600 rounded-full"></span>
@@ -168,8 +175,7 @@
             </a>
             {% if user.is_authenticated %}
             <a href="{% url 'storefront:order_list' %}"
-               class="block py-2 relative {% if request.resolver_match.url_name == 'order_list' or request.resolver_match.url_name == 'order_detail' %}font-medium{% endif %}"
-               :class="isHome && !scrolled ? 'text-white hover:text-primary-100' : 'text-stone-700 hover:text-stone-900'">
+               class="block py-2 relative text-stone-700 hover:text-stone-900 {% if request.resolver_match.url_name == 'order_list' or request.resolver_match.url_name == 'order_detail' %}font-medium{% endif %}">
                سفارش‌ها
                {% if request.resolver_match.url_name == 'order_list' or request.resolver_match.url_name == 'order_detail' %}
                <span class="absolute bottom-[-4px] left-0 right-0 h-1 bg-primary-600 rounded-full"></span>

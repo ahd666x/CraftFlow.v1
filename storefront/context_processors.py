@@ -4,16 +4,26 @@
 صفحه‌ی اصلی و ...) در دسترس می‌گذارد تا نام سایت، لوگو،
 عکس کاور و متن‌ها از پنل مدیریت قابل ویرایش باشند.
 """
+from django.core.cache import cache
+
 from .models import SiteSettings
 from .permissions import can_see_prices as _can_see_prices
 
 
 def site_settings(request):
-    try:
-        return {'site_settings': SiteSettings.objects.first()}
-    except Exception:
-        # جدول هنوز مایگریت نشده (مثلاً هنگام migrate)
-        return {'site_settings': None}
+    # کش ۶۰ ثانیه‌ای: یکی‌شدن کوئری تنظیمات در همهٔ درخواست‌ها.
+    # SiteSettings.save() کش را باطل می‌کند؛ ردیف خالی کش نمی‌شود تا
+    # تست‌ها و صفحه‌های قبل از migrate دچار مقدار None نگه‌داشته نشوند.
+    settings_obj = cache.get('site_settings')
+    if settings_obj is None:
+        try:
+            settings_obj = SiteSettings.objects.first()
+        except Exception:
+            # جدول هنوز مایگریت نشده (مثلاً هنگام migrate)
+            return {'site_settings': None}
+        if settings_obj is not None:
+            cache.set('site_settings', settings_obj, 60)
+    return {'site_settings': settings_obj}
 
 
 def is_home(request):

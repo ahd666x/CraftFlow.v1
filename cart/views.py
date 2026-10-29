@@ -1,7 +1,8 @@
 import json
 
 from django.contrib import messages
-from django.shortcuts import redirect, render
+from django.http import HttpResponse
+from django.shortcuts import redirect, render, reverse
 from django.views.decorators.http import require_POST
 
 from cart.services import CartService, get_or_create_cart
@@ -30,12 +31,49 @@ def mini_cart(request):
     })
 
 
+def _hx_items(cart):
+    return cart.items.select_related(
+        'product', 'product__category',
+    ).prefetch_related('product__gallery_images')
+
+
+def _hx_response(request, cart, message=None, silent=True):
+    """پاسخ جزئی HTMX بر اساس HX-Target.
+
+    * هدف #cart-rows  → پارشیال صفحهٔ سبد (سطرها + OOB جمع‌ها)
+    * بقیه            → مینی‌کارت
+    اگر سبد خالی شده باشد، کل صفحه ری‌لود می‌شود تا حالت خالی رندر شود.
+
+    پیام کاربر با HX-Trigger (cartMessage) به toast می‌رود؛ از
+    messages.* استفاده نمی‌کنیم تا سشن با پاسخ‌های جزئی آلوده نشود و
+    پیام‌ها روی صفحه‌های بعدی ظاهر نشوند.
+    """
+    items = _hx_items(cart)
+    if not items.exists():
+        response = HttpResponse(status=204)
+        response['HX-Redirect'] = reverse('cart:cart_detail')
+        return response
+
+    if request.headers.get('HX-Target') == 'cart-rows':
+        response = render(request, 'cart/_cart_page.html', {'cart': cart, 'items': items})
+    else:
+        response = render(request, 'cart/_mini_cart.html', {'cart': cart, 'items': items})
+
+    trigger = {'cartUpdated': {'count': cart.total_items}}
+    if silent:
+        trigger['cartUpdated']['silent'] = True
+    if message:
+        trigger['cartMessage'] = message
+    response['HX-Trigger'] = json.dumps(trigger, ensure_ascii=False)
+    return response
+
+
 @require_POST
 def cart_add(request, product_id):
     """
     افزودن به سبد.
 
-    اگر درخواست HTMX باشد فقط سطر سبد را برمی‌گردانیم (بدون ری‌لود کامل
+    اگر درخواست HTMX باشد فقط شمارندهٔ سبد را برمی‌گردانیم (بدون ری‌لود کامل
     صفحه)؛ وگرنه به صفحه‌ی سبد می‌رویم.
     """
     if not can_see_prices(request.user):
@@ -46,7 +84,7 @@ def cart_add(request, product_id):
 
     def _int_or_none(value):
         """Parse integer value, returning None only for empty/invalid input.
-        
+
         Returns 0 for explicit '0' input to allow validation to catch it
         as an out-of-range value rather than silently falling back to default.
         """
@@ -88,16 +126,17 @@ def cart_add(request, product_id):
         if request.headers.get('HX-Request'):
             # ۲۰۴: هیچ محتوایی در هدف swap نمی‌شود؛ پیام خطا از طریق
             # هدر HX-Trigger و رویداد cartError به صورت toast نمایش داده می‌شود
-            from django.http import HttpResponse
             response = HttpResponse(status=204)
-            response['HX-Trigger'] = json.dumps({'cartError': str(exc)})
+            response['HX-Trigger'] = json.dumps({'cartError': str(exc)}, ensure_ascii=False)
             return response
         return redirect(request.META.get('HTTP_REFERER') or 'cart:cart_detail')
 
     if request.headers.get('HX-Request'):
         # پاسخ HTMX فقط شماره‌ی سبد است؛ هدف هدر badge است.
         response = render(request, 'cart/_count.html', {'cart': cart})
-        response['HX-Trigger'] = '{"cartUpdated": {"count": ' + str(cart.total_items) + '}}'
+        response['HX-Trigger'] = json.dumps(
+            {'cartUpdated': {'count': cart.total_items}}, ensure_ascii=False,
+        )
         return response
 
     messages.success(request, f"«{item.product.name}» به سبد اضافه شد.")
@@ -108,14 +147,11 @@ def cart_add(request, product_id):
 def cart_remove(request, item_id):
     cart = get_or_create_cart(request)
     CartService.remove_item(cart, item_id)
-    messages.success(request, 'محصول از سبد حذف شد.')
-    
+
     if request.headers.get('HX-Request'):
-        items = cart.items.select_related('product', 'product__category').prefetch_related('product__gallery_images')
-        response = render(request, 'cart/_mini_cart.html', {'cart': cart, 'items': items})
-        response['HX-Trigger'] = '{"cartUpdated": {"count": ' + str(cart.total_items) + '}}'
-        return response
-    
+        return _hx_response(request, cart, message='محصول از سبد حذف شد.')
+
+    messages.success(request, 'محصول از سبد حذف شد.')
     return redirect('cart:cart_detail')
 
 
@@ -127,13 +163,10 @@ def cart_update(request, item_id):
     except (TypeError, ValueError):
         quantity = 1
     CartService.update_quantity(cart, item_id, quantity)
-    
+
     if request.headers.get('HX-Request'):
-        items = cart.items.select_related('product', 'product__category').prefetch_related('product__gallery_images')
-        response = render(request, 'cart/_mini_cart.html', {'cart': cart, 'items': items})
-        response['HX-Trigger'] = '{"cartUpdated": {"count": ' + str(cart.total_items) + '}}'
-        return response
-    
+        return _hx_response(request, cart)
+
     return redirect('cart:cart_detail')
 
 
@@ -141,12 +174,9 @@ def cart_update(request, item_id):
 def cart_clear(request):
     cart = get_or_create_cart(request)
     CartService.clear(cart)
-    messages.success(request, 'سبد خرید خالی شد.')
-    
+
     if request.headers.get('HX-Request'):
-        items = cart.items.select_related('product', 'product__category').prefetch_related('product__gallery_images')
-        response = render(request, 'cart/_mini_cart.html', {'cart': cart, 'items': items})
-        response['HX-Trigger'] = '{"cartUpdated": {"count": ' + str(cart.total_items) + '}}'
-        return response
-    
+        return _hx_response(request, cart, message='سبد خرید خالی شد.')
+
+    messages.success(request, 'سبد خرید خالی شد.')
     return redirect('cart:cart_detail')

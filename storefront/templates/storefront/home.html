@@ -10,11 +10,14 @@
 
 {% block content %}
 {# ۱) هیرو اسلایدر تمام‌عرض #}
+{# svh: پرش نوار آدرس موبایل را حذف می‌کند #}
 {% if hero_slides %}
-<section class="relative h-[70vh] min-h-[420px] overflow-hidden md:h-[80vh]"
+<section class="relative h-[70svh] min-h-[420px] overflow-hidden md:h-[80svh]"
          x-data="heroSlider({{ hero_slides|length }})"
          @mouseenter="paused = true" @mouseleave="paused = false"
-         @focusin="paused = true" @focusout="paused = false">
+         @focusin="paused = true" @focusout="paused = false"
+         @touchstart="swipeX = $event.touches[0].clientX; paused = true"
+         @touchend="var dx = $event.changedTouches[0].clientX - swipeX; if (dx > 40) { next(); } else if (dx < -40) { prev(); } paused = false;">
   {% for slide in hero_slides %}
   <div class="absolute inset-0"
        x-show="current === {{ forloop.counter0 }}"
@@ -25,8 +28,9 @@
        {% if not forloop.first %}x-cloak{% endif %}>
     <img src="{{ slide.image.url }}" alt="{{ slide.title }}"
          class="h-full w-full object-cover animate-kenburns"
-         {% if not forloop.first %}loading="lazy"{% endif %}>
-    <div class="absolute inset-0 bg-gradient-to-t from-primary-950/60 via-transparent to-transparent"></div>
+         {% if forloop.first %}fetchpriority="high"{% else %}loading="lazy"{% endif %}>
+    {# گرادیان قوی‌تر برای خوانایی متن روی تصویر روشن #}
+    <div class="absolute inset-0 bg-gradient-to-t from-primary-950/80 via-primary-950/30 to-transparent"></div>
     {% if slide.accent_image %}
     <img src="{{ slide.accent_image.url }}" alt="" aria-hidden="true"
          class="absolute bottom-10 left-10 hidden h-64 animate-float md:block">
@@ -39,6 +43,18 @@
   </div>
   {% endfor %}
 
+  {# دکمه‌های قبلی/بعدی هیرو — در RTL «قبلی» سمت راست است #}
+  <button type="button" @click="prev()"
+          class="absolute right-3 top-1/2 -translate-y-1/2 hidden md:grid h-10 w-10 place-items-center rounded-full bg-black/25 text-white hover:bg-black/40 transition-colors"
+          aria-label="اسلاید قبلی">
+    <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+  </button>
+  <button type="button" @click="next()"
+          class="absolute left-3 top-1/2 -translate-y-1/2 hidden md:grid h-10 w-10 place-items-center rounded-full bg-black/25 text-white hover:bg-black/40 transition-colors"
+          aria-label="اسلاید بعدی">
+    <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+  </button>
+
   <div class="absolute bottom-6 left-1/2 flex -translate-x-1/2 gap-2">
     {% for slide in hero_slides %}
     <button type="button" @click="go({{ forloop.counter0 }})"
@@ -48,10 +64,11 @@
   </div>
 </section>
 {% elif site_settings.cover_image %}
-<section class="relative h-[70vh] min-h-[420px] overflow-hidden md:h-[80vh]">
+<section class="relative h-[70svh] min-h-[420px] overflow-hidden md:h-[80svh]">
   <img src="{{ site_settings.cover_image.url }}" alt="{{ site_settings.site_name|default:'فروشگاه' }}"
+       fetchpriority="high"
        class="h-full w-full object-cover animate-kenburns">
-  <div class="absolute inset-0 bg-gradient-to-t from-primary-950/60 via-transparent to-transparent"></div>
+  <div class="absolute inset-0 bg-gradient-to-t from-primary-950/80 via-primary-950/30 to-transparent"></div>
   <div class="absolute inset-x-0 bottom-0 mx-auto max-w-6xl px-4 pb-16 text-white">
     <h1 class="max-w-xl text-3xl font-bold leading-tight sm:text-5xl">{{ site_settings.hero_title|default:'مبلمان و چوب، با ابعاد دلخواه شما' }}</h1>
     {% if site_settings.hero_subtitle %}<p class="mt-3 max-w-md text-primary-100">{{ site_settings.hero_subtitle }}</p>{% endif %}
@@ -59,7 +76,7 @@
   </div>
 </section>
 {% else %}
-<section class="relative h-[70vh] min-h-[420px] md:h-[80vh] bg-gradient-to-br from-primary-100 to-secondary-100">
+<section class="relative h-[70svh] min-h-[420px] md:h-[80svh] bg-gradient-to-br from-primary-100 to-secondary-100">
   <div class="absolute inset-0 mx-auto max-w-6xl px-4 pb-16 text-center text-stone-900 flex items-center justify-center flex-col">
     <h1 class="max-w-xl text-3xl font-bold leading-tight sm:text-5xl">مبلمان و محصولات چوبی، متناسب با فضای شما</h1>
     <p class="mt-3 max-w-md text-stone-600">مدل دلخواهتان را انتخاب کنید و جزئیات محصول را ببینید.</p>
@@ -109,15 +126,16 @@
       {% endfor %}
     </div>
     <div class="flex justify-center gap-2 mt-4">
-      <button type="button" class="btn-outline"
-              @click="document.getElementById('products-carousel')?.scrollBy({left: -320, behavior: 'smooth'})"
-              aria-label="محصولات قبلی">
-        <svg class="h-5 w-5 rtl:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
-      </button>
+      {# در RTL محور scroll منفی می‌رود؛ جهت قبلی/بعدی برعکس بود #}
       <button type="button" class="btn-outline"
               @click="document.getElementById('products-carousel')?.scrollBy({left: 320, behavior: 'smooth'})"
+              aria-label="محصولات قبلی">
+        <svg class="h-5 w-5 rtl:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+      </button>
+      <button type="button" class="btn-outline"
+              @click="document.getElementById('products-carousel')?.scrollBy({left: -320, behavior: 'smooth'})"
               aria-label="محصولات بعدی">
-        <svg class="h-5 w-5 rtl:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+        <svg class="h-5 w-5 rtl:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
       </button>
     </div>
     {% else %}

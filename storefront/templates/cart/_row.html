@@ -57,9 +57,10 @@
     </div>
 
     <div class="flex items-center gap-2">
+        {# هدف HTMX: در صفحهٔ سبد #cart-rows، در مینی‌کارت #mini-cart-content #}
         <form method="post" action="{% url 'cart:cart_update' item.id %}"
               {% if use_htmx %}hx-post="{% url 'cart:cart_update' item.id %}"
-              hx-target="#mini-cart-content"
+              hx-target="{% if cart_page %}#cart-rows{% else %}#mini-cart-content{% endif %}"
               hx-swap="innerHTML"{% endif %}
               class="flex items-center gap-2">
             {% csrf_token %}
@@ -83,7 +84,7 @@
 
     <form method="post" action="{% url 'cart:cart_remove' item.id %}"
           {% if use_htmx %}hx-post="{% url 'cart:cart_remove' item.id %}"
-          hx-target="#mini-cart-content"
+          hx-target="{% if cart_page %}#cart-rows{% else %}#mini-cart-content{% endif %}"
           hx-swap="innerHTML"{% endif %}>
         {% csrf_token %}
         <button type="submit" class="btn-outline px-3 py-1.5 text-xs"
