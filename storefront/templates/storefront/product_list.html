@@ -171,7 +171,7 @@
                  @keydown.escape.window="filterOpen = false">
                 <div class="flex items-center justify-between p-4 border-b border-stone-100 sticky top-0 bg-white rounded-t-2xl">
                     <h2 class="text-lg font-semibold">فیلترها</h2>
-                    <button type="button" @click="filterOpen = false" class="text-stone-400 hover:text-stone-600" aria-label="بستن فیلترها">
+                    <button type="button" @click="filterOpen = false" class="text-stone-500 hover:text-stone-700" aria-label="بستن فیلترها">
                         <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                     </button>
                 </div>
@@ -187,7 +187,7 @@
                             {% for category in categories %}
                             <li>
                                 <a href="{% url 'storefront:category_detail' category.slug %}{% querystring category=None page=None %}" class="block px-4 py-2 rounded-lg {% if selected_category == category.slug %}bg-primary-100 text-primary-800{% else %}hover:bg-stone-100{% endif %}">
-                                    {{ category.name }} <span class="text-xs text-stone-400 ml-2">({{ category.product_count }})</span>
+                                    {{ category.name }} <span class="text-xs text-stone-500 ms-2">({{ category.product_count }})</span>
                                 </a>
                             </li>
                             {% endfor %}
@@ -246,12 +246,15 @@
                    class="btn-outline px-4 py-2">قبلی</a>
                 {% endif %}
 
-                {% for num in page_obj.paginator.page_range %}
-                    {% if page_obj.number == num %}
+                {# بازهٔ elided: اول و آخر همیشه دیده می‌شوند و پرش‌ها با «…» نشان داده می‌شوند #}
+                {% for num in elided_pages %}
+                    {% if num == '…' %}
+                    <span class="px-1 text-stone-500 select-none" aria-hidden="true">…</span>
+                    {% elif page_obj.number == num %}
                     <span class="btn-primary px-4 py-2" aria-current="page">{{ num|fa_number }}</span>
-                    {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+                    {% else %}
                     <a href="{% querystring page=num %}"
-                       class="btn-outline px-4 py-2">{{ num|fa_number }}</a>
+                       class="btn-outline px-4 py-2" aria-label="صفحهٔ {{ num|fa_number }}">{{ num|fa_number }}</a>
                     {% endif %}
                 {% endfor %}
 

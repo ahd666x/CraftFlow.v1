@@ -85,29 +85,7 @@
 </section>
 {% endif %}
 
-{# ۲) نوار اعتماد: ۴ آیتم فقط عنوان کوتاه #}
-{% comment %} <section class="py-20 bg-white">
-  <div class="mx-auto max-w-6xl px-4">
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
-      {% for icon, title, desc in features %}
-      <div class="card p-6 hover:border-primary-300 transition-colors" x-data x-reveal.delay="{{ forloop.counter0|add:forloop.counter0|mul:100|floatformat:0 }}">
-        <div class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-primary-100 text-primary-700">
-          {% if icon == 'custom' %}
-          <svg class="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>
-          {% elif icon == 'quality' %}
-          <svg class="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
-          {% elif icon == 'warranty' %}
-          <svg class="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-          {% elif icon == 'shipping' %}
-          <svg class="h-7 w-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.356-1.993l1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 01-1.12-1.243l1.264-12A1.125 1.125 0 015.513 7.5h12.974c.576 0 1.059.435 1.119 1.007z"/></svg>
-          {% endif %}
-        </div>
-        <h3 class="font-semibold text-stone-900">{{ title }}</h3>
-      </div>
-      {% endfor %}
-    </div>
-  </div>
-</section> {% endcomment %}
+{# نوار اعتماد حذف شد — موارد کلیدی در هیرو و توضیحات محصول پوشش داده می‌شوند #}
 
 {# ۳) جدیدترین محصولات - کاروسل افقی #}
 <section class="py-24 bg-cream">
@@ -164,7 +142,7 @@
                  loading="lazy"
                  class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105">
             {% else %}
-            <div class="grid h-full w-full place-items-center text-xs text-stone-400">بدون تصویر</div>
+            <div class="grid h-full w-full place-items-center text-xs text-stone-500">بدون تصویر</div>
             {% endif %}
             <div class="absolute inset-0 bg-gradient-to-t from-primary-950/60 via-transparent to-transparent"></div>
             <div class="absolute bottom-0 left-0 right-0 p-6 text-white">
@@ -181,7 +159,7 @@
                  loading="lazy"
                  class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105">
             {% else %}
-            <div class="grid h-full w-full place-items-center text-xs text-stone-400">بدون تصویر</div>
+            <div class="grid h-full w-full place-items-center text-xs text-stone-500">بدون تصویر</div>
             {% endif %}
             <div class="absolute inset-0 bg-gradient-to-t from-primary-950/60 via-transparent to-transparent"></div>
             <div class="absolute bottom-0 left-0 right-0 p-4 text-white">

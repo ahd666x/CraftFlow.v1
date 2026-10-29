@@ -71,16 +71,8 @@ def home(request):
         product_count=Count('products', filter=Q(products__is_active=True)),
     ).order_by('-product_count')[:6]
     
-    # Features for trust bar - short descriptions (max 6 words)
-    site_settings = SiteSettings.get_settings()
-    features = [
-        ('custom', 'ابعاد دلخواه', 'طول عرض ارتفاع دقیقاً متناسب'),
-        ('quality', 'چوب درجه یک، ضد رطوبت و بادوام', 'چوب درجه یک ضد رطوبت دوام‌دار'),
-        ('shipping', 'ارسال سراسری', 'بسته‌بندی ایمن سراسر ایران'),
-    ]
-    if site_settings.warranty_years:
-        features.insert(2, ('warranty', f'گارانتی {site_settings.warranty_years} سال', 'اطمینان کیفیت ساخت مواد'))
-    
+    # نوار اعتماد (features) حذف شد — قالب دیگر آن را رندر نمی‌کند و بی‌خود در هر بازدید ساخته می‌شد
+
     # Testimonials: real reviews with rating >= 4
     testimonials = []
     recent_reviews = ProductReview.objects.filter(
@@ -97,7 +89,6 @@ def home(request):
         'hero_slides': hero_slides,
         'products': products,
         'categories': categories,
-        'features': features,
         'testimonials': testimonials,
     })
 
@@ -153,6 +144,8 @@ def product_list(request):
 
     return render(request, 'storefront/product_list.html', {
         'page_obj': page_obj,
+        # بازهٔ صفحه‌بندی با «…» (اول/آخر همیشه دیده می‌شوند)
+        'elided_pages': paginator.get_elided_page_range(page_obj.number),
         'categories': ProductCategory.objects.filter(is_active=True),
         'q': q,
         'selected_category': category_slug,
@@ -335,6 +328,8 @@ def category_detail(request, slug):
 
     return render(request, 'storefront/product_list.html', {
         'page_obj': page_obj,
+        # بازهٔ صفحه‌بندی با «…» (اول/آخر همیشه دیده می‌شوند)
+        'elided_pages': paginator.get_elided_page_range(page_obj.number),
         'categories': ProductCategory.objects.filter(is_active=True),
         'selected_category': slug,
         'current_category': category,

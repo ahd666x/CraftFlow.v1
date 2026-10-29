@@ -124,6 +124,7 @@
                 {% if gallery or product.image %}
                 <div x-show="lightboxOpen"
                      x-cloak
+                     x-trap.inert.noscroll="lightboxOpen"
                      @keydown.escape.window="closeLightbox()"
                      @keydown.arrow-left.window="if (lightboxOpen && thumbnails > 1) lightboxNext()"
                      @keydown.arrow-right.window="if (lightboxOpen && thumbnails > 1) lightboxPrev()"
@@ -206,7 +207,7 @@
                 </div>
 
                 {# Tab: Specs #}
-                <div x-show="activeTab === 'specs'" x-transition class="mt-4" role="tabpanel" id="tab-specs" aria-labelledby="tab-btn-specs">
+                <div x-show="activeTab === 'specs'" x-cloak x-transition class="mt-4" role="tabpanel" id="tab-specs" aria-labelledby="tab-btn-specs">
                     <dl class="grid grid-cols-2 gap-4 text-sm">
                         <div class="font-medium text-stone-500">دسته‌بندی</div>
                         <div class="text-stone-900">{{ product.category.name }}</div>
@@ -271,7 +272,7 @@
                 </div>
 
                 {# Tab: Reviews #}
-                <div x-show="activeTab === 'reviews'" x-transition class="mt-4" role="tabpanel" id="tab-reviews" aria-labelledby="tab-btn-reviews">
+                <div x-show="activeTab === 'reviews'" x-cloak x-transition class="mt-4" role="tabpanel" id="tab-reviews" aria-labelledby="tab-btn-reviews">
                     <div id="reviews-list">
                         {% if reviews %}
                         <div class="space-y-4">

@@ -294,6 +294,8 @@ Alpine.data('miniCart', function () {
             });
         });
     </script>
+    {# پلاگین focus: فعال‌سازی x-trap (تلهٔ فوکوس) در لایت‌باکس — باید قبل از خود Alpine باشد #}
+    <script defer src="{% static 'storefront/js/alpine-focus.min.js' %}"></script>
     <script defer src="{% static 'storefront/js/alpine.min.js' %}"></script>
     <script defer src="{% static 'storefront/js/htmx.min.js' %}"></script>
     <script defer src="{% static 'storefront/js/storefront.js' %}"></script>
@@ -342,7 +344,7 @@ Alpine.data('miniCart', function () {
                     <h2 class="text-lg font-semibold text-stone-900">سبد خرید</h2>
                     <button type="button"
                             @click="close()"
-                            class="text-stone-400 hover:text-stone-600"
+                            class="text-stone-500 hover:text-stone-700"
                             aria-label="بستن سبد">
                         <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>

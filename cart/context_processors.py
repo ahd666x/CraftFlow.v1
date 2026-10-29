@@ -1,5 +1,7 @@
 from django.urls import resolve
 
+from storefront.permissions import can_see_prices
+
 
 def cart_totals(request):
     """
@@ -30,8 +32,16 @@ def cart_totals(request):
     if cart is None:
         return empty
 
-    items = list(cart.items.all())
+    # values_list: بدون ساخت مدل کامل آیتم‌ها؛ unit_price فیلد لوکال آیتم است
+    # (Cart.total_price هم همین فرمول را دارد) و مبلغ کل را فقط برای
+    # کاربرِ دارای مجوز قیمت محاسبه می‌کنیم.
+    total_items = 0
+    total_price = 0
+    for quantity, unit_price in cart.items.values_list('quantity', 'unit_price'):
+        total_items += quantity
+        if can_see_prices(request.user):
+            total_price += (unit_price or 0) * quantity
     return {
-        'cart_total_items': sum(i.quantity for i in items),
-        'cart_total_price': sum(i.total_price for i in items),
+        'cart_total_items': total_items,
+        'cart_total_price': total_price,
     }

@@ -8,16 +8,19 @@
     <h1 class="mb-6 text-2xl font-bold">درخواست‌های مرجوعی</h1>
 
     {% if requests %}
+    {# overflow-x-auto: روی موبایل جدول بریده نمی‌شود؛ caption برای صفحه‌خوان‌ها #}
     <div class="card overflow-hidden">
-        <table class="w-full text-sm">
+        <div class="overflow-x-auto">
+        <table class="w-full text-sm min-w-[640px]">
+            <caption class="sr-only">فهرست درخواست‌های مرجوعی شما</caption>
             <thead class="bg-stone-50 text-stone-600">
                 <tr>
-                    <th class="px-5 py-3 text-right">آیتم سفارش</th>
-                    <th class="px-5 py-3 text-right">کاربر</th>
-                    <th class="px-5 py-3 text-right">دلیل</th>
-                    <th class="px-5 py-3 text-right">وضعیت</th>
-                    <th class="px-5 py-3 text-right">تاریخ</th>
-                    <th class="px-5 py-3 text-right">عملیات</th>
+                    <th scope="col" class="px-5 py-3 text-right">آیتم سفارش</th>
+                    <th scope="col" class="px-5 py-3 text-right">کاربر</th>
+                    <th scope="col" class="px-5 py-3 text-right">دلیل</th>
+                    <th scope="col" class="px-5 py-3 text-right">وضعیت</th>
+                    <th scope="col" class="px-5 py-3 text-right">تاریخ</th>
+                    <th scope="col" class="px-5 py-3 text-right">عملیات</th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-stone-100">
@@ -43,6 +46,7 @@
                 {% endfor %}
             </tbody>
         </table>
+        </div>
     </div>
     {% else %}
     <div class="card p-10 text-center">

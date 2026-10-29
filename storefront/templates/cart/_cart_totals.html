@@ -29,14 +29,14 @@
     </form>
     {% endif %}
 
-    {# Shipping #}
+    {# Shipping — مبلغ ارسال برای کاربر بی‌مجوز قیمت لو می‌رود؛ فقط «رایگان» عمومی است #}
     <div class="mt-2 flex items-center justify-between text-sm text-stone-600">
         <span>هزینه ارسال</span>
-        <span>{% if cart.shipping_cost == 0 %}رایگان{% else %}{{ cart.shipping_cost|fa_price }} تومان{% endif %}</span>
+        <span>{% if not can_see_prices %}—{% elif cart.shipping_cost == 0 %}رایگان{% else %}{{ cart.shipping_cost|fa_price }} تومان{% endif %}</span>
     </div>
 
-    {# Tax #}
-    {% if cart.tax_amount > 0 %}
+    {# Tax — مبلغ مالیات هم برای کاربر بی‌مجوز قیمت لو می‌رود #}
+    {% if can_see_prices and cart.tax_amount > 0 %}
     <div class="mt-1 flex items-center justify-between text-sm text-stone-600">
         <span>مالیات ({{ site_settings.tax_percent }}٪)</span>
         <span>{{ cart.tax_amount|fa_price }} تومان</span>

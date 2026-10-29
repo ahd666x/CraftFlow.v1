@@ -49,18 +49,33 @@
   .input {
     @apply w-full rounded-lg border border-stone-300 bg-white px-3.5 py-2.5 text-sm
            text-stone-900 placeholder-stone-400 transition-colors
-           focus:border-stone-900 focus:outline-none focus:ring-0;
+           focus:border-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-600/25;
   }
   .select {
     @apply w-full rounded-lg border border-stone-300 bg-white px-3.5 py-2.5 text-sm
            text-stone-900 transition-colors
-           focus:border-stone-900 focus:outline-none focus:ring-0;
+           focus:border-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-600/25;
   }
   .label { @apply mb-1.5 block text-xs font-medium text-stone-500; }
 
   .badge         { @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium; }
   .badge-success { @apply badge bg-emerald-50 text-emerald-700; }
   .badge-danger  { @apply badge bg-red-50 text-red-700; }
+
+  /* badge-status: کلاس‌های وضعیت سفارش/مرجوعی که قبلاً بدون استایل بودند */
+  .badge-status           { @apply badge; }
+  .badge-status.draft     { @apply badge bg-stone-100 text-stone-700; }
+  .badge-status.planned   { @apply badge bg-amber-50 text-amber-800; }
+  .badge-status.producing { @apply badge bg-sky-50 text-sky-800; }
+  .badge-status.paid      { @apply badge bg-emerald-50 text-emerald-800; }
+  .badge-status.completed { @apply badge bg-emerald-50 text-emerald-800; }
+  .badge-status.shipped   { @apply badge bg-indigo-50 text-indigo-800; }
+  .badge-status.delivered { @apply badge bg-emerald-100 text-emerald-900; }
+  .badge-status.cancelled { @apply badge bg-red-50 text-red-700; }
+  .badge-status.pending   { @apply badge bg-amber-50 text-amber-800; }
+  .badge-status.approved  { @apply badge bg-emerald-50 text-emerald-800; }
+  .badge-status.rejected  { @apply badge bg-red-50 text-red-700; }
+  .badge-status.refunded  { @apply badge bg-stone-100 text-stone-700; }
 
   .section-title { @apply text-xl font-semibold text-stone-900; }
   .link-muted    { @apply text-sm text-stone-500 transition-colors hover:text-stone-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 focus-visible:ring-offset-2; }
@@ -91,4 +106,58 @@
   .animate-ken-burns {
     animation: none !important;
   }
+}
+
+/* ---- Storefront UX refinement — از style.css ساخته‌شده به ورودی منتقل شد (دور ۵) ----
+   ۱) رنگ‌های hex ثابت به متغیرهای پویا وصل شدند تا با theme_css پنل تضاد نداشته باشند
+   ۲) شعاع‌های ناهماهنگ (.55rem ورودی / .65rem دکمه) حذف شد — همه rounded-lg واحد
+   ۳) حلقهٔ فوکوس ورودی‌ها واضح است (ring-2) نه فقط تغییر رنگ بوردر */
+:root {
+  --store-page: rgb(var(--cream));
+  --store-line: rgb(var(--primary-200));
+  --store-ink: rgb(var(--primary-950));
+  --store-muted: rgb(var(--primary-600));
+}
+body { color: var(--store-ink); }
+main, body > div { min-width: 0; }
+img { max-width: 100%; }
+button, input, select, textarea { font: inherit; }
+input:not([type=checkbox]):not([type=radio]):not([type=hidden]),
+select, textarea {
+  max-width: 100%;
+  border-color: rgb(var(--primary-200));
+}
+input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible {
+  outline-color: rgb(var(--primary-500));
+  outline-offset: 2px;
+}
+.btn-primary {
+  box-shadow: none;
+  transition: background-color .18s ease, transform .18s ease;
+}
+.btn-primary:hover { transform: translateY(-1px); }
+.card, [class*="rounded-2xl"], [class*="rounded-xl"] { scroll-margin-top: 6rem; }
+.product-card, [data-product-card] {
+  min-width: 0;
+  border-color: var(--store-line);
+  box-shadow: 0 1px 3px rgba(48,39,31,.05);
+}
+.product-card:hover, [data-product-card]:hover {
+  box-shadow: 0 8px 24px rgba(48,39,31,.09);
+}
+.product-card img, [data-product-card] img { background: rgb(var(--primary-100)); }
+.prose, .description-content { overflow-wrap: anywhere; }
+table { max-width: 100%; }
+@media (max-width: 767px) {
+  .mx-auto.max-w-6xl, .mx-auto.max-w-5xl, .mx-auto.max-w-4xl { padding-inline: 1rem; }
+  .mx-auto.max-w-6xl.px-4.py-8 { padding-top: 1.25rem; padding-bottom: 1.5rem; }
+  section.relative[class*="h-[70vh]"], section.relative[class*="h-[70svh]"],
+  section.relative[class*="h-[80vh]"], section.relative[class*="h-[80svh]"] { min-height: 360px; }
+  .grid { min-width: 0; }
+  .grid > * { min-width: 0; }
+  input, select, textarea { font-size: 16px; }
+  .btn-primary { max-width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
 }
