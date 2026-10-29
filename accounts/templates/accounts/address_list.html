@@ -1,4 +1,5 @@
 {% extends 'storefront/layouts/store.html' %}
+{% load storefront_filters %}
 
 {% block title %}آدرس‌های من — حساب کاربری{% endblock %}
 
@@ -23,9 +24,9 @@
                     </div>
                     <p class="mt-1 text-sm text-stone-600">{{ address.recipient }}</p>
                     <p class="mt-1 text-sm text-stone-500 whitespace-pre-line">{{ address.address }}</p>
-                    <p class="mt-1 text-xs text-stone-400">
-                        {{ address.city }}{% if address.province %}, {{ address.province }}{% endif %}
-                        {% if address.postal_code %}، {{ address.postal_code }}{% endif %}
+                    <p class="mt-1 text-xs text-stone-500">
+                        {{ address.city }}{% if address.province %}، {{ address.province }}{% endif %}
+                        {% if address.postal_code %}، کدپستی {{ address.postal_code|fa_number }}{% endif %}
                     </p>
                 </div>
                 <div class="flex items-center gap-2 shrink-0">

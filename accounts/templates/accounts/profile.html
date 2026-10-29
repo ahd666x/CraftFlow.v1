@@ -16,7 +16,7 @@
                     <div class="flex h-24 w-24 items-center justify-center rounded-full bg-primary-100 text-3xl font-bold text-primary-700 shrink-0">
                         {{ profile_user.user.username|slice:":1"|upper }}
                     </div>
-                    <div class="flex-1 text-center sm:text-left">
+                    <div class="flex-1 text-center sm:text-start">
                         <h2 class="font-semibold text-xl">@{{ profile_user.user.username }}</h2>
                         <p class="text-sm text-stone-500">{{ profile_user.user.email }}</p>
                         <div class="mt-3 flex flex-wrap items-center justify-center sm:justify-start gap-3 text-sm">
@@ -31,19 +31,19 @@
                 <h3 class="mb-4 font-semibold">اطلاعات حساب</h3>
                 <dl class="grid gap-4 sm:grid-cols-2">
                     <div>
-                        <dt class="text-xs text-stone-400">نام کاربری</dt>
+                        <dt class="text-xs text-stone-500">نام کاربری</dt>
                         <dd class="font-medium">@{{ profile_user.user.username }}</dd>
                     </div>
                     <div>
-                        <dt class="text-xs text-stone-400">ایمیل</dt>
+                        <dt class="text-xs text-stone-500">ایمیل</dt>
                         <dd class="font-medium">{{ profile_user.user.email }}</dd>
                     </div>
                     <div>
-                        <dt class="text-xs text-stone-400">شماره موبایل</dt>
+                        <dt class="text-xs text-stone-500">شماره موبایل</dt>
                         <dd class="font-medium">{{ profile_user.phone|default:'—' }}</dd>
                     </div>
                     <div>
-                        <dt class="text-xs text-stone-400">نام کامل</dt>
+                        <dt class="text-xs text-stone-500">نام کامل</dt>
                         <dd class="font-medium">{{ profile_user.user.get_full_name|default:'—' }}</dd>
                     </div>
                 </dl>
@@ -61,13 +61,15 @@
                 </div>
                 <div class="flex items-center gap-4 p-4 bg-stone-50 rounded-xl">
                     <div class="flex-1 min-w-0">
-                        <p class="font-medium truncate">سفارش #{{ recent_order.id }}</p>
+                        <p class="font-medium truncate">سفارش #{{ recent_order.id|fa_number }}</p>
                         <p class="text-sm text-stone-500">{{ recent_order.created_at|persian_date:'%Y/%m/%d' }}</p>
                     </div>
                     <span class="badge-status {{ recent_order.status }} whitespace-nowrap">{{ recent_order.get_status_display }}</span>
-                    <div class="text-left">
+                    {% if show_prices %}
+                    <div class="text-end">
                         <p class="font-bold text-stone-900">{{ recent_order.final_amount|fa_price }} تومان</p>
                     </div>
+                    {% endif %}
                 </div>
             </div>
             {% endif %}
@@ -84,7 +86,7 @@
                     <div class="flex-1">
                         <p class="font-medium">{{ default_address.title }}</p>
                         <p class="text-sm text-stone-500">{{ default_address.address }}</p>
-                        <p class="text-xs text-stone-400 mt-1">{{ default_address.city }}, {{ default_address.province }}, {{ default_address.postal_code }}</p>
+                        <p class="text-xs text-stone-500 mt-1">{{ default_address.city }}, {{ default_address.province }}, {{ default_address.postal_code }}</p>
                     </div>
                 </div>
             </div>
@@ -125,16 +127,18 @@
                 <dl class="space-y-3 text-sm">
                     <div class="flex justify-between">
                         <dt class="text-stone-500">تعداد سفارش‌ها</dt>
-                        <dd class="font-medium">{{ order_count }}</dd>
+                        <dd class="font-medium">{{ order_count|fa_number }}</dd>
                     </div>
                     <div class="flex justify-between">
                         <dt class="text-stone-500">آدرس‌های ذخیره شده</dt>
-                        <dd class="font-medium">{{ address_count }}</dd>
+                        <dd class="font-medium">{{ address_count|fa_number }}</dd>
                     </div>
+                    {% if show_prices %}
                     <div class="flex justify-between">
                         <dt class="text-stone-500">کل خریدها</dt>
                         <dd class="font-medium text-primary-700">{{ total_spent|fa_price }} تومان</dd>
                     </div>
+                    {% endif %}
                 </dl>
             </div>
         </aside>

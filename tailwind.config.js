@@ -4,6 +4,9 @@ module.exports = {
     './**/templates/**/*.html',
     './storefront/static/storefront/js/*.js',
   ],
+  // کلاس‌هایی که فقط در ویجت‌های فرم پایتون (accounts/forms.py) ساخته می‌شوند
+  // و اسکنر محتوای Tailwind قالب‌ها آن‌ها را نمی‌بیند.
+  safelist: ['accent-primary-600'],
   theme: {
     extend: {
       fontFamily: {

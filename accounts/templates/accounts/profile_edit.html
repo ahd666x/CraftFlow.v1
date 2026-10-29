@@ -16,11 +16,13 @@
             <div>
                 <label for="{{ form.phone.id_for_label }}" class="label">شماره موبایل</label>
                 {{ form.phone }}
+                {% if form.phone.errors %}<p class="mt-1 text-sm text-red-600">{{ form.phone.errors }}</p>{% endif %}
             </div>
 
             <div>
                 <label for="{{ form.bio.id_for_label }}" class="label">درباره</label>
                 {{ form.bio }}
+                {% if form.bio.errors %}<p class="mt-1 text-sm text-red-600">{{ form.bio.errors }}</p>{% endif %}
             </div>
 
             <div class="flex gap-3 pt-4">

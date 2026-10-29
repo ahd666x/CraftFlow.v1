@@ -171,3 +171,64 @@ class GuestCartAddTests(TestCase):
         )
         self.assertEqual(response.status_code, 302)
         self.assertIn('next=/shop/products/', response.url)
+
+
+class ExpiredDiscountUITests(TestCase):
+    """r7: کد تخفیف منقضی روی سبد باید هشدار شفاف بدهد، نه «-۰» بی‌توضیح."""
+
+    def setUp(self):
+        from django.utils import timezone
+        from datetime import timedelta
+        from discounts.models import Discount
+
+        self.user = User.objects.create_user(username="u9", password="pw")
+        self.client = Client()
+        self.client.login(username="u9", password="pw")
+        self.expired = Discount.objects.create(
+            code="OLDCODE", discount_type="percent", value=10,
+            max_uses=100, is_active=True,
+            valid_from=timezone.now() - timedelta(days=2),
+            valid_until=timezone.now() - timedelta(days=1),
+        )
+        self.cart = Cart.objects.create(user=self.user, discount=self.expired)
+        # جمع‌های سبد (و بخش تخفیف) فقط وقتی آیتم هست رندر می‌شوند
+        self.category = ProductCategory.objects.create(name="دستهٔ تخفیف")
+        self.product = Product.objects.create(
+            category=self.category, name="کالای تخفیف", base_price=10000,
+            length=100, width=60, height=40,
+        )
+        item = CartItem.objects.create(
+            cart=self.cart, product=self.product, quantity=2,
+            custom_length=100, custom_width=60, custom_height=40,
+        )
+        item.recalculate_price()
+        item.save()
+
+    def test_cart_page_shows_expired_warning(self):
+        response = self.client.get('/cart/')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'منقضی شده')
+        # فرم اعمال کد جدید در دسترس باشد
+        self.assertContains(response, 'name="code"')
+        # سطر سبزِ تخفیف با «-۰» نباید رندر شود
+        self.assertNotContains(response, '-۰')
+
+    def test_valid_discount_shows_expiry_date(self):
+        from django.utils import timezone
+        from datetime import timedelta
+        from discounts.models import Discount
+
+        valid = Discount.objects.create(
+            code="NEWCODE", discount_type="percent", value=15,
+            max_uses=100, is_active=True,
+            valid_from=timezone.now() - timedelta(days=1),
+            valid_until=timezone.now() + timedelta(days=30),
+        )
+        self.cart.discount = valid
+        self.cart.save()
+        response = self.client.get('/cart/')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'اعتبار این کد تا')
+        self.assertContains(response, 'NEWCODE')
+        # فرم اعمال برای کد معتبر پنهان است
+        self.assertNotContains(response, 'name="code"')

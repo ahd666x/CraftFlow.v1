@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token }}">
     <title>{% block title %}فروشگاه{% endblock %}</title>
-    <meta name="description" content="{% block meta_description %}{{ site_settings.short_description|default:site_settings.site_name }}{% endblock %}">
+    <meta name="description" content="{% block meta_description %}{% firstof site_settings.short_description site_settings.site_name '' %}{% endblock %}">
 
     {# Open Graph / Social Sharing #}
     <meta property="og:title" content="{% block og_title %}{% endblock %}">

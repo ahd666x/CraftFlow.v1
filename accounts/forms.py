@@ -1,9 +1,12 @@
 from django import forms
 from django.contrib.auth import get_user_model
-from django.contrib.auth.forms import AuthenticationForm
+from django.contrib.auth.forms import (
+    AuthenticationForm, PasswordChangeForm, PasswordResetForm, SetPasswordForm,
+)
 from django.contrib.auth import password_validation
 
 from .models import UserProfile
+from storefront.models import Address
 
 
 def to_en_digits(value):
@@ -23,13 +26,68 @@ def _widget_class(field):
     return 'input'
 
 
+def _style_form_fields(form):
+    """به همهٔ فیلدهای فرم کلاس input/select فروشگاه را می‌دهد."""
+    for field in form.fields.values():
+        field.widget.attrs.update({'class': _widget_class(field)})
+
+
 class LoginForm(AuthenticationForm):
     """فرم لاگین پیش‌فرض جنگو را با ویجت‌های استایل‌دار فروشگاه می‌پیچانیم."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        for field in self.fields.values():
-            field.widget.attrs.update({'class': _widget_class(field)})
+        _style_form_fields(self)
+
+
+class StyledPasswordChangeForm(PasswordChangeForm):
+    """تغییر رمز عبور با ظاهر فروشگاه (بدون آن قالب -input- بدون استایل می‌ماند)."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        _style_form_fields(self)
+
+
+class StyledPasswordResetForm(PasswordResetForm):
+    """فرم بازیابی رمز با ظاهر فروشگاه."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        _style_form_fields(self)
+
+
+class StyledSetPasswordForm(SetPasswordForm):
+    """تنظیم رمز جدید (بازیابی) با ظاهر فروشگاه."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        _style_form_fields(self)
+
+
+class AddressForm(forms.ModelForm):
+    """فرم آدرس با ویجت‌های استایل‌دار.
+
+    قبل از این، CreateView/UpdateView با fields=[...] فرم می‌ساخت و
+    ورودی‌ها بدون کلاس .input رندر می‌شدند — ناهماهنگ با بقیهٔ فروشگاه.
+    """
+
+    class Meta:
+        model = Address
+        fields = ['title', 'recipient', 'province', 'city', 'postal_code', 'address', 'is_default']
+        widgets = {
+            'title': forms.TextInput(attrs={'class': 'input'}),
+            'recipient': forms.TextInput(attrs={'class': 'input'}),
+            'province': forms.TextInput(attrs={'class': 'input'}),
+            'city': forms.TextInput(attrs={'class': 'input'}),
+            'postal_code': forms.TextInput(attrs={
+                'class': 'input', 'inputmode': 'numeric', 'dir': 'ltr',
+                'maxlength': 10,
+            }),
+            'address': forms.Textarea(attrs={'class': 'input', 'rows': 3}),
+            'is_default': forms.CheckboxInput(attrs={
+                'class': 'h-4 w-4 accent-primary-600',
+            }),
+        }
 
 
 class UserRegistrationForm(forms.Form):
@@ -107,6 +165,23 @@ class ProfileUpdateForm(forms.ModelForm):
             'bio': 'درباره',
         }
         widgets = {
-            'phone': forms.TextInput(attrs={'class': 'input'}),
+            'phone': forms.TextInput(attrs={
+                'class': 'input', 'inputmode': 'numeric', 'dir': 'ltr',
+                'placeholder': '09123456789',
+            }),
             'bio': forms.Textarea(attrs={'class': 'input', 'rows': 4}),
         }
+
+    def clean_phone(self):
+        """مثل ثبت‌نام: ارقام فارسی/عربی → لاتین و اعتبارسنجی 09 + ۱۱ رقم.
+
+        قبلاً هیچ اعتبارسنجی‌ای اینجا نبود و کاربر می‌توانست هر رشته‌ای
+        (یا ارقام فارسی) ذخیره کند — ناسازگار با داده‌ای که ثبت‌نام می‌سازد.
+        """
+        phone = to_en_digits(self.cleaned_data.get('phone', ''))
+        if phone:
+            if not phone.startswith('09') or len(phone) != 11 or not phone.isdigit():
+                raise forms.ValidationError(
+                    "شماره موبایل باید با ۰۹ شروع شود و ۱۱ رقم باشد."
+                )
+        return phone

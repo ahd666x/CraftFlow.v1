@@ -7,9 +7,14 @@ from django.urls import reverse, reverse_lazy
 from django.views.generic import FormView, TemplateView, UpdateView, DeleteView, ListView, CreateView
 from django.shortcuts import get_object_or_404, redirect
 
-from .forms import LoginForm, UserRegistrationForm, ProfileUpdateForm
+from .forms import (
+    LoginForm, UserRegistrationForm, ProfileUpdateForm,
+    AddressForm, StyledPasswordChangeForm,
+    StyledPasswordResetForm, StyledSetPasswordForm,
+)
 from .models import UserProfile
 from storefront.models import Address
+from storefront.permissions import can_see_prices
 from product.models import Order
 from cart.services import merge_guest_cart_to_user
 
@@ -88,9 +93,15 @@ class ProfileView(LoginRequiredMixin, TemplateView):
         # Stats
         context['order_count'] = Order.objects.filter(user=self.request.user).count()
         context['address_count'] = Address.objects.filter(user=self.request.user, is_active=True).count()
-        total_spent = Order.objects.filter(user=self.request.user).aggregate(total=Sum('final_amount'))['total']
-        context['total_spent'] = total_spent or 0
-        context['address_count'] = Address.objects.filter(user=self.request.user, is_active=True).count()
+
+        # Prices — مثل بقیهٔ فروشگاه، مبلغ‌ها فقط برای کاربر با مجوز قیمت.
+        # قبلاً کل خریدها و مبلغ سفارش اخیر برای هر کاربر لاگین‌شده نمایش
+        # داده می‌شد (نشت قیمت برای نماینده‌های بی‌مجوز).
+        show_prices = can_see_prices(self.request.user)
+        context['show_prices'] = show_prices
+        if show_prices:
+            total_spent = Order.objects.filter(user=self.request.user).aggregate(total=Sum('final_amount'))['total']
+            context['total_spent'] = total_spent or 0
 
         return context
 
@@ -118,7 +129,7 @@ class AddressListView(LoginRequiredMixin, ListView):
 class AddressCreateView(LoginRequiredMixin, CreateView):
     model = Address
     template_name = 'accounts/address_form.html'
-    fields = ['title', 'recipient', 'province', 'city', 'postal_code', 'address', 'is_default']
+    form_class = AddressForm
     success_url = reverse_lazy('accounts:address_list')
 
     def form_valid(self, form):
@@ -132,7 +143,7 @@ class AddressCreateView(LoginRequiredMixin, CreateView):
 class AddressUpdateView(LoginRequiredMixin, UpdateView):
     model = Address
     template_name = 'accounts/address_form.html'
-    fields = ['title', 'recipient', 'province', 'city', 'postal_code', 'address', 'is_default']
+    form_class = AddressForm
     success_url = reverse_lazy('accounts:address_list')
 
     def get_queryset(self):
@@ -146,6 +157,12 @@ class AddressUpdateView(LoginRequiredMixin, UpdateView):
 
 
 class AddressDeleteView(LoginRequiredMixin, DeleteView):
+    """حذف نرم آدرس (is_active=False).
+
+    DeleteView پیش‌فرض رکورد را فیزیکی پاک می‌کرد و چون Order.address با
+    SET_NULL تعریف شده، سفارش‌های قبلی بدون ردپای آدرس می‌ماندند. حذف نرم
+    تاریخچهٔ سفارش را حفظ می‌کند و از لیست کاربر هم محو می‌شود.
+    """
     model = Address
     template_name = 'accounts/address_confirm_delete.html'
     success_url = reverse_lazy('accounts:address_list')
@@ -154,13 +171,33 @@ class AddressDeleteView(LoginRequiredMixin, DeleteView):
         return Address.objects.filter(user=self.request.user, is_active=True)
 
     def form_valid(self, form):
+        self.object.is_active = False
+        self.object.is_default = False
+        self.object.save(update_fields=['is_active', 'is_default', 'updated_at'])
         messages.success(self.request, 'آدرس حذف شد.')
-        return super().form_valid(form)
+        return redirect(self.get_success_url())
 
 
 class CustomPasswordResetView(auth_views.PasswordResetView):
     template_name = 'accounts/password_reset.html'
+    form_class = StyledPasswordResetForm
 
 
 class CustomPasswordResetConfirmView(auth_views.PasswordResetConfirmView):
     template_name = 'accounts/password_reset_confirm.html'
+    form_class = StyledSetPasswordForm
+
+
+class CustomPasswordChangeView(auth_views.PasswordChangeView):
+    """تغییر رمز عبور پنل حساب.
+
+    قبلاً قالب 'accounts/password_change.html' وجود نداشت و کلیک روی
+    «تغییر کلمه عبور» در پروفایل خطای 500 (TemplateDoesNotExist) می‌داد.
+    """
+    template_name = 'accounts/password_change.html'
+    form_class = StyledPasswordChangeForm
+    success_url = reverse_lazy('accounts:password_change_done')
+
+
+class CustomPasswordChangeDoneView(auth_views.PasswordChangeDoneView):
+    template_name = 'accounts/password_change_done.html'

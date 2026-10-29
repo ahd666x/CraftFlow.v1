@@ -32,6 +32,7 @@
         </div>
 
         {% if cart.discount %}
+            {% if cart.discount.is_valid %}
         <div class="flex items-center justify-between text-emerald-700 text-sm">
             <span>تخفیف ({{ cart.discount.code }})</span>
             {% if can_see_prices %}
@@ -40,6 +41,12 @@
             <span>—</span>
             {% endif %}
         </div>
+        <p class="text-xs text-stone-500">اعتبار تا {{ cart.discount.valid_until|persian_date:'%Y/%m/%d' }}</p>
+            {% else %}
+        <div class="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800">
+            کد «{{ cart.discount.code }}» منقضی شده و از محاسبه خارج شد.
+        </div>
+            {% endif %}
             <form method="post" action="{% url 'discounts:remove_discount' %}"
                   hx-post="{% url 'discounts:remove_discount' %}"
                   hx-target="#mini-cart-content" hx-swap="innerHTML">
@@ -58,7 +65,7 @@
         </div>
             <p class="text-xs text-stone-500">تومان</p>
 
-                {% if not cart.discount %}
+                {% if not cart.discount or not cart.discount.is_valid %}
             <form method="post" action="{% url 'discounts:apply_discount' %}"
                   hx-post="{% url 'discounts:apply_discount' %}"
                   hx-target="#mini-cart-content" hx-swap="innerHTML" class="space-y-2">
