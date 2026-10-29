@@ -190,6 +190,12 @@ def product_detail(request, slug):
 
     reviews = product.reviews.filter(is_active=True).select_related('user')
 
+    # نظر خود کاربر اگر هنوز تأیید نشده، جداگانه به او نشان داده می‌شود
+    # (لیست فقط تأییدشده‌هاست و نظر در انتظارِ او گم می‌شد)
+    user_review = None
+    if request.user.is_authenticated:
+        user_review = product.reviews.filter(user=request.user).first()
+
     default_colors = _parse_default_colors(product)
 
     # بخش‌های رنگی قابل انتخاب، به ترتیب استاندارد PART_CHOICES.
@@ -216,6 +222,7 @@ def product_detail(request, slug):
         'related_products': related_products,
         'related_by_name': related_by_name,
         'reviews': reviews,
+        'user_review': user_review,
     }
     return render(request, 'storefront/product_detail.html', context)
 
@@ -264,12 +271,16 @@ def review_create(request, slug):
     messages.success(request, 'نظر شما با موفقیت ثبت شد و پس از تایید نمایش داده می‌شود.')
 
     if request.headers.get('HX-Request'):
-        # Return updated reviews list for HTMX.
-        # نظر جدید is_active=False است؛ پیام موفقیت در سشن نمی‌ماند (روی صفحه‌های
-        # بعدی ظاهر نمی‌شود) و با HX-Trigger به toast می‌رود.
-        from django.http import HttpResponse
+        # پاسخ جزئی: فرم با پیام «در انتظار تأیید» جایگزین می‌شود تا
+        # ۱) ارسال دوباره ممکن نشود، ۲) هدف hx-target (#review-form-box)
+        #    پاک نشود — قبلاً HttpResponse('') به #reviews-list لیست نظرات
+        #    موجود را می‌پاکید.
         import json as _json
-        response = HttpResponse('')
+        response = render(
+            request,
+            'storefront/partials/review_pending.html',
+            {'review': review},
+        )
         response['HX-Trigger'] = _json.dumps(
             {'cartMessage': 'نظر شما ثبت شد و پس از تایید نمایش داده می‌شود.'},
             ensure_ascii=False,
@@ -354,9 +365,19 @@ def checkout(request):
     if request.method == 'POST':
         return _place_order(request, cart, items)
 
+    return render(request, 'storefront/checkout.html', _checkout_context(request, cart, items))
+
+
+def _checkout_context(request, cart, items, form_data=None):
+    """کانتکست صفحهٔ تسویه.
+
+    `form_data` (QueryDict همان POST) فقط هنگام باز-رندر خطا پاس داده می‌شود
+    تا مقادیر پرشدهٔ کاربر از دست نرود — قبلاً خطای اعتبارسنجی سرور به
+    ریدایرکت ختم می‌شد و آدرس/توضیحات تایپ‌شده پاک می‌شد.
+    """
     customer = Customer.objects.filter(user=request.user).first()
     addresses = Address.objects.filter(user=request.user, is_active=True)
-    return render(request, 'storefront/checkout.html', {
+    return {
         'cart': cart,
         'items': items,
         'customer': customer,
@@ -371,7 +392,8 @@ def checkout(request):
             }
             for address in addresses
         },
-    })
+        'form_data': form_data,
+    }
 
 
 def _place_order(request, cart, items):
@@ -381,22 +403,28 @@ def _place_order(request, cart, items):
 
 
 def _create_order(request, cart, items):
+    def _invalid(message):
+        """خطای اعتبارسنجی: باز-رندر تسویه با مقادیر POST (بدون از دست رفتن داده)."""
+        messages.error(request, message)
+        return render(
+            request, 'storefront/checkout.html',
+            _checkout_context(request, cart, items, form_data=request.POST),
+            status=400,
+        )
+
     shipping_address = (request.POST.get('shipping_address') or '').strip()
     if not shipping_address:
-        messages.error(request, 'آدرس ارسال را وارد کنید.')
-        return redirect('storefront:checkout')
+        return _invalid('آدرس ارسال را وارد کنید.')
 
     notes = (request.POST.get('notes') or '').strip()
     phone = (request.POST.get('phone') or '').strip()
-    
+
     # Validate phone number format (same as frontend: ^09\d{9}$)
     import re
     if not phone:
-        messages.error(request, 'شماره موبایل الزامی است.')
-        return redirect('storefront:checkout')
+        return _invalid('شماره موبایل الزامی است.')
     if not re.match(r'^09\d{9}$', phone):
-        messages.error(request, 'شماره موبایل باید با ۰۹ شروع شود و ۱۱ رقم باشد.')
-        return redirect('storefront:checkout')
+        return _invalid('شماره موبایل باید با ۰۹ شروع شود و ۱۱ رقم باشد.')
 
     name = (request.POST.get('name') or '').strip() or request.user.get_full_name() or request.user.username
 

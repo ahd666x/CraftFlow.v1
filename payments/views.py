@@ -75,7 +75,8 @@ def payment_create(request, order_id):
         if result.get('success'):
             return redirect(result['url'])
 
-        return render(request, 'payments/payment_error.html', {'error': result.get('error')})
+        return render(request, 'payments/payment_error.html',
+                      {'error': result.get('error'), 'order': order})
 
     # GET request - show payment method selection
     return render(request, 'payments/payment_create.html', {'order': order, 'payment': payment})
@@ -105,7 +106,8 @@ def payment_verify(request):
         payment.status = 'failed'
         payment.save()
         return render(request, 'payments/payment_error.html', {
-            'error': f'مبلغ پرداخت ({payment.amount}) با مبلغ سفارش ({expected_amount}) مطابقت ندارد.'
+            'error': f'مبلغ پرداخت ({payment.amount}) با مبلغ سفارش ({expected_amount}) مطابقت ندارد.',
+            'order': order,
         })
 
     # پرداخت درب منزل: پول هنوز دریافت نشده، پس سفارش `paid` نمی‌شود و
@@ -139,4 +141,5 @@ def payment_verify(request):
 
     payment.status = 'failed'
     payment.save()
-    return render(request, 'payments/payment_error.html', {'error': result.get('error')})
+    return render(request, 'payments/payment_error.html',
+                  {'error': result.get('error'), 'order': order})

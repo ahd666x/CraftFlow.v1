@@ -9,11 +9,11 @@
     <nav class="mb-6 text-sm text-stone-500">
         <a href="{% url 'storefront:order_list' %}" class="hover:text-stone-800">سفارش‌های من</a>
         <span class="mx-1">/</span>
-        <span class="text-stone-800">سفارش {{ order.id }}</span>
+        <span class="text-stone-800">سفارش {{ order.id|fa_number }}</span>
     </nav>
 
     <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <h1 class="text-2xl font-bold">سفارش {{ order.id }}</h1>
+        <h1 class="text-2xl font-bold">سفارش {{ order.id|fa_number }}</h1>
         <span class="badge-status {{ order.status }}">{{ order.get_status_display }}</span>
     </div>
 
@@ -55,7 +55,7 @@
                             <a href="{% url 'storefront:product_detail' item.product.slug %}"
                                class="font-medium hover:text-primary-700">{{ item.product.name }}</a>
                             <div class="mt-1 text-sm text-stone-500">
-                                تعداد: {{ item.quantity }}
+                                تعداد: {{ item.quantity|fa_number }}
                                 {% if item.length or item.width or item.height %}
                                     <span class="mr-2">ابعاد:
                                         {% if item.length %}طول {{ item.length }}{% endif %}
@@ -147,7 +147,7 @@
                         <span class="font-bold text-primary-800">—</span>
                         {% endif %}
                     </div>
-                    <p class="text-xs text-stone-500">تومان</p>
+                    {% if can_see_prices %}<p class="text-xs text-stone-500">تومان</p>{% endif %}
                 </div>
 
                 {# Estimated delivery #}

@@ -59,10 +59,17 @@ document.addEventListener('cartError', function (e) {
 });
 
 /* Fallback sync: بعد از هر swap ناحیه‌های سبد، شمارنده را از data-cart-total
-   داخل محتوای تازه همگام کن (اگر HX-Trigger به هر دلیل نرسیده باشد). */
+   داخل محتوای تازه همگام کن (اگر HX-Trigger به هر دلیل نرسیده باشد).
+   پاسخ «افزودن سریع» خودِ #cart-count را swap می‌کند؛ هدف را هم می‌خوانیم
+   تا بج موبایل (data-cart-count) همگام بماند. */
 document.addEventListener('htmx:afterSwap', function (e) {
     var target = e.detail && e.detail.target;
     if (!target) return;
+    if (target.id === 'cart-count') {
+        var n = parseInt(target.textContent, 10);
+        if (!isNaN(n)) updateCartCounters(n);
+        return;
+    }
     if (target.id === 'mini-cart-content' || target.id === 'cart-rows') {
         var holder = target.querySelector('[data-cart-total]');
         if (holder) {

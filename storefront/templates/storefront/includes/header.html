@@ -23,20 +23,22 @@
         </a>
 
         <nav class="hidden items-center gap-6 md:flex">
+            {# لینک‌های حقوقی (مرجوعی/قوانین) از ناوبری اصلی حذف شدند — فوتر
+               همان‌ها را دارد؛ سطح‌بودن صفحات حقوقی با محصولات گمراه‌کننده بود #}
             <a href="{% url 'storefront:product_list' %}"
-               class="link-muted relative {% if request.resolver_match.url_name == 'product_list' or request.resolver_match.url_name == 'product_detail' or request.resolver_match.url_name == 'category_detail' or request.resolver_match.url_name == 'category_list' %}text-primary-700 font-medium{% endif %}"
+               class="link-muted relative {% if request.resolver_match.url_name == 'product_list' or request.resolver_match.url_name == 'product_detail' %}text-primary-700 font-medium{% endif %}"
                :class="isHome && !scrolled ? 'text-white hover:text-primary-100' : 'text-stone-600 hover:text-stone-900'">
                محصولات
-               {% if request.resolver_match.url_name == 'product_list' or request.resolver_match.url_name == 'product_detail' or request.resolver_match.url_name == 'category_detail' or request.resolver_match.url_name == 'category_list' %}
-               <span class="absolute bottom-[-4px] left-0 right-0 h-1 bg-primary-600 rounded-full"></span>
+               {% if request.resolver_match.url_name == 'product_list' or request.resolver_match.url_name == 'product_detail' %}
+               <span class="absolute bottom-[-4px] inset-x-0 h-1 bg-primary-600 rounded-full"></span>
                {% endif %}
             </a>
             <a href="{% url 'storefront:category_list' %}"
-               class="link-muted relative {% if request.resolver_match.url_name == 'category_list' %}text-primary-700 font-medium{% endif %}"
+               class="link-muted relative {% if request.resolver_match.url_name == 'category_list' or request.resolver_match.url_name == 'category_detail' %}text-primary-700 font-medium{% endif %}"
                :class="isHome && !scrolled ? 'text-white hover:text-primary-100' : 'text-stone-600 hover:text-stone-900'">
                دسته‌بندی‌ها
-               {% if request.resolver_match.url_name == 'category_list' %}
-               <span class="absolute bottom-[-4px] left-0 right-0 h-1 bg-primary-600 rounded-full"></span>
+               {% if request.resolver_match.url_name == 'category_list' or request.resolver_match.url_name == 'category_detail' %}
+               <span class="absolute bottom-[-4px] inset-x-0 h-1 bg-primary-600 rounded-full"></span>
                {% endif %}
             </a>
 <a href="{% url 'storefront:about' %}"
@@ -44,24 +46,8 @@
                :class="isHome && !scrolled ? 'text-white hover:text-primary-100' : 'text-stone-600 hover:text-stone-900'">
               درباره ما
               {% if request.resolver_match.url_name == 'about' %}
-              <span class="absolute bottom-[-4px] left-0 right-0 h-1 bg-primary-600 rounded-full"></span>
+              <span class="absolute bottom-[-4px] inset-x-0 h-1 bg-primary-600 rounded-full"></span>
               {% endif %}
-            </a>
-            <a href="{% url 'storefront:return_policy' %}"
-               class="link-muted relative {% if request.resolver_match.url_name == 'return_policy' %}text-primary-700 font-medium{% endif %}"
-               :class="isHome && !scrolled ? 'text-white hover:text-primary-100' : 'text-stone-600 hover:text-stone-900'">
-               مرجوعی
-               {% if request.resolver_match.url_name == 'return_policy' %}
-               <span class="absolute bottom-[-4px] left-0 right-0 h-1 bg-primary-600 rounded-full"></span>
-               {% endif %}
-            </a>
-            <a href="{% url 'storefront:terms_of_service' %}"
-               class="link-muted relative {% if request.resolver_match.url_name == 'terms_of_service' %}text-primary-700 font-medium{% endif %}"
-               :class="isHome && !scrolled ? 'text-white hover:text-primary-100' : 'text-stone-600 hover:text-stone-900'">
-               قوانین
-               {% if request.resolver_match.url_name == 'terms_of_service' %}
-               <span class="absolute bottom-[-4px] left-0 right-0 h-1 bg-primary-600 rounded-full"></span>
-               {% endif %}
             </a>
             {% if user.is_authenticated %}
             <a href="{% url 'storefront:order_list' %}"
@@ -69,21 +55,21 @@
                :class="isHome && !scrolled ? 'text-white hover:text-primary-100' : 'text-stone-600 hover:text-stone-900'">
                سفارش‌ها
                {% if request.resolver_match.url_name == 'order_list' or request.resolver_match.url_name == 'order_detail' %}
-               <span class="absolute bottom-[-4px] left-0 right-0 h-1 bg-primary-600 rounded-full"></span>
+               <span class="absolute bottom-[-4px] inset-x-0 h-1 bg-primary-600 rounded-full"></span>
                {% endif %}
             </a>
             {% endif %}
         </nav>
 
         <form action="{% url 'storefront:product_list' %}" method="get"
-              role="search" class="mr-auto hidden sm:block sm:w-48 lg:w-64">
+              role="search" class="ms-auto hidden sm:block sm:w-48 lg:w-64">
             <label for="site-search" class="sr-only">جستجوی محصول</label>
             <input id="site-search" type="search" name="q" value="{{ q }}" placeholder="جستجو…"
                    class="input border-transparent py-2 focus:bg-white"
                    :class="isHome && !scrolled ? 'bg-white/20 placeholder-white/60 text-white focus:bg-white/30' : 'bg-white/80 placeholder-stone-400 text-stone-900'">
         </form>
 
-        <div class="mr-auto flex items-center gap-1 sm:mr-0 relative z-10">
+        <div class="ms-auto flex items-center gap-1 sm:ms-0 relative z-10">
             {% if user.is_authenticated %}
                 <a href="{% url 'accounts:profile' %}"
                    class="btn-sm"
@@ -110,7 +96,7 @@
                               d="M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.356-1.993l1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 01-1.12-1.243l1.264-12A1.125 1.125 0 015.513 7.5h12.974c.576 0 1.059.435 1.119 1.007z"/>
                     </svg>
                     <span id="cart-count"
-                          class="absolute -top-1 -left-1 grid h-4 min-w-[1rem] place-items-center rounded-full bg-primary-700 px-1 text-[10px] text-white pointer-events-none">{{ cart_total_items|default:0 }}</span>
+                          class="absolute -top-1 -start-1 grid h-4 min-w-[1rem] place-items-center rounded-full bg-primary-700 px-1 text-[10px] text-white pointer-events-none">{{ cart_total_items|default:0 }}</span>
             </button>
 
             <button type="button" @click="open = !open" data-mobile-menu-toggle class="btn-sm md:hidden relative z-10"
@@ -139,38 +125,24 @@
                        :class="isHome && !scrolled ? 'bg-white/20 placeholder-white/60 text-white focus:bg-white/30' : 'bg-white/80 placeholder-stone-400 text-stone-900'">
             </form>
             <a href="{% url 'storefront:product_list' %}"
-               class="block py-2 relative text-stone-700 hover:text-stone-900 {% if request.resolver_match.url_name == 'product_list' or request.resolver_match.url_name == 'product_detail' or request.resolver_match.url_name == 'category_detail' or request.resolver_match.url_name == 'category_list' %}font-medium{% endif %}">
+               class="block py-2 relative text-stone-700 hover:text-stone-900 {% if request.resolver_match.url_name == 'product_list' or request.resolver_match.url_name == 'product_detail' %}font-medium{% endif %}">
                محصولات
-               {% if request.resolver_match.url_name == 'product_list' or request.resolver_match.url_name == 'product_detail' or request.resolver_match.url_name == 'category_detail' or request.resolver_match.url_name == 'category_list' %}
-               <span class="absolute bottom-[-4px] left-0 right-0 h-1 bg-primary-600 rounded-full"></span>
+               {% if request.resolver_match.url_name == 'product_list' or request.resolver_match.url_name == 'product_detail' %}
+               <span class="absolute bottom-[-4px] inset-x-0 h-1 bg-primary-600 rounded-full"></span>
                {% endif %}
             </a>
             <a href="{% url 'storefront:category_list' %}"
-               class="block py-2 relative text-stone-700 hover:text-stone-900 {% if request.resolver_match.url_name == 'category_list' %}font-medium{% endif %}">
+               class="block py-2 relative text-stone-700 hover:text-stone-900 {% if request.resolver_match.url_name == 'category_list' or request.resolver_match.url_name == 'category_detail' %}font-medium{% endif %}">
                دسته‌بندی‌ها
-               {% if request.resolver_match.url_name == 'category_list' %}
-               <span class="absolute bottom-[-4px] left-0 right-0 h-1 bg-primary-600 rounded-full"></span>
+               {% if request.resolver_match.url_name == 'category_list' or request.resolver_match.url_name == 'category_detail' %}
+               <span class="absolute bottom-[-4px] inset-x-0 h-1 bg-primary-600 rounded-full"></span>
                {% endif %}
             </a>
             <a href="{% url 'storefront:about' %}"
                class="block py-2 relative text-stone-700 hover:text-stone-900 {% if request.resolver_match.url_name == 'about' %}font-medium{% endif %}">
                درباره ما
                {% if request.resolver_match.url_name == 'about' %}
-               <span class="absolute bottom-[-4px] left-0 right-0 h-1 bg-primary-600 rounded-full"></span>
-               {% endif %}
-            </a>
-            <a href="{% url 'storefront:return_policy' %}"
-               class="block py-2 relative text-stone-700 hover:text-stone-900 {% if request.resolver_match.url_name == 'return_policy' %}font-medium{% endif %}">
-               قوانین مرجوعی
-               {% if request.resolver_match.url_name == 'return_policy' %}
-               <span class="absolute bottom-[-4px] left-0 right-0 h-1 bg-primary-600 rounded-full"></span>
-               {% endif %}
-            </a>
-            <a href="{% url 'storefront:terms_of_service' %}"
-               class="block py-2 relative text-stone-700 hover:text-stone-900 {% if request.resolver_match.url_name == 'terms_of_service' %}font-medium{% endif %}">
-               شرایط استفاده
-               {% if request.resolver_match.url_name == 'terms_of_service' %}
-               <span class="absolute bottom-[-4px] left-0 right-0 h-1 bg-primary-600 rounded-full"></span>
+               <span class="absolute bottom-[-4px] inset-x-0 h-1 bg-primary-600 rounded-full"></span>
                {% endif %}
             </a>
             {% if user.is_authenticated %}
@@ -178,7 +150,7 @@
                class="block py-2 relative text-stone-700 hover:text-stone-900 {% if request.resolver_match.url_name == 'order_list' or request.resolver_match.url_name == 'order_detail' %}font-medium{% endif %}">
                سفارش‌ها
                {% if request.resolver_match.url_name == 'order_list' or request.resolver_match.url_name == 'order_detail' %}
-               <span class="absolute bottom-[-4px] left-0 right-0 h-1 bg-primary-600 rounded-full"></span>
+               <span class="absolute bottom-[-4px] inset-x-0 h-1 bg-primary-600 rounded-full"></span>
                {% endif %}
             </a>
             {% endif %}

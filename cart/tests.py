@@ -146,3 +146,28 @@ class DimensionLockTests(TestCase):
         self.assertEqual(item.length, 100)
         self.assertEqual(item.width, 70)
         self.assertEqual(item.height, 50)
+
+class GuestCartAddTests(TestCase):
+    """ممیزی دور ۶: مهمانِ بی‌مجوز قیمت که اضافه‌به‌سبد را مستقیم POST کند
+    به صفحهٔ ورود (با next) هدایت می‌شود، نه بن‌بست «تماس بگیرید»."""
+
+    def setUp(self):
+        self.category = ProductCategory.objects.create(name="دسته")
+        self.product = Product.objects.create(
+            category=self.category, name="کالا", base_price=1000,
+        )
+        self.client = Client()
+
+    def test_anonymous_cart_add_redirects_to_login_with_next(self):
+        response = self.client.post(f'/cart/add/{self.product.id}/')
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/accounts/login', response.url)
+        self.assertIn('next', response.url)
+
+    def test_anonymous_cart_add_keeps_referer_as_next(self):
+        response = self.client.post(
+            f'/cart/add/{self.product.id}/',
+            HTTP_REFERER='/shop/products/',
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('next=/shop/products/', response.url)

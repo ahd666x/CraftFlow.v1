@@ -26,13 +26,13 @@
                     <div>
                         <label class="label" for="name">نام و نام خانوادگی</label>
                         <input id="name" name="name" type="text" class="input"
-                               value="{% if customer.name %}{{ customer.name }}{% elif user.is_authenticated %}{{ user.get_full_name }}{% endif %}" required>
+                               value="{% if form_data %}{{ form_data.name }}{% else %}{{ customer.name|default:user.get_full_name|default:user.username }}{% endif %}" required>
                     </div>
         <div>
                         <label class="label" for="phone">شماره موبایل</label>
                         {# بازنویسی مقدار فقط در paste/blur — بازنویسی در @input کرسر را می‌پراند #}
                         <input id="phone" name="phone" type="tel" class="input"
-                               value="{{ customer.phone }}" required
+                               value="{% if form_data %}{{ form_data.phone }}{% else %}{{ customer.phone }}{% endif %}" required
                                pattern="^09\d{9}$"
                                title="شماره موبایل باید با ۰۹ شروع شود و ۱۱ رقم باشد"
                                inputmode="numeric"
@@ -83,7 +83,7 @@
                     <select id="address_id" name="address_id" class="select">
                         <option value="">— انتخاب کنید —</option>
                         {% for address in addresses %}
-                        <option value="{{ address.pk }}">{{ address }}</option>
+                        <option value="{{ address.pk }}"{% if form_data.address_id|stringformat:"s" == address.pk|stringformat:"s" %} selected{% endif %}>{{ address }}</option>
                         {% endfor %}
                     </select>
                 </div>
@@ -92,12 +92,12 @@
                 <div>
                     <label class="label" for="shipping_address">آدرس کامل ارسال</label>
                     <textarea id="shipping_address" name="shipping_address" rows="3"
-                              class="input" required></textarea>
+                              class="input" required>{% if form_data %}{{ form_data.shipping_address }}{% endif %}</textarea>
                 </div>
 
                 <div class="mt-4">
                     <label class="label" for="notes">توضیحات سفارش (اختیاری)</label>
-                    <textarea id="notes" name="notes" rows="2" class="input"></textarea>
+                    <textarea id="notes" name="notes" rows="2" class="input">{% if form_data %}{{ form_data.notes }}{% endif %}</textarea>
                 </div>
             </section>
 
@@ -170,14 +170,14 @@
                 </div>
                 {% endif %}
                 
-                {# Shipping #}
+                {# Shipping — مثل _cart_totals، برای کاربر بی‌مجوز قیمت «—» #}
                 <div class="flex items-center justify-between text-sm text-stone-600">
                     <span>هزینه ارسال</span>
-                    <span>{% if cart.shipping_cost == 0 %}رایگان{% else %}{{ cart.shipping_cost|fa_price }} تومان{% endif %}</span>
+                    <span>{% if not can_see_prices %}—{% elif cart.shipping_cost == 0 %}رایگان{% else %}{{ cart.shipping_cost|fa_price }} تومان{% endif %}</span>
                 </div>
 
-                {# Tax #}
-                {% if cart.tax_amount > 0 %}
+                {# Tax — فقط برای دارای مجوز قیمت (مبلغ مالیات هم اطلاعات قیمتی است) #}
+                {% if can_see_prices and cart.tax_amount > 0 %}
                 <div class="flex items-center justify-between text-sm text-stone-600">
                     <span>مالیات ({{ site_settings.tax_percent }}%)</span>
                     <span>{{ cart.tax_amount|fa_price }} تومان</span>
@@ -192,7 +192,7 @@
                     <span class="text-lg font-bold text-primary-800">—</span>
                     {% endif %}
                 </div>
-                <p class="text-xs text-stone-500">تومان</p>
+                {% if can_see_prices %}<p class="text-xs text-stone-500">تومان</p>{% endif %}
             </div>
 
             {# Estimated delivery #}
@@ -203,7 +203,7 @@
                     </svg>
                     <span>زمان تحویل تقریبی: {{ cart.estimated_delivery_min }} تا {{ cart.estimated_delivery_max }} روز کاری</span>
                 </div>
-                {% if cart.shipping_cost > 0 %}
+                {% if can_see_prices and cart.shipping_cost > 0 %}
                 <p class="mt-1 text-xs text-primary-700">سفارش‌های بالای {{ site_settings.free_shipping_threshold|fa_price }} تومان، ارسال رایگان دارند.</p>
                 {% endif %}
             </div>

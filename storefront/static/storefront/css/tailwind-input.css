@@ -161,3 +161,7 @@ table { max-width: 100%; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
 }
+
+/* pb-safe: فاصلهٔ امن پایین روی iOS (ناوبری موبایل در store.html از آن استفاده می‌کند؛
+   قبلاً کلاس در CSS خروجی نبود و بی‌اثر بود) */
+.pb-safe { padding-bottom: env(safe-area-inset-bottom); }

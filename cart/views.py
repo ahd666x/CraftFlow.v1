@@ -77,8 +77,19 @@ def cart_add(request, product_id):
     صفحه)؛ وگرنه به صفحه‌ی سبد می‌رویم.
     """
     if not can_see_prices(request.user):
-        messages.info(request, 'برای ثبت سفارش با ما تماس بگیرید.')
-        return redirect('storefront:product_list')
+        # مهمان: به صفحهٔ ورود هدایت می‌شود (با next) تا بن‌بست «تماس بگیرید»
+        # برای کسی که فقط هنوز وارد نشده تجربهٔ گمراه‌کننده‌ای نباشد.
+        # کاربر لاگینِ بی‌مجوز: پیام واقعی + برگشت به همان صفحه.
+        from django.contrib.auth.views import redirect_to_login
+        referer = request.META.get('HTTP_REFERER')
+        if request.user.is_authenticated:
+            messages.info(
+                request,
+                'ثبت سفارش آنلاین فقط برای حساب‌های تأییدشده فعال است؛ برای ثبت سفارش با ما تماس بگیرید.',
+            )
+            return redirect(referer or 'storefront:product_list')
+        messages.info(request, 'برای ثبت سفارش ابتدا وارد حساب کاربری شوید.')
+        return redirect_to_login(referer or reverse('storefront:product_list'))
 
     cart = get_or_create_cart(request)
 

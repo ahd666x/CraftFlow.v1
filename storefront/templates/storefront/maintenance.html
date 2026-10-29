@@ -24,6 +24,13 @@
                 زمان تقریبی: چند ساعت
             </span>
         </div>
+        {# کاربر لاگین‌شدهٔ غیر staff در بن‌بست بود: می‌توانست از /accounts/ وارد شود
+           ولی بعدش باز تعمیرات می‌دید و راه خروجی از این صفحه نداشت #}
+        {% if user.is_authenticated and not user.is_staff %}
+        <div class="mt-6">
+            <a href="{% url 'accounts:logout' %}" class="btn-outline">خروج از حساب</a>
+        </div>
+        {% endif %}
     </div>
 </div>
 {% endblock %}

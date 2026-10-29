@@ -273,6 +273,16 @@
 
                 {# Tab: Reviews #}
                 <div x-show="activeTab === 'reviews'" x-cloak x-transition class="mt-4" role="tabpanel" id="tab-reviews" aria-labelledby="tab-btn-reviews">
+                    {# نظر خود کاربر وقتی هنوز تأیید نشده — تا بداند ثبت شده و گم نشده #}
+                    {% if user_review and not user_review.is_active %}
+                    <div class="mb-4 rounded-default border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800" role="status">
+                        <p class="font-medium">نظر شما در انتظار تأیید است.</p>
+                        <p class="mt-1 text-xs text-amber-700">
+                            امتیاز شما: <span class="text-amber-500" aria-hidden="true">★</span> {{ user_review.rating|fa_number }} از ۵
+                            {% if user_review.comment %}— «{{ user_review.comment|truncatewords:15 }}»{% endif %}
+                        </p>
+                    </div>
+                    {% endif %}
                     <div id="reviews-list">
                         {% if reviews %}
                         <div class="space-y-4">
@@ -280,8 +290,8 @@
                             <div class="card p-4">
                                 <div class="flex items-center justify-between gap-3 mb-2">
                                     <span class="text-sm font-medium">{{ review.user.get_full_name|default:review.user.username }}</span>
-                                    <span class="text-xs text-primary-600" aria-label="امتیاز {{ review.rating }} از ۵">
-                                        <span aria-hidden="true">★</span> {{ review.rating }}
+                                    <span class="text-xs text-primary-600" aria-label="امتیاز {{ review.rating|fa_number }} از ۵">
+                                        <span aria-hidden="true">★</span> {{ review.rating|fa_number }}
                                     </span>
                                 </div>
                                 {% if review.comment %}
@@ -292,7 +302,8 @@
                                     <img src="{{ review.image.url }}" alt="تصویر نظر" class="h-24 w-24 object-cover rounded">
                                 </div>
                                 {% endif %}
-                                <p class="mt-2 text-xs text-stone-500">{{ review.created_at|date:"j F Y" }}</p>
+                                {# تاریخ شمسی — هم‌راستا با بقیهٔ صفحات (سابق‌تر میلادی نمایش داده می‌شد) #}
+                                <p class="mt-2 text-xs text-stone-500">{{ review.created_at|persian_date:"%d %B %Y" }}</p>
                             </div>
                             {% endfor %}
                         </div>
@@ -303,15 +314,28 @@
 
                     {# Review Submission Form - outside reviews-list so it's not replaced #}
                     {% if user.is_authenticated %}
+                    <div id="review-form-box">
+                    {% if user_review %}
+                        {# کاربر قبلاً نظر داده (تأییدشده یا در انتظار) — فرم دوباره نشان داده نمی‌شود #}
+                        <div class="mt-8 pt-6 border-t border-stone-100">
+                            <div class="rounded-default border border-stone-200 bg-stone-50 p-4 text-sm text-stone-600" role="status">
+                                شما قبلاً برای این محصول نظر ثبت کرده‌اید.
+                                {% if not user_review.is_active %}نظر شما در انتظار تأیید است.{% endif %}
+                            </div>
+                        </div>
+                    {% else %}
                     <div class="mt-8 pt-6 border-t border-stone-100">
                         <h3 class="font-semibold mb-4">ثبت نظر شما</h3>
+                        {# اعتبارسنجی امتیاز در کلاینت: required روی radio مخفی (sr-only)
+                           پیام بومی مرورگر را جای نامشخصی نشان می‌داد #}
                         <form method="post" action="{% url 'storefront:review_create' product.slug %}"
                               hx-post="{% url 'storefront:review_create' product.slug %}"
-                              hx-target="#reviews-list"
+                              hx-target="#review-form-box"
                               hx-swap="innerHTML"
                               hx-encoding="multipart/form-data"
+                              x-data="{ rating: 0, tried: false }"
+                              @submit="if (!rating) { tried = true; $event.preventDefault(); }"
                               class="space-y-4"
-                              @htmx:after-request="if (event.detail.successful) { $el.reset(); }"
                               @htmx:responseError="document.dispatchEvent(new CustomEvent('cartError', { detail: event.detail.xhr.responseText }))">
                             {% csrf_token %}
                             <input type="hidden" name="product_slug" value="{{ product.slug }}">
@@ -319,31 +343,28 @@
                                 <label class="label" id="rating-label">امتیاز</label>
                                 {# در RTL ترفند peer-checked برای «پرشدن تا انتخاب» نامطمئن بود؛
                                    با x-model تا ستارهٔ انتخاب‌شده پر می‌شود + focus ring #}
-                                <div class="flex gap-2" role="radiogroup" aria-labelledby="rating-label"
-                                     x-data="{ rating: 0 }">
+                                <div class="flex gap-2" role="radiogroup" aria-labelledby="rating-label">
                                     {% for i in "12345"|make_list %}
                                     <label class="cursor-pointer rounded has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-primary-600 has-[:focus-visible]:ring-offset-2">
-                                        <input type="radio" name="rating" value="{{ i }}" required class="sr-only"
-                                               x-model.number="rating"
-                                               @change="rating = {{ i }}">
+                                        <input type="radio" name="rating" value="{{ i }}" class="sr-only"
+                                               x-model.number="rating">
                                         <span class="text-2xl transition-colors"
                                               :class="rating >= {{ i }} ? 'text-amber-500' : 'text-stone-300'"
                                               aria-hidden="true">★</span>
-                                        <span class="sr-only">{{ i }} از ۵</span>
+                                        <span class="sr-only">{{ i|fa_number }} از ۵</span>
                                     </label>
                                     {% endfor %}
                                 </div>
+                                <p class="mt-1 text-xs text-red-600" x-show="tried && !rating" x-cloak>لطفاً امتیاز را انتخاب کنید.</p>
                             </div>
                             <div>
                                 <label for="review_comment" class="label">متن نظر</label>
                                 <textarea id="review_comment" name="comment" rows="3" class="input" ></textarea>
                             </div>
-                            {% comment %} <div>
-                                <label for="review_image" class="label">تصویر </label>
-                                <input type="file" id="review_image" name="image" accept="image/*" class="input">
-                            </div> {% endcomment %}
                             <button type="submit" class="btn-primary w-full py-2">ارسال نظر</button>
                         </form>
+                    </div>
+                    {% endif %}
                     </div>
                     {% else %}
                     <div class="mt-8 pt-6 border-t border-stone-100 text-center">
@@ -367,8 +388,10 @@
             class="lg:order-2 lg:sticky lg:top-20 lg:self-start">
 
             <div class="card p-5 space-y-4">
-                {% comment %} <h2 class="font-semibold text-lg">قیمت و خرید</h2>
+                <h2 class="font-semibold text-lg">قیمت و خرید</h2>
 
+                {# ریزش قیمت: قیمت پایه + تغییر ابعاد + قیمت واحد — قبلاً کامنت بود و
+                   کاربر فقط «قیمت کل» پایین را می‌دید و دلیل افزایش را نمی‌فهمید #}
                 <div class="space-y-2 text-sm">
                     <div class="flex justify-between text-stone-600">
                         <span>قیمت پایه</span>
@@ -382,7 +405,7 @@
                         <span class="font-semibold">قیمت واحد</span>
                         <span class="font-bold" x-text="unitPrice().toLocaleString('fa-IR') + ' تومان'"></span>
                     </div>
-                </div> {% endcomment %}
+                </div>
 
                 <form method="post" action="{% url 'cart:cart_add' product.id %}"
                       hx-post="{% url 'cart:cart_add' product.id %}"
@@ -401,7 +424,7 @@
                                    x-model.number="dims.length.value"
                                    :disabled="!dims.length.editable"
                                    :placeholder="dims.length.def ?? '—'"
-                                   class="input text-center px-1">
+                                   class="input text-center px-1 disabled:bg-stone-100 disabled:cursor-not-allowed">
                         </div>
                         <div>
                             <label class="label" for="dim-width">عرض</label>
@@ -409,7 +432,7 @@
                                    x-model.number="dims.width.value"
                                    :disabled="!dims.width.editable"
                                    :placeholder="dims.width.def ?? '—'"
-                                   class="input text-center px-1">
+                                   class="input text-center px-1 disabled:bg-stone-100 disabled:cursor-not-allowed">
                         </div>
                         <div>
                             <label class="label" for="dim-height">ارتفاع</label>
@@ -417,9 +440,16 @@
                                    x-model.number="dims.height.value"
                                    :disabled="!dims.height.editable"
                                    :placeholder="dims.height.def ?? '—'"
-                                   class="input text-center px-1">
+                                   class="input text-center px-1 disabled:bg-stone-100 disabled:cursor-not-allowed">
                         </div>
                     </div>
+
+                    {# راهنمای «خالی = پیش‌فرض»: مقدار پیش‌فرض فقط placeholder است و
+                       بدون این متن، کاربر نمی‌داند خالی گذاشتن چه معنایی دارد #}
+                    <p class="text-xs text-stone-500">
+                        اگر فیلدی را خالی بگذارید، اندازهٔ پیش‌فرض (عدد کم‌رنگ داخل کادر) اعمال می‌شود.
+                        فیلدهای خاکستری قابل تغییر نیستند.
+                    </p>
 
                     {# پیام خطا برای هر محور #}
                     <template x-for="axis in ['length','width','height']" :key="axis">

@@ -35,7 +35,9 @@
                     {% endif %}
 
                     <div>
-                        <label for="{{ form.username.id_for_label }}" class="label">نام کاربری یا ایمیل</label>
+                        {# LoginForm فقط username می‌پذیرد (بک‌اند ایمیل وجود ندارد)؛
+                           برچسب قبلی «نام کاربری یا ایمیل» گمراه‌کننده بود #}
+                        <label for="{{ form.username.id_for_label }}" class="label">نام کاربری</label>
                         {{ form.username }}
                         {% if form.username.errors %}
                         <p class="mt-1 text-sm text-red-600">{{ form.username.errors }}</p>

@@ -83,7 +83,8 @@
                 <h2 class="mb-3 font-semibold">دسته‌بندی</h2>
                 <ul class="space-y-1 text-sm">
                     <li>
-                        <a href="{% url 'storefront:product_list' %}"
+                        {# همه: فقط فیلتر دسته پاک می‌شود؛ جستجو/قیمت/مرتب‌سازی حفظ می‌شوند #}
+                        <a href="{% url 'storefront:product_list' %}{% querystring category=None page=None %}"
                            class="block rounded px-2 py-1.5 hover:bg-stone-100
                                   {% if not selected_category %}bg-stone-100 font-medium{% endif %}">
                             همه
@@ -91,7 +92,9 @@
                     </li>
                     {% for category in categories %}
                     <li>
-                        <a href="{% url 'storefront:category_detail' category.slug %}{% querystring category=None page=None %}"
+                        {# مسیر واحد: ?category= روی همان product_list — قبلاً به
+                           category_detail می‌رفت و جستجو/قیمت/مرتب‌سازی گم می‌شد #}
+                        <a href="{% url 'storefront:product_list' %}{% querystring category=category.slug page=None %}"
                            class="block rounded px-2 py-1.5 hover:bg-stone-100
                                   {% if selected_category == category.slug %}bg-stone-100 font-medium{% endif %}">
                             {{ category.name }}
@@ -186,7 +189,8 @@
                             </li>
                             {% for category in categories %}
                             <li>
-                                <a href="{% url 'storefront:category_detail' category.slug %}{% querystring category=None page=None %}" class="block px-4 py-2 rounded-lg {% if selected_category == category.slug %}bg-primary-100 text-primary-800{% else %}hover:bg-stone-100{% endif %}">
+                                {# مسیر واحد مثل سایدبار دسکتاپ: ?category= با حفظ فیلترها #}
+                                <a href="{% url 'storefront:product_list' %}{% querystring category=category.slug page=None %}" class="block px-4 py-2 rounded-lg {% if selected_category == category.slug %}bg-primary-100 text-primary-800{% else %}hover:bg-stone-100{% endif %}">
                                     {{ category.name }} <span class="text-xs text-stone-500 ms-2">({{ category.product_count }})</span>
                                 </a>
                             </li>

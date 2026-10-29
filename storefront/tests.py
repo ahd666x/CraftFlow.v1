@@ -345,6 +345,29 @@ class CheckoutTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertTrue(Order.objects.filter(user=self.user).exists())
 
+    def test_checkout_invalid_rerenders_with_posted_values(self):
+        """ممیزی دور ۶: خطای اعتبارسنجی سرور نباید مقادیر فرم را پاک کند.
+
+        قبلاً redirect به GET تسویه بود و آدرس/توضیحات تایپ‌شده از دست
+        می‌رفت؛ حالا همان صفحه با مقادیر POST باز-رندر می‌شود (۴۰۰)."""
+        self._add_to_cart()
+        response = self.client.post('/shop/checkout/', {
+            'shipping_address': '',
+            'name': 'خریدار',
+            'phone': '09123456789',
+            'notes': 'لطفاً با دقت بسته‌بندی شود',
+        })
+        self.assertEqual(response.status_code, 400)
+        self.assertContains(response, '09123456789', status_code=400)
+        self.assertContains(response, 'بسته‌بندی', status_code=400)
+
+    def test_checkout_name_falls_back_to_username(self):
+        """فیلد name وقتی customer و get_full_name خالی‌اند از username پر می‌شود."""
+        self._add_to_cart()
+        response = self.client.get('/shop/checkout/')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'value="buyer"')
+
 
 class OrderDetailViewTests(TestCase):
     """صفحه‌ی سفارش: `is_locked` و `show_pay_button` باید در view

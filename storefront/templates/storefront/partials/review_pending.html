@@ -1,0 +1,15 @@
+{% load storefront_filters %}
+{# جایگزین فرم ثبت نظر بعد از ارسال موفق (hx-target=#review-form-box).
+   کاربر پیام واضح «در انتظار تأیید» می‌بیند و نمی‌تواند دوباره ارسال کند —
+   قبلاً فرم باقی می‌ماند و ارسال دوباره خطای «قبلاً نظر داده‌اید» می‌داد. #}
+<div class="mt-8 pt-6 border-t border-stone-100">
+    <div class="rounded-default border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800" role="status">
+        <p class="font-medium">نظر شما ثبت شد؛ پس از تأیید نمایش داده می‌شود.</p>
+        <p class="mt-1 text-xs text-emerald-700">
+            امتیاز شما:
+            <span class="text-amber-500" aria-hidden="true">★</span>
+            {{ review.rating|fa_number }} از ۵
+            {% if review.comment %}— «{{ review.comment|truncatewords:15 }}»{% endif %}
+        </p>
+    </div>
+</div>

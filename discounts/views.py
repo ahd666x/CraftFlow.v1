@@ -69,7 +69,10 @@ def _hx_cart_response(request, cart, message):
     return response
 
 
-class ApplyDiscountView(LoginRequiredMixin, View):
+class ApplyDiscountView(View):
+    """اعمال کد تخفیف — برای سبد مهمان هم باز است (سبد مهمان session-key دارد
+    و بعد از ورود با merge_guest_cart_to_user منتقل می‌شود). فقط POST + CSRF."""
+
     http_method_names = ['post']
 
     def post(self, request, *args, **kwargs):
@@ -104,7 +107,9 @@ class ApplyDiscountView(LoginRequiredMixin, View):
         return redirect('cart:cart_detail')
 
 
-class RemoveDiscountView(LoginRequiredMixin, View):
+class RemoveDiscountView(View):
+    """حذف کد تخفیف — مثل اعمال، برای سبد مهمان هم مجاز."""
+
     http_method_names = ['post']
 
     def post(self, request, *args, **kwargs):

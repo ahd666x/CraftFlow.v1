@@ -58,14 +58,15 @@
         </div>
             <p class="text-xs text-stone-500">تومان</p>
 
-            {% if not cart.discount %}
+                {% if not cart.discount %}
             <form method="post" action="{% url 'discounts:apply_discount' %}"
                   hx-post="{% url 'discounts:apply_discount' %}"
                   hx-target="#mini-cart-content" hx-swap="innerHTML" class="space-y-2">
                 {% csrf_token %}
-                <label class="label" for="code">کد تخفیف</label>
+                {# id متمایز از فرم صفحهٔ سبد (#code) تا روی صفحهٔ سبد id تکراری ساخته نشود #}
+                <label class="label" for="mini-cart-code">کد تخفیف</label>
                 <div class="flex gap-2">
-                    <input id="code" name="code" type="text" class="input" placeholder="کد تخفیف" required>
+                    <input id="mini-cart-code" name="code" type="text" class="input" placeholder="کد تخفیف" required>
                     <button type="submit" class="btn-primary whitespace-nowrap">اعمال</button>
                 </div>
             </form>
@@ -80,7 +81,8 @@
 
             <form method="post" action="{% url 'cart:cart_clear' %}"
                   hx-post="{% url 'cart:cart_clear' %}"
-                  hx-target="#mini-cart-content" hx-swap="innerHTML">
+                  hx-target="#mini-cart-content" hx-swap="innerHTML"
+                  hx-confirm="همهٔ محصولات سبد خرید حذف شوند؟">
                 {% csrf_token %}
                 <button type="submit" class="btn-outline w-full">خالی کردن سبد</button>
             </form>
