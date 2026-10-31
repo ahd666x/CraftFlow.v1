@@ -36,7 +36,7 @@ from .forms import CustomerInfoForm, OrderItemForm, ColorSelectionForm
 from django.urls import reverse
 from django.utils import timezone
 from django.forms import inlineformset_factory, modelformset_factory
-from .decorators import admin_or_manager_required , staff_or_representative_required
+from .decorators import admin_or_manager_required , staff_or_representative_required, representative_panel_required
 from .models import *
 from .forms import *
 from django.contrib.auth.decorators import login_required
@@ -3939,6 +3939,7 @@ def undo_packaging_unit(request, pk):
 # -------------------------------------------------------------------
 
 @login_required
+@representative_panel_required
 def customer_order_list(request):
     # نمایش تمام سفارش‌هایی که این کاربر ثبت کرده است (مستقل از Customer)
     orders = (Order.objects.filter(user=request.user)
@@ -3954,6 +3955,7 @@ def customer_order_list(request):
 # -------------------------------------------------------------------
 
 @login_required
+@representative_panel_required
 def customer_create_order(request):
     existing_customer = Customer.objects.filter(user=request.user).first()
 
@@ -4053,6 +4055,7 @@ def order_invoice(request, order_id):
 #    ویرایش سفارش مشتری
 # -------------------------------------------------------------------
 @login_required
+@representative_panel_required
 def customer_edit_order_item(request, item_id):
     item = get_object_or_404(OrderItem, pk=item_id)
 
@@ -4115,6 +4118,7 @@ def customer_edit_order_item(request, item_id):
 # مشتری: جزئیات سفارش
 # -------------------------------------------------------------------
 @login_required
+@representative_panel_required
 def customer_order_detail(request, order_id):
     order = get_object_or_404(Order, pk=order_id)
     if order.user != request.user:
@@ -4148,6 +4152,7 @@ def customer_order_detail(request, order_id):
 # مشتری: ویرایش اطلاعات کلی سفارش (نام، شماره)
 # -------------------------------------------------------------------
 @login_required
+@representative_panel_required
 def customer_edit_order_info(request, order_id):
     order = get_object_or_404(Order, pk=order_id, user=request.user)
     if not (order.status == 'draft' and order.created_at == jdatetime.date.today()):
@@ -4178,6 +4183,7 @@ def customer_edit_order_info(request, order_id):
 # مشتری: افزودن آیتم جدید به سفارش
 # -------------------------------------------------------------------
 @login_required
+@representative_panel_required
 def customer_add_item(request, order_id):
     order = get_object_or_404(Order, pk=order_id, user=request.user)
     if not (order.status == 'draft' and order.created_at == jdatetime.date.today()):
@@ -4213,6 +4219,7 @@ def customer_add_item(request, order_id):
 # -------------------------------------------------------------------
 @require_POST
 @login_required
+@representative_panel_required
 def customer_delete_order_item(request, item_id):
     item = get_object_or_404(OrderItem, pk=item_id)
 
@@ -4808,6 +4815,7 @@ def set_plate(request):
 # views.py - بخش ارسال‌های مشتری
 
 @login_required
+@representative_panel_required
 def customer_shipments(request):
     """لیست ارسال‌های مشتری (گروه‌بندی شده بر اساس پلاک و تاریخ)"""
     # دریافت سفارش‌های کاربر
@@ -4853,6 +4861,7 @@ def customer_shipments(request):
 
 
 @login_required
+@representative_panel_required
 def customer_shipment_detail(request, plate, date):
     """نمایش جزئیات یک سری ارسال (برگه ترخیص)"""
     from datetime import datetime

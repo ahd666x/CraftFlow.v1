@@ -150,3 +150,92 @@ class AddressFormWidgetTests(TestCase):
             self.assertIn('input', form.fields[name].widget.attrs.get('class', ''))
         checkbox = form.fields['is_default'].widget.attrs.get('class', '')
         self.assertIn('accent-primary-600', checkbox)
+
+
+class PasswordResetPageTests(TestCase):
+    """r8: بازبینی صفحات بازیابی رمز عبور.
+
+    - confirm قبلاً گارد validlink نداشت؛ با لینک نامعتبر/منقضی فرم خالی
+      + دکمهٔ بی‌اثر رندر می‌شد (بدون هیچ پیامی).
+    - done عنوان و محتوای ناهمخوان داشت (عنوان: «تکمیل شد»، محتوا: «ایمیل
+      ارسال شد»).
+    - فرم درخواست، خطاهای فیلد ایمیل را نمایش نمی‌داد.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="resetee",
+            password="OldPass123x",
+            email="resetee@example.com",
+        )
+        self.client = Client()
+
+    def _confirm_url(self, token):
+        from django.contrib.auth.tokens import default_token_generator
+        from django.utils.http import urlsafe_base64_encode
+        from django.utils.encoding import force_bytes
+        uidb64 = urlsafe_base64_encode(force_bytes(self.user.pk))
+        return reverse('accounts:password_reset_confirm', args=[uidb64, token])
+
+    def test_request_page_renders_and_shows_email_errors(self):
+        response = self.client.get(reverse('accounts:password_reset'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'ارسال لینک بازیابی')
+
+        # ایمیل نامعتبر → خطای فیلد باید در صفحه باشد
+        bad = self.client.post(reverse('accounts:password_reset'), {'email': 'not-an-email'})
+        self.assertEqual(bad.status_code, 200)
+        self.assertContains(bad, 'text-red-600')
+
+    def test_done_page_says_email_sent(self):
+        response = self.client.get(reverse('accounts:password_reset_done'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'ایمیل بازیابی ارسال شد')
+        # عنوان قدیمی ناهمخوان نباید برگردد
+        self.assertNotContains(response, 'بازیابی رمز عبور تکمیل شد')
+
+    def test_invalid_link_shows_warning_not_form(self):
+        response = self.client.get(self._confirm_url('invalid-token'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'لینک بازیابی نامعتبر است')
+        self.assertContains(response, 'درخواست لینک جدید')
+        self.assertNotContains(response, 'name="new_password1"')
+
+    def test_valid_link_sets_new_password(self):
+        from django.contrib.auth.tokens import default_token_generator
+        url = self._confirm_url(default_token_generator.make_token(self.user))
+
+        # Django لینک معتبر را به توکن نشست «set-password» ریدایرکت می‌کند
+        redirect = self.client.get(url)
+        self.assertEqual(redirect.status_code, 302)
+        set_url = redirect.url
+
+        page = self.client.get(set_url)
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, 'name="new_password1"')
+
+        done = self.client.post(set_url, {
+            'new_password1': 'BrandNew789k',
+            'new_password2': 'BrandNew789k',
+        })
+        self.assertRedirects(done, reverse('accounts:password_reset_complete'))
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password('BrandNew789k'))
+
+    def test_mismatched_passwords_re_renders_with_errors(self):
+        from django.contrib.auth.tokens import default_token_generator
+        url = self._confirm_url(default_token_generator.make_token(self.user))
+        set_url = self.client.get(url).url  # ریدایرکت به set-password
+        response = self.client.post(set_url, {
+            'new_password1': 'BrandNew789k',
+            'new_password2': 'Different456j',
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context['form'].errors)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password('OldPass123x'))
+
+    def test_complete_page_renders(self):
+        response = self.client.get(reverse('accounts:password_reset_complete'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'رمز عبور بازیابی شد')

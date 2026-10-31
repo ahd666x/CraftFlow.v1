@@ -56,10 +56,14 @@ def multiply(value, arg):
 
 @register.filter
 def persian_date(value):
-    """تبدیل datetime یا date میلادی به رشتهٔ شمسی YYYY/MM/DD"""
+    """تبدیل datetime یا date میلادی/شمسی به رشتهٔ شمسی YYYY/MM/DD"""
     if not value:
         return ''
     try:
+        # فیلد شمسی مدل‌ها (PersianDateField) خودش jdatetime.date می‌دهد؛
+        # قبلاً به‌جای قالب YYYY/MM/DD فقط str() با خط تیره برمی‌گشت.
+        if isinstance(value, jdatetime.date):
+            return value.strftime('%Y/%m/%d')
         if isinstance(value, datetime) and timezone.is_aware(value):
             value = timezone.localtime(value, timezone.get_current_timezone())
         if isinstance(value, datetime):

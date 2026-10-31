@@ -1,6 +1,7 @@
 # product/decorators.py
 from django.shortcuts import redirect
 from django.http import JsonResponse
+from django.contrib import messages
 from functools import wraps
 
 
@@ -28,7 +29,6 @@ def admin_or_manager_required(view_func=None, redirect_url='/orderlist/'):
 
 
 def staff_or_representative_required(view_func=None, redirect_url='/customer/orders/'):
-
     def check_user(user):
         if not user.is_authenticated:
             return False
@@ -46,6 +46,38 @@ def staff_or_representative_required(view_func=None, redirect_url='/customer/ord
                     return JsonResponse({'success': False, 'error': 'دسترسی غیرمجاز. کاربر باید عضو گروه مجاز باشد.'}, status=403)
                 return redirect(redirect_url)
             return view_func(request, *args, **kwargs)
+        return _wrapped_view
+
+    if view_func:
+        return decorator(view_func)
+    return decorator
+
+
+def representative_panel_required(view_func=None, redirect_url='/shop/'):
+    """دسترسی پنل نماینده (customer/*): ادمین، staff یا عضو گروه‌های «۱»/«نماینده».
+
+    پنل نماینده قیمت‌های عمده (base_price) را نشان می‌دهد و ورودی ثبت سفارش
+    عمده است؛ مطابق سیاست can_see_prices فروشگاه، کاربر عادیِ بدون مجوز قیمت
+    نباید به آن برسد. قبلاً این ویوها فقط @login_required داشتند و هر کاربر
+    ثبت‌نام‌شدهٔ فروشگاه می‌توانست سفارش عمده ثبت کند و قیمت ببیند.
+    برای کاربر لاگین‌شدهٔ بی‌مجوز، به فروشگاه (/shop/) برمی‌گردد.
+    """
+    def check_user(user):
+        if not user.is_authenticated:
+            return False
+        if user.is_superuser or user.is_staff:
+            return True
+        return user.groups.filter(name__in=['1', 'نماینده']).exists()
+
+    def decorator(vf):
+        @wraps(vf)
+        def _wrapped_view(request, *args, **kwargs):
+            if not check_user(request.user):
+                if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.content_type == 'application/json':
+                    return JsonResponse({'success': False, 'error': 'دسترسی غیرمجاز. این بخش مخصوص نمایندگان است.'}, status=403)
+                messages.error(request, 'این بخش مخصوص نمایندگان است. برای ثبت سفارش از فروشگاه استفاده کنید.')
+                return redirect(redirect_url)
+            return vf(request, *args, **kwargs)
         return _wrapped_view
 
     if view_func:

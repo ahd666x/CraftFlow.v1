@@ -1,5 +1,5 @@
 from django.test import TestCase
-from django.contrib.auth.models import User
+from django.contrib.auth.models import User, Group
 from django.urls import reverse
 
 from product.models import Product, ProductCategory, Order, OrderItem, Customer
@@ -13,6 +13,8 @@ class Batch2B5ShipmentsTests(TestCase):
         cls.category = ProductCategory.objects.create(name='دسته')
         cls.product = Product.objects.create(category=cls.category, name='محصول', base_price=1000)
         cls.user = User.objects.create_user('cust_user', password='testpass')
+        # r8: پنل مشتری فقط برای نماینده/staff باز است (representative_panel_required)
+        cls.user.groups.add(Group.objects.get_or_create(name='نماینده')[0])
 
     def setUp(self):
         self.client.login(username='cust_user', password='testpass')

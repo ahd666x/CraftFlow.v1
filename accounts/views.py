@@ -186,6 +186,10 @@ class CustomPasswordResetView(auth_views.PasswordResetView):
 class CustomPasswordResetConfirmView(auth_views.PasswordResetConfirmView):
     template_name = 'accounts/password_reset_confirm.html'
     form_class = StyledSetPasswordForm
+    # پیش‌فرض جنگو به نامِ بدون-فضای‌نام 'password_reset_complete' می‌رود که
+    # در urls ما (فضای‌نام accounts:) وجود ندارد → بعد از تنظیم موفق رمز
+    # جدید، 500 می‌داد. r8: به نسخهٔ فضای‌نام‌دار وصل شد.
+    success_url = reverse_lazy('accounts:password_reset_complete')
 
 
 class CustomPasswordChangeView(auth_views.PasswordChangeView):
