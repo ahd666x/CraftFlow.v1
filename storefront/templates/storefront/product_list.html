@@ -66,7 +66,7 @@
         {% if can_see_prices %}
         {% if min_price or max_price %}
         <span class="inline-flex items-center gap-1 px-3 py-1 text-sm bg-primary-100 text-primary-800 rounded-full">
-            قیمت: {% if min_price %}{{ min_price|fa_price }}{% else %}۰{% endif %} - {% if max_price %}{{ max_price|fa_price }}{% else %}∞{% endif %} تومان
+            قیمت: {% if min_price %}{{ min_price|fa_price }}{% else %}۰{% endif %} - {% if max_price %}{{ max_price|fa_price }}{% else %}∞{% endif %} ریال
             <a href="{% querystring min_price=None max_price=None page=None %}" class="text-primary-600 hover:text-primary-800" aria-label="حذف فیلتر قیمت">×</a>
         </span>
         {% endif %}

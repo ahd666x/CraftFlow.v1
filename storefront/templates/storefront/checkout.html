@@ -173,14 +173,14 @@
                 {# Shipping — مثل _cart_totals، برای کاربر بی‌مجوز قیمت «—» #}
                 <div class="flex items-center justify-between text-sm text-stone-600">
                     <span>هزینه ارسال</span>
-                    <span>{% if not can_see_prices %}—{% elif cart.shipping_cost == 0 %}رایگان{% else %}{{ cart.shipping_cost|fa_price }} تومان{% endif %}</span>
+                    <span>{% if not can_see_prices %}—{% elif cart.shipping_cost == 0 %}رایگان{% else %}{{ cart.shipping_cost|fa_price }} ریال{% endif %}</span>
                 </div>
 
                 {# Tax — فقط برای دارای مجوز قیمت (مبلغ مالیات هم اطلاعات قیمتی است) #}
                 {% if can_see_prices and cart.tax_amount > 0 %}
                 <div class="flex items-center justify-between text-sm text-stone-600">
                     <span>مالیات ({{ site_settings.tax_percent }}%)</span>
-                    <span>{{ cart.tax_amount|fa_price }} تومان</span>
+                    <span>{{ cart.tax_amount|fa_price }} ریال</span>
                 </div>
                 {% endif %}
 
@@ -192,7 +192,7 @@
                     <span class="text-lg font-bold text-primary-800">—</span>
                     {% endif %}
                 </div>
-                {% if can_see_prices %}<p class="text-xs text-stone-500">تومان</p>{% endif %}
+                {% if can_see_prices %}<p class="text-xs text-stone-500">ریال</p>{% endif %}
             </div>
 
             {# Estimated delivery #}
@@ -204,7 +204,7 @@
                     <span>زمان تحویل تقریبی: {{ cart.estimated_delivery_min }} تا {{ cart.estimated_delivery_max }} روز کاری</span>
                 </div>
                 {% if can_see_prices and cart.shipping_cost > 0 %}
-                <p class="mt-1 text-xs text-primary-700">سفارش‌های بالای {{ site_settings.free_shipping_threshold|fa_price }} تومان، ارسال رایگان دارند.</p>
+                <p class="mt-1 text-xs text-primary-700">سفارش‌های بالای {{ site_settings.free_shipping_threshold|fa_price }} ریال، ارسال رایگان دارند.</p>
                 {% endif %}
             </div>
         </aside>

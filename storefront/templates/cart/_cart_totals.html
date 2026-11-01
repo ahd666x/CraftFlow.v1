@@ -42,14 +42,14 @@
     {# Shipping — مبلغ ارسال برای کاربر بی‌مجوز قیمت لو می‌رود؛ فقط «رایگان» عمومی است #}
     <div class="mt-2 flex items-center justify-between text-sm text-stone-600">
         <span>هزینه ارسال</span>
-        <span>{% if not can_see_prices %}—{% elif cart.shipping_cost == 0 %}رایگان{% else %}{{ cart.shipping_cost|fa_price }} تومان{% endif %}</span>
+        <span>{% if not can_see_prices %}—{% elif cart.shipping_cost == 0 %}رایگان{% else %}{{ cart.shipping_cost|fa_price }} ریال{% endif %}</span>
     </div>
 
     {# Tax — مبلغ مالیات هم برای کاربر بی‌مجوز قیمت لو می‌رود #}
     {% if can_see_prices and cart.tax_amount > 0 %}
     <div class="mt-1 flex items-center justify-between text-sm text-stone-600">
         <span>مالیات ({{ site_settings.tax_percent }}٪)</span>
-        <span>{{ cart.tax_amount|fa_price }} تومان</span>
+        <span>{{ cart.tax_amount|fa_price }} ریال</span>
     </div>
     {% endif %}
 
@@ -61,7 +61,7 @@
         <span class="text-lg font-bold text-primary-800">—</span>
         {% endif %}
     </div>
-    <p class="mt-1 text-xs text-stone-500">تومان</p>
+    <p class="mt-1 text-xs text-stone-500">ریال</p>
 
     {# Estimated delivery #}
     <div class="mt-4 p-3 rounded-lg bg-primary-50 border border-primary-100">
@@ -72,7 +72,7 @@
             <span>زمان تحویل تقریبی: {{ cart.estimated_delivery_min|fa_number }} تا {{ cart.estimated_delivery_max|fa_number }} روز کاری</span>
         </div>
         {% if can_see_prices and cart.shipping_cost > 0 %}
-        <p class="mt-1 text-xs text-primary-700">سفارش‌های بالای {{ site_settings.free_shipping_threshold|fa_price }} تومان، ارسال رایگان دارند.</p>
+        <p class="mt-1 text-xs text-primary-700">سفارش‌های بالای {{ site_settings.free_shipping_threshold|fa_price }} ریال، ارسال رایگان دارند.</p>
         {% endif %}
     </div>
 

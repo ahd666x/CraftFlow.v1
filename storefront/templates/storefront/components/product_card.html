@@ -96,7 +96,7 @@
         {% if can_see_prices %}
         <p class="text-sm text-stone-600">
             {# «از X» فقط برای محصولِ ابعاد-قابل-تغییر معنا دارد؛ در غیر این صورت قیمت ثابت است #}
-            <span class="font-semibold text-stone-900">{% if product.length_editable or product.width_editable or product.height_editable %}از {% endif %}{{ product.base_price|fa_price }}</span> تومان
+            <span class="font-semibold text-stone-900">{% if product.length_editable or product.width_editable or product.height_editable %}از {% endif %}{{ product.base_price|fa_price }}</span> ریال
         </p>
         {% else %}
         {# کارت تماس واقعی به‌جای متن بن‌بست #}

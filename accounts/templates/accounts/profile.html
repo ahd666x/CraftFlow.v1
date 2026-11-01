@@ -67,7 +67,7 @@
                     <span class="badge-status {{ recent_order.status }} whitespace-nowrap">{{ recent_order.get_status_display }}</span>
                     {% if show_prices %}
                     <div class="text-end">
-                        <p class="font-bold text-stone-900">{{ recent_order.final_amount|fa_price }} تومان</p>
+                        <p class="font-bold text-stone-900">{{ recent_order.final_amount|fa_price }} ریال</p>
                     </div>
                     {% endif %}
                 </div>
@@ -136,7 +136,7 @@
                     {% if show_prices %}
                     <div class="flex justify-between">
                         <dt class="text-stone-500">کل خریدها</dt>
-                        <dd class="font-medium text-primary-700">{{ total_spent|fa_price }} تومان</dd>
+                        <dd class="font-medium text-primary-700">{{ total_spent|fa_price }} ریال</dd>
                     </div>
                     {% endif %}
                 </dl>

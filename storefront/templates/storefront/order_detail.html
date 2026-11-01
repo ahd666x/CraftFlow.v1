@@ -77,7 +77,7 @@
                                     {% if item.unit_price %}{{ item.unit_price|fa_price }}{% else %}—{% endif %}
                                 </span>
                                 <span class="font-bold">{{ item.line_total|fa_price }}</span>
-                                <span class="text-xs text-stone-500"> تومان</span>
+                                <span class="text-xs text-stone-500"> ریال</span>
                                 {% else %}
                                 <span class="text-xs text-stone-500">برای اطلاع از قیمت تماس بگیرید</span>
                                 {% endif %}
@@ -121,7 +121,7 @@
                     <div class="flex justify-between text-stone-600">
                         <span>هزینه ارسال</span>
                         {% if can_see_prices %}
-                        <span>{{ order.shipping_cost|fa_price }} تومان</span>
+                        <span>{{ order.shipping_cost|fa_price }} ریال</span>
                         {% else %}
                         <span>—</span>
                         {% endif %}
@@ -132,7 +132,7 @@
                     <div class="flex justify-between text-stone-600">
                         <span>مالیات ({{ site_settings.tax_percent }}%)</span>
                         {% if can_see_prices %}
-                        <span>{{ order.tax_amount|fa_price }} تومان</span>
+                        <span>{{ order.tax_amount|fa_price }} ریال</span>
                         {% else %}
                         <span>—</span>
                         {% endif %}
@@ -147,7 +147,7 @@
                         <span class="font-bold text-primary-800">—</span>
                         {% endif %}
                     </div>
-                    {% if can_see_prices %}<p class="text-xs text-stone-500">تومان</p>{% endif %}
+                    {% if can_see_prices %}<p class="text-xs text-stone-500">ریال</p>{% endif %}
                 </div>
 
                 {# Estimated delivery #}

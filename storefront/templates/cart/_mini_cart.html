@@ -12,7 +12,7 @@
         <div class="border-t border-stone-200 pt-4 space-y-2">
             <div class="flex justify-between text-xs text-stone-600 mb-1">
                 <span>برای ارسال رایگان</span>
-                <span>{{ site_settings.free_shipping_threshold|subtract:cart.total_price|fa_price }} تومان باقی مانده</span>
+                <span>{{ site_settings.free_shipping_threshold|subtract:cart.total_price|fa_price }} ریال باقی مانده</span>
             </div>
             <div class="h-2 bg-stone-200 rounded-full overflow-hidden">
                 <div class="h-full bg-primary-600 rounded-full transition-all duration-300"
@@ -63,7 +63,7 @@
             <span class="text-lg font-bold text-primary-800">—</span>
             {% endif %}
         </div>
-            <p class="text-xs text-stone-500">تومان</p>
+            <p class="text-xs text-stone-500">ریال</p>
 
                 {% if not cart.discount or not cart.discount.is_valid %}
             <form method="post" action="{% url 'discounts:apply_discount' %}"

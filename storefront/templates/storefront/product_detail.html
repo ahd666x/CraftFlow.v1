@@ -213,7 +213,7 @@
                         <div class="text-stone-900">{{ product.category.name }}</div>
                         {% if can_see_prices %}
                         <div class="font-medium text-stone-500">قیمت پایه</div>
-                        <div class="text-stone-900">{{ product.base_price|fa_price }} تومان</div>
+                        <div class="text-stone-900">{{ product.base_price|fa_price }} ریال</div>
                         {% endif %}
                         
                         {% if product.length or product.width or product.height %}
@@ -395,15 +395,15 @@
                 <div class="space-y-2 text-sm">
                     <div class="flex justify-between text-stone-600">
                         <span>قیمت پایه</span>
-                        <span>{{ product.base_price|fa_price }} تومان</span>
+                        <span>{{ product.base_price|fa_price }} ریال</span>
                     </div>
                     <div x-show="unitPrice() !== basePrice" x-cloak class="flex justify-between text-primary-700">
                         <span>تغییر ابعاد (<span x-text="increasePercent()"></span>٪)</span>
-                        <span dir="ltr" x-text="(unitPrice() - basePrice).toLocaleString('fa-IR') + ' تومان'"></span>
+                        <span dir="ltr" x-text="(unitPrice() - basePrice).toLocaleString('fa-IR') + ' ریال'"></span>
                     </div>
                     <div class="flex justify-between border-t border-stone-100 pt-2">
                         <span class="font-semibold">قیمت واحد</span>
-                        <span class="font-bold" x-text="unitPrice().toLocaleString('fa-IR') + ' تومان'"></span>
+                        <span class="font-bold" x-text="unitPrice().toLocaleString('fa-IR') + ' ریال'"></span>
                     </div>
                 </div>
 
@@ -495,7 +495,7 @@
                         </div>
                         <div class="text-left">
                             <span class="block text-xs text-stone-500">قیمت کل</span>
-                            <span class="text-xl font-bold" x-text="total().toLocaleString('fa-IR') + ' تومان'"></span>
+                            <span class="text-xl font-bold" x-text="total().toLocaleString('fa-IR') + ' ریال'"></span>
                         </div>
                     </div>
 

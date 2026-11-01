@@ -41,7 +41,7 @@ flex-wrap نشکند و قیمت زیر دکمه‌ها نیفتد.
             </div>
             <div class="mt-0.5 text-sm text-stone-500">
                 {% if can_see_prices %}
-                قیمت واحد: {{ item.unit_price|fa_price }} تومان
+                قیمت واحد: {{ item.unit_price|fa_price }} ریال
                 {% else %}
                 برای اطلاع از قیمت تماس بگیرید
                 {% endif %}
@@ -81,7 +81,7 @@ flex-wrap نشکند و قیمت زیر دکمه‌ها نیفتد.
         <div class="text-end">
             {% if can_see_prices %}
             <span class="block text-lg font-bold">{{ item.total_price|fa_price }}</span>
-            <span class="text-xs text-stone-500">تومان</span>
+            <span class="text-xs text-stone-500">ریال</span>
             {% else %}
             <span class="text-xs text-stone-500">برای اطلاع از قیمت تماس بگیرید</span>
             {% endif %}
