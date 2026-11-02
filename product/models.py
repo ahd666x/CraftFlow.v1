@@ -224,8 +224,7 @@ class Order(models.Model):
         """Clear cached properties when order items change."""
         for attr in ['total_price', 'shipping_cost', 'tax_amount', 
                      'estimated_delivery_min', 'estimated_delivery_max', '_site_settings']:
-            if hasattr(self, attr):
-                delattr(self, attr)
+            self.__dict__.pop(attr, None)
 
 
     @property

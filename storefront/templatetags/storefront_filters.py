@@ -7,8 +7,11 @@
 from datetime import date, datetime
 
 from django import template
+from django.utils import timezone
+
 
 register = template.Library()
+
 
 PERSIAN_DIGITS = str.maketrans('0123456789', '۰۱۲۳۴۵۶۷۸۹')
 
@@ -49,11 +52,12 @@ def persian_date(value, fmt='%Y/%m/%d'):
         if isinstance(value, jdatetime.date):
             return value.strftime(fmt)
         if isinstance(value, datetime):
+            if timezone.is_aware(value):
+                value = timezone.localtime(value)
             return jdatetime.datetime.fromgregorian(datetime=value).strftime(fmt)
         return jdatetime.date.fromgregorian(date=value).strftime(fmt)
     except (ImportError, TypeError, ValueError, OverflowError):
         return str(value)
-
 
 @register.filter
 def js_number(value):

@@ -43,10 +43,22 @@
         document.addEventListener('alpine:init', function () {
             var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-            Alpine.directive('reveal', function (el, { modifiers }) {
+            Alpine.directive('reveal', function (el, { modifiers, expression }) {
                 el.classList.add('reveal');
+                var delay = null;
                 var i = modifiers.indexOf('delay');
                 if (i !== -1 && modifiers[i + 1]) {
+                    delay = modifiers[i + 1];
+                } else if (expression !== undefined && expression !== null && expression !== '') {
+                    // If expression is numeric string or number
+                    var expr = String(expression).trim();
+                    if (/^\d+$/.test(expr)) {
+                        delay = expr;
+                    }
+                }
+                if (delay) {
+                    el.style.transitionDelay = delay + 'ms';
+                } else if (i !== -1 && modifiers[i + 1]) {
                     el.style.transitionDelay = modifiers[i + 1] + 'ms';
                 }
                 if (reduce || !('IntersectionObserver' in window)) {
@@ -92,8 +104,8 @@
             });
 
             Alpine.data('testimonialSlider', function () {
-                {# شمارش از DOM (همیشه موجود) با فالبک به context؛ روی صفحات غیر از خانه
-                   متغیر پایه وجود ندارد و قبلاً صفر می‌شد #}
+                // شمارش از DOM (همیشه موجود) با فالبک به context؛ روی صفحات غیر از خانه
+                // متغیر پایه وجود ندارد و قبلاً صفر می‌شد
                 var items = document.querySelectorAll('.testimonial-item').length || {{ testimonials|length|default:0 }};
                 return {
                     current: 0,
@@ -193,8 +205,8 @@
                 };
             });
 
-            {# فرم ثبت‌نام: قبلاً registerForm() در هیچ‌جا تعریف نشده بود و همهٔ
-               bindingهای فرم (نمایش رمز، نوار قدرت، submitting) خطای JS می‌دادند #}
+            // فرم ثبت‌نام: قبلاً registerForm() در هیچ‌جا تعریف نشده بود و همهٔ
+            // bindingهای فرم (نمایش رمز، نوار قدرت، submitting) خطای JS می‌دادند
             Alpine.data('registerForm', function () {
                 return {
                     password: '',
@@ -288,9 +300,9 @@ Alpine.data('miniCart', function () {
                     loadContent: function () {
                         var drawerContent = document.getElementById('mini-cart-content');
                         if (!drawerContent) return;
-                        {# گارد loading حذف شد: باز/بستن سریع کشو محتوای کهنه نمی‌گذارد؛
-                           درخواست قبلی با abortController قطع می‌شود #}
-                        if (this.abortController) {
+                    // گارد loading حذف شد: باز/بستن سریع کشو محتوای کهنه نمی‌گذارد؛
+                    // درخواست قبلی با abortController قطع می‌شود
+                    if (this.abortController) {
                             this.abortController.abort();
                         }
                         this.abortController = new AbortController();
@@ -432,8 +444,7 @@ Alpine.data('miniCart', function () {
            aria-label="سبد خرید">
             <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
             <span>سبد</span>
-            {# data-cart-count: هدر id="cart-count" دارد؛ id تکراری باعث می‌شد
-               HTMX فقط شمارندهٔ هدر را به‌روز کند و این یکی کهنه بماند #}
+            {# data-cart-count: هدر id="cart-count" دارد؛ id تکراری باعث می‌شد  HTMX فقط شمارندهٔ هدر را به‌روز کند و این یکی کهنه بماند #}
             <span data-cart-count
                   class="absolute -top-1 -start-1 h-4 min-w-[1rem] grid place-items-center rounded-full bg-primary-600 px-1 text-[10px] text-white"
                   x-bind:class="{'hidden': !parseInt($el.textContent || '0')}">

@@ -1,6 +1,5 @@
 {% load storefront_filters %}
-{# ناحیهٔ جمع‌های سبد — هم در رندر اولیه صفحهٔ سبد و هم به‌صورت OOB در پاسخ‌های
-   HTMX (با پارامتر oob=True) استفاده می‌شود #}
+{# ناحیهٔ جمع‌های سبد — هم در رندر اولیه صفحهٔ سبد و هم به‌صورت OOB در پاسخ‌هایHTMX (با پارامتر oob=True) استفاده می‌شود #}
 <div id="cart-totals" {% if oob %}hx-swap-oob="true"{% endif %}>
     <div class="flex items-center justify-between text-sm text-stone-600">
         <span>جمع اقلام ({{ cart.total_items|fa_number }})</span>

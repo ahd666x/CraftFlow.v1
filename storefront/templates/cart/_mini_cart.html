@@ -6,8 +6,6 @@
             {% include 'cart/_row.html' with item=item use_htmx=True %}
         {% endfor %}
 
-        {# Free Shipping Progress Bar — برای کاربر بی‌قیمت نمایش داده نمی‌شود
-           (عرض نوار اطلاعات قیمت را لو می‌داد) #}
         {% if can_see_prices and cart.shipping_cost > 0 %}
         <div class="border-t border-stone-200 pt-4 space-y-2">
             <div class="flex justify-between text-xs text-stone-600 mb-1">

@@ -10,8 +10,7 @@
     {% if items %}
     <div class="grid gap-8 lg:grid-cols-[1fr_22rem]">
 
-        {# آپدیت جزئی HTMX: هر تغییر سطر، همین ناحیه را جایگزین می‌کند (بدون ریلود کامل
-           و پرش صفحه) و جمع‌ها با hx-swap-oob داخل پارشیال totals به‌روز می‌شوند #}
+        {# آپدیت جزئی HTMX: هر تغییر سطر، همین ناحیه را جایگزین می‌کند (بدون ریلود کامل  و پرش صفحه) و جمع‌ها با hx-swap-oob داخل پارشیال totals به‌روز می‌شوند #}
         <div id="cart-rows" class="space-y-4" data-cart-total="{{ cart.total_items }}">
             {% for item in items %}
             {% include 'cart/_row.html' with item=item use_htmx=True cart_page=True %}

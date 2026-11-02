@@ -12,7 +12,7 @@
            ? 'border-b-0 bg-transparent'
            : 'border-b border-stone-100 bg-white/90 backdrop-blur'">
     <div class="mx-auto flex h-16 max-w-6xl items-center gap-6 px-4 relative">
-        {% if isHome %}
+                {% if is_home %}
         <div class="absolute inset-0 pointer-events-none" aria-hidden="true">
             <div class="absolute inset-0 bg-gradient-to-b from-black/50 via-black/10 to-transparent"></div>
         </div>
@@ -23,8 +23,7 @@
         </a>
 
         <nav class="hidden items-center gap-6 md:flex">
-            {# لینک‌های حقوقی (مرجوعی/قوانین) از ناوبری اصلی حذف شدند — فوتر
-               همان‌ها را دارد؛ سطح‌بودن صفحات حقوقی با محصولات گمراه‌کننده بود #}
+            {# لینک‌های حقوقی (مرجوعی/قوانین) از ناوبری اصلی حذف شدند — فوتر همان‌ها را دارد؛ سطح‌بودن صفحات حقوقی با محصولات گمراه‌کننده بود #}
             <a href="{% url 'storefront:product_list' %}"
                class="link-muted relative {% if request.resolver_match.url_name == 'product_list' or request.resolver_match.url_name == 'product_detail' %}text-primary-700 font-medium{% endif %}"
                :class="isHome && !scrolled ? 'text-white hover:text-primary-100' : 'text-stone-600 hover:text-stone-900'">

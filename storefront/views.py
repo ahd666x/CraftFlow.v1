@@ -502,8 +502,22 @@ def _create_order(request, cart, items):
 
     # Increment discount used_count if discount was applied
     if cart.discount:
-        cart.discount.used_count += 1
-        cart.discount.save(update_fields=['used_count'])
+        from discounts.models import Discount
+        from django.db.models import F
+        with transaction.atomic():
+            discount = Discount.objects.select_for_update().get(pk=cart.discount.pk)
+            if not discount.is_valid:
+                messages.error(request, 'کد تخفیف نامعتبر یا منقضی شده است.')
+                cart.discount = None
+                cart.save(update_fields=['discount'])
+                cart._clear_cached_properties()
+                return render(
+                    request, 'storefront/checkout.html',
+                    _checkout_context(request, cart, items, form_data=request.POST),
+                    status=400,
+                )
+            discount.used_count = F('used_count') + 1
+            discount.save(update_fields=['used_count'])
 
     cart.items.all().delete()
     # Clear cart discount after order is placed

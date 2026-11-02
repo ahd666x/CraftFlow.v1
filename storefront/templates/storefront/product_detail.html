@@ -326,8 +326,7 @@
                     {% else %}
                     <div class="mt-8 pt-6 border-t border-stone-100">
                         <h3 class="font-semibold mb-4">ثبت نظر شما</h3>
-                        {# اعتبارسنجی امتیاز در کلاینت: required روی radio مخفی (sr-only)
-                           پیام بومی مرورگر را جای نامشخصی نشان می‌داد #}
+                        {# اعتبارسنجی امتیاز در کلاینت: required روی radio مخفی (sr-only) پیام بومی مرورگر را جای نامشخصی نشان می‌داد #}
                         <form method="post" action="{% url 'storefront:review_create' product.slug %}"
                               hx-post="{% url 'storefront:review_create' product.slug %}"
                               hx-target="#review-form-box"
@@ -341,8 +340,7 @@
                             <input type="hidden" name="product_slug" value="{{ product.slug }}">
                             <div>
                                 <label class="label" id="rating-label">امتیاز</label>
-                                {# در RTL ترفند peer-checked برای «پرشدن تا انتخاب» نامطمئن بود؛
-                                   با x-model تا ستارهٔ انتخاب‌شده پر می‌شود + focus ring #}
+                                {# در RTL ترفند peer-checked برای «پرشدن تا انتخاب» نامطمئن بود؛  با x-model تا ستارهٔ انتخاب‌شده پر می‌شود + focus ring #}
                                 <div class="flex gap-2" role="radiogroup" aria-labelledby="rating-label">
                                     {% for i in "12345"|make_list %}
                                     <label class="cursor-pointer rounded has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-primary-600 has-[:focus-visible]:ring-offset-2">
@@ -390,8 +388,7 @@
             <div class="card p-5 space-y-4">
                 <h2 class="font-semibold text-lg">قیمت و خرید</h2>
 
-                {# ریزش قیمت: قیمت پایه + تغییر ابعاد + قیمت واحد — قبلاً کامنت بود و
-                   کاربر فقط «قیمت کل» پایین را می‌دید و دلیل افزایش را نمی‌فهمید #}
+                {# ریزش قیمت: قیمت پایه + تغییر ابعاد + قیمت واحد — قبلاً کامنت بود و    کاربر فقط «قیمت کل» پایین را می‌دید و دلیل افزایش را نمی‌فهمید #}
                 <div class="space-y-2 text-sm">
                     <div class="flex justify-between text-stone-600">
                         <span>قیمت پایه</span>
@@ -444,12 +441,11 @@
                         </div>
                     </div>
 
-                    {# راهنمای «خالی = پیش‌فرض»: مقدار پیش‌فرض فقط placeholder است و
-                       بدون این متن، کاربر نمی‌داند خالی گذاشتن چه معنایی دارد #}
-                    <p class="text-xs text-stone-500">
+                    {# راهنمای «خالی = پیش‌فرض»: مقدار پیش‌فرض فقط placeholder است و بدون این متن، کاربر نمی‌داند خالی گذاشتن چه معنایی دارد #}
+                    {% comment %} <p class="text-xs text-stone-500">
                         اگر فیلدی را خالی بگذارید، اندازهٔ پیش‌فرض (عدد کم‌رنگ داخل کادر) اعمال می‌شود.
                         فیلدهای خاکستری قابل تغییر نیستند.
-                    </p>
+                    </p> {% endcomment %}
 
                     {# پیام خطا برای هر محور #}
                     <template x-for="axis in ['length','width','height']" :key="axis">
@@ -508,8 +504,7 @@
             </div>
         </div>
         {% else %}
-        {# کاربر بی‌قیمت: فرم ابعاد بن‌بست بود (basePrice صفر و نتیجه بدون معنی)؛
-           به‌جای آن کارت تماس واقعی + راه ورود #}
+        {# کاربر بی‌قیمت: فرم ابعاد بن‌بست بود (basePrice صفر و نتیجه بدون معنی)؛  به‌جای آن کارت تماس واقعی + راه ورود #}
         <div class="lg:order-2 lg:sticky lg:top-20 lg:self-start">
             <div class="card p-5 space-y-4">
                 <div class="flex items-center gap-3">

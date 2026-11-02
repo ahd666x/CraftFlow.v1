@@ -14,8 +14,7 @@
         <p class="mb-6 text-sm text-stone-500">{{ error }}</p>
         <div class="flex flex-col gap-3 sm:flex-row">
             {% if order %}
-            {# تلاش مجدد برای همان سفارش — قبلاً فقط «بازگشت به سبد» بود که بعد از
-               ثبت سفارش خالی است و کاربر را در بن‌بست می‌گذاشت #}
+            {# تلاش مجدد برای همان سفارش #}
             <a href="{% url 'payments:payment_create' order.id %}" class="btn-primary flex-1">تلاش مجدد</a>
             <a href="{% url 'storefront:order_detail' order.id %}" class="btn-secondary flex-1">جزئیات سفارش</a>
             {% else %}

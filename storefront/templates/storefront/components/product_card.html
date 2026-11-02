@@ -76,9 +76,7 @@
     {% endif %}
 
     <div class="mt-3 space-y-0.5">
-        {# بلوک اطلاعات دیگر داخل <a> نیست: قبلاً لینک tel: و «ورود» داخل
-           لینک بیرونی تو در تو می‌شدند — HTML نامعتبر و رفتار غیرقابل‌پیش‌بینی
-           مرورگر/صفحه‌خوان. فقط نام محصول لینک است. #}
+        {# بلوک اطلاعات دیگر داخل <a> نیست: قبلاً لینک tel: و «ورود» داخل لینک بیرونی تو در تو می‌شدند — HTML نامعتبر و رفتار غیرقابل‌پیش‌بینی مرورگر/صفحه‌خوان. فقط نام محصول لینک است. #}
         <p class="text-xs text-stone-500">{{ product.category.name }}</p>
         <h3 class="line-clamp-1 text-sm font-medium text-stone-900">
             <a href="{% url 'storefront:product_detail' product.slug %}" class="hover:text-primary-700">

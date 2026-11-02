@@ -91,8 +91,7 @@ class Cart(TimeStampedModel):
         for attr in ['total_items', 'total_price', 'discount_amount', 'shipping_cost',
                      'tax_amount', 'final_price', 'estimated_delivery_min',
                      'estimated_delivery_max', '_site_settings', '_cached_items']:
-            if hasattr(self, attr):
-                delattr(self, attr)
+            self.__dict__.pop(attr, None)
 
 
 class CartItem(TimeStampedModel):

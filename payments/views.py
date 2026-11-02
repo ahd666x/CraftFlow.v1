@@ -67,6 +67,10 @@ def payment_create(request, order_id):
 
     if request.method == 'POST':
         gateway_name = request.POST.get('gateway', payment.gateway)
+        allowed_gateways = getattr(PaymentGatewayFactory, '_gateways', {}) or {}
+        if gateway_name not in allowed_gateways:
+            return render(request, 'payments/payment_error.html',
+                          {'error': 'درگاه پرداخت انتخاب‌شده معتبر نیست.', 'order': order})
         payment.gateway = gateway_name
         payment.save(update_fields=['gateway'])
 
