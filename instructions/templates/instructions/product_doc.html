@@ -1,75 +1,56 @@
-{% load static %}
-<!doctype html>
-<html lang="fa" dir="rtl">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>دستور تولید — {{ product.name }}</title>
-{% include 'instructions/partials/doc_styles.html' %}
-</head>
-<body>
-<div class="sheet">
-  <div class="doc-head">
-    {% if product.image %}<img class="cover" src="{{ product.image.url }}" alt="{{ product.name }}">{% endif %}
-    <div>
-      <h1>دستور تولید — {{ product.name }}</h1>
-      <div class="meta">
-        <span>دسته: {{ product.category.name|default:'—' }}</span>
-        <span>ابعاد پیش‌فرض: {{ product.default_size_display|default:'—' }}</span>
-        <span>تعداد دستورالعمل: {{ sections|length }} ایستگاه</span>
-      </div>
+{% extends 'instructions/base.html' %}
+{% block title %}دستور تولید — {{ product.name }}{% endblock %}
+{% block body %}
+{% include 'instructions/partials/doc_toolbar.html' %}
+
+<header class="doc-head">
+  {% if product.image %}<img class="cover" src="{{ product.image.url }}" alt="">{% endif %}
+  <div>
+    <h1>دستور تولید <bdi>{{ product.name }}</bdi></h1>
+    <div class="meta">
+      <span>دسته: <b>{{ product.category.name|default:'—' }}</b></span>
+      {% if product.default_size_display %}<span>ابعاد پیش‌فرض (cm): <b class="ltr">{{ product.default_size_display }}</b></span>{% endif %}
+      <span>{{ sections|length }} ایستگاه، {{ total }} بند</span>
     </div>
-    <span class="spacer"></span>
   </div>
+</header>
 
-  <div class="btnbar no-print">
-    <a class="btnlink" href="{% url 'instructions:product_editor' product.pk %}">✏️ ویرایشگر دستورالعمل‌ها</a>
-    <a class="btnlink" href="{% url 'admin:product_product_change' product.pk %}">ویرایش در ادمین</a>
-    <button class="primary" onclick="window.print()">🖨 چاپ سند</button>
-  </div>
+{% if not has_content %}
+  <div class="empty">برای این محصول هنوز دستورالعملی ثبت نشده است.<br>
+    <a href="{{ edit_url }}">از ویرایشگر شروع کنید</a></div>
+{% endif %}
 
-  {% if not has_instructions %}
-    <div class="empty">
-      برای این محصول هنوز دستورالعملی ثبت نشده است.<br>
-      <span class="hint">از «ویرایشگر دستورالعمل‌ها» یا ادمین، دستورالعمل هر ایستگاه را اضافه کنید.</span>
-    </div>
-  {% endif %}
+{% for section in sections %}
+  <section class="station">
+    <h2>{{ section.label }}</h2>
+    {% if section.auto_cnc %}{% include 'instructions/partials/cnc_auto_section.html' %}{% endif %}
+    {% for ins in section.items %}{% include 'instructions/partials/ins_card.html' %}{% endfor %}
+  </section>
+{% endfor %}
 
-  {% for section in sections %}
-    <h2 class="station">{{ section.label }}</h2>
-    {% if section.code == 'cnc' and cnc_setup %}{% include 'instructions/partials/cnc_auto_section.html' %}{% endif %}
-    {% for ins in section.items %}
-      {% include 'instructions/partials/ins_card.html' %}
-    {% endfor %}
-  {% endfor %}
-
-  {% if bom_rows %}
-    <h2 class="station">فرمول ساخت (قطعات محصول)</h2>
-    <table class="bom">
-      <thead>
-        <tr>
-          <th>قطعه</th><th>متریال</th><th class="n">ابعاد (mm)</th><th class="n">نوار لبه F26</th>
-          <th class="n">نوار لبه F18</th><th class="n">نوار لبه F4</th><th class="n">نوار لبه F5</th>
-          <th>تحویل به</th><th class="n">تعداد</th>
-        </tr>
-      </thead>
+{% if bom_rows %}
+  <section class="station">
+    <h2>فرمول ساخت</h2>
+    <div class="table-wrap"><table class="grid">
+      <thead><tr>
+        <th>قطعه</th><th>متریال</th><th>ابعاد (mm)</th>
+        {% if bom_has_edges %}<th>نوار لبه</th>{% endif %}
+        <th>مسیر</th><th>تعداد</th>
+      </tr></thead>
       <tbody>
         {% for row in bom_rows %}
           <tr>
             <td>{{ row.name }}</td>
-            <td>{{ row.material }}</td>
-            <td class="n">{{ row.size }}</td>
-            <td class="n">{{ row.edges.0.1 }}</td>
-            <td class="n">{{ row.edges.1.1 }}</td>
-            <td class="n">{{ row.edges.2.1 }}</td>
-            <td class="n">{{ row.edges.3.1 }}</td>
-            <td>{{ row.routing }}</td>
-            <td class="n">{{ row.quantity }}</td>
+            <td><bdi>{{ row.material }}</bdi></td>
+            <td class="num"><span class="ltr">{{ row.size }}</span></td>
+            {% if bom_has_edges %}<td>{{ row.edges|join:'، '|default:'—' }}</td>{% endif %}
+            <td class="route">{{ row.chain|join:' ← '|default:'—' }}</td>
+            <td class="num">{{ row.quantity }}</td>
           </tr>
         {% endfor %}
       </tbody>
-    </table>
-  {% endif %}
-</div>
-</body>
-</html>
+    </table></div>
+  </section>
+{% endif %}
+{% endblock %}
+{% block scripts %}{% include 'instructions/partials/doc_scripts.html' %}{% endblock %}

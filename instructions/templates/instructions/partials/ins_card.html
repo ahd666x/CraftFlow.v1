@@ -1,25 +1,28 @@
-{% comment %} کارت یک بند دستورالعمل برای سندهای چاپی — ورودی: ins (مدل WorkInstruction) {% endcomment %}
-<div class="ins ins-{{ ins.kind }} {% if ins.kind == 'warning' %}warning{% endif %}">
-  <div class="head">
-    <span class="badge {{ ins.badge.1 }}">{{ ins.badge.0 }}</span>
-    <b>{{ ins.title }}</b>
-    {% if ins.part_id %}<span class="badge cond">قطعه: {{ ins.part.name }}</span>{% endif %}
-    {% for label in ins.condition_labels %}<span class="badge cond">{{ label }}</span>{% endfor %}
+{% comment %}کارت یک بند — ورودی: ins (WorkInstruction). مراحل/نکته‌ها/… با دکمه‌ی سربرگ جمع و باز می‌شوند.{% endcomment %}
+{% with lines=ins.body_lines %}
+<article class="ins" data-kind="{{ ins.kind }}"{% if lines or ins.images.all %} data-collapsible{% endif %}>
+  <div class="ins-head"{% if lines or ins.images.all %} role="button" tabindex="0" aria-expanded="true"{% endif %}>
+    <span class="tag">{{ ins.badge.0 }}</span>
+    <span class="title">{{ ins.title }}</span>
+    {% if ins.part_id %}<span class="cond">قطعه: {{ ins.part.name }}</span>{% endif %}
+    {% for label in ins.condition_labels %}<span class="cond">{{ label }}</span>{% endfor %}
+    <span class="spacer"></span>
+    {% if lines or ins.images.all %}<span class="chev" aria-hidden="true">▼</span>{% endif %}
   </div>
-  {% for line in ins.body_lines %}
-    <div class="line">
-      {% if ins.kind == 'checklist' %}<span class="tick">☐</span>{% else %}<span>•</span>{% endif %}
-      <span>{{ line }}</span>
-    </div>
-  {% endfor %}
-  {% if ins.images.all %}
-    <div class="imgs">
-      {% for img in ins.images.all %}
-        <figure>
-          <img src="{{ img.image.url }}" alt="{{ img.caption|default:'' }}">
-          {% if img.caption %}<figcaption>{{ img.caption }}</figcaption>{% endif %}
-        </figure>
-      {% endfor %}
-    </div>
+  {% if lines or ins.images.all %}
+  <div class="ins-body">
+    {% for line in lines %}
+      <div class="line"><span class="mark">{% if ins.kind == 'checklist' %}☐{% else %}•{% endif %}</span><span>{{ line }}</span></div>
+    {% endfor %}
+    {% if ins.images.all %}
+      <div class="imgs">
+        {% for img in ins.images.all %}
+          <figure><img src="{{ img.image.url }}" alt="{{ img.caption|default:ins.title }}" loading="lazy">
+            {% if img.caption %}<figcaption>{{ img.caption }}</figcaption>{% endif %}</figure>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </div>
   {% endif %}
-</div>
+</article>
+{% endwith %}

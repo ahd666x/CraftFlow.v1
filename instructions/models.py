@@ -76,7 +76,7 @@ class WorkInstruction(models.Model):
     STATION_FILTER_CHOICES = [(GENERAL, 'عمومی (همه ایستگاه‌ها)')] + list(STATION_CHOICES)
 
     # ترتیب رسمی ایستگاه‌ها در سند «دستور تولید»: عمومی اول، ارسال آخر.
-    STATION_ORDER = [GENERAL] + [code for code, _name in STATION_CHOICES if code != 'shipping']
+    STATION_ORDER = [GENERAL] + [code for code, _name in STATION_CHOICES]
 
     product = models.ForeignKey(
         Product, null=True, blank=True, on_delete=models.CASCADE,

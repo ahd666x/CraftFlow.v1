@@ -1,0 +1,17 @@
+{# ورودی‌ها: kind_filters، docx_url، edit_url (اختیاری) #}
+<div class="toolbar no-print">
+  {% if kind_filters %}
+    <div class="chips" role="group" aria-label="نمایش یا مخفی‌کردن انواع بند">
+      {% for f in kind_filters %}
+        <button type="button" class="chip" data-kind-chip="{{ f.code }}" aria-pressed="true" title="نمایش / مخفی‌کردن {{ f.label }}">
+          {{ f.label }} <span class="n">{{ f.count }}</span>
+        </button>
+      {% endfor %}
+    </div>
+    <button type="button" class="btn sm" id="toggle-all" title="جمع‌کردن یا بازکردن همه‌ی کارت‌ها">جمع‌کردن همه</button>
+  {% endif %}
+  <span class="grow"></span>
+  {% if edit_url %}<a class="btn" href="{{ edit_url }}">ویرایش</a>{% endif %}
+  <a class="btn" href="{{ docx_url }}" data-docx data-base="{{ docx_url }}">دریافت Word</a>
+  <button type="button" class="btn primary" onclick="window.print()">چاپ / PDF</button>
+</div>

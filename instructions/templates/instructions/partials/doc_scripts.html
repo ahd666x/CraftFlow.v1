@@ -1,0 +1,59 @@
+<script>
+(function () {
+  var KEY = 'instructions.hiddenKinds', hidden = [];
+  try { hidden = JSON.parse(localStorage.getItem(KEY) || '[]'); } catch (e) {}
+  var chips = [].slice.call(document.querySelectorAll('[data-kind-chip]'));
+  var valid = chips.map(function (c) { return c.dataset.kindChip; });
+  hidden = hidden.filter(function (k) { return valid.indexOf(k) > -1; });
+
+  function apply() {
+    chips.forEach(function (c) {
+      var off = hidden.indexOf(c.dataset.kindChip) > -1;
+      c.classList.toggle('off', off);
+      c.setAttribute('aria-pressed', off ? 'false' : 'true');
+    });
+    [].forEach.call(document.querySelectorAll('.ins'), function (el) {
+      el.classList.toggle('is-hidden', hidden.indexOf(el.dataset.kind) > -1);
+    });
+    [].forEach.call(document.querySelectorAll('section.station'), function (sec) {
+      sec.classList.toggle('is-hidden', !sec.querySelector('.ins:not(.is-hidden), .cnc-auto'));
+    });
+    var link = document.querySelector('[data-docx]');
+    if (link) link.href = link.dataset.base + (hidden.length ? '?hide=' + hidden.join(',') : '');
+    try { localStorage.setItem(KEY, JSON.stringify(hidden)); } catch (e) {}
+  }
+  chips.forEach(function (c) {
+    c.addEventListener('click', function () {
+      var k = c.dataset.kindChip, i = hidden.indexOf(k);
+      if (i > -1) hidden.splice(i, 1); else hidden.push(k);
+      apply();
+    });
+  });
+
+  function toggleCard(card) {
+    var collapsed = card.classList.toggle('collapsed');
+    var head = card.querySelector('.ins-head');
+    if (head) head.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+  }
+  document.addEventListener('click', function (e) {
+    var head = e.target.closest('.ins-head[role="button"]');
+    if (head) toggleCard(head.closest('.ins'));
+  });
+  document.addEventListener('keydown', function (e) {
+    if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.ins-head[role="button"]')) {
+      e.preventDefault(); toggleCard(e.target.closest('.ins'));
+    }
+  });
+  var all = document.getElementById('toggle-all');
+  if (all) all.addEventListener('click', function () {
+    var cards = [].slice.call(document.querySelectorAll('.ins[data-collapsible]'));
+    var collapse = cards.some(function (c) { return !c.classList.contains('collapsed'); });
+    cards.forEach(function (c) {
+      c.classList.toggle('collapsed', collapse);
+      var h = c.querySelector('.ins-head'); if (h) h.setAttribute('aria-expanded', collapse ? 'false' : 'true');
+    });
+    all.textContent = collapse ? 'بازکردن همه' : 'جمع‌کردن همه';
+  });
+  apply();
+})();
+</script>
