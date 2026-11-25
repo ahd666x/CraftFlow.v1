@@ -36,7 +36,6 @@ from .forms import CustomerInfoForm, OrderItemForm, ColorSelectionForm
 from django.urls import reverse
 from django.utils import timezone
 from django.forms import inlineformset_factory, modelformset_factory
-from .decorators import admin_or_manager_required , staff_or_representative_required, representative_panel_required
 from .models import *
 from .forms import *
 from django.contrib.auth.decorators import login_required
@@ -44,7 +43,6 @@ from django.contrib.auth.models import User
 from django.db.models import Q, Count, F, OuterRef, Subquery, IntegerField, Exists, Value
 from django.db.models.functions import Coalesce
 from django.shortcuts import render
-from .decorators import staff_or_representative_required
 from .models import OrderItem, ProductCategory, Product, STATION_CHOICES, PackagingUnit
 import jdatetime
 from django.contrib.auth.decorators import login_required
@@ -52,7 +50,6 @@ from django.db.models import Count, Q
 from django.shortcuts import render
 from django.utils import timezone
 
-from .decorators import admin_or_manager_required
 from .models import Order, OrderItem, ProductionTask, PackagingUnit, STATION_CHOICES
 from django.views.decorators.http import require_POST
 
@@ -87,6 +84,9 @@ from .utils import (
 logger = logging.getLogger(__name__)
 
 
+from .decorators import (admin_required, internal_required,
+                          internal_read_admin_write, group_required,
+                          representative_panel_required)
 def _safe_next(request, default='dashboard'):
     nxt = request.GET.get('next') or request.POST.get('next') or ''
     if nxt and url_has_allowed_host_and_scheme(nxt, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
@@ -118,7 +118,7 @@ def _parse_default_jalali(value):
 
 
 @login_required
-@admin_or_manager_required
+@internal_required
 def production_defects(request):
     from inventory.models import RawMaterial
 
@@ -200,7 +200,7 @@ def production_defects(request):
 
 
 @login_required
-@admin_or_manager_required
+@internal_required
 def ajax_order_units_for_defect(request, order_id):
     order = get_object_or_404(Order, pk=order_id)
     units = PackagingUnit.objects.filter(
@@ -219,7 +219,7 @@ def ajax_order_units_for_defect(request, order_id):
 
 
 @login_required
-@admin_or_manager_required
+@internal_required
 def ajax_unit_color_parts_for_defect(request, unit_id):
     unit = get_object_or_404(
         PackagingUnit.objects.select_related('order_item__product'), pk=unit_id
@@ -233,7 +233,7 @@ def ajax_unit_color_parts_for_defect(request, unit_id):
 
 
 @login_required
-@admin_or_manager_required
+@internal_required
 def ajax_order_items_for_defect(request, order_id):
     """آیتم‌های یک سفارش برای dropdown دوم فرم ثبت خرابی."""
     order = get_object_or_404(Order, pk=order_id)
@@ -243,7 +243,7 @@ def ajax_order_items_for_defect(request, order_id):
 
 
 @login_required
-@admin_or_manager_required
+@internal_required
 def ajax_item_color_parts_for_defect(request, item_id):
     """بخش‌های رنگی موجود روی یک آیتم (از ordercolor یا default_colors محصول)."""
     item = get_object_or_404(OrderItem, pk=item_id)
@@ -256,7 +256,7 @@ def ajax_item_color_parts_for_defect(request, item_id):
 
 
 @login_required
-@staff_or_representative_required
+@internal_required
 def report_fulfillment_status(request):
     """Representative-centric view of complete, partial and unsent packed items."""
     representative_id = request.GET.get('representative', '')
@@ -294,7 +294,6 @@ from django.shortcuts import get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_http_methods
 from django.template.loader import render_to_string
-from .decorators import admin_or_manager_required
 from .models import WorkerProfile, Product, OrderItem, PaintingStage, STATION_CHOICES
 
 
@@ -308,7 +307,7 @@ def _worker_ids_with_skill(skill):
 # API لیست کارگران (با فیلتر و صفحه‌بندی)
 # ============================================================
 @login_required
-@admin_or_manager_required
+@internal_read_admin_write
 def painting_workers_api(request):
     if request.method == 'GET':
         search = request.GET.get('search', '')
@@ -382,8 +381,7 @@ def painting_workers_api(request):
 # API جزئیات یک کارگر
 # ============================================================
 @login_required
-@admin_or_manager_required
-@require_http_methods(['GET', 'PUT', 'DELETE'])
+@internal_read_admin_write
 def painting_worker_detail_api(request, worker_id):
     worker = get_object_or_404(WorkerProfile, pk=worker_id, stage='paint')
 
@@ -424,7 +422,7 @@ def painting_worker_detail_api(request, worker_id):
 # API مدیریت ممنوعیت‌ها (محصولات/آیتم‌ها)
 # ============================================================
 @login_required
-@admin_or_manager_required
+@internal_read_admin_write
 def painting_worker_exclusion_api(request, worker_id):
     worker = get_object_or_404(WorkerProfile, pk=worker_id, stage='paint')
 
@@ -456,7 +454,7 @@ def painting_worker_exclusion_api(request, worker_id):
 # API جستجوی محصولات و آیتم‌ها (برای Select2)
 # ============================================================
 @login_required
-@admin_or_manager_required
+@internal_required
 def search_products_api(request):
     q = request.GET.get('q', '').strip()
     products = Product.objects.select_related('category')
@@ -474,7 +472,7 @@ def search_products_api(request):
 
 
 @login_required
-@admin_or_manager_required
+@internal_required
 def search_items_api(request):
     q = request.GET.get('q', '')
     items = OrderItem.objects.select_related('order', 'product').filter(
@@ -508,7 +506,7 @@ def worker_to_dict(worker):
 # views.py (اضافه کنید)
 
 @login_required
-@admin_or_manager_required
+@admin_required
 def admin_edit_order_item(request, item_id):
     item = get_object_or_404(OrderItem, pk=item_id)
     order = item.order
@@ -592,7 +590,7 @@ def admin_edit_order_item(request, item_id):
 
 
 @login_required
-@admin_or_manager_required
+@admin_required
 def admin_edit_order(request, order_id):
     """ویرایش سفارش توسط ادمین/مدیران"""
     order = get_object_or_404(Order, pk=order_id)
@@ -630,7 +628,7 @@ def admin_edit_order(request, order_id):
 
 
 @login_required
-@admin_or_manager_required
+@admin_required
 def admin_delete_order_item(request, item_id):
     """حذف آیتم از سفارش (فقط ادمین)"""
     item = get_object_or_404(OrderItem, pk=item_id)
@@ -644,7 +642,7 @@ def admin_delete_order_item(request, item_id):
 
 
 @login_required
-@admin_or_manager_required
+@admin_required
 def admin_add_order_item(request, order_id):
     """افزودن آیتم به سفارش (ادمین) - مشابه create_order_step2 اما با redirect به edit"""
     order = get_object_or_404(Order, pk=order_id)
@@ -672,7 +670,7 @@ def admin_add_order_item(request, order_id):
 
 
 @login_required
-@admin_or_manager_required
+@admin_required
 def admin_delete_order(request, order_id):
     """حذف کامل سفارش (فقط ادمین) - با تأیید"""
     order = get_object_or_404(Order, pk=order_id)
@@ -689,7 +687,7 @@ def admin_delete_order(request, order_id):
 
 
 @login_required
-@admin_or_manager_required
+@admin_required
 def admin_order_tasks(request, order_id):
     order = get_object_or_404(Order, pk=order_id)
     tasks = order.tasks.select_related('part', 'assigned_worker', 'painting_stage').order_by('step_order')
@@ -712,7 +710,7 @@ def admin_order_tasks(request, order_id):
 
 
 @login_required
-@admin_or_manager_required
+@admin_required
 def admin_delete_task(request, task_id):
     task = get_object_or_404(ProductionTask, pk=task_id)
     order_id = task.order_id
@@ -725,7 +723,7 @@ def admin_delete_task(request, task_id):
 
 
 @login_required
-@staff_or_representative_required
+@internal_required
 def scan_item_tasks_ajax(request, item_id):
     if not hasattr(request.user, 'workerprofile'):
         return JsonResponse({'success': False, 'error': 'پروفایل کاری ندارید'}, status=403)
@@ -754,6 +752,7 @@ def scan_item_tasks_ajax(request, item_id):
 
 
 @login_required
+@internal_required
 @require_POST
 def mark_task_done(request, task_id):
     if not hasattr(request.user, 'workerprofile') and not request.user.is_superuser:
@@ -783,7 +782,7 @@ def mark_task_done(request, task_id):
 
 
 @login_required
-@admin_or_manager_required
+@admin_required
 def archive_upload(request):
     archive_type = request.GET.get('type', 'cnc').lower()
     if archive_type not in ('cnc', 'dr'):
@@ -929,19 +928,19 @@ def _archive_upload_page(request, archive_type):
 
 
 @login_required
-@admin_or_manager_required
+@admin_required
 def archive_upload_cnc(request):
     return _archive_upload_page(request, 'cnc')
 
 
 @login_required
-@admin_or_manager_required
+@admin_required
 def archive_upload_dr(request):
     return _archive_upload_page(request, 'dr')
 
 
 @login_required
-@admin_or_manager_required
+@admin_required
 def archive_delete_file(request):
     if request.method != 'POST':
         return JsonResponse({'success': False, 'error': 'روش غیرمجاز'}, status=405)
@@ -977,7 +976,7 @@ def archive_delete_file(request):
 
 
 @login_required
-@admin_or_manager_required
+@internal_required
 def archive_download(request, archive_type, filename):
     archive_type = archive_type.lower()
     if archive_type == 'cnc':
@@ -1015,7 +1014,7 @@ def _apply_task_status(task, new_status, user):
 
 
 @login_required
-@admin_or_manager_required
+@admin_required
 def admin_tasks_management(request):
     tasks = ProductionTask.objects.select_related(
         'order', 'part', 'order_item', 'assigned_worker', 'painting_stage'
@@ -1141,7 +1140,7 @@ def admin_tasks_management(request):
 
 
 @login_required
-@staff_or_representative_required
+@admin_required
 @require_POST
 def order_generate_tasks(request, order_id):
     order = get_object_or_404(Order, pk=order_id)
@@ -1165,15 +1164,15 @@ def root_view(request):
         return redirect('customer_order_list')  # /customer/orders/
 
     if request.user.is_authenticated:
-        if request.user.is_superuser:
-            return dashboard(request)
-        if request.user.groups.filter(name__in=['2', '3']).exists():
+        # r10: گروه «1» (کارگر داخلی) هم به داشبورد می‌رود (سطح خواندن/اسکن)؛
+        # گروه‌های «2» و «3» در این سیستم وجود ندارند.
+        if request.user.is_superuser or request.user.groups.filter(name='1').exists():
             return dashboard(request)
     return redirect('storefront:home')
 
 
 @login_required
-@admin_or_manager_required
+@internal_required
 def dashboard(request):
     # آمار کلی سفارشات
     total_orders = Order.objects.count()
@@ -1303,7 +1302,7 @@ def dashboard(request):
 
 
 @login_required
-@staff_or_representative_required
+@internal_required
 def order_list(request):
     orders = (
         Order.objects
@@ -1375,7 +1374,7 @@ def order_list(request):
 
 
 @login_required
-@staff_or_representative_required
+@internal_required
 def order_items_expand_ajax(request, order_id):
     order = get_object_or_404(
         Order.objects.prefetch_related(
@@ -1421,7 +1420,7 @@ def order_items_expand_ajax(request, order_id):
 
 
 @login_required
-@staff_or_representative_required
+@internal_required
 def order_item_list(request):
     items = OrderItem.objects.select_related(
         'order__user', 'product__category'
@@ -1499,7 +1498,7 @@ def order_item_list(request):
 
 
 @login_required
-@staff_or_representative_required
+@internal_required
 def item_detail(request, pk):
     item = get_object_or_404(
         OrderItem.objects.select_related('product', 'order__customer', 'order__user', 'product__category').prefetch_related('logs'),
@@ -1568,7 +1567,7 @@ def item_detail(request, pk):
 
 
 @login_required
-@staff_or_representative_required
+@internal_required
 def scan_qr(request, pk):
     item = get_object_or_404(OrderItem.objects.select_related('order'), pk=pk)
 
@@ -1607,7 +1606,7 @@ def scan_qr(request, pk):
 
 
 @login_required
-@admin_or_manager_required
+@internal_required
 def print_sheet(request, pk):
     item = get_object_or_404(
         OrderItem.objects.select_related('order__customer', 'product__category'),
@@ -1620,14 +1619,14 @@ def print_sheet(request, pk):
 
 
 @login_required
-@admin_or_manager_required
+@internal_required
 def print_lable(request, pk):
     item = get_object_or_404(OrderItem.objects.select_related('order__customer', 'product__category'),pk=pk)
     item.color = item.color_summary
     return render(request, 'print_lable.html', {'item': item})
 
 @login_required
-@admin_or_manager_required
+@internal_required
 def order_print(request, order_id):
     order = get_object_or_404(
         Order.objects.prefetch_related('items__product__category', 'items__ordercolor'),
@@ -1659,7 +1658,7 @@ def order_print(request, order_id):
 #     فایل برش
 # -------------------------------------------------------------------
 @login_required
-@staff_or_representative_required
+@internal_required
 def export_autocut_xml(request, order_id):
     order = get_object_or_404(Order, pk=order_id)
 
@@ -1739,7 +1738,7 @@ def export_autocut_xml(request, order_id):
 
 
 @login_required
-@staff_or_representative_required
+@internal_required
 def export_multiple_autocut(request):
     if request.method != 'POST':
         return HttpResponse(status=405)
@@ -1853,7 +1852,7 @@ def export_multiple_autocut(request):
 #      
 # -------------------------------------------------------------------
 @login_required
-@admin_or_manager_required
+@admin_required
 def upload_form(request):
     if request.method == 'POST':
         file = request.FILES.get('excel_file')
@@ -1932,7 +1931,7 @@ def upload_form(request):
 #      اسکن قطعات
 # -------------------------------------------------------------------
 @login_required
-@staff_or_representative_required
+@internal_required
 def scan_part(request):
     # بررسی پروفایل کاربر
     if not hasattr(request.user, 'workerprofile'):
@@ -2056,7 +2055,7 @@ def scan_part(request):
 
 
 @login_required
-@staff_or_representative_required
+@internal_required
 def scan_part_cnc(request):
     if request.method != 'POST':
         return redirect('scan_part')
@@ -2129,7 +2128,7 @@ def scan_part_cnc(request):
 
 
 @login_required
-@staff_or_representative_required
+@internal_required
 def download_cnc_file(request, barcode):
     """
     دانلود فایل CNC با بارکد داده شده.
@@ -2157,7 +2156,7 @@ def download_cnc_file(request, barcode):
         return response
 
 @login_required
-@staff_or_representative_required
+@internal_required
 def scan_part_dr(request):
     if request.method != 'POST':
         return redirect('scan_part')
@@ -2230,7 +2229,7 @@ def scan_part_dr(request):
 
 
 @login_required
-@staff_or_representative_required
+@internal_required
 def download_dr_file(request, barcode):
     """
     دانلود فایل XML سوراخکاری با بارکد داده شده.
@@ -2263,8 +2262,7 @@ def download_dr_file(request, barcode):
 # -------------------------------------------------------------------
 
 @login_required
-@admin_or_manager_required
-@staff_or_representative_required
+@internal_required
 def report_orders(request):
     data = (
         Order.objects
@@ -2291,7 +2289,7 @@ def _parse_jalali_or_none(date_str):
 
 
 @login_required
-@staff_or_representative_required
+@internal_required
 def report_stages(request):
     # ---------- base queryset ----------
     base_items = OrderItem.objects.select_related(
@@ -2526,7 +2524,7 @@ def report_stages(request):
 
 
 @login_required
-@staff_or_representative_required
+@internal_required
 def report_production_unified(request):
     """
     گزارش یکپارچه تولید بر اساس ProductionEvent.
@@ -2699,14 +2697,12 @@ def report_production_unified(request):
 
 
 @login_required
-@admin_or_manager_required
-@staff_or_representative_required
+@internal_required
 def report_workers(request):
     data = ProductionLog.objects.values('user__username').annotate(count=Count('id'))
     return render(request, 'reports/workers.html', {'data': data})
 @login_required
-@admin_or_manager_required
-@staff_or_representative_required
+@internal_required
 def delayed_orders(request):
     limit = timezone.now() - timedelta(days=3)
     orders = Order.objects.filter(created_at__lt=limit).exclude(status='completed').select_related('customer')
@@ -2928,7 +2924,7 @@ def daily_queue_consumption_trace(queue):
 
 
 @login_required
-@admin_or_manager_required
+@internal_required
 def report_material_consumption(request):
     from .models import ProductionDefect, PaintingProcess
     from django.db.models import Q
@@ -3096,7 +3092,7 @@ def report_material_consumption(request):
 # -------------------------------------------------------------------
 
 @login_required
-@admin_or_manager_required
+@admin_required
 def create_order(request):
     if request.method == 'POST':
         form = OrderCustomerForm(request.POST, user=request.user)
@@ -3171,7 +3167,7 @@ def create_order(request):
 
 
 @login_required
-@staff_or_representative_required
+@admin_required
 def ajax_load_customers(request):
     """بارگذاری مشتریان بر اساس نماینده انتخاب‌شده (برای ادمین)"""
     user_id = request.GET.get('representative')
@@ -3184,7 +3180,7 @@ def ajax_load_customers(request):
 
 
 @login_required
-@admin_or_manager_required
+@admin_required
 def create_order_step2(request, order_id):
     order = get_object_or_404(Order, id=order_id)
     existing_items = order.items.select_related('product__category').prefetch_related('ordercolor')
@@ -3236,6 +3232,7 @@ def create_order_step2(request, order_id):
 
 
 @login_required
+@group_required('1', 'نماینده')
 def ajax_load_products(request):
     """بارگذاری محصولات بر اساس دسته برای فیلترهای وابسته"""
     category_id = request.GET.get('category')
@@ -3260,6 +3257,7 @@ def ajax_load_products(request):
 
 
 @login_required
+@group_required('1', 'نماینده')
 def ajax_load_product_dimensions(request):
     """Return the default dimensions of a single product.
 
@@ -3282,7 +3280,7 @@ def ajax_load_product_dimensions(request):
 
 
 @login_required
-@staff_or_representative_required
+@internal_required
 def order_detail(request, order_id):
     order = get_object_or_404(
         Order.objects.prefetch_related(
@@ -3311,6 +3309,7 @@ def order_detail(request, order_id):
 
 
 @login_required
+@group_required('1', 'نماینده')
 def ajax_load_product_colors(request, product_id):
     product = get_object_or_404(Product, pk=product_id)
     raw_value = product.default_colors
@@ -3349,7 +3348,7 @@ def ajax_load_product_colors(request, product_id):
 # -------------------------------------------------------------------
 
 @login_required
-@admin_or_manager_required
+@admin_required
 def product_bom_edit(request, product_id):
     product = get_object_or_404(Product, pk=product_id)
 
@@ -3407,7 +3406,7 @@ def product_bom_edit(request, product_id):
 
 
 @login_required
-@admin_or_manager_required
+@internal_required
 def admin_product_list(request):
     products = Product.objects.select_related('category').all()
     categories = ProductCategory.objects.all()
@@ -3432,7 +3431,7 @@ def admin_product_list(request):
 
 
 @login_required
-@admin_or_manager_required
+@admin_required
 @require_POST
 def product_toggle_active(request, product_id):
     """تغییر وضعیت فعال/غیر فعال یک محصول"""
@@ -3449,7 +3448,7 @@ def product_toggle_active(request, product_id):
 #      کاتالوگ محصولات (لیست قیمت) — نمایش عکس، قیمت و لیست قطعات
 # -------------------------------------------------------------------
 @login_required
-@admin_or_manager_required
+@internal_required
 def product_catalog(request):
     """کاتالوگ محصولات به سبک بروشور — هر دسته‌بندی با بنر معرفی و گرید محصولات."""
     from .utils import _parse_default_colors
@@ -3529,7 +3528,7 @@ def product_catalog(request):
 
 
 @login_required
-@admin_or_manager_required
+@internal_required
 def product_catalog_pdf(request):
     """ذخیره / دانلود کاتالوگ محصولات به‌صورت PDF — همان طرح بروشور صفحه HTML."""
     from .utils import _parse_default_colors, get_color_hex_map
@@ -3611,6 +3610,7 @@ def product_catalog_pdf(request):
 # views.py (بخش مربوط به scan_packaging_unit – جایگزین کامل)
 
 @login_required
+@group_required('1', 'انبار')
 def scan_packaging_unit(request, pk):
     from .decorators import is_warehouse_user
     from .utils import _parse_default_colors as _parse_default_colors_for_view
@@ -3887,6 +3887,7 @@ def scan_packaging_unit(request, pk):
 
 @require_POST
 @login_required
+@group_required('1', 'انبار')
 def undo_packaging_unit(request, pk):
     unit = get_object_or_404(PackagingUnit, pk=pk)
     worker_stage = request.user.workerprofile.stage if hasattr(request.user, 'workerprofile') else None
@@ -4245,7 +4246,7 @@ def customer_delete_order_item(request, item_id):
 #    پرینت همه برگه های سفارش
 # -------------------------------------------------------------------
 @login_required
-@admin_or_manager_required
+@internal_required
 def order_combined_print(request, order_id):
     order = get_object_or_404(
         Order.objects.prefetch_related(
@@ -4289,7 +4290,7 @@ from .models import PackagingUnit, ShipmentLog
 #   برگه خروج  بارگیری  
 # -------------------------------------------------------------------
 @login_required
-@staff_or_representative_required
+@internal_required
 def report_shipped(request):
     # ---------- تاریخ شمسی (پیش‌فرض امروز) ----------
     date_str = request.GET.get('date')
@@ -4391,7 +4392,7 @@ def report_shipped(request):
 
 
 @login_required
-@staff_or_representative_required
+@internal_required
 def report_ready_to_ship(request):
     representative_id = request.GET.get('representative')
 
@@ -4437,7 +4438,7 @@ def report_ready_to_ship(request):
 
 
 @login_required
-@admin_or_manager_required
+@internal_required
 def delivery_list(request):
     """لیست اقلام آماده تحویل بر اساس تکمیل نقاشی + بسته‌بندی"""
     items = OrderItem.objects.filter(
@@ -4483,7 +4484,7 @@ def delivery_list(request):
 
 
 @login_required
-@admin_or_manager_required
+@internal_required
 def delivery_confirm(request, item_id):
     """ثبت تحویل یک آیتم با تعیین مسیول و یادداشت"""
     item = get_object_or_404(OrderItem, pk=item_id)
@@ -4582,7 +4583,6 @@ from django.db import transaction
 from django.forms import inlineformset_factory
 from django.http import JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404
-from .decorators import admin_or_manager_required
 from .models import Product, ProductBOM, Part, Color
 from .forms import ProductCreateForm, PartForm
 
@@ -4591,7 +4591,7 @@ from .forms import ProductCreateForm, PartForm
 # ویوهای محصول
 # -------------------------------------------------------------------
 @login_required
-@admin_or_manager_required
+@admin_required
 def product_create(request):
     BOMFormSet = inlineformset_factory(
         Product, ProductBOM,
@@ -4650,7 +4650,7 @@ def product_create(request):
 
 
 @login_required
-@admin_or_manager_required
+@admin_required
 def product_edit(request, product_id):
     product = get_object_or_404(Product, pk=product_id)
     BOMFormSet = inlineformset_factory(
@@ -4713,7 +4713,7 @@ def product_edit(request, product_id):
 # ویوهای AJAX قطعه
 # -------------------------------------------------------------------
 @login_required
-@admin_or_manager_required
+@admin_required
 def ajax_create_part(request):
     """ایجاد قطعه جدید از طریق AJAX"""
     if request.method == 'POST':
@@ -4728,7 +4728,7 @@ def ajax_create_part(request):
 
 
 @login_required
-@admin_or_manager_required
+@admin_required
 def ajax_get_part(request, part_id):
     """دریافت اطلاعات یک قطعه برای ویرایش (JSON)"""
     part = get_object_or_404(Part, pk=part_id)
@@ -4753,7 +4753,7 @@ def ajax_get_part(request, part_id):
 
 
 @login_required
-@admin_or_manager_required
+@admin_required
 def ajax_edit_part(request, part_id):
     """ویرایش قطعه موجود از طریق AJAX"""
     part = get_object_or_404(Part, pk=part_id)
@@ -4784,6 +4784,7 @@ from django.shortcuts import render, redirect
 from django.contrib import messages
 
 @login_required
+@internal_required
 def set_plate(request):
     if request.method == 'POST':
         plate = request.POST.get('plate', '').strip()
@@ -4927,7 +4928,7 @@ def customer_shipment_detail(request, plate, date):
 # -------------------------------------------------------------------
 
 @login_required
-@admin_or_manager_required
+@admin_required
 def assign_painting_process(request, item_id):
     from .utils import get_item_color_assignments, get_painting_process_for_color
     from .models import PaintingProcess, ProductionTask, create_paint_tasks
@@ -5014,7 +5015,7 @@ def assign_painting_process(request, item_id):
 
 
 @login_required
-@admin_or_manager_required
+@internal_required
 def daily_schedule_print(request):
     """نمایش و چاپ برنامه روزانه کارگران نقاشی"""
     from django.db.models import Sum, Max
@@ -5187,7 +5188,7 @@ def daily_schedule_print(request):
 
 
 @login_required
-@admin_or_manager_required
+@admin_required
 def auto_assign_tasks_view(request):
     """اجرای دستی تخصیص خودکار کارگران به تسک‌های نقاشی"""
     if request.method == 'POST':
@@ -5202,7 +5203,7 @@ def auto_assign_tasks_view(request):
 # -------------------------------------------------------------------
 
 @login_required
-@admin_or_manager_required
+@internal_required
 def painting_management_dashboard(request):
     """داشبورد مدیریت نقاشی - صفحه اصلی با خلاصه اطلاعات"""
     from .utils import get_painting_ready_items_queryset, get_unscheduled_ready_items, painting_nav_context
@@ -5228,7 +5229,7 @@ def painting_management_dashboard(request):
 
 
 @login_required
-@admin_or_manager_required
+@internal_read_admin_write
 def painting_processes_view(request):
     """مدیریت روندهای نقاشی (لیست، ایجاد، ویرایش، حذف)"""
     from .models import PaintingProcess
@@ -5291,7 +5292,7 @@ def painting_processes_view(request):
 
 
 @login_required
-@admin_or_manager_required
+@internal_required
 def painting_process_detail_api(request, process_id):
     """بازگرداندن داده‌های یک روند برای فرم ویرایش (AJAX)"""
     from .models import PaintingProcess
@@ -5308,7 +5309,7 @@ def painting_process_detail_api(request, process_id):
 
 
 @login_required
-@admin_or_manager_required
+@internal_read_admin_write
 def painting_stages_view(request, process_id=None):
     """مدیریت مراحل نقاشی برای یک روند خاص"""
     from .models import PaintingProcess, PaintingStage
@@ -5391,7 +5392,7 @@ def painting_stages_view(request, process_id=None):
 
 
 @login_required
-@admin_or_manager_required
+@internal_read_admin_write
 def painting_stage_detail_api(request, stage_id):
     """بازگرداندن داده‌های یک مرحله برای فرم ویرایش (AJAX)"""
     from .models import PaintingStage
@@ -5409,7 +5410,7 @@ def painting_stage_detail_api(request, stage_id):
 
 
 @login_required
-@admin_or_manager_required
+@internal_read_admin_write
 def painting_process_materials_api(request, process_id):
     """
     مدیریت کاتالوگ (بدون مقدار) مواد اولیه‌ی یک روند نقاشی.
@@ -5537,7 +5538,7 @@ def painting_process_materials_api(request, process_id):
 
 
 @login_required
-@admin_or_manager_required
+@internal_read_admin_write
 def painting_process_material_variants_api(request, process_material_id):
     """مدیریت نگاشت کد رنگ به ماده واقعی برای یک اسلات رنگ‌وابسته."""
     from inventory.models import RawMaterial
@@ -5621,7 +5622,7 @@ def painting_process_material_variants_api(request, process_material_id):
 
 
 @login_required
-@admin_or_manager_required
+@internal_required
 def ajax_color_codes(request):
     from .utils import get_color_code_choices
     return JsonResponse({'codes': [c for c, _ in get_color_code_choices()]})
@@ -5630,7 +5631,7 @@ def ajax_color_codes(request):
 
 
 @login_required
-@admin_or_manager_required
+@internal_read_admin_write
 def product_color_part_materials_api(request):
     """
     مدیریت مقدار مصرف مواد اولیه برای یک (محصول + بخش رنگی) مشخص.
@@ -5742,7 +5743,7 @@ def product_color_part_materials_api(request):
 
 
 @login_required
-@admin_or_manager_required
+@internal_required
 def search_raw_materials_api(request):
     """API جستجوی مواد اولیه برای Select2 در پنل نقاشی."""
     from inventory.models import RawMaterial
@@ -5762,7 +5763,7 @@ def search_raw_materials_api(request):
 
 
 @login_required
-@admin_or_manager_required
+@internal_read_admin_write
 def painting_workers_view(request):
     """مدیریت کارگران نقاشی و مهارت‌هایشان"""
     import json
@@ -5882,7 +5883,7 @@ def painting_workers_view(request):
 
 
 @login_required
-@admin_or_manager_required
+@internal_required
 def painting_worker_excluded_items(request, worker_id):
     """نمایش آیتم‌های سفارشی که این کارگر نباید در آنها کار کند"""
     from .utils import painting_nav_context
@@ -5930,7 +5931,7 @@ def painting_worker_excluded_items(request, worker_id):
 
 
 @login_required
-@admin_or_manager_required
+@internal_required
 def painting_schedule_view(request):
     from .utils import get_unscheduled_ready_items, parse_jalali_date, painting_nav_context
 
@@ -6016,7 +6017,7 @@ def painting_schedule_view(request):
 
 
 @login_required
-@admin_or_manager_required
+@internal_required
 def painting_ready_list(request):
     """آیتم‌های آماده نقاشی با پیش‌نمایش وضعیت و جستجوی یکپارچه"""
     from .utils import get_painting_ready_items_queryset, painting_nav_context, get_item_paint_preview
@@ -6046,7 +6047,7 @@ def painting_ready_list(request):
 
 
 @login_required
-@admin_or_manager_required
+@admin_required
 def painting_add_to_schedule(request):
     """
     افزودن خودکار آیتم‌های انتخاب‌شده به برنامه امروز + تخصیص خودکار کارگر
@@ -6148,7 +6149,7 @@ def painting_add_to_schedule(request):
 
 
 @login_required
-@admin_or_manager_required
+@admin_required
 def painting_create_custom_task(request):
     """ایجاد یک کارت دلخواه (بدون سفارش) و تخصیص اختیاری به یک کارگر"""
     if request.method != 'POST' or request.headers.get('X-Requested-With') != 'XMLHttpRequest':
@@ -6199,7 +6200,7 @@ def painting_create_custom_task(request):
 
 
 @login_required
-@admin_or_manager_required
+@admin_required
 def painting_assign_process(request):
     """تخصیص خودکار روند نقاشی به یک آیتم سفارش بر اساس کدهای رنگی (AJAX)"""
     from .utils import get_item_color_assignments, get_painting_process_for_color
@@ -6255,7 +6256,7 @@ def painting_assign_process(request):
 
 
 @login_required
-@admin_or_manager_required
+@admin_required
 def painting_auto_assign(request):
     """اجرای تخصیص خودکار کارگران (AJAX)"""
     from .utils import auto_assign_paint_tasks, parse_jalali_date
@@ -6280,7 +6281,7 @@ def painting_auto_assign(request):
 
 
 @login_required
-@admin_or_manager_required
+@internal_required
 def painting_get_available_workers(request):
     """دریافت لیست کارگران با مهارت خاص (AJAX) برای انتخاب دستی"""
     from .models import WorkerProfile
@@ -6300,7 +6301,7 @@ def painting_get_available_workers(request):
     return JsonResponse({'workers': data})
 
 @login_required
-@admin_or_manager_required
+@admin_required
 def painting_assign_worker(request):
     """تخصیص دستی یک کارگر به یک تسک نقاشی (AJAX) — با استفاده از assign_task_to_worker"""
     from django.http import JsonResponse
@@ -6343,7 +6344,7 @@ def painting_assign_worker(request):
 
 
 @login_required
-@admin_or_manager_required
+@admin_required
 def painting_unassign_worker(request):
     """حذف تخصیص کارگر از یک تسک — برای درگ به ستون «بدون تخصیص»"""
     from .models import ProductionTask
@@ -6379,7 +6380,7 @@ def painting_unassign_worker(request):
 
 
 @login_required
-@admin_or_manager_required
+@admin_required
 def painting_delete_tasks(request):
     """حذف چند تسک نقاشی انتخاب‌شده (AJAX) — تسک‌های تکمیل‌شده حذف نمی‌شوند.
     ورودی: task_ids[] (حذف تسک‌های مشخص) یا item_ids[] (حذف همه تسک‌های نقاشی آیتم‌ها)
@@ -6422,7 +6423,7 @@ def painting_delete_tasks(request):
 
 
 @login_required
-@admin_or_manager_required
+@admin_required
 def painting_clear_schedule(request):
     """پاک کردن تمام برنامه‌ریزی‌های روز انتخاب‌شده (AJAX)"""
     from .utils import parse_jalali_date
@@ -6454,7 +6455,7 @@ def painting_clear_schedule(request):
 
 
 @login_required
-@admin_or_manager_required
+@admin_required
 def painting_reset_schedule(request):
     """بازنشانی زمان‌بندی روز انتخاب‌شده به حالت اولیه قبل از ویرایش دستی"""
     from .utils import parse_jalali_date, auto_assign_paint_tasks
@@ -6509,7 +6510,7 @@ def painting_reset_schedule(request):
 
 
 @login_required
-@admin_or_manager_required
+@admin_required
 def painting_repaint_items(request):
     """بازنشانی و زمان‌بندی مجدد تسک‌های نقاشی آیتم‌های انتخاب‌شده (AJAX)"""
     from .utils import parse_jalali_date, repaint_item_ids_for_date
@@ -6544,7 +6545,7 @@ def painting_repaint_items(request):
 
 
 @login_required
-@admin_or_manager_required
+@internal_read_admin_write
 def painting_assignment_rules_view(request):
     """مدیریت قوانین تخصیص دستی کارگران به تسک‌های نقاشی بر اساس رنگ و مرحله"""
     from .models import PaintingAssignmentRule
@@ -6692,7 +6693,7 @@ def _detach_tasks_from_cut_plans(task_ids, user=None):
 
 @require_POST
 @login_required
-@admin_or_manager_required
+@admin_required
 def delete_all_tasks(request, order_id):
     """حذف تمام تسک‌های تولید شده برای یک سفارش و برگرداندن وضعیت به draft"""
     order = get_object_or_404(Order, pk=order_id)
@@ -6716,7 +6717,7 @@ def delete_all_tasks(request, order_id):
 
 @require_POST
 @login_required
-@admin_or_manager_required
+@admin_required
 def delete_paint_tasks(request, item_id):
     """حذف تمام تسک‌های نقاشی یک آیتم سفارش و پاک کردن زمان‌بندی/تخصیص آن‌ها"""
     item = get_object_or_404(OrderItem, pk=item_id)
@@ -6742,7 +6743,7 @@ def delete_paint_tasks(request, item_id):
 
 @require_POST
 @login_required
-@admin_or_manager_required
+@admin_required
 def delete_all_paint_tasks_for_order(request, order_id):
     """حذف تمام تسک‌های نقاشی یک سفارش (همه آیتم‌ها) — سایر تسک‌ها حفظ می‌شوند"""
     order = get_object_or_404(Order, pk=order_id)
@@ -6774,7 +6775,7 @@ def delete_all_paint_tasks_for_order(request, order_id):
 # views.py - در بخش painting management
 
 @login_required
-@admin_or_manager_required
+@internal_read_admin_write
 def painting_holidays_view(request):
     """مدیریت تعطیلات رسمی"""
     from .utils import painting_nav_context

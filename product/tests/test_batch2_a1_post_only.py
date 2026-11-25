@@ -16,6 +16,8 @@ class Batch2A1POSTOnlyTests(TestCase):
         self.manager.groups.add(self.group1)
         self.regular_user = User.objects.create_user('user1', password='testpass')
         self.packaging_user = User.objects.create_user('packer', password='testpass')
+        # r10: اسکن بسته‌بندی با group_required('1','انبار') گیت شده
+        self.packaging_user.groups.add(self.group1)
         WorkerProfile.objects.create(user=self.packaging_user, stage='packaging')
 
         self.category = ProductCategory.objects.create(name='دسته')

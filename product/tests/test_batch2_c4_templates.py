@@ -1,5 +1,5 @@
 from django.test import TestCase
-from django.contrib.auth.models import User
+from django.contrib.auth.models import User, Group
 from django.urls import reverse
 
 from product.models import (
@@ -12,6 +12,7 @@ class Batch2C4TemplateTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.admin = User.objects.create_superuser('admin', password='testpass')
+        cls.group1 = Group.objects.create(name='1')
         cls.category = ProductCategory.objects.create(name='دسته')
         cls.product = Product.objects.create(category=cls.category, name='محصول', base_price=1000)
         cls.customer = Customer.objects.create(name='مشتری', phone='09120000000')
@@ -36,6 +37,8 @@ class Batch2C4TemplateTests(TestCase):
 
     def test_scan_packaging_unit_undo_button_packed_by(self):
         other_user = User.objects.create_user('other_user', password='testpass')
+        # r10: ورود به صفحه اسکن نیازمند گروه «1» است
+        other_user.groups.add(self.group1)
         order = Order.objects.create(
             user=self.user, customer=self.customer, number='C4-2')
         item = OrderItem.objects.create(order=order, product=self.product, quantity=1)
@@ -61,6 +64,8 @@ class Batch2C4TemplateTests(TestCase):
         unit.is_shipped = False
         unit.save()
         viewer = User.objects.create_user('viewer', password='testpass')
+        # r10: ورود به صفحه اسکن نیازمند گروه «1» است (دکمه لغو فقط برای packed_by/ادمین)
+        viewer.groups.add(self.group1)
         self.client.login(username='viewer', password='testpass')
         response = self.client.get(reverse('scan_packaging_unit', args=[unit.id]))
         self.assertEqual(response.status_code, 200)

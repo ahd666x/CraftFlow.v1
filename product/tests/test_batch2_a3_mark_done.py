@@ -1,5 +1,5 @@
 from django.test import TestCase
-from django.contrib.auth.models import User
+from django.contrib.auth.models import User, Group
 from django.urls import reverse
 
 from product.models import (
@@ -12,11 +12,17 @@ class Batch2A3MarkTaskDoneTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.admin = User.objects.create_superuser('admin', password='testpass')
+        # r10: mark_task_done با internal_required گیت شده — کارگرها باید عضو گروه «1» باشند
+        cls.group1 = Group.objects.create(name='1')
         cls.cnc_worker = User.objects.create_user('cnc_worker', password='testpass')
+        cls.cnc_worker.groups.add(cls.group1)
         WorkerProfile.objects.create(user=cls.cnc_worker, stage='cnc')
         cls.dr_worker = User.objects.create_user('dr_worker', password='testpass')
+        cls.dr_worker.groups.add(cls.group1)
         WorkerProfile.objects.create(user=cls.dr_worker, stage='dr')
+        # بدون پروفایل کاری اما عضو گروه «1» تا از گیت رد شود و چکِ داخل ویو فعال شود
         cls.no_profile_user = User.objects.create_user('no_profile', password='testpass')
+        cls.no_profile_user.groups.add(cls.group1)
 
         cls.category = ProductCategory.objects.create(name='دسته')
         cls.product = Product.objects.create(category=cls.category, name='محصول', base_price=1000)

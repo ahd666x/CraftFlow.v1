@@ -16,6 +16,11 @@ class Batch2A2AccessTests(TestCase):
         cls.manager = User.objects.create_user('manager', password='testpass')
         cls.manager.groups.add(cls.group1)
         cls.regular_user = User.objects.create_user('regular', password='testpass')
+        # r10: ajax_load_product_colors توسط پنل نماینده هم استفاده می‌شود
+        # (گروه «نماینده» با مایگریشن accounts/0002 از قبل هست → get_or_create)
+        cls.rep_group, _ = Group.objects.get_or_create(name='نماینده')
+        cls.rep = User.objects.create_user('rep', password='testpass')
+        cls.rep.groups.add(cls.rep_group)
 
         cls.category = ProductCategory.objects.create(name='دسته')
         cls.product = Product.objects.create(category=cls.category, name='محصول', base_price=1000)
@@ -51,8 +56,23 @@ class Batch2A2AccessTests(TestCase):
         response = self.client.get(url)
         self.assertEqual(response.status_code, 302)
 
-    def test_ajax_load_product_colors_authenticated_ok(self):
+    def test_ajax_load_product_colors_regular_user_blocked(self):
+        # r10: کاربر عادی فروشگاه از AJAXهای داخلی بلاک است
         self.client.login(username='regular', password='testpass')
         url = reverse('ajax_load_product_colors', args=[self.product.id])
         response = self.client.get(url)
+        self.assertEqual(response.status_code, 302)
+
+    def test_ajax_load_product_colors_representative_ok(self):
+        # r10: پنل نماینده به این AJAX نیاز دارد
+        self.client.login(username='rep', password='testpass')
+        url = reverse('ajax_load_product_colors', args=[self.product.id])
+        response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
+
+    def test_ajax_load_product_colors_group1_and_admin_ok(self):
+        self.client.login(username='manager', password='testpass')
+        url = reverse('ajax_load_product_colors', args=[self.product.id])
+        self.assertEqual(self.client.get(url).status_code, 200)
+        self.client.login(username='admin', password='testpass')
+        self.assertEqual(self.client.get(url).status_code, 200)
