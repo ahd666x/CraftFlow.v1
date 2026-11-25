@@ -11,6 +11,7 @@
 from decimal import Decimal
 from django.test import TestCase
 from django.contrib.auth.models import User
+from django.urls import reverse
 
 from product.models import (
     Customer, Order, OrderItem, Part, Product, ProductBOM, ProductCategory,
@@ -480,3 +481,40 @@ class CheckoutViewTests(TestCase):
         self.assertEqual(list(data.values())[0]['city'], 'تهران')
         self.assertEqual(list(data.values())[0]['recipient'], 'خریدار')
         self.assertContains(response, 'id="saved-addresses"')
+
+
+class TemplateCommentLeakTests(TestCase):
+    """r10 — کامنت‌های چندخطی {# #} در جنگو به خروجی HTML لو می‌روند.
+
+    در جنگو {# ... #} فقط تک‌خطی کار می‌کند؛ نسخهٔ چندخطی عیناً در خروجی
+    چاپ می‌شود و اگر داخل بلوک <script> بیفتد SyntaxError می‌سازد و همهٔ
+    کامپوننت‌های Alpine همان صفحه را از کار می‌اندازد (باگ صفحهٔ محصول).
+    رندر واقعی صفحات اصلی چک می‌شود تا هر بازگشتی فوراً گرفته شود.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.category = ProductCategory.objects.create(name='دستهٔ نشت')
+        cls.product = Product.objects.create(
+            category=cls.category, name='مبل کلاسیک نشت', base_price=15000)
+
+    def _assert_no_comment_leak(self, url):
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode('utf-8')
+        self.assertNotIn('{#', content, f'نشتی کامنت جنگو در {url}')
+        self.assertNotIn('#}', content)
+        return content
+
+    def test_home_page_renders_without_comment_leak(self):
+        content = self._assert_no_comment_leak(reverse('storefront:home'))
+        # اسکریپت Alpine لِی‌اوت باید سالم رندر شود (مینی‌کارت روی همهٔ صفحات)
+        self.assertIn('miniCart', content)
+
+    def test_product_list_renders_without_comment_leak(self):
+        self._assert_no_comment_leak(reverse('storefront:product_list'))
+
+    def test_product_detail_renders_without_comment_leak(self):
+        content = self._assert_no_comment_leak(
+            reverse('storefront:product_detail', kwargs={'slug': self.product.slug}))
+        self.assertIn('x-data', content)

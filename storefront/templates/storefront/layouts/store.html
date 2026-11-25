@@ -32,8 +32,7 @@
     <link rel="preload" as="font" type="font/woff2" crossorigin="anonymous" href="{% static 'storefront/fonts/Vazirmatn-SemiBold.woff2' %}">
     <link rel="preload" as="font" type="font/woff2" crossorigin="anonymous" href="{% static 'storefront/fonts/Vazirmatn-Bold.woff2' %}">
 
-    {% comment %} {# فقط Tailwind. Bootstrap عمداً اینجا load نمی‌شود چون پنل تولید آن را
-       دارد و بارگذاری هر دو در یک صفحه، استایل‌ها را قاطی می‌کند. #} {% endcomment %}
+    {% comment %} {# فقط Tailwind. Bootstrap عمداً اینجا load نمی‌شود چون پنل تولید آن را        دارد و بارگذاری هر دو در یک صفحه، استایل‌ها را قاطی می‌کند. #} {% endcomment %}
     <link rel="stylesheet" href="{% static 'storefront/css/vazirmatn-fonts.css' %}">
     <link rel="stylesheet" href="{% static 'storefront/css/style.css' %}">
     {% if site_settings %}<style>:root{ {{ site_settings.theme_css|safe }} }</style>{% endif %}
@@ -341,12 +340,7 @@ Alpine.data('miniCart', function () {
 <body class="min-h-screen bg-white font-sans text-stone-900 flex flex-col">
 {# اسپرایت آیکن حذف شد — هیچ قالبی از <use> استفاده نمی‌کرد و ۱۵KB به هر صفحه اضافه می‌کرد #}
 
-{% comment %} {# Global Mini Cart Component (outside header to avoid re-init on scroll).
-     NOTE: do NOT set window.miniCart via x-init — in Alpine expressions
-     `this` refers to the global (window), so `window.miniCart = this`
-     would make window.miniCart === window, and `.open()` would call
-     window.open() opening about:blank. The component's own init() method
-     already sets window.miniCart correctly. #} {% endcomment %}
+{% comment %} {# Global Mini Cart Component (outside header to avoid re-init on scroll).      NOTE: do NOT set window.miniCart via x-init — in Alpine expressions      `this` refers to the global (window), so `window.miniCart = this`      would make window.miniCart === window, and `.open()` would call      window.open() opening about:blank. The component's own init() method      already sets window.miniCart correctly. #} {% endcomment %}
 <div x-data="miniCart()" data-mini-cart-url="{% url 'cart:mini_cart' %}">
     {# Mini Cart Drawer - teleported to body to escape header's backdrop-blur containing block #}
     <template x-teleport="body">
