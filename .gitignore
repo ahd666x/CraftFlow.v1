@@ -15,5 +15,7 @@ dr_archive/
 staticfiles/
 media/
 media/qr/
+# پوشهٔ دادهٔ پیش‌فرض توسعه (دیتابیس و .env و مدیا) — هرگز کامیت نشود.
+data/
 .vscode/
 .kilo/

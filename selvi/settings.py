@@ -12,9 +12,36 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 from pathlib import Path
 import os
-from decouple import config, Csv
+from decouple import Csv
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# ===================================================================
+#   پوشهٔ دادهٔ پروژه — همهٔ داده‌های قابل‌نوشتن (دیتابیس، مدیا، فایل‌های
+#   CNC و static) بیرون از پوشهٔ کد زندگی می‌کنند تا دستورهای گیت
+#   (clean/reset) هرگز به داده دست نزنند.
+#   production: SELVI_DATA_DIR=/srv/selvi/shared (در environment سرپروایزور)
+#   توسعه: پیش‌فرض BASE_DIR/data
+# ===================================================================
+DATA_DIR = Path(os.environ.get('SELVI_DATA_DIR', str(BASE_DIR / 'data')))
+# پوشهٔ db از همین لحظه ساخته می‌شود تا ساخت دیتابیس تست و اجرای تازه هرگز
+# به دلیل نبود مسیر والد شکست نخورد.
+(DATA_DIR / 'db').mkdir(parents=True, exist_ok=True)
+
+# فایل .env اول از پوشهٔ دادهٔ پروژه خوانده می‌شود (shared/.env روی سرور)؛
+# اگر نبود از کنار پکیج selvi/ — رفتار قدیمی checkoutهای موجود. پایتون‌دکیپل
+# همیشه اول os.environ را می‌بیند، پس overrideهای موقتی هنگام اجرای تست‌ها
+# (مثل MEDIA_ROOT=/tmp/selvi-media) همچنان کار می‌کنند.
+from decouple import Config, RepositoryEnv
+_env_file = next(
+    (p for p in (DATA_DIR / '.env', Path(__file__).resolve().parent / '.env') if p.exists()),
+    None,
+)
+if _env_file is not None:
+    config = Config(RepositoryEnv(str(_env_file)))
+else:
+    from decouple import config as _decouple_auto_config
+    config = _decouple_auto_config
 
 
 # Quick-start development settings - unsuitable for production
@@ -47,8 +74,9 @@ CSRF_TRUSTED_ORIGINS = config('CSRF_TRUSTED_ORIGINS', default='https://selvichoo
 
 
 # QR Settings
-# QR_DOMAIN = '192.168.1.201:8000'  # یا '127.0.0.1:8000' برای تست
-# QR_PROTOCOL = 'http'  # یا 'http'
+# آدرس پایهٔ لینک اسکن QR. در سرور از environment سرپروایزور می‌آید
+# (SCAN_BASE_URL)؛ پیش‌فرض همان دامنهٔ فروشگاه است.
+SCAN_BASE_URL = config('SCAN_BASE_URL', default='https://selvichoob.ir')
 
 
 # Application definition
@@ -123,7 +151,7 @@ WSGI_APPLICATION = 'selvi.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'NAME': DATA_DIR / 'db' / 'db.sqlite3',
         'OPTIONS': {
             'timeout': 20,
             'transaction_mode': 'IMMEDIATE',
@@ -188,9 +216,10 @@ LOGIN_REDIRECT_URL = '/'
 LOGOUT_REDIRECT_URL = '/'
 
 
-STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATIC_ROOT = Path(config('STATIC_ROOT', default=str(DATA_DIR / 'static')))
 MEDIA_URL = '/media/'
-MEDIA_ROOT = config('MEDIA_ROOT', default='/root/selvi/selvi/media')
+# قرارداد تاریخی: MEDIA_ROOT همیشه str است (تست a5 به نوع str تکیه دارد).
+MEDIA_ROOT = str(config('MEDIA_ROOT', default=str(DATA_DIR / 'media')))
 
 
 
@@ -211,7 +240,7 @@ REST_FRAMEWORK = {
 
 # مسیر پوشه‌ای که فایل‌های CNC در آن ذخیره شده‌اند
 # CNC_SOURCE_DIR = r'C:\cnc_archive'  
-CNC_SOURCE_DIR = BASE_DIR /  'cnc_archive'
+CNC_SOURCE_DIR = DATA_DIR / 'cnc_archive'
 CNC_FILE_EXTENSION = '.cnc'
 
 # تولید «فایل مشتق» برای قطعات با طول سفارشی: با موتور legacy (core.process)
@@ -242,7 +271,7 @@ CNC_RESIZER_SHEET_ADAPTER = config('CNC_RESIZER_SHEET_ADAPTER', default='')
 
 # تنظیمات فایل‌های سوراخکاری (Drilling)
 # DR_SOURCE_DIR = r'C:\dr_archive'        # پوشه فایل‌های XML سوراخکاری
-DR_SOURCE_DIR = BASE_DIR /'dr_archive'
+DR_SOURCE_DIR = DATA_DIR / 'dr_archive'
 
 DR_FILE_EXTENSION = '.scx'              # پسوند فایل
 

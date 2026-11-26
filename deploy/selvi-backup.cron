@@ -1,0 +1,5 @@
+# بکاپ خودکار روزانهٔ دیتابیس — کپی به /etc/cron.d/selvi-backup
+# نگه‌داشتن ۱۴ روز. بکاپ روی همان سرور کافی نیست؛ یک نسخهٔ روزانه را
+# بیرون سرور هم بفرستید (rclone به فضای ابری یا scp به سیستم دیگر)
+# یا snapshot پنل هاستینگ را فعال کنید.
+30 3 * * * root sqlite3 /srv/selvi/shared/db/db.sqlite3 ".backup '/srv/selvi/shared/backups/daily-$(date +\%F).sqlite3'" && find /srv/selvi/shared/backups -name 'daily-*' -mtime +14 -delete
