@@ -1,12 +1,12 @@
 {% extends 'instructions/base.html' %}
-{% block title %}دستور تولید — {{ product.name }}{% endblock %}
+{% block title %}سند — {{ product.name }}{% endblock %}
 {% block body %}
 {% include 'instructions/partials/doc_toolbar.html' %}
 
 <header class="doc-head">
   {% if product.image %}<img class="cover" src="{{ product.image.url }}" alt="">{% endif %}
   <div>
-    <h1>دستور تولید <bdi>{{ product.name }}</bdi></h1>
+    <h1>سند <bdi>{{ product.name }}</bdi></h1>
     <div class="meta">
       <span>دسته: <b>{{ product.category.name|default:'—' }}</b></span>
       {% if product.default_size_display %}<span>ابعاد پیش‌فرض (cm): <b class="ltr">{{ product.default_size_display }}</b></span>{% endif %}
@@ -16,8 +16,7 @@
 </header>
 
 {% if not has_content %}
-  <div class="empty">برای این محصول هنوز دستورالعملی ثبت نشده است.<br>
-    <a href="{{ edit_url }}">از ویرایشگر شروع کنید</a></div>
+  <div class="empty">محتوایی ثبت نشده است.</div>
 {% endif %}
 
 {% for section in sections %}

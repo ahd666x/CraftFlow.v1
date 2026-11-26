@@ -34,7 +34,7 @@ class WorkInstructionImageInline(admin.TabularInline):
     fields = ('sort_order', 'image', 'caption')
     autocomplete_fields = ()
     verbose_name = 'تصویر'
-    verbose_name_plural = 'تصاویر دستورالعمل'
+    verbose_name_plural = 'تصاویر بند'
 
 
 @admin.register(WorkInstruction)
@@ -105,14 +105,14 @@ class WorkInstructionInline(admin.TabularInline):
               'sequence', 'active', 'doc_link')
     readonly_fields = ('doc_link',)
     autocomplete_fields = ('condition_material', 'condition_color')
-    verbose_name = 'دستورالعمل'
-    verbose_name_plural = 'دستورالعمل‌های این محصول (ویرایش کامل با کلیک روی ردیف)'
+    verbose_name = 'بند'
+    verbose_name_plural = 'بندهای این محصول'
 
     def doc_link(self, obj):
         if not obj.pk:
             return '—'
         url = reverse('instructions:product_doc', args=[obj.product_id])
-        return format_html('<a href="{}" target="_blank">سند دستور تولید</a>', url)
+        return format_html('<a href="{}" target="_blank">سند</a>', url)
     doc_link.short_description = 'سند'
 
     def get_queryset(self, request):
@@ -170,7 +170,7 @@ class CncMachineSetupAdmin(admin.ModelAdmin):
         }),
         ('راهنمای اپراتور', {
             'fields': ('offset_procedure', 'notes'),
-            'description': 'هر خط یک بند نمایش داده می‌شود؛ این متن‌ها به‌طور خودکار در صفحه اسکن CNC، صفحه /cnc/ و سند دستور تولید می‌آیند.',
+            'description': 'هر خط یک بند نمایش داده می‌شود؛ این متن‌ها در صفحه اسکن CNC، صفحه /cnc/ و سند محصول می‌آیند.',
         }),
         ('وضعیت', {
             'fields': ('active',),

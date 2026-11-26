@@ -1,5 +1,5 @@
 {% extends 'instructions/base.html' %}
-{% block title %}ویرایشگر دستورالعمل‌ها — {{ product.name }}{% endblock %}
+{% block title %}{{ product.name }}{% endblock %}
 {% block head %}
 <style>
   .grip { cursor: grab; color: var(--muted); padding: 0 4px; user-select: none; }
@@ -29,18 +29,17 @@
 {% endblock %}
 {% block body %}
 <div class="toolbar">
-  <button type="button" class="btn primary" onclick="openEdit(null)">دستورالعمل جدید</button>
+  <button type="button" class="btn primary" onclick="openEdit(null)">بند جدید</button>
   <span class="grow"></span>
-  <a class="btn" href="{% url 'instructions:product_doc' product.pk %}">سند دستور تولید</a>
-  <a class="btn" href="{% url 'instructions:browser' %}">مرورگر دانش</a>
+  <a class="btn" href="{% url 'instructions:product_doc' product.pk %}">سند</a>
+  <a class="btn" href="{% url 'instructions:browser' %}">بندها</a>
 </div>
 
 <header class="doc-head">
   {% if product.image %}<img class="cover" src="{{ product.image.url }}" alt="">{% endif %}
   <div>
-    <h1>ویرایشگر دستورالعمل‌ها — <bdi>{{ product.name }}</bdi></h1>
-    <div class="meta"><span>دسته: <b>{{ product.category.name|default:'—' }}</b></span>
-      <span>ترتیب را با ☰ تغییر دهید؛ خودکار ذخیره می‌شود.</span></div>
+    <h1><bdi>{{ product.name }}</bdi></h1>
+    <div class="meta"><span>دسته: <b>{{ product.category.name|default:'—' }}</b></span></div>
   </div>
 </header>
 
@@ -62,8 +61,6 @@
               <button type="button" class="btn sm" onclick="openEdit({{ ins.pk }})">ویرایش</button>
               <button type="button" class="btn sm" onclick="openImages({{ ins.pk }})">تصاویر ({{ ins.images.all|length }})</button>
               <button type="button" class="btn sm" onclick="toggleActive({{ ins.pk }}, this)">{% if ins.active %}غیرفعال{% else %}فعال{% endif %}</button>
-              <button type="button" class="btn sm" title="بالا" aria-label="انتقال به بالا" onclick="moveCard(this, -1)">↑</button>
-              <button type="button" class="btn sm" title="پایین" aria-label="انتقال به پایین" onclick="moveCard(this, 1)">↓</button>
               <button type="button" class="btn sm danger" onclick="deleteIns({{ ins.pk }})">حذف</button>
             </span>
           </div>
@@ -77,13 +74,8 @@
   </section>
 {% endfor %}
 
-<p class="hint" style="margin-top:20px">
-  دانش قطعه‌محور (مثلاً جهت قرارگیری یک قطعه در سوراخکاری) از ادمین ثبت می‌شود.
-  بند شرط‌دار فقط وقتی نمایش داده می‌شود که متریال و رنگ سفارش با شرط بخواند؛ شرط خالی یعنی همیشه.
-</p>
-
 <dialog id="edit-dlg"><form class="dlg" method="dialog" onsubmit="return false;">
-  <h3 id="edit-title">دستورالعمل جدید</h3>
+  <h3 id="edit-title">بند جدید</h3>
   <input type="hidden" id="f_id">
   <div class="row2">
     <div><label for="f_station">ایستگاه</label>
@@ -92,10 +84,9 @@
       <select id="f_kind">{% for code, label in kinds %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></div>
   </div>
   <label for="f_title">عنوان</label>
-  <input type="text" id="f_title" placeholder="مثلاً: نوار لبه صفحه">
-  <label for="f_body">متن (هر خط یک بند؛ در چک‌لیست هر خط یک تیک)</label>
+  <input type="text" id="f_title">
+  <label for="f_body">متن</label>
   <textarea id="f_body"></textarea>
-  <div class="cond-note">شرط نمایش (اختیاری): هر دو شرط با هم اعمال می‌شوند.</div>
   <div class="row2">
     <div><label for="f_material">فقط متریال</label>
       <select id="f_material"><option value="">همه متریال‌ها</option>
@@ -104,7 +95,7 @@
       <select id="f_color"><option value="">همه رنگ‌ها</option>
         {% for c in colors %}<option value="{{ c.pk }}">{{ c.code }}{% if c.description %} — {{ c.description }}{% endif %}</option>{% endfor %}</select></div>
   </div>
-  <label class="check"><input type="checkbox" id="f_active" checked> فعال (در صفحه اسکن و سندها بیاید)</label>
+  <label class="check"><input type="checkbox" id="f_active" checked> فعال</label>
   <div class="err" id="edit-err" role="alert"></div>
   <div class="foot">
     <button type="button" class="btn" onclick="closeDlg('edit-dlg')">انصراف</button>
@@ -156,7 +147,7 @@ function openEdit(id, station) {
   const d = id ? CARD_DATA[id] : null;
   $('edit-err').textContent = '';
   $('f_id').value = id || '';
-  $('edit-title').textContent = d ? 'ویرایش: ' + d.title : 'دستورالعمل جدید';
+  $('edit-title').textContent = d ? 'ویرایش: ' + d.title : 'بند جدید';
   $('f_station').value = d ? d.station : (station || 'general');
   $('f_kind').value = d ? d.kind : 'note';
   $('f_title').value = d ? d.title : '';
@@ -183,7 +174,7 @@ function saveInstruction() {
   }).catch(() => { $('edit-err').textContent = 'ارتباط با سرور برقرار نشد.'; });
 }
 function deleteIns(id) {
-  if (!confirm('این دستورالعمل حذف شود؟')) return;
+  if (!confirm('حذف شود؟')) return;
   post(url(URLS.del, id)).then(d => d.success ? location.reload() : alert(d.error || 'حذف انجام نشد.'));
 }
 function toggleActive(id, btn) {
@@ -244,12 +235,6 @@ document.querySelectorAll('.cards').forEach(list => {
   });
   list.addEventListener('drop', e => { e.preventDefault(); persistOrder(); });
 });
-function moveCard(btn, dir) {
-  const card = btn.closest('.ins'), list = card.parentElement;
-  if (dir < 0 && card.previousElementSibling) list.insertBefore(card, card.previousElementSibling);
-  if (dir > 0 && card.nextElementSibling) list.insertBefore(card.nextElementSibling, card);
-  persistOrder();
-}
 function persistOrder() {
   const ids = [...document.querySelectorAll('.ins[data-id]')].map(c => c.dataset.id);
   post(URLS.reorder, {ids}).then(d => { if (!d.success) alert(d.error || 'ترتیب ذخیره نشد.'); })

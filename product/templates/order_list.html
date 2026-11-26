@@ -125,7 +125,7 @@
                         <td>
                             <div class="btn-group btn-group-sm">
                                 {% if order.status == 'draft' %}
-                                <button type="button" class="btn btn-outline-primary generate-tasks" data-order="{{ order.id }}" title="ایجاد دستور تولید">
+                                <button type="button" class="btn btn-outline-primary generate-tasks" data-order="{{ order.id }}" title="صدور سند">
                                     <i class="bi bi-play-circle"></i>
                                 </button>
                                 {% endif %}
@@ -276,7 +276,7 @@ document.addEventListener('DOMContentLoaded', function() {
         btn.addEventListener('click', function(e) {
             e.stopPropagation();
             const orderId = this.dataset.order;
-            if (confirm('آیا مطمئنید که می‌خواهید دستور تولید صادر شود؟')) {
+            if (confirm('سند صادر شود؟')) {
                 this.disabled = true;
                 fetch(`/orders/${orderId}/generate-tasks/`, {
                     method: 'POST',

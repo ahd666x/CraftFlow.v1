@@ -1,5 +1,5 @@
 {% extends 'instructions/base.html' %}
-{% block title %}مرورگر دانش تولید{% endblock %}
+{% block title %}بندها{% endblock %}
 {% block head %}
 <style>
   .stats { display: flex; flex-wrap: wrap; gap: 8px 28px; padding: 4px 0 10px; }
@@ -18,15 +18,14 @@
 {% endblock %}
 {% block body %}
 <header class="doc-head"><div>
-  <h1>مرورگر دانش تولید</h1>
-  <div class="meta"><span>دستورالعمل‌های ایستگاه‌ها، شرط‌های متریال/رنگ و راه‌اندازی ماشین</span></div>
+  <h1>بندها</h1>
 </div></header>
 
 <div class="stats">
   <div><b>{{ stats.active }}</b><span>بند فعال</span></div>
   <div><b>{{ stats.warnings }}</b><span>هشدار فعال</span></div>
   <div><b>{{ stats.checklists }}</b><span>چک‌لیست فعال</span></div>
-  <div><b>{{ stats.products }}</b><span>محصول دارای دانش</span></div>
+  <div><b>{{ stats.products }}</b><span>محصول</span></div>
   <div><b>{{ stats.total }}</b><span>کل بندها</span></div>
 </div>
 
@@ -40,13 +39,13 @@
           <span class="hint">{{ p.category.name|default:'بدون دسته' }}</span>
           <span class="grow"></span>
           <span class="hint">{{ p.active_count }} فعال از {{ p.total }}</span>
-          <a class="btn sm primary" href="{% url 'instructions:product_editor' p.pk %}">ویرایشگر</a>
+          <a class="btn sm primary" href="{% url 'instructions:product_editor' p.pk %}">ویرایش</a>
           <a class="btn sm" href="{% url 'instructions:product_doc' p.pk %}">سند</a>
         </div>
       {% endfor %}
     </div>
   {% else %}
-    <div class="empty">هنوز محصولی دستورالعمل ندارد. از ویرایشگر محصول شروع کنید.</div>
+    <div class="empty">محصولی ثبت نشده است.</div>
   {% endif %}
 </section>
 
@@ -82,14 +81,11 @@
         {% endfor %}
       </tbody>
     </table></div>
-    {% if rows|length >= 400 %}<p class="hint">فقط ۴۰۰ بند اول نمایش داده شد؛ فیلتر را دقیق‌تر کنید.</p>{% endif %}
+    {% if rows|length >= 400 %}<p class="hint">۴۰۰ بند اول نمایش داده شد.</p>{% endif %}
   {% else %}
     <div class="empty">موردی با این فیلترها پیدا نشد.</div>
   {% endif %}
 </section>
 
-<p class="hint" style="margin-top:20px">
-  راه‌اندازی ماشین CNC (پارکینگ ابزار، مبدأ G54، نقاط میخ):
-  {% if cnc_setup_active %}ثبت و فعال است.{% else %}هنوز ثبت نشده است؛ از ادمین، «راه‌اندازی ماشین CNC» را اضافه کنید.{% endif %}
-</p>
+<p class="hint" style="margin-top:20px">راه‌اندازی CNC: {% if cnc_setup_active %}فعال{% else %}ثبت نشده{% endif %}</p>
 {% endblock %}

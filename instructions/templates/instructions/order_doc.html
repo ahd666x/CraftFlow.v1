@@ -1,11 +1,11 @@
 {% extends 'instructions/base.html' %}
-{% block title %}دستور تولید سفارش {{ order.id }}{% endblock %}
+{% block title %}سفارش {{ order.id }}{% endblock %}
 {% block body %}
 {% include 'instructions/partials/doc_toolbar.html' %}
 
 <header class="doc-head">
   <div>
-    <h1>دستور تولید سفارش {{ order.id }}{% if order.number %} <bdi>({{ order.number }})</bdi>{% endif %}</h1>
+    <h1>سفارش {{ order.id }}{% if order.number %} <bdi>({{ order.number }})</bdi>{% endif %}</h1>
     <div class="meta">
       <span>مشتری: <b>{{ order.customer.name|default:'—' }}</b></span>
       <span>نماینده: <b>{% if order.user %}{{ order.user.get_full_name|default:order.user.username }}{% else %}—{% endif %}</b></span>
@@ -18,7 +18,7 @@
 
 {% if cnc_setup %}
   <section class="station">
-    <h2>CNC — راه‌اندازی ماشین (مشترک همه‌ی آیتم‌ها)</h2>
+    <h2>CNC</h2>
     {% include 'instructions/partials/cnc_auto_section.html' %}
   </section>
 {% endif %}
@@ -36,7 +36,7 @@
     </div>
     {% if block.item.notes %}<div class="hint">{{ block.item.notes }}</div>{% endif %}
     {% if not block.has_content %}
-      <div class="empty" style="margin-top:10px">برای این آیتم دستورالعملی که با متریال/رنگ سفارش بخواند ثبت نشده است.</div>
+      <div class="empty" style="margin-top:10px">محتوایی برای این آیتم ثبت نشده است.</div>
     {% endif %}
     {% for section in block.sections %}
       <section class="station">

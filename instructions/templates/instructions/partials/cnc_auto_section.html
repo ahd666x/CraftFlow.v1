@@ -1,6 +1,6 @@
 {# بخش خودکار ایستگاه CNC — از راه‌اندازی ماشین (CncMachineSetup) ساخته می‌شود. #}
 <div class="cnc-auto">
-  <b>راهنمای خودکار ماشین: {{ cnc_setup.name }}</b>
+  <b>{{ cnc_setup.name }}</b>
 
   {% if cnc_setup.tools %}
     <div class="sub">ابزار هر پارکینگ</div>
@@ -30,9 +30,8 @@
         <div class="org" style="left: {{ cnc_setup.map.origin.left }}%; top: {{ cnc_setup.map.origin.top }}%;"><span>مبدأ G54</span></div>
       </div>
       <div class="cnc-map-legend">
-        <div>نقطه قرمز: میخ، گیره یا پین؛ نباید روی مسیر برش بیفتد.</div>
-        <div>علامت آبی: مبدأ برنامه (G54)؛ قطعه روی همین نقطه سِت می‌شود.</div>
-        <div>وضعیت ممنوع/امن هر نقطه برای هر قطعه در صفحه اسکن CNC محاسبه می‌شود.</div>
+        <div>قرمز: میخ یا گیره</div>
+        <div>آبی: مبدأ G54</div>
       </div>
     </div>
   {% endif %}

@@ -452,7 +452,7 @@ class CncGuideIntegrationTests(TestCase):
         resp = self.client.get(reverse('instructions:product_doc', args=[self.product.id]))
         self.assertEqual(resp.status_code, 200)
         body = resp.content.decode()
-        self.assertIn('راهنمای خودکار ماشین: CNC کارگاه', body)
+        self.assertIn('CNC کارگاه', body)
         self.assertIn('T1', body)
         self.assertIn('مبدأ G54', body)
 
@@ -584,7 +584,7 @@ class KnowledgeBrowserTests(TestCase):
         resp = self.client.get(reverse('instructions:browser'))
         self.assertEqual(resp.status_code, 200)
         body = resp.content.decode()
-        self.assertIn('مرورگر دانش تولید', body)
+        self.assertIn('بندها', body)
         self.assertIn('میز فیدان', body)
         self.assertIn('مرحله CNC', body)
         self.assertIn('بند خاموش', body)
@@ -628,7 +628,7 @@ class ProductEditorTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         body = resp.content.decode()
         self.assertIn('id="card-data"', body)
-        self.assertIn('ویرایشگر دستورالعمل‌ها', body)
+        self.assertIn('میز فیدان', body)
 
     def test_anonymous_redirected(self):
         resp = self.client.get(reverse('instructions:product_editor', args=[self.product.id]))
@@ -767,7 +767,7 @@ class OrderDocTests(TestCase):
         self.assertIn('قطعه‌محور پشت‌بند', body)             # دانش قطعه‌محور قطعات همین آیتم
         self.assertIn('متریال: MDF خام', body)
         # بلوک مشترک CNC یک‌بار بالای سند
-        self.assertEqual(body.count('راهنمای خودکار ماشین: CNC سند سفارش'), 1)
+        self.assertEqual(body.count('CNC سند سفارش'), 1)
 
     def test_item_without_material_reality_hides_conditioned_instructions(self):
         """آیتم بدون تسک و بدون BOM: متریال نامشخص → شرط‌دارها fail-closed حذف می‌شوند."""

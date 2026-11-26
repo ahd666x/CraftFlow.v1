@@ -86,7 +86,7 @@ class WorkInstruction(models.Model):
     part = models.ForeignKey(
         Part, null=True, blank=True, on_delete=models.CASCADE,
         related_name='work_instructions', verbose_name='قطعه',
-        help_text='سطح قطعه: فقط برای همین قطعه (مثلاً جهت قرارگیری در سوراخکاری)',
+        help_text='فقط برای همین قطعه',
     )
     station = models.CharField(
         max_length=50, choices=STATION_FILTER_CHOICES, default=GENERAL,
@@ -116,7 +116,7 @@ class WorkInstruction(models.Model):
     )
     updated_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, blank=True, editable=False,
-        on_delete=models.SET_NULL, related_name='instructions_updated', verbose_name='آخرین ویرایشگر',
+        on_delete=models.SET_NULL, related_name='instructions_updated', verbose_name='آخرین تغییر',
     )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='ایجاد')
     updated_at = models.DateTimeField(auto_now=True, verbose_name='ویرایش')
@@ -124,8 +124,8 @@ class WorkInstruction(models.Model):
     objects = WorkInstructionQuerySet.as_manager()
 
     class Meta:
-        verbose_name = 'دستورالعمل تولید'
-        verbose_name_plural = 'دستورالعمل‌های تولید'
+        verbose_name = 'بند'
+        verbose_name_plural = 'بندها'
         ordering = ('station', 'sequence', 'id')
 
     def __str__(self):
@@ -134,9 +134,9 @@ class WorkInstruction(models.Model):
 
     def clean(self):
         if not self.product_id and not self.part_id:
-            raise ValidationError('دستورالعمل باید به یک محصول یا یک قطعه وصل باشد.')
+            raise ValidationError('بند باید به یک محصول یا یک قطعه وصل باشد.')
         if self.product_id and self.part_id:
-            raise ValidationError('دستورالعمل فقط یکی از محصول یا قطعه را بپذیرد؛ دانش قطعه‌محور را در سطح قطعه ثبت کنید.')
+            raise ValidationError('بند فقط یکی از محصول یا قطعه را می‌پذیرد.')
 
     @property
     def badge(self):
@@ -161,15 +161,15 @@ class WorkInstructionImage(models.Model):
     """عکس کمکی دستورالعمل (مثلاً صفحه شش‌ضلعی با ضلع‌های علامت‌خورده)."""
 
     instruction = models.ForeignKey(
-        WorkInstruction, on_delete=models.CASCADE, related_name='images', verbose_name='دستورالعمل',
+        WorkInstruction, on_delete=models.CASCADE, related_name='images', verbose_name='بند',
     )
     image = models.ImageField(upload_to='instruction_images/', verbose_name='تصویر')
     caption = models.CharField(max_length=200, blank=True, verbose_name='توضیح تصویر')
     sort_order = models.PositiveIntegerField(default=0, verbose_name='ترتیب')
 
     class Meta:
-        verbose_name = 'تصویر دستورالعمل'
-        verbose_name_plural = 'تصاویر دستورالعمل'
+        verbose_name = 'تصویر بند'
+        verbose_name_plural = 'تصاویر بند'
         ordering = ('sort_order', 'id')
 
     def __str__(self):
@@ -190,7 +190,7 @@ class ChecklistState(models.Model):
 
     instruction = models.ForeignKey(
         WorkInstruction, on_delete=models.CASCADE,
-        related_name='check_states', verbose_name='دستورالعمل',
+        related_name='check_states', verbose_name='بند',
     )
     order_item = models.ForeignKey(
         'product.OrderItem', on_delete=models.CASCADE,

@@ -1,16 +1,9 @@
-<!doctype html>
-<html lang="fa" dir="rtl">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{% block title %}دانش تولید{% endblock %}</title>
-{% include 'instructions/partials/doc_styles.html' %}
-{% block head %}{% endblock %}
-</head>
-<body>
+{% extends 'base.html' %}
+{% block title %}بندها{% endblock %}
+{% block extra_css %}{{ block.super }}{% include 'instructions/partials/doc_styles.html' %}{% block head %}{% endblock %}{% endblock %}
+{% block content %}
 <div class="page">
 {% block body %}{% endblock %}
 </div>
-{% block scripts %}{% endblock %}
-</body>
-</html>
+{% endblock %}
+{% block extra_js %}{% block scripts %}{% endblock %}{% endblock %}

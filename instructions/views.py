@@ -51,7 +51,7 @@ def product_doc(request, pk):
 def product_doc_docx(request, pk):
     product = get_object_or_404(Product.objects.select_related('category'), pk=pk)
     buffer = export.render_product_docx(docs.build_product_doc(product), docs.parse_hidden_kinds(request))
-    name = f"دستور_تولید_{docs.safe_filename(product.name)}.docx"
+    name = f"سند_{docs.safe_filename(product.name)}.docx"
     return FileResponse(buffer, as_attachment=True, filename=name, content_type=DOCX_MIME)
 
 
@@ -70,7 +70,7 @@ def order_doc(request, pk):
 def order_doc_docx(request, pk):
     order = get_object_or_404(Order.objects.select_related('customer', 'user'), pk=pk)
     buffer = export.render_order_docx(docs.build_order_doc(order), docs.parse_hidden_kinds(request))
-    return FileResponse(buffer, as_attachment=True, filename=f'دستور_تولید_سفارش_{order.pk}.docx',
+    return FileResponse(buffer, as_attachment=True, filename=f'سند_سفارش_{order.pk}.docx',
                         content_type=DOCX_MIME)
 
 

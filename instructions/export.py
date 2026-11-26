@@ -243,8 +243,8 @@ def _to_buffer(document):
 def render_product_docx(data, hidden_kinds=()):
     product = data['product']
     hidden = set(hidden_kinds)
-    document = _new_document(f'دستور تولید — {product.name}')
-    _par(document, f'دستور تولید — {product.name}', 18, True, before=0, after=2)
+    document = _new_document(f'سند — {product.name}')
+    _par(document, f'سند — {product.name}', 18, True, before=0, after=2)
     meta = [f'دسته: {product.category.name}' if getattr(product, 'category', None) else '']
     size = getattr(product, 'default_size_display', '')
     if size:
@@ -259,13 +259,13 @@ def render_product_docx(data, hidden_kinds=()):
 def render_order_docx(data, hidden_kinds=()):
     order = data['order']
     hidden = set(hidden_kinds)
-    title = f'دستور تولید سفارش {order.id}' + (f' ({order.number})' if order.number else '')
+    title = f'سفارش {order.id}' + (f' ({order.number})' if order.number else '')
     document = _new_document(title)
     _par(document, title, 18, True, after=2)
     customer = getattr(getattr(order, 'customer', None), 'name', '') or '—'
     _par(document, f'مشتری: {customer}   تحویل: {order.due_date or "—"}', 9.5, color=MUTED, after=8)
     if data.get('cnc_setup'):
-        _heading(document, 'ایستگاه CNC — راه‌اندازی ماشین (مشترک همه آیتم‌ها)', 2)
+        _heading(document, 'ایستگاه CNC', 2)
         _cnc_block(document, data['cnc_setup'])
     for block in data['blocks']:
         item = block['item']
@@ -277,7 +277,7 @@ def render_order_docx(data, hidden_kinds=()):
         facts += [f'رنگ کد: {c}' for c in block['colors']]
         _par(document, '   '.join(facts), 9.5, color=MUTED, after=4)
         if not block['has_content']:
-            _par(document, 'برای این آیتم دستورالعملی که با متریال/رنگ سفارش بخواند ثبت نشده است.',
+            _par(document, 'محتوایی برای این آیتم ثبت نشده است.',
                  color=MUTED)
         _sections(document, block['sections'], hidden)
     return _to_buffer(document)

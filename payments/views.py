@@ -42,7 +42,7 @@ def _finish_payment(request, payment, result):
     if not result.get('success'):
         messages.warning(
             request,
-            f"پرداخت موفق، اما صدور دستور تولید با مشکل مواجه شد: {result.get('error')}",
+            f"پرداخت موفق، اما صدور سند با مشکل مواجه شد: {result.get('error')}",
         )
 
     return redirect('storefront:order_detail', order_id=order.id)
@@ -126,7 +126,7 @@ def payment_verify(request):
             if not task_result.get('success'):
                 messages.warning(
                     request,
-                    f"سفارش ثبت شد، اما صدور دستور تولید با مشکل مواجه شد: {task_result.get('error')}",
+                    f"سفارش ثبت شد، اما صدور سند با مشکل مواجه شد: {task_result.get('error')}",
                 )
         messages.success(
             request,
