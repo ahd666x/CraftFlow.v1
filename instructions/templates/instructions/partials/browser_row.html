@@ -1,0 +1,11 @@
+{# یک ردیف بند در مرورگر — ورودی: ins #}
+<div class="ins-row{% if not ins.active %} off{% endif %}" data-kind="{{ ins.kind }}">
+  <span class="tag">{{ ins.badge.0 }}</span>
+  <span class="main">
+    <b>{{ ins.title }}</b>
+    {% if ins.body %}<span class="hint">{{ ins.body|truncatechars:90 }}</span>{% endif %}
+  </span>
+  {% if ins.condition_labels %}<span class="cond">{{ ins.condition_labels|join:'، ' }}</span>{% endif %}
+  {% if not ins.active %}<span class="off-text hint">غیرفعال</span>{% endif %}
+  <a class="hint" href="{% url 'admin:instructions_workinstruction_change' ins.pk %}" target="_blank" rel="noopener">ادمین</a>
+</div>

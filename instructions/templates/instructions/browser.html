@@ -3,89 +3,156 @@
 {% block head %}
 <style>
   .stats { display: flex; flex-wrap: wrap; gap: 8px 28px; padding: 4px 0 10px; }
-  .stats div { display: flex; flex-direction: column; }
+  .stats a { display: flex; flex-direction: column; color: inherit; text-decoration: none; }
+  .stats a:hover b { color: var(--accent); }
   .stats b { font-size: 22px; line-height: 1.3; }
   .stats span { font-size: 12px; color: var(--muted); }
-  .prod-list { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); }
-  .prod-row { display: flex; align-items: center; gap: 12px; padding: 8px 14px; flex-wrap: wrap; }
-  .prod-row + .prod-row { border-top: 1px solid var(--line); }
-  .prod-row .name { font-weight: 700; } .prod-row .grow { flex: 1; }
-  .filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
-  .filters input, .filters select { font: inherit; padding: 5px 10px; border: 1px solid var(--line); border-radius: 7px; background: #fff; }
-  .filters input[type=text] { flex: 1; min-width: 200px; }
+  .filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 4px; }
+  .filters input, .filters select { font: inherit; padding: 5px 10px; border: 1px solid var(--line); border-radius: 7px; background: #fff; max-width: 100%; }
+  .filters input[type=text] { flex: 1; min-width: 180px; }
+  .result-line { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; margin: 6px 0 12px; }
+
+  .prod-list { display: flex; flex-direction: column; gap: 8px; }
+  details.prod, .prod.flat { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); }
+  details.prod > summary, .prod.flat { list-style: none; display: flex; align-items: center; gap: 8px 12px; padding: 9px 14px; flex-wrap: wrap; }
+  details.prod > summary { cursor: pointer; }
+  details.prod > summary::-webkit-details-marker { display: none; }
+  details.prod > summary::before { content: "◂"; color: var(--muted); font-size: 11px; transition: transform .15s; }
+  details.prod[open] > summary::before { transform: rotate(-90deg); }
+  .prod .name { font-weight: 700; }
+  .prod .grow { flex: 1; }
+  .badge { font-size: 11.5px; padding: 0 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+  .badge.warn { color: var(--danger); border-color: var(--danger); background: var(--danger-soft); }
+  .prod-body { border-top: 1px solid var(--line); padding: 4px 14px 10px; }
+  .st-block h3 { font-size: 12.5px; font-weight: 800; margin: 12px 0 4px; color: var(--muted); }
+  .st-block h3 .n { font-weight: 400; }
+  .ins-row { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 10px; padding: 5px 0; border-top: 1px dashed var(--line); }
+  .ins-row:first-of-type { border-top: 0; }
+  .ins-row .tag { font-size: 12px; font-weight: 700; flex: none; min-width: 52px; }
+  .ins-row .main { flex: 1; min-width: 200px; }
+  .ins-row .hint { display: block; }
+  .ins-row .cond { font-size: 12px; color: var(--muted); }
+  .ins-row[data-kind="step"] .tag { color: var(--k-step); }
+  .ins-row[data-kind="warning"] .tag { color: var(--k-warning); }
+  .ins-row[data-kind="checklist"] .tag { color: var(--k-checklist); }
+  .ins-row[data-kind="spec"] .tag { color: var(--k-spec); }
+  .ins-row.off { opacity: .6; }
   .off-text { color: var(--danger); }
+  .sect-note { margin: 0 0 8px; }
 </style>
 {% endblock %}
 {% block body %}
 <header class="doc-head"><div>
   <h1>بندها</h1>
+  <div class="meta"><span>هر محصول با بندهای خودش؛ برای نوشتن یا ویرایش، «ویرایش» محصول را بزنید.</span></div>
 </div></header>
 
 <div class="stats">
-  <div><b>{{ stats.active }}</b><span>بند فعال</span></div>
-  <div><b>{{ stats.warnings }}</b><span>هشدار فعال</span></div>
-  <div><b>{{ stats.checklists }}</b><span>چک‌لیست فعال</span></div>
-  <div><b>{{ stats.products }}</b><span>محصول</span></div>
-  <div><b>{{ stats.total }}</b><span>کل بندها</span></div>
+  <a href="?status=active"><b>{{ stats.active }}</b><span>بند فعال</span></a>
+  <a href="?kind=warning&status=active"><b>{{ stats.warnings }}</b><span>هشدار فعال</span></a>
+  <a href="?kind=checklist&status=active"><b>{{ stats.checklists }}</b><span>چک‌لیست فعال</span></a>
+  <a href="."><b>{{ stats.products }}</b><span>محصول دارای بند</span></a>
+  <a href="?status=empty"><b>{{ stats.empty_products }}</b><span>محصول بدون بند</span></a>
+  <a href="."><b>{{ stats.total }}</b><span>کل بندها</span></a>
 </div>
+
+<form class="filters" method="get">
+  <input type="text" name="q" value="{{ filters.q }}" placeholder="جست‌وجو در عنوان و متن بندها" aria-label="جست‌وجو">
+  <select name="product" aria-label="محصول"><option value="">همه‌ی محصولات</option>
+    {% for p in all_products %}<option value="{{ p.pk }}" {% if filters.product == p.pk|stringformat:'s' %}selected{% endif %}>{{ p.name }}</option>{% endfor %}</select>
+  <select name="station" aria-label="ایستگاه"><option value="">همه‌ی ایستگاه‌ها</option>
+    {% for code, label in stations %}<option value="{{ code }}" {% if filters.station == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+  <select name="kind" aria-label="نوع"><option value="">همه‌ی انواع</option>
+    {% for code, label in kinds %}<option value="{{ code }}" {% if filters.kind == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+  <select name="status" aria-label="وضعیت"><option value="">فعال و غیرفعال</option>
+    <option value="active" {% if filters.status == 'active' %}selected{% endif %}>فقط فعال</option>
+    <option value="inactive" {% if filters.status == 'inactive' %}selected{% endif %}>فقط غیرفعال</option>
+    <option value="empty" {% if filters.status == 'empty' %}selected{% endif %}>محصولات بدون بند</option></select>
+  <button class="btn primary" type="submit">اعمال فیلتر</button>
+  {% if narrowed %}<a class="btn" href=".">پاک‌کردن فیلترها</a>{% endif %}
+</form>
+
+{% if narrowed and filters.status != 'empty' %}
+  <div class="result-line hint">
+    <span>{{ matched }} بند در {{ groups|length }} محصول{% if part_groups %} و {{ part_groups|length }} قطعه{% endif %}</span>
+    {% if truncated %}<span class="off-text">فقط {{ row_limit }} بند اول نمایش داده شد؛ فیلتر را دقیق‌تر کنید.</span>{% endif %}
+  </div>
+{% endif %}
 
 <section class="station">
   <h2>محصولات</h2>
-  {% if products %}
+  {% if groups %}
     <div class="prod-list">
-      {% for p in products %}
-        <div class="prod-row">
-          <span class="name"><bdi>{{ p.name }}</bdi></span>
-          <span class="hint">{{ p.category.name|default:'بدون دسته' }}</span>
-          <span class="grow"></span>
-          <span class="hint">{{ p.active_count }} فعال از {{ p.total }}</span>
-          <a class="btn sm primary" href="{% url 'instructions:product_editor' p.pk %}">ویرایش</a>
-          <a class="btn sm" href="{% url 'instructions:product_doc' p.pk %}">سند</a>
-        </div>
+      {% for g in groups %}
+        {% with p=g.product %}
+          {% if p.total and g.stations %}
+          <details class="prod" {% if g.open %}open{% endif %}>
+            <summary>
+              <span class="name"><bdi>{{ p.name }}</bdi></span>
+              <span class="hint">{{ p.category.name|default:'بدون دسته' }}</span>
+              <span class="grow"></span>
+              <span class="badge">{{ p.active_count }} فعال از {{ p.total }}</span>
+              {% if p.warning_count %}<span class="badge warn">{{ p.warning_count }} هشدار</span>{% endif %}
+              <a class="btn sm primary" href="{% url 'instructions:product_editor' p.pk %}">ویرایش</a>
+              <a class="btn sm" href="{% url 'instructions:product_doc' p.pk %}">سند</a>
+            </summary>
+            <div class="prod-body">
+              {% for st in g.stations %}
+                <div class="st-block">
+                  <h3>{{ st.label }} <span class="n">({{ st.items|length }})</span></h3>
+                  {% for ins in st.items %}{% include 'instructions/partials/browser_row.html' %}{% endfor %}
+                </div>
+              {% endfor %}
+            </div>
+          </details>
+          {% else %}
+          <div class="prod flat">
+            <span class="name"><bdi>{{ p.name }}</bdi></span>
+            <span class="hint">{{ p.category.name|default:'بدون دسته' }}</span>
+            <span class="grow"></span>
+            {% if p.total %}
+              <span class="badge">{{ p.active_count }} فعال از {{ p.total }}</span>
+              <a class="btn sm primary" href="{% url 'instructions:product_editor' p.pk %}">ویرایش</a>
+              <a class="btn sm" href="{% url 'instructions:product_doc' p.pk %}">سند</a>
+            {% else %}
+              <span class="badge">بدون بند</span>
+              <a class="btn sm primary" href="{% url 'instructions:product_editor' p.pk %}">شروع نوشتن</a>
+            {% endif %}
+          </div>
+          {% endif %}
+        {% endwith %}
       {% endfor %}
     </div>
   {% else %}
-    <div class="empty">محصولی ثبت نشده است.</div>
+    <div class="empty">{% if narrowed %}موردی با این فیلترها پیدا نشد.{% else %}محصولی ثبت نشده است.{% endif %}</div>
   {% endif %}
 </section>
 
+{% if part_groups %}
 <section class="station">
-  <h2>همه‌ی بندها</h2>
-  <form class="filters" method="get">
-    <input type="text" name="q" value="{{ filters.q }}" placeholder="جست‌وجو در عنوان و متن" aria-label="جست‌وجو">
-    <select name="station" aria-label="ایستگاه"><option value="">همه‌ی ایستگاه‌ها</option>
-      {% for code, label in stations %}<option value="{{ code }}" {% if filters.station == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
-    <select name="kind" aria-label="نوع"><option value="">همه‌ی انواع</option>
-      {% for code, label in kinds %}<option value="{{ code }}" {% if filters.kind == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
-    <select name="status" aria-label="وضعیت"><option value="">فعال و غیرفعال</option>
-      <option value="active" {% if filters.status == 'active' %}selected{% endif %}>فقط فعال</option>
-      <option value="inactive" {% if filters.status == 'inactive' %}selected{% endif %}>فقط غیرفعال</option></select>
-    <button class="btn primary" type="submit">اعمال فیلتر</button>
-  </form>
-
-  {% if rows %}
-    <div class="table-wrap"><table class="grid">
-      <thead><tr><th>عنوان</th><th>مقصد</th><th>ایستگاه</th><th>نوع</th><th>شرط نمایش</th><th>وضعیت</th><th></th></tr></thead>
-      <tbody>
-        {% for ins in rows %}
-          <tr>
-            <td><b>{{ ins.title }}</b>{% if ins.body %}<div class="hint">{{ ins.body|truncatechars:90 }}</div>{% endif %}</td>
-            <td>{% if ins.product_id %}<a href="{% url 'instructions:product_editor' ins.product_id %}"><bdi>{{ ins.product.name }}</bdi></a>{% endif %}
-                {% if ins.part_id %}قطعه: {{ ins.part.name }}{% endif %}</td>
-            <td>{{ ins.get_station_display }}</td>
-            <td>{{ ins.badge.0 }}</td>
-            <td>{% if ins.condition_labels %}{{ ins.condition_labels|join:'، ' }}{% else %}همیشه{% endif %}</td>
-            <td>{% if ins.active %}فعال{% else %}<span class="off-text">غیرفعال</span>{% endif %}</td>
-            <td><a href="{% url 'admin:instructions_workinstruction_change' ins.pk %}" target="_blank" rel="noopener">ادمین</a></td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table></div>
-    {% if rows|length >= 400 %}<p class="hint">۴۰۰ بند اول نمایش داده شد.</p>{% endif %}
-  {% else %}
-    <div class="empty">موردی با این فیلترها پیدا نشد.</div>
-  {% endif %}
+  <h2>بندهای سطح قطعه</h2>
+  <p class="hint sect-note">این بندها به یک قطعه وصل‌اند، نه به محصول؛ ویرایش آن‌ها از ادمین انجام می‌شود.</p>
+  <div class="prod-list">
+    {% for g in part_groups %}
+      <details class="prod" {% if g.open %}open{% endif %}>
+        <summary>
+          <span class="name"><bdi>{{ g.part.name }}</bdi></span>
+          <span class="grow"></span>
+          <span class="badge">{{ g.shown }} بند</span>
+        </summary>
+        <div class="prod-body">
+          {% for st in g.stations %}
+            <div class="st-block">
+              <h3>{{ st.label }} <span class="n">({{ st.items|length }})</span></h3>
+              {% for ins in st.items %}{% include 'instructions/partials/browser_row.html' %}{% endfor %}
+            </div>
+          {% endfor %}
+        </div>
+      </details>
+    {% endfor %}
+  </div>
 </section>
+{% endif %}
 
 <p class="hint" style="margin-top:20px">راه‌اندازی CNC: {% if cnc_setup_active %}فعال{% else %}ثبت نشده{% endif %}</p>
 {% endblock %}

@@ -75,22 +75,41 @@ def order_doc_docx(request, pk):
 
 
 # ── مرورگر و ویرایشگر ────────────────────────────────────────────
+BROWSER_ROW_LIMIT = 600
+
+
+def _station_groups(instructions):
+    """بندهای یک محصول/قطعه را به ترتیب رسمی ایستگاه‌ها دسته‌بندی می‌کند."""
+    by_station = {}
+    for ins in instructions:
+        by_station.setdefault(ins.station, []).append(ins)
+    order = list(WorkInstruction.STATION_ORDER) + sorted(set(by_station) - set(WorkInstruction.STATION_ORDER))
+    return [{'code': code, 'label': STATION_LABELS.get(code, code), 'items': by_station[code]}
+            for code in order if code in by_station]
+
+
 @login_required
 @user_passes_test(_is_staff)
 def knowledge_browser(request):
+    """فهرست همه‌ی محصولات؛ بندهای هر محصول زیر خودش و به تفکیک ایستگاه."""
     instructions = (WorkInstruction.objects
-                    .select_related('product', 'part', 'condition_material', 'condition_color')
-                    .prefetch_related('images'))
-    products = (Product.objects
-                .annotate(total=Count('work_instructions'),
-                          active_count=Count('work_instructions', filter=Q(work_instructions__active=True)))
-                .filter(total__gt=0).select_related('category'))
+                    .select_related('product', 'part', 'condition_material', 'condition_color'))
+    products = (Product.objects.select_related('category')
+                .annotate(total=Count('work_instructions', distinct=True),
+                          active_count=Count('work_instructions', distinct=True,
+                                             filter=Q(work_instructions__active=True)),
+                          warning_count=Count('work_instructions', distinct=True,
+                                              filter=Q(work_instructions__active=True,
+                                                       work_instructions__kind=WorkInstruction.KIND_WARNING)))
+                .order_by('name', 'id'))
+    products = list(products)
     stats = {
         'total': instructions.count(),
         'active': instructions.filter(active=True).count(),
         'warnings': instructions.filter(active=True, kind=WorkInstruction.KIND_WARNING).count(),
         'checklists': instructions.filter(active=True, kind=WorkInstruction.KIND_CHECKLIST).count(),
-        'products': products.count(),
+        'products': sum(1 for p in products if p.total),
+        'empty_products': sum(1 for p in products if not p.total),
     }
 
     q = (request.GET.get('q') or '').strip()
@@ -98,6 +117,8 @@ def knowledge_browser(request):
     kind = request.GET.get('kind') or ''
     status = request.GET.get('status') or ''
     product_id = request.GET.get('product') or ''
+    empty_only = status == 'empty'
+
     filtered = instructions
     if q:
         filtered = filtered.filter(Q(title__icontains=q) | Q(body__icontains=q))
@@ -112,10 +133,48 @@ def knowledge_browser(request):
     if product_id.isdigit():
         filtered = filtered.filter(product_id=int(product_id), part__isnull=True)
 
+    narrowed = bool(q or station or kind or status in ('active', 'inactive'))
+    matched = 0 if empty_only else filtered.count()
+    rows = [] if empty_only else list(filtered.order_by('station', 'sequence', 'id')[:BROWSER_ROW_LIMIT])
+
+    by_product, by_part = {}, {}
+    for ins in rows:
+        if ins.product_id:
+            by_product.setdefault(ins.product_id, []).append(ins)
+        else:
+            by_part.setdefault(ins.part_id, []).append(ins)
+
+    groups = []
+    for p in products:
+        items = by_product.get(p.pk, [])
+        if empty_only:
+            if p.total:
+                continue
+        elif product_id.isdigit():
+            if p.pk != int(product_id):
+                continue
+        elif narrowed and not items:
+            continue
+        groups.append({'product': p, 'stations': _station_groups(items), 'shown': len(items),
+                       'open': bool(items) and (narrowed or product_id.isdigit())})
+
+    part_groups = []
+    if not product_id.isdigit() and not empty_only:
+        for items in by_part.values():
+            part_groups.append({'part': items[0].part, 'stations': _station_groups(items), 'shown': len(items),
+                                'open': narrowed})
+        part_groups.sort(key=lambda g: (g['part'].name or '', g['part'].pk))
+
     context = {
         'stats': stats,
-        'products': products,
-        'rows': filtered.order_by('station', 'sequence', 'id')[:400],
+        'groups': groups,
+        'part_groups': part_groups,
+        'rows': rows,
+        'matched': matched,
+        'truncated': matched > len(rows),
+        'row_limit': BROWSER_ROW_LIMIT,
+        'narrowed': narrowed or empty_only or product_id.isdigit(),
+        'all_products': products,
         'stations': WorkInstruction.STATION_FILTER_CHOICES,
         'kinds': WorkInstruction.KIND_CHOICES,
         'filters': {'q': q, 'station': station, 'kind': kind, 'status': status, 'product': product_id},
